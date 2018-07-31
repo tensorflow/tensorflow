@@ -31,5 +31,13 @@ END
 The number of layers we attempted to build (but not necessarily succeeded).
 END
   }
-  summary: "Retrieves the tree ensemble resource stamp token."
+  out_arg {
+    name: "last_layer_nodes_range"
+    description: <<END
+Rank size 2 tensor that contains start and end ids of the nodes in the latest
+layer.
+END
+
+  }
+  summary: "Retrieves the tree ensemble resource stamp token, number of trees and growing statistics."
 }

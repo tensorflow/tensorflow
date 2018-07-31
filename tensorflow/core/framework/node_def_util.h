@@ -50,6 +50,12 @@ extern const char* const kColocationGroupPrefix;
 string SummarizeNode(const Node& node);
 string SummarizeNodeDef(const NodeDef& node_def);
 
+// Produces a formatted string pattern from the node which can uniquely identify
+// this node upstream to produce an informative error message. The pattern
+// followed is: {{node <node_name>}}
+string FormatNodeForError(const Node& node);
+string FormatNodeDefForError(const NodeDef& node_def);
+
 typedef protobuf::Map<string, AttrValue> AttrValueMap;
 
 // Adds an attr with name <name> and value <value> to *node_def.
@@ -247,6 +253,10 @@ Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                          int output_port, DataType* output_type);
+// Computes the output types for a specific node.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                          DataTypeVector* outputs);
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
@@ -295,6 +305,11 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def);
 Status AttachDef(const Status& status, const NodeDef& node_def);
 Status AttachDef(const Status& status, const Node& node);
 
+// Appends the given prefix and suffix to the original node name in order to
+// make the name unique. If it's an "Enter" node, use the same way to reset
+// attribute "frame_name".
+Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
+                                NodeDef* node_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_NODE_DEF_UTIL_H_

@@ -32,7 +32,7 @@ flags.DEFINE_string("data_dir", "/tmp/mnist", "local mnist dir")
 
 
 def main(unused_argv):
-  convnet.train_mnist_single_gpu(FLAGS.data_dir, num_epochs=200)
+  convnet.train_mnist_single_machine(FLAGS.data_dir, num_epochs=200)
 
 
 if __name__ == "__main__":

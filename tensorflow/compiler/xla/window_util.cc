@@ -199,6 +199,9 @@ bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
+  if (bound == 0) {
+    return 0;
+  }
 
   // Suppose the array has three entries 123 and the dilation factor is 4. Then
   // the dilated array has 9 entries 1xxx2xxx3. Here, each original entry except
@@ -212,7 +215,7 @@ int64 StridedBound(int64 bound, int64 window_size, int64 stride) {
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);
 
-  if (window_size > bound) {
+  if (bound == 0 || window_size > bound) {
     return 0;
   }
 

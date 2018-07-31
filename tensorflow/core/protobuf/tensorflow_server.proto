@@ -23,7 +23,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ServerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 // Defines the configuration of a single TensorFlow server.
 message ServerDef {
   // The cluster of which this server is a member.
@@ -46,6 +46,6 @@ message ServerDef {
 
   // The protocol to be used by this server.
   //
-  // Acceptable values include: "grpc".
+  // Acceptable values include: "grpc", "grpc+verbs".
   string protocol = 5;
 }

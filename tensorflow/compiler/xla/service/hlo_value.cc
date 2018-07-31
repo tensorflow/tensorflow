@@ -29,9 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -69,7 +71,7 @@ std::ostream& operator<<(std::ostream& out, const HloUse& use) {
 
 HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
                    const ShapeIndex& index, bool is_phi)
-    : id_(id), is_phi_(is_phi) {
+    : BufferValue(instruction, index, id), is_phi_(is_phi) {
   // The defining position is always the first element in the positions_ vector.
   positions_.push_back(HloPosition{instruction, index});
 }
@@ -90,8 +92,8 @@ string HloValue::ToShortString() const {
   string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
                          ? defining_index().ToString()
                          : "";
-  return StrCat(id_, " ", is_phi_ ? "PHI " : "", defining_instruction()->name(),
-                index_str);
+  return StrCat(id(), " ", is_phi_ ? "PHI " : "",
+                defining_instruction()->name(), index_str);
 }
 
 string HloValue::ToString(int indent) const {
@@ -123,7 +125,7 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
       // transparently.
       CHECK_EQ(operand_number, 0);
       return index.empty();
-    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
       // Select does not use any nested elements of its selected-from operands
       // (operand 1 and 2)
       CHECK_GE(operand_number, 0);

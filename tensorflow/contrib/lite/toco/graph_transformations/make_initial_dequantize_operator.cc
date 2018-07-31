@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/contrib/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -84,15 +85,8 @@ bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
   dequantized_input_minmax = input_minmax;
   auto& input_qparams = input_array.GetOrCreateQuantizationParams();
   input_array.data_type = input_array.final_data_type;
-  if (input_array.data_type == ArrayDataType::kUint8) {
-    GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(input_minmax,
-                                                           &input_qparams);
-  } else if (input_array.data_type == ArrayDataType::kInt16) {
-    GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(input_minmax,
-                                                           &input_qparams);
-  } else {
-    LOG(FATAL) << "unhandled data type";
-  }
+  ChooseQuantizationParamsForArrayAndQuantizedDataType(
+      input_array, input_array.data_type, &input_qparams);
 
   transformation->AddMessageF(
       "Created %s"

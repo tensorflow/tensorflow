@@ -15,8 +15,8 @@ package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu:__subpackages__",
     ],
 )
 
@@ -24,6 +24,7 @@ cc_library(
     name = "all_ops",
     deps = [
         ":cross_replica_ops_op_lib",
+        ":heartbeat_ops_op_lib",
         ":host_compute_ops_op_lib",
         ":infeed_ops_op_lib",
         ":outfeed_ops_op_lib",
@@ -36,6 +37,7 @@ cc_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
+        "python/tpu/error_handling.py",
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
@@ -46,7 +48,7 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
-        "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -56,6 +58,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -70,6 +73,7 @@ py_library(
 tf_gen_op_libs(
     op_lib_names = [
         "cross_replica_ops",
+        "heartbeat_ops",
         "host_compute_ops",
         "infeed_ops",
         "outfeed_ops",
@@ -88,6 +92,7 @@ tf_custom_op_library(
     name = "python/ops/_tpu_ops.so",
     srcs = [
         "ops/cross_replica_ops.cc",
+        "ops/heartbeat_ops.cc",
         "ops/host_compute_ops.cc",
         "ops/infeed_ops.cc",
         "ops/outfeed_ops.cc",
@@ -105,6 +110,7 @@ tf_gen_op_wrapper_py(
     name = "tpu_ops",
     deps = [
         ":cross_replica_ops_op_lib",
+        ":heartbeat_ops_op_lib",
         ":host_compute_ops_op_lib",
         ":infeed_ops_op_lib",
         ":outfeed_ops_op_lib",
@@ -156,11 +162,56 @@ py_library(
 )
 
 py_library(
+    name = "keras_support",
+    srcs = [
+        "python/tpu/keras_support.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//cloud/vmm/testing/tests/tpu:__subpackages__",
+        "//learning/brain:__subpackages__",
+        # TODO(b/111651964): Clean special visibility for keras_support.
+        #
+        # Note: If you are an end user, please do not add your project to this
+        # visibility. This feature is experimental, and will be made public
+        # when ready.
+        "//third_party/cloud_tpu/models/keras:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        ":tpu_lib",
+        ":tpu_py",
+        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/distribute/python:tpu_strategy",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
+        "python/tpu/session_support.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
         "python/tpu/tpu_feed.py",
@@ -174,6 +225,8 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -197,7 +250,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:function",
         "//tensorflow/python:functional_ops",
@@ -294,6 +348,16 @@ tf_py_test(
     additional_deps = [
         ":tpu_estimator",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_py_test(
+    name = "topology_test",
+    size = "small",
+    srcs = ["python/tpu/topology_test.py"],
+    additional_deps = [
+        ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
 )

@@ -15,36 +15,6 @@
 """Control Flow Operations.
 
 See the @{$python/control_flow_ops} guide.
-
-@@identity
-@@identity_n
-@@tuple
-@@group
-@@no_op
-@@count_up_to
-@@cond
-@@case
-@@while_loop
-@@logical_and
-@@logical_not
-@@logical_or
-@@logical_xor
-@@equal
-@@not_equal
-@@less
-@@less_equal
-@@greater
-@@greater_equal
-@@where
-@@is_finite
-@@is_inf
-@@is_nan
-@@verify_tensor_all_finite
-@@check_numerics
-@@add_check_numerics_ops
-@@Assert
-@@Print
-@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -54,6 +24,7 @@ from __future__ import print_function
 import abc
 import collections
 import functools
+import os
 
 import six
 
@@ -68,11 +39,13 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -85,6 +58,10 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
+
+
+_ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
@@ -609,27 +586,28 @@ def _EnforceShapeInvariant(merge_var, next_var):
   """Check if the shapes of the loops variables are invariants.
 
   Args:
-    merge_vars: The list of tensors representing the initial values of the
+    merge_var: The list of tensors representing the initial values of the
       loop variables.
-    next_vars: The list of tensors representing the values of the loop
+    next_var: The list of tensors representing the values of the loop
       variables after one loop iteration.
 
   Raises:
-    ValueError: If any tensor in `merge_vars` has a more specific shape than
+    ValueError: If any tensor in `merge_var` has a more specific shape than
       its correspnding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
-      # TODO(skyewm): get original loop input that caused the shape error and
-      # report its name instead of the merge node's.
+      enter = merge_var.op.inputs[0].op
+      assert util.IsLoopEnter(enter)
+      input_t = enter.inputs[0]
       raise ValueError(
-          "The shape for %s is not an invariant for the loop. It enters "
-          "the loop with shape %s, but has shape %s after one iteration. "
-          "Provide shape invariants using either the `shape_invariants` "
-          "argument of tf.while_loop or set_shape() on the loop variables." %
-          (merge_var.name, m_shape, n_shape))
+          "Input tensor '%s' enters the loop with shape %s, but has shape %s "
+          "after one iteration. To allow the shape to vary across iterations, "
+          "use the `shape_invariants` argument of tf.while_loop to specify a "
+          "less-specific shape." %
+          (input_t.name, input_t.shape, n_shape))
   else:
     if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(var))
@@ -833,7 +811,7 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
-      if not hasattr(forward_ctxt, 'outer_context'):
+      if not hasattr(forward_ctxt, "outer_context"):
         raise ValueError("Failed to call gradients on a while loop without"
                          "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
@@ -1219,20 +1197,18 @@ class ControlFlowState(object):
       to backprop.
     """
     loop_exits = []
-    for _, grad_state in self._map.items():
-      # pylint: disable=protected-access
+    for grad_state in self._map.values():
       for y in grad_state.forward_loop_exits:
-        if pending_count[y.op._id] == 0:
+        if pending_count[y.op] == 0:
           grad_state.pending_exits_count -= 1
-          if y.op._id not in to_ops_set:
+          if y.op not in to_ops_set:
             grad_state.unused_exits.append(y)
           if grad_state.pending_exits_count == 0:
             loop_exits.extend(grad_state.unused_exits)
       # Need to include Enters in backprop for higher-order gradients.
       for y in grad_state.forward_context.loop_enters:
-        if pending_count[y.op._id] == 0:
-          pending_count[y.op._id] = 1
-      # pylint: enable=protected-access
+        if pending_count[y.op] == 0:
+          pending_count[y.op] = 1
     return loop_exits
 
   def EnterGradWhileContext(self, op, before):
@@ -1270,8 +1246,8 @@ class ControlFlowState(object):
 
       # We need to include all exits of a loop for backprop.
       for loop_exit in grad_state.forward_loop_exits:
-        if not between_ops[loop_exit.op._id]:
-          between_ops[loop_exit.op._id] = True
+        if loop_exit.op not in between_ops:
+          between_ops.add(loop_exit.op)
           between_op_list.append(loop_exit.op)
 
   def ZerosLikeForExit(self, val):
@@ -1461,6 +1437,8 @@ def ZerosLikeOutsideLoop(op, index):
   """Create zeros_like for the specified output of an op."""
   val = op.outputs[index]
   if not util.IsSwitch(op):
+    if val.dtype == dtypes.resource:
+      return array_ops.zeros(gen_resource_variable_ops.variable_shape(val))
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
@@ -1469,6 +1447,10 @@ def ZerosLikeOutsideLoop(op, index):
       pred = op_ctxt.pred
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
+      if val.dtype == dtypes.resource:
+        with ops.control_dependencies([switch_val]):
+          return array_ops.zeros(
+              gen_resource_variable_ops.variable_shape(switch_val))
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
       # Ensure ops created within array_ops.zeros are dominated by switch in
       # cond context.
@@ -1598,6 +1580,16 @@ class ControlFlowContext(object):
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
 
+  def EnterGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.EnterGradientColocation(op, gradient_uid)
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.ExitGradientColocation(op, gradient_uid)
+
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
@@ -1696,12 +1688,12 @@ class CondContext(ControlFlowContext):
       self._pivot = pivot  # The predicate tensor in this branch
       self._branch = branch  # 0 or 1 representing this branch
 
-      # Values considered to have been already seen in this context. They are
-      # not included in this context.
+      # Values considered to have been already seen in this context. pred is not
+      # included in this context.
       self._values.add(pred.name)
       self._external_values[pred.name] = pred
       self._values.add(pivot.name)
-      self._external_values[pivot.name] = pivot
+      pivot.op._set_control_flow_context(self)  # pylint: disable=protected-access
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `CondContext` from protocol buffer.
@@ -1825,15 +1817,34 @@ class CondContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
-      # Remove any external control dependency on this op
+      # If we're in a while loop, remove any control inputs from outside the
+      # loop.
       self._RemoveExternalControlEdges(op)
-      # pylint: disable=protected-access
-      op._add_control_input(self._pivot.op)
-      # pylint: enable=protected-access
+
+      if not any(util.OpInContext(input_op, self)
+                 for input_op in op.control_inputs):
+        # pylint: disable=protected-access
+        op._add_control_input(self._pivot.op)
+        # pylint: enable=protected-access
     else:
+      # Make each input to 'op' available in this CondContext. If an input is
+      # already part of this context there's nothing to do, but if it's
+      # external, AddValue() will handle adding the appropriate Switch node and
+      # other bookkeeping.
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        real_x = self.AddValue(x)
+        if op.type == "Merge" and x.op.type == "NextIteration":
+          # Edge case: if we're importing a while loop inside this CondContext,
+          # AddValue() will not correctly handle the NextIteration inputs to
+          # Merge node. The problem is that the NextIteration should also be
+          # part of this context, but if we're importing it won't have been
+          # processed and added to the context yet, so AddValue() will try to
+          # add a Switch which results in an invalid graph. Instead, we use the
+          # NextIteration input as-is here, and it will eventually be added to
+          # the context via AddOp().
+          real_x = x
+        else:
+          real_x = self.AddValue(x)
         if real_x != x:
           # pylint: disable=protected-access
           op._update_input(index, real_x)
@@ -2007,6 +2018,9 @@ def cond(pred,
   ```
 
   """
+  if _ENABLE_COND_V2:
+    return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
+
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
   # having them be positional arguments.
@@ -2369,7 +2383,15 @@ class WhileContext(ControlFlowContext):
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
     result = val
-    if val.name not in self._values:
+    new_value = val.name not in self._values
+    # Don't treat ops in this context as new values. Usually all known values
+    # are in self._values, except when we're importing a while loop inside this
+    # WhileContext. Since there's a cycle in this case, `val` may be part of the
+    # imported while loop but not yet processed by this context and added to
+    # self._values in _AddOpInternal. We only want to process external input
+    # tensors to the while loop here.
+    new_value &= val.op._control_flow_context is not self  # pylint: disable=protected-access
+    if new_value:
       self._values.add(val.name)
 
       # If we are in a grad context and val is from its forward context,
@@ -2734,7 +2756,8 @@ class WhileContext(ControlFlowContext):
           self.outer_context.Exit()
       else:
         shape_acc = array_ops.zeros_like(
-            array_ops.shape_internal(op.inputs[0], optimize=False),
+            array_ops.shape_internal(op.inputs[0], optimize=False,
+                                     out_type=dense_shape.dtype),
             optimize=False)
 
     if self.outer_context:
@@ -2928,7 +2951,8 @@ class WhileContext(ControlFlowContext):
 
     return original_body_result, exit_vars
 
-  def BuildLoop(self, pred, body, loop_vars, shape_invariants):
+  def BuildLoop(self, pred, body, loop_vars, shape_invariants,
+                return_same_structure):
     """Add the loop termination condition and body to the graph."""
 
     # Keep original_loop_vars to identify which are TensorArrays
@@ -2939,9 +2963,10 @@ class WhileContext(ControlFlowContext):
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     try:
       self.Enter()
-      # _BuildLoop calls _update_input in several places. _lock ensures a
-      # Session.run call cannot occur between creating and mutating new ops.
-      with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+      # _BuildLoop calls _update_input in several places. _mutation_lock()
+      # ensures a Session.run call cannot occur between creating and mutating
+      # new ops.
+      with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
         original_body_result, exit_vars = self._BuildLoop(
             pred, body, original_loop_vars, loop_vars, shape_invariants)
     finally:
@@ -2955,7 +2980,11 @@ class WhileContext(ControlFlowContext):
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
         flat_sequence=exit_vars_with_tensor_arrays)
-    return (packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars)
+
+    if return_same_structure:
+      return packed_exit_vars
+    else:
+      return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()
@@ -2995,7 +3024,8 @@ def while_loop(cond,
                back_prop=True,
                swap_memory=False,
                name=None,
-               maximum_iterations=None):
+               maximum_iterations=None,
+               return_same_structure=False):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -3071,11 +3101,16 @@ def while_loop(cond,
       to run.  If provided, the `cond` output is AND-ed with an additional
       condition ensuring the number of iterations executed is no greater than
       `maximum_iterations`.
+    return_same_structure: If True, output has same structure as `loop_vars`. If
+      eager execution is enabled, this is ignored (and always treated as True).
 
   Returns:
-    The output tensors for the loop variables after the loop. When the length
-    of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
-    the length of `loop_vars` is greater than 1 it returns a list.
+    The output tensors for the loop variables after the loop.
+     If `return_same_structure` is True, the return value has the same
+     structure as `loop_vars`.
+     If `return_same_structure` is False, the return value is a Tensor,
+     TensorArray or IndexedSlice if the length of `loop_vars` is 1, or a list
+     otherwise.
 
   Raises:
     TypeError: if `cond` or `body` is not callable.
@@ -3130,6 +3165,7 @@ def while_loop(cond,
   happen is that the thread updating `x` can never get ahead of the
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
+
   ```python
   import tensorflow as tf
 
@@ -3184,12 +3220,18 @@ def while_loop(cond,
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
     if context.executing_eagerly():
+      try_to_pack = len(loop_vars) == 1
+      packed = False  # whether the body result was packed into a 1-item tuple
+
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
+        if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
+          packed = True
+          loop_vars = (loop_vars,)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
-        return loop_vars
+        return loop_vars[0] if packed else loop_vars
 
     if shape_invariants is not None:
       if maximum_iterations is not None:
@@ -3205,7 +3247,8 @@ def while_loop(cond,
     # be encapsulated in the root context.
     if loop_context.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
-    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
+    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants,
+                                    return_same_structure)
     if maximum_iterations is not None:
       return result[1]
     else:
@@ -3336,12 +3379,6 @@ def group(*inputs, **kwargs):
     ops_on_device = {}  # device -> operations specified on the device.
     for inp in nest.flatten(inputs):
       if not hasattr(inp, "device"):
-        raise TypeError("Expected tf.group() expected Tensor arguments not "
-                        "'%s' with type '%s'" % (inp, type(inp)))
-      if not hasattr(inp, "device"):
-        if isinstance(inp, list):
-          raise TypeError("To call tf.group() with a list, use "
-                          "tf.group(*[...]) not tf.group([...]).")
         raise TypeError("Expected tf.group() expected Tensor arguments not "
                         "'%s' with type '%s'" % (inp, type(inp)))
       dev = inp.device

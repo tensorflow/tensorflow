@@ -37,8 +37,12 @@ class HloModuleConfig {
   // ComputationLayout. The default ctor creates it without -- in this case
   // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
   // ProgramShape creates a computation layout using this shape.
-  HloModuleConfig();
-  explicit HloModuleConfig(const ProgramShape& program_shape);
+  // The layouts in the ProgramShape will be reset to default unless
+  // ignore_layouts is set to false.
+  HloModuleConfig() = default;
+
+  explicit HloModuleConfig(const ProgramShape& program_shape,
+                           bool ignore_layouts = true);
 
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {
@@ -56,8 +60,8 @@ class HloModuleConfig {
     return *entry_computation_layout_;
   }
 
-  // Returns a mutable pointer to the layout of the entry computation. Assumes
-  // the layout was set.
+  // Returns a mutable pointer to the layout of the entry computation.
+  // Assumes the layout was set.
   ComputationLayout* mutable_entry_computation_layout() {
     CHECK(entry_computation_layout_.has_value());
     return &(*entry_computation_layout_);

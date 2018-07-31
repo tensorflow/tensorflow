@@ -43,10 +43,16 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
 #ifdef INTEL_MKL
   flags->set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
-
+  flags->set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
   flags->set_xla_gpu_use_cudnn_batchnorm(false);
+
+  // Run all GPU work on one stream by default.  Using multiple streams
+  // increases memory usage and we lack strong motivating benchmarks for tuning
+  // the heuristics needed to decide when to run on multiple streams.  See
+  // b/77879207.
+  flags->set_xla_gpu_disable_multi_streaming(true);
 }
 
 // Allocates flag_values and flag_objects; this function must not be called more
@@ -223,6 +229,11 @@ void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_disable_multi_streaming),
           flag_values->xla_gpu_disable_multi_streaming(),
           "If true, multi-streaming in the GPU backend is disabled."),
+      tensorflow::Flag(
+          "xla_gpu_max_kernel_unroll_factor",
+          int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
+          flag_values->xla_gpu_max_kernel_unroll_factor(),
+          "Specify the maximum kernel unroll factor for the GPU backend."),
       tensorflow::Flag(
           "xla_dump_optimized_hlo_proto_to",
           flag_values->mutable_xla_dump_optimized_hlo_proto_to(),

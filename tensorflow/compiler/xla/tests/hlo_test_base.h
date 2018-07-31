@@ -66,6 +66,15 @@ namespace xla {
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
 class HloTestBase : public ::testing::Test {
+ public:
+  // Creates a new HLO module for a test. The module created will have
+  // TestName() for its name; it will also automatically populate its debug
+  // options from command-line flags. If you want a fresh HloModule object and
+  // then add HloComputations to it, it's recommended to use this method in your
+  // tests.
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -76,22 +85,21 @@ class HloTestBase : public ::testing::Test {
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
-  HloTestBase(::perftools::gputools::Platform* test_platform,
-              ::perftools::gputools::Platform* reference_platform);
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
 
   ~HloTestBase() override {}
-
-  // Creates a new HLO module for a test. The module created will have
-  // TestName() for its name; it will also automatically populate its debug
-  // options from command-line flags. If you want a fresh HloModule object and
-  // then add HloComputations to it, it's recommended to use this method in your
-  // tests.
-  static std::unique_ptr<HloModule> CreateNewModule();
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.
   static DebugOptions GetDebugOptionsForTest();
+
+  // Gets an HloModuleConfig with options appropriate for tests.
+  static HloModuleConfig GetModuleConfigForTest() {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    return config;
+  }
 
   // Executes the given module and return the result as a Literal.
   StatusOr<std::unique_ptr<Literal>> Execute(
@@ -100,7 +108,7 @@ class HloTestBase : public ::testing::Test {
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
-  StatusOr<std::unique_ptr<Literal>> ExecuteNoHloPasses(
+  std::unique_ptr<Literal> ExecuteNoHloPasses(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<Literal*> arguments);
 
@@ -190,6 +198,13 @@ class HloTestBase : public ::testing::Test {
     module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
+  }
+
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout, shape_index);
   }
 
   // Convenience method to clear the layout of the computation result in

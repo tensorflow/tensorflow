@@ -172,7 +172,7 @@ TEST(CodegenTest, Golden) {
   fetch->set_name("myfetch");
   CompileResult compile_result;
   compile_result.aot.reset(
-      new xla::cpu::CpuAotCompilationResult({}, {1, -1, 2, -1, 3, 120}, 5));
+      new xla::cpu::CpuAotCompilationResult({}, {1, -1, 2, -1, 3, 120}, 5, {}));
   compile_result.program_shape = xla::ShapeUtil::MakeProgramShape(
       {
           xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),

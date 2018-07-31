@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include <Python.h>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 

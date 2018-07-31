@@ -16,9 +16,6 @@
 """Histograms.
 
 Please see @{$python/histogram_ops} guide.
-
-@@histogram_fixed_width_bins
-@@histogram_fixed_width
 """
 
 from __future__ import absolute_import
@@ -31,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.tf_export import tf_export
 
 

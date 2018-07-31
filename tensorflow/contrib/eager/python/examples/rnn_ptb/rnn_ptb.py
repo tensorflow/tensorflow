@@ -50,7 +50,7 @@ class RNN(tf.keras.Model):
   def __init__(self, hidden_dim, num_layers, keep_ratio):
     super(RNN, self).__init__()
     self.keep_ratio = keep_ratio
-    self.cells = self._add_cells([
+    self.cells = tf.contrib.checkpoint.List([
         tf.nn.rnn_cell.BasicLSTMCell(num_units=hidden_dim)
         for _ in range(num_layers)
     ])
@@ -73,14 +73,6 @@ class RNN(tf.keras.Model):
     # in PTBModel.call works for both this RNN and CudnnLSTM (which returns a
     # tuple (output, output_states).
     return [input_seq]
-
-  def _add_cells(self, cells):
-    # "Magic" required for keras.Model classes to track all the variables in
-    # a list of Layer objects.
-    # TODO(ashankar): Figure out API so user code doesn't have to do this.
-    for i, c in enumerate(cells):
-      setattr(self, "cell-%d" % i, c)
-    return cells
 
 
 class Embedding(layers.Layer):
@@ -304,7 +296,7 @@ def test_model(use_cudnn_rnn):
 
 
 def main(_):
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   if not FLAGS.data_path:
     raise ValueError("Must specify --data-path")
@@ -315,32 +307,37 @@ def main(_):
   have_gpu = tfe.num_gpus() > 0
   use_cudnn_rnn = not FLAGS.no_use_cudnn_rnn and have_gpu
 
-  with tfe.restore_variables_on_create(
-      tf.train.latest_checkpoint(FLAGS.logdir)):
-    with tf.device("/device:GPU:0" if have_gpu else None):
-      # Make learning_rate a Variable so it can be included in the checkpoint
-      # and we can resume training with the last saved learning_rate.
-      learning_rate = tfe.Variable(20.0, name="learning_rate")
-      sys.stderr.write("learning_rate=%f\n" % learning_rate.numpy())
-      model = PTBModel(corpus.vocab_size(), FLAGS.embedding_dim,
-                       FLAGS.hidden_dim, FLAGS.num_layers, FLAGS.dropout,
-                       use_cudnn_rnn)
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+  with tf.device("/device:GPU:0" if have_gpu else None):
+    # Make learning_rate a Variable so it can be included in the checkpoint
+    # and we can resume training with the last saved learning_rate.
+    learning_rate = tf.Variable(20.0, name="learning_rate")
+    model = PTBModel(corpus.vocab_size(), FLAGS.embedding_dim,
+                     FLAGS.hidden_dim, FLAGS.num_layers, FLAGS.dropout,
+                     use_cudnn_rnn)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    checkpoint = tf.train.Checkpoint(
+        learning_rate=learning_rate, model=model,
+        # GradientDescentOptimizer has no state to checkpoint, but noting it
+        # here lets us swap in an optimizer that does.
+        optimizer=optimizer)
+    # Restore existing variables now (learning_rate), and restore new variables
+    # on creation if a checkpoint exists.
+    checkpoint.restore(tf.train.latest_checkpoint(FLAGS.logdir))
+    sys.stderr.write("learning_rate=%f\n" % learning_rate.numpy())
 
-      best_loss = None
-      for _ in range(FLAGS.epoch):
-        train(model, optimizer, train_data, FLAGS.seq_len, FLAGS.clip)
-        eval_loss = evaluate(model, eval_data)
-        if not best_loss or eval_loss < best_loss:
-          if FLAGS.logdir:
-            tfe.Saver(model.trainable_weights + [learning_rate]).save(
-                os.path.join(FLAGS.logdir, "ckpt"))
-          best_loss = eval_loss
-        else:
-          learning_rate.assign(learning_rate / 4.0)
-          sys.stderr.write("eval_loss did not reduce in this epoch, "
-                           "changing learning rate to %f for the next epoch\n" %
-                           learning_rate.numpy())
+    best_loss = None
+    for _ in range(FLAGS.epoch):
+      train(model, optimizer, train_data, FLAGS.seq_len, FLAGS.clip)
+      eval_loss = evaluate(model, eval_data)
+      if not best_loss or eval_loss < best_loss:
+        if FLAGS.logdir:
+          checkpoint.save(os.path.join(FLAGS.logdir, "ckpt"))
+        best_loss = eval_loss
+      else:
+        learning_rate.assign(learning_rate / 4.0)
+        sys.stderr.write("eval_loss did not reduce in this epoch, "
+                         "changing learning rate to %f for the next epoch\n" %
+                         learning_rate.numpy())
 
 
 if __name__ == "__main__":

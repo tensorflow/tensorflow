@@ -65,6 +65,11 @@ class ConstantTest(test.TestCase):
     self._testCpu(x)
     self._testGpu(x)
 
+  def testInvalidDType(self):
+    # Test case for GitHub issue 18474
+    with self.assertRaises(TypeError):
+      constant_op.constant(dtypes_lib.string, "[,]")
+
   def testBFloat16(self):
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(bfloat16))
@@ -653,12 +658,12 @@ class FillTest(test.TestCase):
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex64(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex64)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex64)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex128(self):
-    np_ans = np.array([[0.15] * 3] * 2).astype(np.complex128)
-    self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
+    np_ans = np.array([[0.15 + 0.3j] * 3] * 2).astype(np.complex128)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillString(self):
     np_ans = np.array([[b"yolo"] * 3] * 2)

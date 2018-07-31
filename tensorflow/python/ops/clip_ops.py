@@ -27,7 +27,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -60,13 +59,26 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
-    return gen_math_ops.clip_by_value(t,
-                                      clip_value_min,
-                                      clip_value_max,
-                                      name=name)
+    t = ops.convert_to_tensor(t, name="t")
 
-@ops.RegisterGradient("ClipByValue")
-def _ClipByValueGrad(op, grad):
+    # Go through list of tensors, for each value in each tensor clip
+    t_min = math_ops.minimum(t, clip_value_max)
+    # Assert that the shape is compatible with the initial shape,
+    # to prevent unintentional broadcasting.
+    _ = t.shape.merge_with(t_min.shape)
+
+    t_max = math_ops.maximum(t_min, clip_value_min, name=name)
+    _ = t.shape.merge_with(t_max.shape)
+
+  return t_max
+  # TODO(scottzhu): switch to use new implmentation in 2 weeks.
+    # return gen_math_ops.clip_by_value(
+    #     t, clip_value_min, clip_value_max, name=name)
+
+
+# TODO(scottzhu): switch to use new implmentation in 2 weeks.
+# @ops.RegisterGradient("ClipByValue")
+def _clip_by_value_grad(op, grad):
   """Returns grad of clip_by_value."""
   x = op.inputs[0]
   y = op.inputs[1]

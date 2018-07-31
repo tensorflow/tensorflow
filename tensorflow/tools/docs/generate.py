@@ -31,6 +31,11 @@ if __name__ == '__main__':
   doc_generator = generate_lib.DocGenerator()
   doc_generator.add_output_dir_argument()
   doc_generator.add_src_dir_argument()
+  doc_generator.argument_parser.add_argument(
+      '--site_api_path',
+      type=str, default='api_docs/python',
+      help='The path from the site-root to api_docs'
+           'directory for this project')
 
   # This doc generator works on the TensorFlow codebase. Since this script lives
   # at tensorflow/tools/docs, and all code is defined somewhere inside
@@ -42,10 +47,6 @@ if __name__ == '__main__':
   doc_generator.add_base_dir_argument(default_base_dir)
 
   flags = doc_generator.parse_known_args()
-
-  # Suppress documentation of some symbols that users should never use.
-  del tf.layers.Layer.inbound_nodes
-  del tf.layers.Layer.outbound_nodes
 
   # tf_debug is not imported with tf, it's a separate module altogether
   doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])

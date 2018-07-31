@@ -47,6 +47,8 @@ import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.v13.app.FragmentCompat;
 import android.support.v4.content.ContextCompat;
+import android.text.SpannableString;
+import android.text.SpannableStringBuilder;
 import android.util.Log;
 import android.util.Size;
 import android.view.LayoutInflater;
@@ -54,6 +56,9 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.CompoundButton;
+import android.widget.NumberPicker;
+import android.widget.ToggleButton;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.IOException;
@@ -82,6 +87,8 @@ public class Camera2BasicFragment extends Fragment
   private boolean runClassifier = false;
   private boolean checkedPermissions = false;
   private TextView textView;
+  private ToggleButton toggle;
+  private NumberPicker np;
   private ImageClassifier classifier;
 
   /** Max preview width that is guaranteed by Camera2 API */
@@ -202,14 +209,21 @@ public class Camera2BasicFragment extends Fragment
    *
    * @param text The message to show
    */
-  private void showToast(final String text) {
+  private void showToast(String s) {
+    SpannableStringBuilder builder = new SpannableStringBuilder();
+    SpannableString str1 = new SpannableString(s);
+    builder.append(str1);
+    showToast(builder);
+  }
+
+  private void showToast(SpannableStringBuilder builder) {
     final Activity activity = getActivity();
     if (activity != null) {
       activity.runOnUiThread(
           new Runnable() {
             @Override
             public void run() {
-              textView.setText(text);
+              textView.setText(builder, TextView.BufferType.SPANNABLE);
             }
           });
     }
@@ -289,6 +303,24 @@ public class Camera2BasicFragment extends Fragment
   public void onViewCreated(final View view, Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     textView = (TextView) view.findViewById(R.id.text);
+    toggle = (ToggleButton) view.findViewById(R.id.button);
+
+    toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+      public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        classifier.setUseNNAPI(isChecked);
+      }
+    });
+
+    np = (NumberPicker) view.findViewById(R.id.np);
+    np.setMinValue(1);
+    np.setMaxValue(10);
+    np.setWrapSelectorWheel(true);
+    np.setOnValueChangedListener(new NumberPicker.OnValueChangeListener() {
+      @Override
+      public void onValueChange(NumberPicker picker, int oldVal, int newVal){
+        classifier.setNumThreads(newVal);
+      }
+    });
   }
 
   /** Load the model and labels. */
@@ -659,8 +691,9 @@ public class Camera2BasicFragment extends Fragment
       showToast("Uninitialized Classifier or invalid context.");
       return;
     }
+    SpannableStringBuilder textToShow = new SpannableStringBuilder();
     Bitmap bitmap = textureView.getBitmap(classifier.getImageSizeX(), classifier.getImageSizeY());
-    String textToShow = classifier.classifyFrame(bitmap);
+    classifier.classifyFrame(bitmap, textToShow);
     bitmap.recycle();
     showToast(textToShow);
   }

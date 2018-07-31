@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.boosted_trees.lib.learner.batch import ordinal_split_handler
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.proto import split_info_pb2
@@ -65,9 +67,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessian_shape = tensor_shape.scalar()
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=10,
           feature_column_group_id=0,
@@ -92,7 +94,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
+
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -105,7 +109,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -178,6 +182,144 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
+  def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
+    with self.test_session() as sess:
+      # The data looks like the following:
+      # Example |  Gradients    | Partition | Dense Quantile |
+      # i0      |  (0.2, 0.12)  | 0         | 1              |
+      # i1      |  (-0.5, 0.07) | 0         | 1              |
+      # i2      |  (1.2, 0.2)   | 0         | 0              |
+      # i3      |  (4.0, 0.13)  | 1         | 1              |
+      dense_column = array_ops.constant([0.52, 0.52, 0.3, 0.52])
+      gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
+      hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
+      partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
+      class_id = -1
+
+      gradient_shape = tensor_shape.scalar()
+      hessian_shape = tensor_shape.scalar()
+      split_handler = ordinal_split_handler.DenseSplitHandler(
+          l1_regularization=0.2,
+          l2_regularization=2.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
+          epsilon=0.001,
+          num_quantiles=10,
+          feature_column_group_id=0,
+          dense_float_column=dense_column,
+          init_stamp_token=0,
+          gradient_shape=gradient_shape,
+          hessian_shape=hessian_shape,
+          multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS,
+          loss_uses_sum_reduction=True)
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      empty_gradients, empty_hessians = get_empty_tensors(
+          gradient_shape, hessian_shape)
+      example_weights = array_ops.ones([4, 1], dtypes.float32)
+
+      update_1 = split_handler.update_stats_sync(
+          0,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_1]):
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
+
+      with ops.control_dependencies([are_splits_ready]):
+        update_2 = split_handler.update_stats_sync(
+            1,
+            partition_ids,
+            gradients,
+            hessians,
+            empty_gradients,
+            empty_hessians,
+            example_weights,
+            is_active=array_ops.constant([True, True]))
+        update_3 = split_handler.update_stats_sync(
+            1,
+            partition_ids,
+            gradients,
+            hessians,
+            empty_gradients,
+            empty_hessians,
+            example_weights,
+            is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_2, update_3]):
+        are_splits_ready2, partitions, gains, splits = (
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
+        are_splits_ready, are_splits_ready2, partitions, gains, splits = (
+            sess.run([
+                are_splits_ready, are_splits_ready2, partitions, gains, splits
+            ]))
+
+    # During the first iteration, inequality split handlers are not going to
+    # have any splits. Make sure that we return not_ready in that case.
+    self.assertFalse(are_splits_ready)
+    self.assertTrue(are_splits_ready2)
+
+    self.assertAllEqual([0, 1], partitions)
+
+    # Check the split on partition 0.
+    # -(2.4 - 0.2) / (0.4 + 2)
+    expected_left_weight = -0.91666
+
+    # expected_left_weight * -(2.4 - 0.2)
+    expected_left_gain = 2.016666666666666
+
+    # -(-1 + 0.4 + 0.2) / (0.38 + 2)
+    expected_right_weight = 0.1680672
+
+    # expected_right_weight * -(-1 + 0.4 + 0.2)
+    expected_right_gain = 0.0672268907563025
+
+    # (0.2 + -0.5 + 1.2 - 0.1) ** 2 / (0.12 + 0.07 + 0.2 + 1)
+    expected_bias_gain = 0.9208633093525178
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[0])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.dense_float_binary_split
+    self.assertAllClose(
+        expected_left_gain + expected_right_gain - expected_bias_gain, gains[0],
+        0.00001)
+
+    self.assertAllClose([expected_left_weight], left_child.value, 0.00001)
+
+    self.assertAllClose([expected_right_weight], right_child.value, 0.00001)
+
+    self.assertEqual(0, split_node.feature_column)
+
+    self.assertAllClose(0.3, split_node.threshold, 0.00001)
+
+    # Check the split on partition 1.
+    # (-8 + 0.2) / (0.26 + 2)
+    expected_left_weight = -3.4513274336283186
+    expected_right_weight = 0
+
+    # Verify candidate for partition 1, there's only one active bucket here
+    # so zero gain is expected.
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[1])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.dense_float_binary_split
+    self.assertAllClose(0.0, gains[1], 0.00001)
+
+    self.assertAllClose([expected_left_weight], left_child.value, 0.00001)
+
+    self.assertAllClose([expected_right_weight], right_child.value, 0.00001)
+
+    self.assertEqual(0, split_node.feature_column)
+
+    self.assertAllClose(0.52, split_node.threshold, 0.00001)
+
   def testGenerateFeatureSplitCandidatesMulticlassFullHessian(self):
     with self.test_session() as sess:
       dense_column = array_ops.constant([0.52, 0.52, 0.3, 0.52])
@@ -199,10 +341,10 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessian_shape = tensor_shape.TensorShape([2, 2])
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=3,
           feature_column_group_id=0,
@@ -227,7 +369,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
+
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -240,7 +384,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -285,10 +429,10 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessian_shape = tensor_shape.TensorShape([2])
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=3,
           feature_column_group_id=0,
@@ -313,7 +457,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -326,7 +471,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -369,9 +514,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=10,
           feature_column_group_id=0,
@@ -396,7 +541,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, False]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -409,7 +555,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([False, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -443,9 +589,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
+          l2_regularization=1.,
           tree_complexity_regularization=0.5,
-          min_node_weight=0,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=10,
           feature_column_group_id=0,
@@ -470,7 +616,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -483,7 +630,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -576,7 +723,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
+          l2_regularization=1.,
           tree_complexity_regularization=0.5,
           min_node_weight=1.5,
           epsilon=0.001,
@@ -603,7 +750,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -616,7 +764,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -685,10 +833,10 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=2,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
           epsilon=0.01,
           num_quantiles=2,
           feature_column_group_id=0,
@@ -713,8 +861,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
-
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
             1,
@@ -727,7 +875,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -750,6 +898,139 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     expected_right_gain = 0.12077294685990339
     # (0.2 + 1.2 - 0.5) ** 2 /  (0.12 + 0.2 + 0.07 + 2)
     expected_bias_gain = 0.3389121338912133
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[0])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.sparse_float_binary_split_default_right
+    self.assertAllClose(
+        expected_left_gain + expected_right_gain - expected_bias_gain, gains[0])
+
+    self.assertAllClose([expected_left_weight], left_child.value)
+
+    self.assertAllClose([expected_right_weight], right_child.value)
+
+    self.assertEqual(0, split_node.split.feature_column)
+
+    self.assertAllClose(0.52, split_node.split.threshold)
+
+    # Check the split on partition 1.
+    expected_left_weight = -1.8779342723004695
+    expected_right_weight = 0
+
+    # Verify candidate for partition 1, there's only one active bucket here
+    # so zero gain is expected.
+    split_info.ParseFromString(splits[1])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.sparse_float_binary_split_default_left
+
+    self.assertAllClose(0.0, gains[1])
+
+    self.assertAllClose([expected_left_weight], left_child.value)
+
+    self.assertAllClose([expected_right_weight], right_child.value)
+
+    self.assertEqual(0, split_node.split.feature_column)
+
+    self.assertAllClose(0.52, split_node.split.threshold)
+
+  def testGenerateFeatureSplitCandidatesLossUsesSumReduction(self):
+    with self.test_session() as sess:
+      # The data looks like the following:
+      # Example |  Gradients    | Partition | Sparse Quantile |
+      # i0      |  (0.2, 0.12)  | 0         | 1               |
+      # i1      |  (-0.5, 0.07) | 0         | N/A             |
+      # i2      |  (1.2, 0.2)   | 0         | 0               |
+      # i3      |  (4.0, 0.13)  | 1         | 1               |
+      gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
+      hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
+      example_partitions = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
+      indices = array_ops.constant([[0, 0], [2, 0], [3, 0]], dtype=dtypes.int64)
+      values = array_ops.constant([0.52, 0.3, 0.52])
+      sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
+
+      gradient_shape = tensor_shape.scalar()
+      hessian_shape = tensor_shape.scalar()
+      class_id = -1
+
+      split_handler = ordinal_split_handler.SparseSplitHandler(
+          l1_regularization=0.0,
+          l2_regularization=4.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
+          epsilon=0.01,
+          num_quantiles=2,
+          feature_column_group_id=0,
+          sparse_float_column=sparse_column,
+          init_stamp_token=0,
+          gradient_shape=gradient_shape,
+          hessian_shape=hessian_shape,
+          multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS,
+          loss_uses_sum_reduction=True)
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      empty_gradients, empty_hessians = get_empty_tensors(
+          gradient_shape, hessian_shape)
+      example_weights = array_ops.ones([4, 1], dtypes.float32)
+
+      update_1 = split_handler.update_stats_sync(
+          0,
+          example_partitions,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_1]):
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
+      with ops.control_dependencies([are_splits_ready]):
+        update_2 = split_handler.update_stats_sync(
+            1,
+            example_partitions,
+            gradients,
+            hessians,
+            empty_gradients,
+            empty_hessians,
+            example_weights,
+            is_active=array_ops.constant([True, True]))
+        update_3 = split_handler.update_stats_sync(
+            1,
+            example_partitions,
+            gradients,
+            hessians,
+            empty_gradients,
+            empty_hessians,
+            example_weights,
+            is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_2, update_3]):
+        are_splits_ready2, partitions, gains, splits = (
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
+        are_splits_ready, are_splits_ready2, partitions, gains, splits = (
+            sess.run([
+                are_splits_ready, are_splits_ready2, partitions, gains, splits
+            ]))
+
+    # During the first iteration, inequality split handlers are not going to
+    # have any splits. Make sure that we return not_ready in that case.
+    self.assertFalse(are_splits_ready)
+    self.assertTrue(are_splits_ready2)
+
+    self.assertAllEqual([0, 1], partitions)
+    # Check the split on partition 0.
+    # -(0.4 + 2.4) / (0.24 + 0.4 + 4)
+    expected_left_weight = -0.603448275862069
+    # (0.4 + 2.4) ** 2 / (0.24 + 0.4 + 4)
+    expected_left_gain = 1.689655172413793
+    # 1 / (0.14 + 4)
+    expected_right_weight = 0.24154589371980678
+    # 1 ** 2 / (0.14 + 4)
+    expected_right_gain = 0.24154589371980678
+    # (0.4 + 2.4 - 1) ** 2 /  (0.24 + 0.4 + 0.14 + 4)
+    expected_bias_gain = 0.6778242677824265
 
     split_info = split_info_pb2.SplitInfo()
     split_info.ParseFromString(splits[0])
@@ -811,10 +1092,10 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=2,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
           epsilon=0.01,
           num_quantiles=2,
           feature_column_group_id=0,
@@ -839,7 +1120,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
 
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
@@ -853,7 +1135,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -905,10 +1187,10 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=2,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
           epsilon=0.01,
           num_quantiles=2,
           feature_column_group_id=0,
@@ -933,7 +1215,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
 
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
@@ -947,7 +1230,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -996,10 +1279,10 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=2,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
           epsilon=0.01,
           num_quantiles=2,
           feature_column_group_id=0,
@@ -1024,7 +1307,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, False]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
 
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
@@ -1038,7 +1322,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([False, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -1065,10 +1349,10 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=2,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
           epsilon=0.01,
           num_quantiles=2,
           feature_column_group_id=0,
@@ -1096,7 +1380,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
 
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
@@ -1110,7 +1395,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits
@@ -1138,10 +1423,10 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=2,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
           epsilon=0.01,
           num_quantiles=2,
           feature_column_group_id=0,
@@ -1166,7 +1451,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           example_weights,
           is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_1]):
-        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
 
       with ops.control_dependencies([are_splits_ready]):
         update_2 = split_handler.update_stats_sync(
@@ -1180,7 +1466,7 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             is_active=array_ops.constant([True, True]))
       with ops.control_dependencies([update_2]):
         are_splits_ready2, partitions, gains, splits = (
-            split_handler.make_splits(1, 2, class_id))
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
         are_splits_ready, are_splits_ready2, partitions, gains, splits = (
             sess.run([
                 are_splits_ready, are_splits_ready2, partitions, gains, splits

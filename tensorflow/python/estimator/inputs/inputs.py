@@ -22,12 +22,4 @@ from __future__ import print_function
 from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
 from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn
 
-from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
-
-_allowed_symbols = [
-    'numpy_input_fn',
-    'pandas_input_fn'
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

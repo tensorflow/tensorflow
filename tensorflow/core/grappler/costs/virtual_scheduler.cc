@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -850,14 +851,17 @@ Costs VirtualScheduler::Summary() const {
   VLOG(1) << "Expected max per-op streaming buffers: "
           << graph_costs_.max_per_op_streaming;
 
-  VLOG(1) << "Per-op execution time:";
+  VLOG(1) << "Per-op execution time / compute time / memory time:";
   for (const auto& op_cost_pair : op_to_cost_) {
     const auto& op = op_cost_pair.first;
     const auto& cost = op_cost_pair.second.execution_time.count();
+    const auto& compute_cost = op_cost_pair.second.compute_time.count();
+    const auto& memory_cost = op_cost_pair.second.memory_time.count();
     const bool is_op_cost_accurate = !op_cost_pair.second.inaccurate;
     if (cost) {  // Skip printing out zero-cost ops.
-      VLOG(1) << " + " << op << " : " << (is_op_cost_accurate ? "" : "~")
-              << cost;
+      VLOG(1) << strings::Printf(" + %30s : %c %10ld / %10ld / %10ld",
+                                 op.c_str(), (is_op_cost_accurate ? ' ' : '~'),
+                                 cost, compute_cost, memory_cost);
     }
   }
 
@@ -898,7 +902,8 @@ Costs VirtualScheduler::Summary() const {
             << ", at the end: "
             << strings::HumanReadableNumBytes(state.memory_usage);
 
-    VLOG(1) << "Per-op execution time (and memory usage at peak memory usage):";
+    VLOG(1) << "Per-op execution time compute time / memory time "
+               "(and memory usage at peak memory usage):";
 
     // Profile non-persistent op memory usage.
     for (const auto& node_port : state.mem_usage_snapshot_at_peak) {
@@ -912,6 +917,8 @@ Costs VirtualScheduler::Summary() const {
     for (const auto& op_cost_pair : state.op_to_cost) {
       const auto& op = op_cost_pair.first;
       const auto& cost = op_cost_pair.second.execution_time.count();
+      const auto& compute_cost = op_cost_pair.second.compute_time.count();
+      const auto& memory_cost = op_cost_pair.second.memory_time.count();
       total_compute_time_ns += op_cost_pair.second.execution_time;
       const bool is_op_cost_accurate = !op_cost_pair.second.inaccurate;
       if (!is_op_cost_accurate) {
@@ -929,9 +936,12 @@ Costs VirtualScheduler::Summary() const {
                                : 0.0;
       if (cost || mem_usage_percent > 1.0) {
         // Print out only non-zero cost ops or ops with > 1% memory usage.
-        VLOG(1) << " + " << op << " : " << (is_op_cost_accurate ? "" : "~")
-                << cost << " (" << strings::HumanReadableNumBytes(op_mem_usage)
-                << " [" << mem_usage_percent << "%] "
+        VLOG(1) << strings::Printf(" + %30s : %c %10ld / %10ld / %10ld",
+                                   op.c_str(),
+                                   (is_op_cost_accurate ? ' ' : '~'), cost,
+                                   compute_cost, memory_cost)
+                << " (" << strings::HumanReadableNumBytes(op_mem_usage) << " ["
+                << mem_usage_percent << "%] "
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
     }

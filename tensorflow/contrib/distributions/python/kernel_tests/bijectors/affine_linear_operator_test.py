@@ -38,9 +38,11 @@ class AffineLinearOperatorTest(test.TestCase):
       self.assertEqual(affine.name, "affine_linear_operator")
       self.assertAllClose(y, affine.forward(x).eval())
       self.assertAllClose(x, affine.inverse(y).eval())
-      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
-      self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
-                          affine.forward_log_det_jacobian(x).eval())
+      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(
+          y, event_ndims=2).eval())
+      self.assertAllClose(
+          -affine.inverse_log_det_jacobian(y, event_ndims=2).eval(),
+          affine.forward_log_det_jacobian(x, event_ndims=2).eval())
 
   def testDiag(self):
     with self.test_session():
@@ -58,14 +60,16 @@ class AffineLinearOperatorTest(test.TestCase):
       self.assertEqual(affine.name, "affine_linear_operator")
       self.assertAllClose(y, affine.forward(x).eval())
       self.assertAllClose(x, affine.inverse(y).eval())
-      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
-      self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
-                          affine.forward_log_det_jacobian(x).eval())
+      self.assertAllClose(
+          ildj, affine.inverse_log_det_jacobian(y, event_ndims=1).eval())
+      self.assertAllClose(
+          -affine.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          affine.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testTriL(self):
     with self.test_session():
       shift = np.array([-1, 0, 1], dtype=np.float32)
-      tril = np.array([[[1, 0, 0],
+      tril = np.array([[[3, 0, 0],
                         [2, -1, 0],
                         [3, 2, 1]],
                        [[2, 0, 0],
@@ -85,15 +89,17 @@ class AffineLinearOperatorTest(test.TestCase):
       # y = np.matmul(x, tril) + shift.
       y = np.squeeze(np.matmul(tril, np.expand_dims(x, -1)), -1) + shift
       ildj = -np.sum(np.log(np.abs(np.diagonal(
-          tril, axis1=-2, axis2=-1))),
-                     axis=-1)
+          tril, axis1=-2, axis2=-1))))
 
       self.assertEqual(affine.name, "affine_linear_operator")
       self.assertAllClose(y, affine.forward(x).eval())
       self.assertAllClose(x, affine.inverse(y).eval())
-      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
-      self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
-                          affine.forward_log_det_jacobian(x).eval())
+      self.assertAllClose(
+          ildj, affine.inverse_log_det_jacobian(
+              y, event_ndims=2).eval())
+      self.assertAllClose(
+          -affine.inverse_log_det_jacobian(y, event_ndims=2).eval(),
+          affine.forward_log_det_jacobian(x, event_ndims=2).eval())
 
 
 if __name__ == "__main__":

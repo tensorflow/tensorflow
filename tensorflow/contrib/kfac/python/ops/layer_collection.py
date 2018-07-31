@@ -28,6 +28,7 @@ from collections import defaultdict
 from collections import OrderedDict
 from contextlib import contextmanager
 from functools import partial
+import warnings
 
 import math
 import six
@@ -171,6 +172,9 @@ class LayerCollection(object):
   def __init__(self,
                graph=None,
                name="LayerCollection"):
+    warnings.warn(
+        "tf.contrib.kfac is deprecated and will be removed by 2018-11-01. "
+        "Use https://pypi.python.org/pypi/kfac instead.")
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
     self._linked_parameters = dict(
@@ -178,7 +182,7 @@ class LayerCollection(object):
     self._graph = graph or ops.get_default_graph()
     self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
-    self._default_generic_approximation = APPROX_FULL_NAME
+    self._default_generic_approximation = APPROX_DIAGONAL_NAME
     self._default_embedding_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_conv2d_approximation = APPROX_KRONECKER_NAME

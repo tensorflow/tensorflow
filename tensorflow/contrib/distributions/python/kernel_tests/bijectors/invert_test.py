@@ -34,9 +34,9 @@ class InvertBijectorTest(test.TestCase):
     with self.test_session():
       for fwd in [
           bijectors.Identity(),
-          bijectors.Exp(event_ndims=1),
+          bijectors.Exp(),
           bijectors.Affine(shift=[0., 1.], scale_diag=[2., 3.]),
-          bijectors.Softplus(event_ndims=1),
+          bijectors.Softplus(),
           bijectors.SoftmaxCentered(),
       ]:
         rev = bijectors.Invert(fwd)
@@ -46,11 +46,11 @@ class InvertBijectorTest(test.TestCase):
         self.assertAllClose(fwd.inverse(x).eval(), rev.forward(x).eval())
         self.assertAllClose(fwd.forward(x).eval(), rev.inverse(x).eval())
         self.assertAllClose(
-            fwd.forward_log_det_jacobian(x).eval(),
-            rev.inverse_log_det_jacobian(x).eval())
+            fwd.forward_log_det_jacobian(x, event_ndims=1).eval(),
+            rev.inverse_log_det_jacobian(x, event_ndims=1).eval())
         self.assertAllClose(
-            fwd.inverse_log_det_jacobian(x).eval(),
-            rev.forward_log_det_jacobian(x).eval())
+            fwd.inverse_log_det_jacobian(x, event_ndims=1).eval(),
+            rev.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testScalarCongruency(self):
     with self.test_session():

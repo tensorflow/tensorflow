@@ -25,7 +25,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -34,7 +35,7 @@ __all__ = [
 ]
 
 
-class RealNVP(bijector_lib.Bijector):
+class RealNVP(bijector.Bijector):
   """RealNVP "affine coupling layer" for vector-valued events.
 
   Real NVP models a normalizing flow on a `D`-dimensional distribution via a
@@ -126,6 +127,14 @@ class RealNVP(bijector_lib.Bijector):
        Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                num_masked,
                shift_and_log_scale_fn,
@@ -166,7 +175,7 @@ class RealNVP(bijector_lib.Bijector):
     self._input_depth = None
     self._shift_and_log_scale_fn = shift_and_log_scale_fn
     super(RealNVP, self).__init__(
-        event_ndims=1,
+        forward_min_event_ndims=1,
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)
@@ -224,10 +233,18 @@ class RealNVP(bijector_lib.Bijector):
     _, log_scale = self._shift_and_log_scale_fn(
         x0, self._input_depth - self._num_masked)
     if log_scale is None:
-      return constant_op.constant(0., dtype=x.dtype, name="ildj")
+      return constant_op.constant(0., dtype=x.dtype, name="fldj")
     return math_ops.reduce_sum(log_scale, axis=-1)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def real_nvp_default_template(
     hidden_layers,
     shift_only=False,

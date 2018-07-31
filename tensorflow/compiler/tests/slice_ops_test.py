@@ -18,14 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-class SliceTest(XLATestCase):
+class SliceTest(xla_test.XLATestCase):
 
   def test1D(self):
     for dtype in self.numeric_types:
@@ -110,7 +110,7 @@ class SliceTest(XLATestCase):
         self.assertAllEqual([[[1, 1, 1, 1], [6, 5, 4, 3]]], result)
 
 
-class StridedSliceTest(XLATestCase):
+class StridedSliceTest(xla_test.XLATestCase):
 
   def test1D(self):
     for dtype in self.numeric_types:

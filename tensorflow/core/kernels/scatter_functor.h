@@ -20,8 +20,11 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -203,9 +206,9 @@ struct ScatterFunctorBase {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Copy last Ndim-1 dimensions of updates[i] to params[index]
@@ -215,6 +218,42 @@ struct ScatterFunctorBase {
     return -1;
   }
 };
+
+template <typename Device, typename Index>
+struct ScatterFunctorVariantAssignBase {
+  Index operator()(OpKernelContext* c, const Device& d,
+                   typename TTypes<Variant>::Matrix params,
+                   typename TTypes<Variant>::ConstMatrix updates,
+                   typename TTypes<Index>::ConstFlat indices) {
+    // indices and params sizes were validated in DoCompute().
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
+    const Index cols = static_cast<Index>(params.dimension(1));
+    DCHECK_EQ(N, updates.dimension(0));
+    DCHECK_EQ(cols, updates.dimension(1));
+    for (Index i = 0; i < N; i++) {
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
+      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+      if (!FastBoundsCheck(index, limit)) return i;
+      // Copy last Ndim-1 dimensions of updates[i] to params[index]
+      for (int j = 0; j < cols; ++j) {
+        const Variant& to_scatter = updates(i, j);
+        params(index, j) = to_scatter;
+      }
+    }
+    return -1;
+  }
+};
+
+template <typename Index>
+struct ScatterFunctor<CPUDevice, Variant, Index, scatter_op::UpdateOp::ASSIGN>
+    : ScatterFunctorVariantAssignBase<CPUDevice, Index> {};
+
+template <typename Index>
+struct ScatterFunctor<GPUDevice, Variant, Index, scatter_op::UpdateOp::ASSIGN>
+    : ScatterFunctorVariantAssignBase<GPUDevice, Index> {};
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
@@ -227,9 +266,9 @@ struct ScatterFunctorBase<SYCLDevice, T, Index, op> {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Copy last Ndim-1 dimensions of updates[i] to params[index]
@@ -252,9 +291,10 @@ struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
     const Index limit = static_cast<Index>(params.dimension(0));
     if (!std::is_same<T, string>::value) {
       for (Index i = 0; i < N; i++) {
-        // Grab the index and check its validity.  An earlier version of the
-        // code checked it and then grabbed it from memory a second time, which
-        // was a security risk since it could have changed in between.
+        // Grab the index and check its validity.  Do this carefully,
+        // to avoid checking the value and grabbing it again from
+        // memory a second time (a security risk since it may change in
+        // between).
         const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
         if (!FastBoundsCheck(index, limit)) return i;
         memmove(params.data() + index * params.dimension(1),
@@ -263,9 +303,10 @@ struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
       }
     } else {
       for (Index i = 0; i < N; i++) {
-        // Grab the index and check its validity.  An earlier version of the
-        // code checked it and then grabbed it from memory a second time, which
-        // was a security risk since it could have changed in between.
+        // Grab the index and check its validity.  Do this carefully,
+        // to avoid checking the value and grabbing it again from
+        // memory a second time (a security risk since it may change in
+        // between).
         const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
         if (!FastBoundsCheck(index, limit)) return i;
         // Copy last Ndim-1 dimensions of updates[i] to params[index]
@@ -321,9 +362,9 @@ struct ScatterScalarFunctorBase {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Broadcast update to params[index]
@@ -333,6 +374,41 @@ struct ScatterScalarFunctorBase {
     return -1;
   }
 };
+
+template <typename Device, typename Index>
+struct ScatterScalarFunctorVariantAssignBase {
+  Index operator()(OpKernelContext* c, const Device& d,
+                   typename TTypes<Variant>::Matrix params,
+                   const typename TTypes<Variant>::ConstScalar update,
+                   typename TTypes<Index>::ConstFlat indices) {
+    // indices and params sizes were validated in DoCompute().
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
+    const Index cols = static_cast<Index>(params.dimension(1));
+    const Variant& to_scatter = update();
+    for (Index i = 0; i < N; i++) {
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
+      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+      if (!FastBoundsCheck(index, limit)) return i;
+      // Broadcast update to params[index]
+      for (Index j = 0; j < cols; ++j) {
+        params(index, j) = to_scatter;
+      }
+    }
+    return -1;
+  }
+};
+
+template <typename Index>
+struct ScatterScalarFunctor<CPUDevice, Variant, Index,
+                            scatter_op::UpdateOp::ASSIGN>
+    : ScatterScalarFunctorVariantAssignBase<CPUDevice, Index> {};
+template <typename Index>
+struct ScatterScalarFunctor<GPUDevice, Variant, Index,
+                            scatter_op::UpdateOp::ASSIGN>
+    : ScatterScalarFunctorVariantAssignBase<GPUDevice, Index> {};
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
@@ -345,9 +421,9 @@ struct ScatterScalarFunctorBase<SYCLDevice, T, Index, op> {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Broadcast update to params[index]
@@ -370,9 +446,9 @@ struct ScatterScalarFunctorBase<CPUDevice, T, Index,
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Broadcast update to params[index]

@@ -24,11 +24,11 @@ import enum
 from tensorflow.contrib.framework.python.ops import variables as variable_lib
 from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
 from tensorflow.contrib.gan.python import train as tfgan_train
-from tensorflow.contrib.gan.python.estimator.python import head as head_lib
 from tensorflow.contrib.gan.python.eval.python import summaries as tfgan_summaries
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import tf_inspect as inspect
 
@@ -112,6 +112,7 @@ class GANEstimator(estimator.Estimator):
                generator_optimizer=None,
                discriminator_optimizer=None,
                get_hooks_fn=None,
+               get_eval_metric_ops_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
                config=None):
@@ -146,97 +147,100 @@ class GANEstimator(estimator.Estimator):
         list of hooks. These hooks are run on the generator and discriminator
         train ops, and can be used to implement the GAN training scheme.
         Defaults to `train.get_sequential_train_hooks()`.
+      get_eval_metric_ops_fn: A function that takes a `GANModel`, and returns a
+        dict of metric results keyed by name. The output of this function is
+        passed into `tf.estimator.EstimatorSpec` during evaluation.
       add_summaries: `None`, a single `SummaryType`, or a list of `SummaryType`.
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
       config: `RunConfig` object to configure the runtime settings.
+
+    Raises:
+      ValueError: If loss functions aren't callable.
+      ValueError: If `use_loss_summaries` isn't boolean or `None`.
+      ValueError: If `get_hooks_fn` isn't callable or `None`.
     """
-    # TODO(joelshor): Explicitly validate inputs.
+    if not callable(generator_loss_fn):
+      raise ValueError('generator_loss_fn must be callable.')
+    if not callable(discriminator_loss_fn):
+      raise ValueError('discriminator_loss_fn must be callable.')
+    if use_loss_summaries not in [True, False, None]:
+      raise ValueError('use_loss_summaries must be True, False or None.')
+    if get_hooks_fn is not None and not callable(get_hooks_fn):
+      raise TypeError('get_hooks_fn must be callable.')
 
     def _model_fn(features, labels, mode):
-      gopt = (generator_optimizer() if callable(generator_optimizer) else
-              generator_optimizer)
-      dopt = (discriminator_optimizer() if callable(discriminator_optimizer)
-              else discriminator_optimizer)
-      gan_head = head_lib.gan_head(
-          generator_loss_fn, discriminator_loss_fn, gopt, dopt,
-          use_loss_summaries, get_hooks_fn=get_hooks_fn)
-      return _gan_model_fn(
-          features, labels, mode, generator_fn, discriminator_fn, gan_head,
+      """GANEstimator model function."""
+      if mode not in [model_fn_lib.ModeKeys.TRAIN, model_fn_lib.ModeKeys.EVAL,
+                      model_fn_lib.ModeKeys.PREDICT]:
+        raise ValueError('Mode not recognized: %s' % mode)
+      real_data = labels  # rename inputs for clarity
+      generator_inputs = features  # rename inputs for clarity
+
+      # Make GANModel, which encapsulates the GAN model architectures.
+      gan_model = _get_gan_model(
+          mode, generator_fn, discriminator_fn, real_data, generator_inputs,
           add_summaries)
+
+      # Make the EstimatorSpec, which incorporates the GANModel, losses, eval
+      # metrics, and optimizers (if required).
+      return _get_estimator_spec(
+          mode, gan_model, generator_loss_fn, discriminator_loss_fn,
+          get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
+          get_hooks_fn)
 
     super(GANEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
 
 
-def _gan_model_fn(
-    features,
-    labels,
-    mode,
-    generator_fn,
-    discriminator_fn,
-    head,
-    add_summaries=None,
-    generator_scope_name='Generator'):
-  """The `model_fn` for the GAN estimator.
-
-  We make the following convention:
-    features -> TFGAN's `generator_inputs`
-    labels -> TFGAN's `real_data`
-
-  Args:
-    features: A dictionary to feed to generator. In the unconditional case,
-      this might be just `noise`. In the conditional GAN case, this
-      might be the generator's conditioning. The `generator_fn` determines
-      what the required keys are.
-    labels: Real data. Can be any structure, as long as `discriminator_fn`
-      can accept it for the first argument.
-    mode: Defines whether this is training, evaluation or prediction.
-      See `ModeKeys`.
-    generator_fn: A python lambda that takes `generator_inputs` as inputs and
-      returns the outputs of the GAN generator.
-    discriminator_fn: A python lambda that takes `real_data`/`generated data`
-      and `generator_inputs`. Outputs a Tensor in the range [-inf, inf].
-    head: A `Head` instance suitable for GANs.
-    add_summaries: `None`, a single `SummaryType`, or a list of `SummaryType`.
-    generator_scope_name: The name of the generator scope. We need this to be
-      the same for GANModels produced by TFGAN's `train.gan_model` and the
-      manually constructed ones for predictions.
-
-  Returns:
-    `ModelFnOps`
-
-  Raises:
-    ValueError: If `labels` isn't `None` during prediction.
-  """
-  real_data = labels
-  generator_inputs = features
-
-  if mode == model_fn_lib.ModeKeys.TRAIN:
-    gan_model = _make_train_gan_model(
-        generator_fn, discriminator_fn, real_data, generator_inputs,
-        generator_scope_name, add_summaries)
-  elif mode == model_fn_lib.ModeKeys.EVAL:
-    gan_model = _make_eval_gan_model(
-        generator_fn, discriminator_fn, real_data, generator_inputs,
-        generator_scope_name, add_summaries)
-  else:
+def _get_gan_model(
+    mode, generator_fn, discriminator_fn, real_data, generator_inputs,
+    add_summaries, generator_scope='Generator'):
+  """Makes the GANModel tuple, which encapsulates the GAN model architecture."""
+  if mode == model_fn_lib.ModeKeys.PREDICT:
     if real_data is not None:
       raise ValueError('`labels` must be `None` when mode is `predict`. '
                        'Instead, found %s' % real_data)
     gan_model = _make_prediction_gan_model(
-        generator_inputs, generator_fn, generator_scope_name)
+        generator_inputs, generator_fn, generator_scope)
+  else:  # model_fn_lib.ModeKeys.TRAIN or model_fn_lib.ModeKeys.EVAL
+    gan_model = _make_gan_model(
+        generator_fn, discriminator_fn, real_data, generator_inputs,
+        generator_scope, add_summaries, mode)
 
-  return head.create_estimator_spec(
-      features=None,
-      mode=mode,
-      logits=gan_model,
-      labels=None)
+  return gan_model
+
+
+def _get_estimator_spec(
+    mode, gan_model, generator_loss_fn, discriminator_loss_fn,
+    get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
+    get_hooks_fn=None):
+  """Get the EstimatorSpec for the current mode."""
+  if mode == model_fn_lib.ModeKeys.PREDICT:
+    estimator_spec = model_fn_lib.EstimatorSpec(
+        mode=mode, predictions=gan_model.generated_data)
+  else:
+    gan_loss = tfgan_tuples.GANLoss(
+        generator_loss=generator_loss_fn(gan_model),
+        discriminator_loss=discriminator_loss_fn(gan_model))
+    if mode == model_fn_lib.ModeKeys.EVAL:
+      estimator_spec = _get_eval_estimator_spec(
+          gan_model, gan_loss, get_eval_metric_ops_fn)
+    else:  # model_fn_lib.ModeKeys.TRAIN:
+      gopt = (generator_optimizer() if callable(generator_optimizer) else
+              generator_optimizer)
+      dopt = (discriminator_optimizer() if callable(discriminator_optimizer)
+              else discriminator_optimizer)
+      get_hooks_fn = get_hooks_fn or tfgan_train.get_sequential_train_hooks()
+      estimator_spec = _get_train_estimator_spec(
+          gan_model, gan_loss, gopt, dopt, get_hooks_fn)
+
+  return estimator_spec
 
 
 def _make_gan_model(generator_fn, discriminator_fn, real_data,
                     generator_inputs, generator_scope, add_summaries, mode):
-  """Make a `GANModel`, and optionally pass in `mode`."""
+  """Construct a `GANModel`, and optionally pass in `mode`."""
   # If network functions have an argument `mode`, pass mode to it.
   if 'mode' in inspect.getargspec(generator_fn).args:
     generator_fn = functools.partial(generator_fn, mode=mode)
@@ -257,22 +261,6 @@ def _make_gan_model(generator_fn, discriminator_fn, real_data,
         _summary_type_map[summary_type](gan_model)
 
   return gan_model
-
-
-def _make_train_gan_model(generator_fn, discriminator_fn, real_data,
-                          generator_inputs, generator_scope, add_summaries):
-  """Make a `GANModel` for training."""
-  return _make_gan_model(generator_fn, discriminator_fn, real_data,
-                         generator_inputs, generator_scope, add_summaries,
-                         model_fn_lib.ModeKeys.TRAIN)
-
-
-def _make_eval_gan_model(generator_fn, discriminator_fn, real_data,
-                         generator_inputs, generator_scope, add_summaries):
-  """Make a `GANModel` for evaluation."""
-  return _make_gan_model(generator_fn, discriminator_fn, real_data,
-                         generator_inputs, generator_scope, add_summaries,
-                         model_fn_lib.ModeKeys.EVAL)
 
 
 def _make_prediction_gan_model(generator_inputs, generator_fn, generator_scope):
@@ -298,3 +286,46 @@ def _make_prediction_gan_model(generator_inputs, generator_fn, generator_scope):
       discriminator_variables=None,
       discriminator_scope=None,
       discriminator_fn=None)
+
+
+def _get_eval_estimator_spec(gan_model, gan_loss, get_eval_metric_ops_fn=None,
+                             name=None):
+  """Return an EstimatorSpec for the eval case."""
+  scalar_loss = gan_loss.generator_loss + gan_loss.discriminator_loss
+  with ops.name_scope(None, 'metrics',
+                      [gan_loss.generator_loss,
+                       gan_loss.discriminator_loss]):
+    def _summary_key(head_name, val):
+      return '%s/%s' % (val, head_name) if head_name else val
+    eval_metric_ops = {
+        _summary_key(name, 'generator_loss'):
+            metrics_lib.mean(gan_loss.generator_loss),
+        _summary_key(name, 'discriminator_loss'):
+            metrics_lib.mean(gan_loss.discriminator_loss)
+    }
+    if get_eval_metric_ops_fn is not None:
+      custom_eval_metric_ops = get_eval_metric_ops_fn(gan_model)
+      if not isinstance(custom_eval_metric_ops, dict):
+        raise TypeError('get_eval_metric_ops_fn must return a dict, '
+                        'received: {}'.format(custom_eval_metric_ops))
+      eval_metric_ops.update(custom_eval_metric_ops)
+  return model_fn_lib.EstimatorSpec(
+      mode=model_fn_lib.ModeKeys.EVAL,
+      predictions=gan_model.generated_data,
+      loss=scalar_loss,
+      eval_metric_ops=eval_metric_ops)
+
+
+def _get_train_estimator_spec(
+    gan_model, gan_loss, generator_optimizer, discriminator_optimizer,
+    get_hooks_fn, train_op_fn=tfgan_train.gan_train_ops):
+  """Return an EstimatorSpec for the train case."""
+  scalar_loss = gan_loss.generator_loss + gan_loss.discriminator_loss
+  train_ops = train_op_fn(gan_model, gan_loss, generator_optimizer,
+                          discriminator_optimizer)
+  training_hooks = get_hooks_fn(train_ops)
+  return model_fn_lib.EstimatorSpec(
+      loss=scalar_loss,
+      mode=model_fn_lib.ModeKeys.TRAIN,
+      train_op=train_ops.global_step_inc_op,
+      training_hooks=training_hooks)

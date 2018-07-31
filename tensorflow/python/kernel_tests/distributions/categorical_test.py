@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
@@ -40,7 +42,7 @@ def make_categorical(batch_shape, num_classes, dtype=dtypes.int32):
   return categorical.Categorical(logits, dtype=dtype)
 
 
-class CategoricalTest(test.TestCase):
+class CategoricalTest(test.TestCase, parameterized.TestCase):
 
   def testP(self):
     p = [0.2, 0.8]
@@ -131,7 +133,7 @@ class CategoricalTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(dist.prob(0).eval(), 0.2)
 
-  def testCDFWithDynamicEventShape(self):
+  def testCDFWithDynamicEventShapeKnownNdims(self):
     """Test that dynamically-sized events with unknown shape work."""
     batch_size = 2
     histograms = array_ops.placeholder(dtype=dtypes.float32,
@@ -166,6 +168,21 @@ class CategoricalTest(test.TestCase):
 
     self.assertAllClose(actual_cdf_one, expected_cdf_one)
     self.assertAllClose(actual_cdf_two, expected_cdf_two)
+
+  @parameterized.named_parameters(
+      ("test1", [0, 1], [[0.5, 0.3, 0.2], [1.0, 0.0, 0.0]], [0.0, 1.0]),
+      ("test2", [2, 5], [[0.9, 0.0, 0.0, 0.0, 0.0, 0.1],
+                         [0.15, 0.2, 0.05, 0.35, 0.13, 0.12]], [0.9, 0.88]))
+  def testCDFWithDynamicEventShapeUnknownNdims(
+      self, events, histograms, expected_cdf):
+    """Test that dynamically-sized events with unknown shape work."""
+    event_ph = array_ops.placeholder_with_default(events, shape=None)
+    histograms_ph = array_ops.placeholder_with_default(histograms, shape=None)
+    dist = categorical.Categorical(probs=histograms_ph)
+    cdf_op = dist.cdf(event_ph)
+
+    actual_cdf = self.evaluate(cdf_op)
+    self.assertAllClose(actual_cdf, expected_cdf)
 
   def testCDFWithBatch(self):
     histograms = [[0.1, 0.2, 0.3, 0.25, 0.15],
@@ -359,6 +376,15 @@ class CategoricalTest(test.TestCase):
           [0.2**2 + 0.8**2], [prob_val[:, :, :, 0].mean()], atol=1e-2)
       self.assertAllClose(
           [0.4**2 + 0.6**2], [prob_val[:, :, :, 1].mean()], atol=1e-2)
+
+  def testNotReparameterized(self):
+    p = constant_op.constant([0.3, 0.3, 0.4])
+    with backprop.GradientTape() as tape:
+      tape.watch(p)
+      dist = categorical.Categorical(p)
+      samples = dist.sample(100)
+    grad_p = tape.gradient(samples, p)
+    self.assertIsNone(grad_p)
 
   def testLogPMFBroadcasting(self):
     with self.test_session():

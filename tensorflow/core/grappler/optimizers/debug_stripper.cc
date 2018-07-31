@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -40,10 +41,22 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
           inp = AsControlDependency(inp);
         }
       }
-    } else if (IsCheckNumerics(node)) {
+    } else if (IsCheckNumerics(node) || IsPrint(node)) {
       // Replace with Identity op which will be pruned later.
       node.set_op("Identity");
-      node.mutable_attr()->erase("message");
+      // Only preserve T attribute.
+      protobuf::Map<string, AttrValue> new_attr;
+      if (node.attr().find("T") != node.attr().end()) {
+        new_attr.insert({"T", node.attr().at("T")});
+      }
+      node.mutable_attr()->swap(new_attr);
+      // As Identity op only takes one input, mark redundant inputs as control
+      // input.
+      for (size_t i = 1; i < node.input_size(); ++i) {
+        if (!IsControlInput(node.input(i))) {
+          *node.mutable_input(i) = AsControlDependency(node.input(i));
+        }
+      }
     }
   }
   return Status::OK();

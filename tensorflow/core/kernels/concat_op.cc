@@ -113,7 +113,7 @@ class ConcatBaseOp : public OpKernel {
     int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      const auto in = values[i];
+      const auto& in = values[i];
       const bool in_is_scalar = IsLegacyScalar(in.shape());
       OP_REQUIRES(
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
@@ -212,6 +212,7 @@ REGISTER_CONCAT(qint32);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
+TF_CALL_uint8(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);

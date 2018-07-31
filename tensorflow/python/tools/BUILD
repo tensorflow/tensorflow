@@ -28,7 +28,7 @@ py_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = ["//tensorflow/contrib/saved_model:reader"],
 )
 
 py_library(
@@ -38,11 +38,13 @@ py_library(
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
+        "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python/saved_model:loader",
         "@six_archive//:six",
     ],
 )
@@ -52,14 +54,7 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":saved_model_utils",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:client",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-        "@six_archive//:six",
+        ":freeze_graph_lib",
     ],
 )
 

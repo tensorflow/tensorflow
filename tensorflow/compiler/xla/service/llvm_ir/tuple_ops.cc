@@ -24,20 +24,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
 
-void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
-                     llvm::Value* on_false, llvm::IRBuilder<>* ir_builder,
-                     llvm::Module* module) {
+void EmitTupleSelect(const IrArray& select, const IrArray& pred,
+                     llvm::Value* on_true, llvm::Value* on_false,
+                     llvm::IRBuilder<>* b, llvm::Module* module) {
   CHECK(ShapeUtil::IsScalar(pred.GetShape()));
 
   llvm::LoadInst* pred_value =
-      ir_builder->CreateLoad(pred.GetBasePointer(), "load_predicate_value");
-  llvm::Value* pred_cond = ir_builder->CreateICmpNE(
+      b->CreateLoad(pred.GetBasePointer(), "load_predicate_value");
+  llvm::Value* pred_cond = b->CreateICmpNE(
       pred_value,
       llvm::ConstantInt::get(PrimitiveTypeToIrType(PRED, module), 0),
       "boolean_predicate");
@@ -47,50 +46,42 @@ void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
   VLOG(2) << "  pred_cond: " << DumpToString(*pred_cond);
 
   for (int i = 0; i < ShapeUtil::TupleElementCount(select.GetShape()); ++i) {
-    std::vector<llvm::Value*> element_index = {ir_builder->getInt64(0),
-                                               ir_builder->getInt64(i)};
+    llvm::Value* const element_index[] = {b->getInt64(0), b->getInt64(i)};
     llvm::Value* on_true_element_address =
-        ir_builder->CreateInBoundsGEP(on_true, element_index);
-    llvm::Value* on_true_element = ir_builder->CreateLoad(
-        on_true_element_address,
-        tensorflow::strings::Printf("on_true_element_%d", i).c_str());
+        b->CreateInBoundsGEP(on_true, element_index);
+    llvm::Value* on_true_element = b->CreateLoad(
+        on_true_element_address, "on_true_element_" + llvm::Twine(i));
     llvm::Value* on_false_element_address =
-        ir_builder->CreateInBoundsGEP(on_false, element_index);
-    llvm::Value* on_false_element = ir_builder->CreateLoad(
-        on_false_element_address,
-        tensorflow::strings::Printf("on_false_element_%d", i).c_str());
+        b->CreateInBoundsGEP(on_false, element_index);
+    llvm::Value* on_false_element = b->CreateLoad(
+        on_false_element_address, "on_false_element_" + llvm::Twine(i));
 
     llvm::Value* output_element_address =
-        ir_builder->CreateInBoundsGEP(select.GetBasePointer(), element_index);
-    ir_builder->CreateStore(
-        ir_builder->CreateSelect(
-            pred_cond, on_true_element, on_false_element,
-            tensorflow::strings::Printf("select_output_element_%d", i).c_str()),
-        output_element_address);
+        b->CreateInBoundsGEP(select.GetBasePointer(), element_index);
+    b->CreateStore(b->CreateSelect(pred_cond, on_true_element, on_false_element,
+                                   "select_output_element_" + llvm::Twine(i)),
+                   output_element_address);
   }
 }
 
-void EmitTuple(IrArray tuple,
+void EmitTuple(const IrArray& tuple,
                tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-               llvm::IRBuilder<>* ir_builder, llvm::Module* module) {
+               llvm::IRBuilder<>* b, llvm::Module* module) {
   for (size_t i = 0; i < operands.size(); ++i) {
-    auto* store = ir_builder->CreateStore(
-        ir_builder->CreatePointerCast(operands[i],
-                                      PrimitiveTypeToIrType(TUPLE, module)),
-        ir_builder->CreateInBoundsGEP(
-            tuple.GetBasePointer(),
-            {ir_builder->getInt64(0), ir_builder->getInt64(i)}));
+    auto* store = b->CreateStore(
+        b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module)),
+        b->CreateInBoundsGEP(tuple.GetBasePointer(),
+                             {b->getInt64(0), b->getInt64(i)}));
     tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
 }
 
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* ir_builder,
-                                 llvm::Module* module) {
-  llvm::Value* element_ptr = ir_builder->CreateInBoundsGEP(
-      operand, {ir_builder->getInt64(0), ir_builder->getInt64(index)});
-  llvm::LoadInst* src_buffer = ir_builder->CreateLoad(element_ptr);
+                                 llvm::IRBuilder<>* b, llvm::Module* module) {
+  llvm::Value* element_ptr =
+      b->CreateInBoundsGEP(operand, {b->getInt64(0), b->getInt64(index)});
+  llvm::LoadInst* src_buffer = b->CreateLoad(element_ptr);
 
   // Mark the loaded pointer as dereferenceable if we know its shape.
   if (!ShapeUtil::IsOpaque(target_shape)) {
@@ -102,7 +93,7 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
 
   llvm::Type* element_type = ShapeToIrType(target_shape, module);
   llvm::Value* ret_val =
-      ir_builder->CreateBitCast(src_buffer, element_type->getPointerTo());
+      b->CreateBitCast(src_buffer, element_type->getPointerTo());
   return ret_val;
 }
 

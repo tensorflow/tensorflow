@@ -55,11 +55,6 @@ def PlaceGraph(metagraph,
 
   # Optimize the metagraph to speedup the placement
   rewriter_config = rewriter_config_pb2.RewriterConfig()
-  rewriter_config.optimizers.append("pruning")
-  rewriter_config.optimizers.append("constfold")
-  rewriter_config.optimizers.append("arithmetic")
-  rewriter_config.optimizers.append("dependency")
-  rewriter_config.optimizers.append("pruning")
   optimized_graph = tf_optimizer.OptimizeGraph(
       rewriter_config, metagraph, verbose=verbose, cluster=cluster)
   optimized_metagraph = meta_graph_pb2.MetaGraphDef()

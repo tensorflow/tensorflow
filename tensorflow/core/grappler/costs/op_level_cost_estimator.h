@@ -30,6 +30,8 @@ namespace grappler {
 
 bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
                                         TensorShapeProto* tensor_shape_proto);
+TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
+                                      int rank, bool* found_unknown_shapes);
 
 class OpLevelCostEstimator {
  public:
@@ -138,6 +140,7 @@ class OpLevelCostEstimator {
   Costs PredictCwiseOp(const OpContext& op_context) const;
   Costs PredictConv2DBackpropInput(const OpContext& op_context) const;
   Costs PredictConv2DBackpropFilter(const OpContext& op_context) const;
+  Costs PredictFusedConv2DBiasActivation(const OpContext& op_context) const;
   Costs PredictMatMul(const OpContext& op_context) const;
   Costs PredictNoOp(const OpContext& op_context) const;
   Costs PredictIdentity(const OpContext& op_context) const;
@@ -151,6 +154,10 @@ class OpLevelCostEstimator {
   Costs PredictAvgPoolGrad(const OpContext& op_context) const;
   Costs PredictFusedBatchNorm(const OpContext& op_context) const;
   Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
+
+  // Generic cost prediction method for fused operations.
+  Costs PredictFusedOp(const OpContext& op_context,
+                       const std::vector<OpContext>& fused_op_contexts) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -172,6 +179,17 @@ class OpLevelCostEstimator {
   static ConvolutionDimensions OpDimensionsFromInputs(
       const TensorShapeProto& original_image_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
+
+  // Helper to construct child operation contexts for the component operations
+  // of fused ops.
+  static OpContext FusedChildContext(
+      const OpContext& parent, const string& op_name,
+      const OpInfo::TensorProperties& output,
+      const std::vector<OpInfo::TensorProperties>& inputs);
+
+  // Helper to construct tensor shapes.
+  static OpInfo::TensorProperties DescribeTensor(
+      DataType type, const std::vector<int64>& dims);
 
   // This method calculates the execution time depending on whether IO can
   // overlap with computation. It assumes the memory and the compute times have

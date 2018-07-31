@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -144,7 +145,11 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
   Device* device = flr->device();
   string device_type = device->parsed_name().type;
-  if (device_type == "CPU") return Status::OK();
+  if (device_type == "CPU" || device_type == "TPU_SYSTEM" ||
+      device_type == "TPU") {
+    // "TPU_SYSTEM" indicates that `device` is a CPU.
+    return Status::OK();
+  }
   if (device_type == "GPU") {
     auto* dev_info = flr->device()->tensorflow_gpu_device_info();
     if (dev_info) {
@@ -178,14 +183,9 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
     const string& function_key, const string& device_name,
     FunctionLibraryRuntime::LocalHandle local_handle) {
   mutex_lock l(mu_);
-  FunctionLibraryRuntime::Handle h =
-      gtl::FindWithDefault(table_, function_key, kInvalidHandle);
-  if (h != kInvalidHandle) {
-    if (function_data_.count(h) != 0) return h;
-  }
-  h = next_handle_;
-  FunctionData* fd = new FunctionData(device_name, local_handle);
-  function_data_[h] = std::unique_ptr<FunctionData>(fd);
+  auto h = next_handle_;
+  function_data_[h] = MakeUnique<FunctionData>(
+      device_name, local_handle, function_key);
   table_[function_key] = h;
   next_handle_++;
   return h;
@@ -194,12 +194,7 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::GetHandle(
     const string& function_key) const {
   mutex_lock l(mu_);
-  FunctionLibraryRuntime::Handle h =
-      gtl::FindWithDefault(table_, function_key, kInvalidHandle);
-  if (h != kInvalidHandle) {
-    if (function_data_.count(h) == 0) return kInvalidHandle;
-  }
-  return h;
+  return gtl::FindWithDefault(table_, function_key, kInvalidHandle);
 }
 
 bool ProcessFunctionLibraryRuntime::IsInstantiatedOnDevice(
@@ -253,8 +248,8 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
         gtl::FindWithDefault(table_, function_key, kInvalidHandle);
     if (h == kInvalidHandle || function_data_.count(h) == 0) {
       h = next_handle_;
-      FunctionData* fd = new FunctionData(options.target, kInvalidHandle);
-      function_data_[h] = std::unique_ptr<FunctionData>(fd);
+      function_data_[h] = MakeUnique<FunctionData>(
+          options.target, kInvalidHandle, function_key);
       table_[function_key] = h;
       next_handle_++;
     }
@@ -272,6 +267,7 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
 Status ProcessFunctionLibraryRuntime::RemoveHandle(
     FunctionLibraryRuntime::Handle handle) {
   mutex_lock l(mu_);
+  table_.erase(function_data_[handle]->function_key());
   function_data_.erase(handle);
   return Status::OK();
 }

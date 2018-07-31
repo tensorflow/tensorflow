@@ -1,5 +1,10 @@
 # K-FAC: Kronecker-Factored Approximate Curvature
 
+# <font color="red", size=10><u>WARNING: </u></font>
+# ==third_party/tensorflow/contrib/kfac is deprecated. This will be==
+# ==removed on 15-07-2018. <!-- STY:begin_strip_and_replace -->Please import third_party/tensorflow_kfac.==
+# ==<!-- STY:end_strip_and_replace Please check https://github.com/tensorflow/kfac. -->==
+
 **K-FAC in TensorFlow** is an implementation of [K-FAC][kfac-paper], an
 approximate second-order optimization method, in TensorFlow. When applied to
 feedforward and convolutional neural networks, K-FAC can converge `>3.5x`

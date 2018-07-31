@@ -25,7 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-namespace {
 
 class LoopOptimizerTest : public GrapplerTest {
  protected:
@@ -57,6 +56,23 @@ class LoopOptimizerTest : public GrapplerTest {
     attributes.emplace_back("T", type);
     AddNode(name, op, inputs, attributes, graph);
   }
+
+  void DisableAllStages(LoopOptimizer* optimizer) {
+    LoopOptimizer::LoopOptimizerOptions options;
+    options.enable_loop_invariant_node_motion = false;
+    options.enable_stack_push_removal = false;
+    optimizer->options_ = options;
+  }
+
+  void EnableOnlyLoopInvariantNodeMotion(LoopOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.enable_loop_invariant_node_motion = true;
+  }
+
+  void EnableOnlyStackPushRemoval(LoopOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.enable_stack_push_removal = true;
+  }
 };
 
 TEST_F(LoopOptimizerTest, Basic) {
@@ -81,7 +97,8 @@ TEST_F(LoopOptimizerTest, Basic) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -128,7 +145,8 @@ TEST_F(LoopOptimizerTest, Const) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -175,7 +193,8 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -235,7 +254,8 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -302,7 +322,8 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -365,7 +386,8 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -429,7 +451,8 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -475,6 +498,7 @@ TEST_F(LoopOptimizerTest, NoOp) {
   CHECK(fake_input.NextItem(&item));
 
   LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -504,6 +528,7 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   AddSimpleNode("stop", "StopGradient", {"stack3"}, &graph);
 
   LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -534,6 +559,7 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   item.fetch.push_back("pop4");
 
   LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -563,6 +589,112 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   }
 }
 
-}  // namespace
+TEST_F(LoopOptimizerTest, RemoveDeadBranches) {
+  Scope scope = Scope::NewRootScope();
+  Output v_in = ops::Variable(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+
+  Output ctrl1 = ops::Const(scope.WithOpName("ctrl1"), false, TensorShape({}));
+  ops::Switch s1(scope.WithOpName("switch1"), v_in, ctrl1);
+  Output square1 = ops::Square(scope.WithOpName("square1"), s1.output_false);
+  Output sqrt1 = ops::Sqrt(scope.WithOpName("sqrt1"), s1.output_true);
+
+  Output ctrl2 = ops::Const(scope.WithOpName("ctrl2"), true, TensorShape({}));
+  ops::Switch s2(scope.WithOpName("switch2"), v_in, ctrl2);
+  Output square2 = ops::Square(scope.WithOpName("square2"), s2.output_false);
+  Output sqrt2 = ops::Sqrt(scope.WithOpName("sqrt2"), s2.output_true);
+
+  Output ctrl3 = ops::Const(scope.WithOpName("ctrl3"), false, TensorShape({}));
+  ops::Switch s3(scope.WithOpName("switch3"), v_in, ctrl3);
+  Output square3 = ops::Square(scope.WithOpName("square3"), s3.output_false);
+  Output sqrt3 = ops::Sqrt(scope.WithOpName("sqrt3"), s3.output_true);
+
+  Output ctrl4 = ops::Const(scope.WithOpName("ctrl4"), false, TensorShape({}));
+  ops::Switch s4(scope.WithOpName("switch4"), v_in, ctrl4);
+  Output square4 = ops::Square(scope.WithOpName("square4"), s4.output_false);
+  Output sqrt4 = ops::Sqrt(scope.WithOpName("sqrt4"), s4.output_true);
+
+  ops::Merge m1(scope.WithOpName("m1"), {square1, sqrt1});
+  ops::Merge m2(scope.WithOpName("m2"), {v_in, square1});
+  ops::Merge m3(scope.WithOpName("m3"), {v_in, sqrt1});
+  ops::Merge m4(scope.WithOpName("m4"), {square1, sqrt2});
+  ops::Merge m5(scope.WithOpName("m5"), {square2, sqrt1});
+  ops::Merge m6(scope.WithOpName("m6").WithControlDependencies(sqrt2),
+                {v_in, square1});
+  ops::Merge m7(scope.WithOpName("m7").WithControlDependencies(sqrt1),
+                {v_in, square1});
+
+  ops::Switch s5(scope.WithOpName("switch5"), v_in, ctrl1);
+  Output id1 = ops::Identity(scope.WithOpName("id1"), s5.output_false);
+  Output id2 = ops::Identity(scope.WithOpName("id2"), s5.output_true);
+  ops::Merge m8(scope.WithOpName("m8"), {id1, id2});
+
+  ops::Switch s6(scope.WithOpName("switch6"), v_in, ctrl1);
+  Output id3 = ops::Identity(scope.WithOpName("id3"), s6.output_false);
+  Output id4 = ops::Identity(scope.WithOpName("id4"), s6.output_true);
+  ops::Merge m9(scope.WithOpName("m9"), {id3, id4});
+
+  GrapplerItem item;
+  item.fetch.push_back("m8");
+  item.fetch.push_back("id4");
+
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_CHECK_OK(status);
+
+  for (const NodeDef& node : output.node()) {
+    // These nodes should have been pruned
+    EXPECT_NE("Square1", node.name());
+    EXPECT_NE("Sqrt2", node.name());
+    EXPECT_NE("m5", node.name());
+    EXPECT_NE("m7", node.name());
+
+    if (node.name() == "m1") {
+      // sqrt1 is dead
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("square1", node.input(0));
+    } else if (node.name() == "m2") {
+      // both inputs are alive
+      EXPECT_EQ("Merge", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("v_in", node.input(0));
+      EXPECT_EQ("square1", node.input(1));
+    } else if (node.name() == "m3") {
+      // sqrt1 is dead
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("v_in", node.input(0));
+    } else if (node.name() == "m4") {
+      // both inputs are alive
+      EXPECT_EQ("Merge", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("square1", node.input(0));
+      EXPECT_EQ("sqrt2", node.input(1));
+    } else if (node.name() == "m6") {
+      // both inputs are alive and the control dependency can get triggered
+      EXPECT_EQ("Merge", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("v_in", node.input(0));
+      EXPECT_EQ("square1", node.input(1));
+      EXPECT_EQ("^sqrt2", node.input(2));
+    } else if (node.name() == "m8") {
+      // The node is to be preserved because of a fetch
+      EXPECT_EQ("Merge", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("id1", node.input(0));
+      EXPECT_EQ("id2", node.input(1));
+    } else if (node.name() == "m9") {
+      // The node is to be preserved because of a fetch
+      EXPECT_EQ("Merge", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("id3", node.input(0));
+      EXPECT_EQ("id4", node.input(1));
+    }
+  }
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

@@ -30,8 +30,10 @@ import six
 
 from google.protobuf import text_format
 
+from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -50,9 +52,10 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training import saveable_object
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -88,84 +91,8 @@ class BaseSaverBuilder(object):
   Can be extended to create different Ops.
   """
 
-  class SaveSpec(object):
-    """Class used to describe tensor slices that need to be saved."""
-
-    def __init__(self, tensor, slice_spec, name, dtype=None):
-      """Creates a `SaveSpec` object.
-
-      Args:
-        tensor: the tensor to save or callable that produces a tensor to save.
-        slice_spec: the slice to be saved. See `Variable.SaveSliceInfo`.
-        name: the name to save the tensor under.
-        dtype: The data type of the Tensor. Required if `tensor` is callable.
-          Used for error checking in the restore op.
-      """
-      self._tensor = tensor
-      self.slice_spec = slice_spec
-      self.name = name
-      if callable(self._tensor):
-        if dtype is None:
-          raise AssertionError(
-              "When passing a callable `tensor` to a SaveSpec, an explicit "
-              "dtype must be provided.")
-        self.dtype = dtype
-      else:
-        self.dtype = tensor.dtype
-
-    @property
-    def tensor(self):
-      return self._tensor() if callable(self._tensor) else self._tensor
-
-  class SaveableObject(object):
-    """Base class for saving and restoring saveable objects."""
-
-    def __init__(self, op, specs, name):
-      """Creates a `SaveableObject` object.
-
-      Args:
-        op: the "producer" object that this class wraps; it produces a list of
-          tensors to save.  E.g., a "Variable" object saving its backing tensor.
-        specs: a list of SaveSpec, each element of which describes one tensor to
-          save under this object. All Tensors must be on the same device.
-        name: the name to save the object under.
-      """
-      self.op = op
-      self.specs = specs
-      self.name = name
-      self._device = None
-
-    @property
-    def device(self):
-      """The device for SaveSpec Tensors."""
-      # Note that SaveSpec.tensor runs Tensor-gathering ops when executing
-      # eagerly, making this call potentially very expensive.
-      #
-      # TODO(allenl): Consider another way to gather device information. Lower
-      # priority since this property isn't part of the normal save()/restore()
-      # workflow, but does come up when some alternative builders are passed to
-      # the Saver.
-      if self._device is None:
-        self._device = self.specs[0].tensor.device
-      return self._device
-
-    def restore(self, restored_tensors, restored_shapes):
-      """Restores this object from 'restored_tensors'.
-
-      Args:
-        restored_tensors: the tensors that were loaded from a checkpoint
-        restored_shapes: the shapes this object should conform to after
-          restore, or None.
-
-      Returns:
-        An operation that restores the state of the object.
-
-      Raises:
-        ValueError: If the object cannot be restored using the provided
-          parameters.
-      """
-      # pylint: disable=unused-argument
-      raise ValueError("Calling an abstract method.")
+  SaveSpec = saveable_object.SaveSpec
+  SaveableObject = saveable_object.SaveableObject
 
   class VariableSaveable(SaveableObject):
     """SaveableObject implementation that handles Variables."""
@@ -199,8 +126,10 @@ class BaseSaverBuilder(object):
           def f():
             with ops.device(v.device):
               x = v.read_value()
-            with ops.device("/device:CPU:0"):
-              return array_ops.identity(x)
+              # To allow variables placed on non-CPU devices to be checkpointed,
+              # we copy them to CPU on the same machine first.
+              with ops.device("/device:CPU:0"):
+                return array_ops.identity(x)
           return f
 
         self.handle_op = var.handle
@@ -278,21 +207,19 @@ class BaseSaverBuilder(object):
       filename_tensor: String Tensor.
       saveables: List of BaseSaverBuilder.SaveableObject objects.
       preferred_shard: Int.  Shard to open first when loading a sharded file.
-      restore_sequentially: Bool.  If true, each restore is sequential.
+      restore_sequentially: Unused.  Bool.  If true, each restore is sequential.
 
     Returns:
       A list of Tensors resulting from reading 'saveable' from
         'filename'.
 
     """
+    del restore_sequentially
     all_tensors = []
-    assign_ops = []
     for saveable in saveables:
-      restore_control_inputs = assign_ops[-1:] if restore_sequentially else []
       with ops.device(_set_cpu0(saveable.device) if saveable.device else None):
-        with ops.control_dependencies(restore_control_inputs):
-          all_tensors.extend(
-              self.restore_op(filename_tensor, saveable, preferred_shard))
+        all_tensors.extend(
+            self.restore_op(filename_tensor, saveable, preferred_shard))
     return all_tensors
 
   # pylint: disable=unused-argument
@@ -641,6 +568,76 @@ class BaseSaverBuilder(object):
       # pylint: enable=protected-access
     return names_to_saveables
 
+  @staticmethod
+  def SaveableObjectsForOp(op, name):
+    """Create `SaveableObject`s from an operation.
+
+    Args:
+      op: A variable, operation, or SaveableObject to coerce into a
+        SaveableObject.
+      name: A string name for the SaveableObject.
+
+    Yields:
+      `SaveableObject`s which together save/restore `op`.
+
+    Raises:
+      TypeError: If `name` is not a string.
+      ValueError: For operations with no known conversion to SaveableObject.
+    """
+    if not isinstance(name, six.string_types):
+      raise TypeError(
+          "names_to_saveables must be a dict mapping string names to "
+          "checkpointable operations. Name is not a string: %s" % name)
+    if isinstance(op, BaseSaverBuilder.SaveableObject):
+      yield op
+    elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
+      if isinstance(op, variables.PartitionedVariable):
+        op = list(op)
+      # A set of slices.
+      slice_name = None
+      # pylint: disable=protected-access
+      for variable in op:
+        if not isinstance(variable, variables.Variable):
+          raise ValueError("Slices must all be Variables: %s" % variable)
+        if not variable._save_slice_info:
+          raise ValueError("Slices must all be slices: %s" % variable)
+        if slice_name is None:
+          slice_name = variable._save_slice_info.full_name
+        elif slice_name != variable._save_slice_info.full_name:
+          raise ValueError(
+              "Slices must all be from the same tensor: %s != %s" %
+              (slice_name, variable._save_slice_info.full_name))
+        if variable.op.type in ["Variable", "VariableV2",
+                                "AutoReloadVariable"]:
+          yield BaseSaverBuilder.VariableSaveable(
+              variable, variable._save_slice_info.spec, name)
+        else:
+          yield BaseSaverBuilder.ResourceVariableSaveable(
+              variable, variable._save_slice_info.spec, name)
+      # pylint: enable=protected-access
+    else:
+      # A variable or tensor.
+      if context.executing_eagerly():
+        if not isinstance(op, resource_variable_ops.ResourceVariable):
+          raise ValueError("Can only save/restore ResourceVariable eager "
+                           "mode is enabled, type: %s." % type(op))
+        yield BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
+      else:
+        if isinstance(op, resource_variable_ops.ResourceVariable):
+          variable = op._graph_element  # pylint: disable=protected-access
+        else:
+          variable = ops.internal_convert_to_tensor(op, as_ref=True)
+        if not BaseSaverBuilder._IsVariable(variable):
+          raise TypeError("names_to_saveables must be a dict mapping string "
+                          "names to Tensors/Variables. Not a variable: %s" %
+                          variable)
+        if variable.op.type in ["Variable", "VariableV2",
+                                "AutoReloadVariable"]:
+          yield BaseSaverBuilder.VariableSaveable(variable, "", name)
+        else:
+          yield BaseSaverBuilder.ResourceVariableSaveable(
+              variable, "", name)
+
   def _ValidateAndSliceInputs(self, names_to_saveables):
     """Returns the variables and names that will be used for a Saver.
 
@@ -662,63 +659,11 @@ class BaseSaverBuilder(object):
 
     saveables = []
     seen_ops = set()
-    for name in sorted(names_to_saveables.keys()):
-      if not isinstance(name, six.string_types):
-        raise TypeError(
-            "names_to_saveables must be a dict mapping string names to "
-            "checkpointable operations. Name is not a string: %s" % name)
-      op = names_to_saveables[name]
-      if isinstance(op, BaseSaverBuilder.SaveableObject):
-        self._AddSaveable(saveables, seen_ops, op)
-      elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
-        if isinstance(op, variables.PartitionedVariable):
-          op = list(op)
-        # A set of slices.
-        slice_name = None
-        # pylint: disable=protected-access
-        for variable in op:
-          if not isinstance(variable, variables.Variable):
-            raise ValueError("Slices must all be Variables: %s" % variable)
-          if not variable._save_slice_info:
-            raise ValueError("Slices must all be slices: %s" % variable)
-          if slice_name is None:
-            slice_name = variable._save_slice_info.full_name
-          elif slice_name != variable._save_slice_info.full_name:
-            raise ValueError(
-                "Slices must all be from the same tensor: %s != %s" %
-                (slice_name, variable._save_slice_info.full_name))
-          if variable.op.type in ["Variable", "VariableV2",
-                                  "AutoReloadVariable"]:
-            saveable = BaseSaverBuilder.VariableSaveable(
-                variable, variable._save_slice_info.spec, name)
-          else:
-            saveable = BaseSaverBuilder.ResourceVariableSaveable(
-                variable, variable._save_slice_info.spec, name)
-          self._AddSaveable(saveables, seen_ops, saveable)
-        # pylint: enable=protected-access
-      else:
-        # A variable or tensor.
-        if context.executing_eagerly():
-          if not isinstance(op, resource_variable_ops.ResourceVariable):
-            raise ValueError("Can only save/restore ResourceVariable eager "
-                             "mode is enabled, type: %s." % type(op))
-          saveable = BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
-        else:
-          if isinstance(op, resource_variable_ops.ResourceVariable):
-            variable = op._graph_element  # pylint: disable=protected-access
-          else:
-            variable = ops.internal_convert_to_tensor(op, as_ref=True)
-          if not BaseSaverBuilder._IsVariable(variable):
-            raise TypeError("names_to_saveables must be a dict mapping string "
-                            "names to Tensors/Variables. Not a variable: %s" %
-                            variable)
-          if variable.op.type in ["Variable", "VariableV2",
-                                  "AutoReloadVariable"]:
-            saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
-          else:
-            saveable = BaseSaverBuilder.ResourceVariableSaveable(
-                variable, "", name)
-        self._AddSaveable(saveables, seen_ops, saveable)
+    for name, op in sorted(names_to_saveables.items(),
+                           # Avoid comparing ops, sort only by name.
+                           key=lambda x: x[0]):
+      for converted_saveable_object in self.SaveableObjectsForOp(op, name):
+        self._AddSaveable(saveables, seen_ops, converted_saveable_object)
     return saveables
 
   def _AddSaveable(self, saveables, seen_ops, saveable):
@@ -1099,8 +1044,8 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       ckpt = CheckpointState()
       text_format.Merge(file_content, ckpt)
       if not ckpt.model_checkpoint_path:
-        raise ValueError("Invalid checkpoint state loaded from %s",
-                         checkpoint_dir)
+        raise ValueError("Invalid checkpoint state loaded from "
+                         + checkpoint_dir)
       # For relative model_checkpoint_path and all_model_checkpoint_paths,
       # prepend checkpoint_dir.
       if not os.path.isabs(ckpt.model_checkpoint_path):
@@ -1340,6 +1285,9 @@ class Saver(object):
       self._check_saver_def()
       self._write_version = self.saver_def.version
     self._save_relative_paths = save_relative_paths
+    # For compatibility with object-based checkpoints, we may build a second
+    # Saver to read the renamed keys.
+    self._object_restore_saver = None
 
   def build(self):
     if context.executing_eagerly():
@@ -1424,23 +1372,6 @@ class Saver(object):
     name, _ = p
     return name
 
-  def _MetaGraphFilename(self, checkpoint_filename, meta_graph_suffix="meta"):
-    """Returns the meta graph filename.
-
-    Args:
-      checkpoint_filename: Name of the checkpoint file.
-      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
-
-    Returns:
-      MetaGraph file name.
-    """
-    # If the checkpoint_filename is sharded, the checkpoint_filename could
-    # be of format model.ckpt-step#-?????-of-shard#. For example,
-    # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
-    basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
-    meta_graph_filename = ".".join([basename, meta_graph_suffix])
-    return meta_graph_filename
-
   def _RecordLastCheckpoint(self, latest_save_path):
     """Manages the list of the latest checkpoints."""
     if not self.saver_def.max_to_keep:
@@ -1481,23 +1412,11 @@ class Saver(object):
 
       # Otherwise delete the files.
       try:
-        checkpoint_prefix = self._CheckpointFilename(p)
-        self._delete_file_if_exists(
-            self._MetaGraphFilename(checkpoint_prefix, meta_graph_suffix))
-        if self.saver_def.version == saver_pb2.SaverDef.V2:
-          # V2 has a metadata file and some data files.
-          self._delete_file_if_exists(checkpoint_prefix + ".index")
-          self._delete_file_if_exists(checkpoint_prefix +
-                                      ".data-?????-of-?????")
-        else:
-          # V1, Legacy.  Exact match on the data file.
-          self._delete_file_if_exists(checkpoint_prefix)
+        remove_checkpoint(
+            self._CheckpointFilename(p), self.saver_def.version,
+            meta_graph_suffix)
       except Exception as e:  # pylint: disable=broad-except
         logging.warning("Ignoring: %s", str(e))
-
-  def _delete_file_if_exists(self, filespec):
-    for pathname in file_io.get_matching_files(filespec):
-      file_io.delete_file(pathname)
 
   def as_saver_def(self):
     """Generates a `SaverDef` representation of this saver.
@@ -1720,7 +1639,7 @@ class Saver(object):
         raise exc
 
     if write_meta_graph:
-      meta_graph_filename = self._MetaGraphFilename(
+      meta_graph_filename = _meta_graph_filename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
       if not context.executing_eagerly():
         with sess.graph.as_default():
@@ -1788,18 +1707,85 @@ class Saver(object):
       save_path: Path where parameters were previously saved.
 
     Raises:
-      ValueError: If save_path is None.
+      ValueError: If save_path is None or not a valid checkpoint.
     """
     if self._is_empty:
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
-    logging.info("Restoring parameters from %s", save_path)
-    if context.executing_eagerly():
-      self._build_eager(save_path, build_save=False, build_restore=True)
-    else:
-      sess.run(self.saver_def.restore_op_name,
-               {self.saver_def.filename_tensor_name: save_path})
+
+    if not checkpoint_exists(compat.as_text(save_path)):
+      raise ValueError("The passed save_path is not a valid checkpoint: "
+                       + compat.as_text(save_path))
+
+    logging.info("Restoring parameters from %s", compat.as_text(save_path))
+    try:
+      if context.executing_eagerly():
+        self._build_eager(save_path, build_save=False, build_restore=True)
+      else:
+        sess.run(self.saver_def.restore_op_name,
+                 {self.saver_def.filename_tensor_name: save_path})
+    except errors.NotFoundError as err:
+      # There are three common conditions that might cause this error:
+      # 0. The file is missing. We ignore here, as this is checked above.
+      # 1. This is an object-based checkpoint trying name-based loading.
+      # 2. The graph has been altered and a variable or other name is missing.
+
+      # 1. The checkpoint would not be loaded successfully as is. Try to parse
+      # it as an object-based checkpoint.
+      try:
+        reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+        object_graph_string = reader.get_tensor(
+            checkpointable.OBJECT_GRAPH_PROTO_KEY)
+      except errors.NotFoundError:
+        # 2. This is not an object-based checkpoint, which likely means there
+        # is a graph mismatch. Re-raise the original error with
+        # a helpful message (b/110263146)
+        raise _wrap_restore_error_with_msg(
+            err, "a Variable name or other graph key that is missing")
+
+      # This is an object-based checkpoint. We'll print a warning and then do
+      # the restore.
+      logging.warning(
+          "Restoring an object-based checkpoint using a name-based saver. This "
+          "may be somewhat fragile, and will re-build the Saver. Instead, "
+          "consider loading object-based checkpoints using "
+          "tf.train.Checkpoint().")
+      self._restore_from_object_based_checkpoint(
+          sess=sess, save_path=save_path,
+          object_graph_string=object_graph_string)
+    except errors.InvalidArgumentError as err:
+      # There is a mismatch between the graph and the checkpoint being loaded.
+      # We add a more reasonable error message here to help users (b/110263146)
+      raise _wrap_restore_error_with_msg(
+          err, "a mismatch between the current graph and the graph")
+
+  def _restore_from_object_based_checkpoint(self, sess, save_path,
+                                            object_graph_string):
+    """A compatibility mode for reading object-based checkpoints."""
+    object_graph_proto = (
+        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+    object_graph_proto.ParseFromString(object_graph_string)
+    names_to_keys = {}
+    for node in object_graph_proto.nodes:
+      for attribute in node.attributes:
+        names_to_keys[attribute.full_name] = attribute.checkpoint_key
+    saveables = self._builder._ValidateAndSliceInputs(self._var_list)  # pylint: disable=protected-access
+    for saveable in saveables:
+      for spec in saveable.specs:
+        if spec.name not in names_to_keys:
+          raise errors.NotFoundError(
+              None, None,
+              message=("Attempting to load an object-based checkpoint using "
+                       "variable names, but could not find %s in the "
+                       "checkpoint.") % spec.name)
+        spec.name = names_to_keys[spec.name]
+    if self._object_restore_saver is None:
+      # Cache the Saver so multiple restore() calls don't pollute the graph when
+      # graph building. This assumes keys are consistent (i.e. this is the same
+      # type of object-based checkpoint we saw previously).
+      self._object_restore_saver = Saver(saveables)
+    self._object_restore_saver.restore(sess=sess, save_path=save_path)
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):
@@ -1939,6 +1925,14 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   execution is enabled.
   @end_compatibility
   """  # pylint: disable=g-doc-exception
+  return _import_meta_graph_with_return_elements(
+      meta_graph_or_file, clear_devices, import_scope, **kwargs)[0]
+
+
+def _import_meta_graph_with_return_elements(
+    meta_graph_or_file, clear_devices=False, import_scope=None,
+    return_elements=None, **kwargs):
+  """Import MetaGraph, and return both a saver and returned elements."""
   if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
@@ -1948,12 +1942,22 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   else:
     meta_graph_def = meta_graph_or_file
 
-  imported_vars = meta_graph.import_scoped_meta_graph(
-      meta_graph_def,
-      clear_devices=clear_devices,
-      import_scope=import_scope,
-      **kwargs)
+  imported_vars, imported_return_elements = (
+      meta_graph.import_scoped_meta_graph_with_return_elements(
+          meta_graph_def,
+          clear_devices=clear_devices,
+          import_scope=import_scope,
+          return_elements=return_elements,
+          **kwargs))
 
+  saver = _create_saver_from_imported_meta_graph(
+      meta_graph_def, import_scope, imported_vars)
+  return saver, imported_return_elements
+
+
+def _create_saver_from_imported_meta_graph(
+    meta_graph_def, import_scope, imported_vars):
+  """Return a saver for restoring variable values to an imported MetaGraph."""
   if meta_graph_def.HasField("saver_def"):
     # Infer the scope that is prepended by `import_scoped_meta_graph`.
     scope = import_scope
@@ -1965,7 +1969,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     return Saver(saver_def=meta_graph_def.saver_def, name=scope)
   else:
-    if variables._all_saveable_objects():  # pylint: disable=protected-access
+    if variables._all_saveable_objects(scope=import_scope):  # pylint: disable=protected-access
       # Return the default saver instance for all graph variables.
       return Saver()
     else:
@@ -2114,6 +2118,63 @@ def get_checkpoint_mtimes(checkpoint_prefixes):
     match_maybe_append(checkpoint_prefix)
 
   return mtimes
+
+
+@tf_export("train.remove_checkpoint")
+def remove_checkpoint(checkpoint_prefix,
+                      checkpoint_format_version=saver_pb2.SaverDef.V2,
+                      meta_graph_suffix="meta"):
+  """Removes a checkpoint given by `checkpoint_prefix`.
+
+  Args:
+    checkpoint_prefix: The prefix of a V1 or V2 checkpoint. Typically the result
+      of `Saver.save()` or that of `tf.train.latest_checkpoint()`, regardless of
+      sharded/non-sharded or V1/V2.
+    checkpoint_format_version: `SaverDef.CheckpointFormatVersion`, defaults to
+      `SaverDef.V2`.
+    meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+  """
+  _delete_file_if_exists(
+      _meta_graph_filename(checkpoint_prefix, meta_graph_suffix))
+  if checkpoint_format_version == saver_pb2.SaverDef.V2:
+    # V2 has a metadata file and some data files.
+    _delete_file_if_exists(checkpoint_prefix + ".index")
+    _delete_file_if_exists(checkpoint_prefix + ".data-?????-of-?????")
+  else:
+    # V1, Legacy.  Exact match on the data file.
+    _delete_file_if_exists(checkpoint_prefix)
+
+
+def _delete_file_if_exists(filespec):
+  """Deletes files matching `filespec`."""
+  for pathname in file_io.get_matching_files(filespec):
+    file_io.delete_file(pathname)
+
+
+def _meta_graph_filename(checkpoint_filename, meta_graph_suffix="meta"):
+  """Returns the meta graph filename.
+
+  Args:
+    checkpoint_filename: Name of the checkpoint file.
+    meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+
+  Returns:
+    MetaGraph file name.
+  """
+  # If the checkpoint_filename is sharded, the checkpoint_filename could
+  # be of format model.ckpt-step#-?????-of-shard#. For example,
+  # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
+  basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
+  meta_graph_filename = ".".join([basename, meta_graph_suffix])
+  return meta_graph_filename
+
+
+def _wrap_restore_error_with_msg(err, extra_verbiage):
+  err_msg = ("Restoring from checkpoint failed. This is most likely "
+             "due to {} from the checkpoint. Please ensure that you "
+             "have not altered the graph expected based on the checkpoint. "
+             "Original error:\n\n{}").format(extra_verbiage, err.message)
+  return err.__class__(err.node_def, err.op, err_msg)
 
 
 ops.register_proto_function(

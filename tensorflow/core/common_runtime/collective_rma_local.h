@@ -41,6 +41,7 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
+                    int dev_to_dev_stream_index,
                     const StatusCallback& done) override;
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -67,6 +68,8 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
     dev_resolver_->ClearTask(task);
   }
 
+  BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }
+
   // Copy utility that always copies bytes from src to dst even if
   // they are on the same device, unlike CopyTensor::ViaDMA which will
   // just change the dst buffer pointer in that case.
@@ -75,6 +78,7 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                           Device* dst_dev, const AllocatorAttributes& src_attr,
                           const AllocatorAttributes& dst_attr,
                           const Tensor* src, Tensor* dst,
+                          int dev_to_dev_stream_index,
                           const StatusCallback& done);
 
  protected:

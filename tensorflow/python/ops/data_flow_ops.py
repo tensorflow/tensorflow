@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
@@ -129,11 +130,6 @@ class QueueBase(object):
   @{tf.RandomShuffleQueue} for concrete
   implementations of this class, and instructions on how to create
   them.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -157,12 +153,7 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
-      RuntimeError: If eager execution is enabled.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "Queues are not supported when eager execution is enabled. "
-          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -179,6 +170,8 @@ class QueueBase(object):
     self._queue_ref = queue_ref
     if context.executing_eagerly():
       self._name = context.context().scope_name
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          queue_ref, None)
     else:
       self._name = self._queue_ref.op.name.split("/")[-1]
 
@@ -571,7 +564,7 @@ class QueueBase(object):
           name=name)
 
   def is_closed(self, name=None):
-    """ Returns true if queue is closed.
+    """Returns true if queue is closed.
 
     This operation returns true if the queue is closed and false if the queue
     is open.
@@ -605,6 +598,11 @@ class QueueBase(object):
     else:
       return gen_data_flow_ops.queue_size(self._queue_ref, name=name)
 
+def _shared_name(shared_name):
+  if context.executing_eagerly():
+    return str(ops.uid())
+  return shared_name
+
 
 @tf_export("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
@@ -612,11 +610,6 @@ class RandomShuffleQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -690,7 +683,7 @@ class RandomShuffleQueue(QueueBase):
         min_after_dequeue=min_after_dequeue,
         seed=seed1,
         seed2=seed2,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -702,11 +695,6 @@ class FIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -752,7 +740,7 @@ class FIFOQueue(QueueBase):
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -767,11 +755,6 @@ class PaddingFIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -831,7 +814,7 @@ class PaddingFIFOQueue(QueueBase):
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -843,11 +826,6 @@ class PriorityQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -899,7 +877,7 @@ class PriorityQueue(QueueBase):
         component_types=types,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     priority_dtypes = [_dtypes.int64] + types
@@ -1563,7 +1541,7 @@ class BaseStagingArea(object):
     of the staging area.
 
     Args:
-      vals: A tensor, a list or tuple of tensors, or a dictionary..
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
 
     Returns:
       A (tensors, indices) tuple where `tensors` is a list of `Tensor` objects
@@ -1582,7 +1560,7 @@ class BaseStagingArea(object):
                          (sorted(vals.keys()), sorted(self._names)))
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
-      vals, indices, n = zip(*[(vals[k], i, k)
+      vals, indices, _ = zip(*[(vals[k], i, k)
                                for i, k in enumerate(self._names)
                                if k in vals])
     else:
@@ -1612,7 +1590,7 @@ class BaseStagingArea(object):
     for val, i in zip(vals, indices):
       dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
-      if not val.dtype == dtype:
+      if val.dtype != dtype:
         raise ValueError("Datatypes do not match. '%s' != '%s'" %
                          (str(val.dtype), str(dtype)))
 
@@ -1626,7 +1604,7 @@ class BaseStagingArea(object):
 
   def _create_device_transfers(self, tensors):
     """Encode inter-device transfers if the current device
-    is not the same as the Staging Area's device
+    is not the same as the Staging Area's device.
     """
 
     if not isinstance(tensors, (tuple, list)):
@@ -1739,11 +1717,6 @@ class StagingArea(BaseStagingArea):
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
-      capacity: (Optional.) Maximum number of elements.
-        An integer. If zero, the Staging Area is unbounded
-      memory_limit: (Optional.) Maximum number of bytes of all tensors
-        in the Staging Area.
-        An integer. If zero, the Staging Area is unbounded
       shapes: (Optional.) Constraints on the shapes of tensors in an element.
         A list of shape tuples or None. This list is the same length
         as dtypes.  If the shape of any tensors in the element are constrained,
@@ -1754,6 +1727,11 @@ class StagingArea(BaseStagingArea):
       shared_name: (Optional.) A name to be used for the shared object. By
         passing the same name to two different python objects they will share
         the underlying staging area. Must be a string.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      memory_limit: (Optional.) Maximum number of bytes of all tensors
+        in the Staging Area.
+        An integer. If zero, the Staging Area is unbounded
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -1782,7 +1760,7 @@ class StagingArea(BaseStagingArea):
     """
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
-      
+
       if not isinstance(values, (list, tuple, dict)):
         values = [values]
 
@@ -1911,7 +1889,8 @@ class StagingArea(BaseStagingArea):
 
 
 class MapStagingArea(BaseStagingArea):
-  """A `MapStagingArea` is a TensorFlow data structure that stores tensors across multiple steps, and exposes operations that can put and get tensors.
+  """A `MapStagingArea` is a TensorFlow data structure that stores tensors
+  across multiple steps, and exposes operations that can put and get tensors.
 
   Each `MapStagingArea` element is a (key, value) pair.
   Only int64 keys are supported, other types should be
@@ -2375,7 +2354,7 @@ class RecordInput(object):
       return records
     else:
       with ops.name_scope(self._name):
-        batch_list = [[] for i in six.moves.range(self._batches)]
+        batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
         records = [array_ops.reshape(record, []) for record in records]
         for index, protobuf in zip(six.moves.range(len(records)), records):

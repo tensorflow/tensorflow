@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -162,7 +163,20 @@ StatusOr<HloInstruction*> MakeConcatHlo(ArraySlice<HloInstruction*> operands,
       HloInstruction::CreateConcatenate(concat_shape, operands, dimension));
 }
 
+StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
+                                     const DotDimensionNumbers& dim_numbers) {
+  HloComputation* computation = lhs->parent();
+  CHECK_EQ(computation, rhs->parent());
+  TF_ASSIGN_OR_RETURN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers));
+  return computation->AddInstruction(
+      HloInstruction::CreateDot(dot_shape, lhs, rhs, dim_numbers));
+}
+
 StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {
+  CHECK_GT(n, 0);
+
   const Shape& operand_shape = operand->shape();
   CHECK_GE(operand_shape.dimensions_size(), n);
   int64 new_shape_leading_bound = 1;
@@ -182,6 +196,17 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {
       ShapeUtil::MakeShape(operand_shape.element_type(), new_shape_dims);
 
   return MakeReshapeHlo(output_shape, operand);
+}
+
+StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
+                                                int64 n) {
+  CHECK_GT(n, 0);
+  std::vector<int64> new_shape_dims;
+  const Shape& operand_shape = operand->shape();
+  new_shape_dims.reserve(n + operand_shape.dimensions_size());
+  new_shape_dims.insert(new_shape_dims.begin(), n, 1);
+  c_copy(operand_shape.dimensions(), std::back_inserter(new_shape_dims));
+  return MakeReshapeHlo(new_shape_dims, operand);
 }
 
 StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
@@ -237,9 +262,9 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
   padding_config_dim.set_edge_padding_high(zeros_to_append);
   *padding_config.add_dimensions() = padding_config_dim;
 
-  HloInstruction* zero =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(Literal::Zero(operand->shape().element_type()))));
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(MakeUnique<Literal>(
+          LiteralUtil::Zero(operand->shape().element_type()))));
   return MakePadHlo(operand, zero, padding_config);
 }
 
@@ -248,7 +273,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
     ArraySlice<int64> broadcast_dimensions) {
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(Literal::Zero(element_type))));
+          MakeUnique<Literal>(LiteralUtil::Zero(element_type))));
   return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
                           /*result_shape_bounds=*/broadcast_dimensions);
 }
@@ -256,7 +281,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     ArraySlice<const Shape*> domain, const Shape& range,
     tensorflow::StringPiece name) {
-  HloComputation::Builder b(name.ToString());
+  HloComputation::Builder b{std::string(name)};
   int64 param_idx = 0;
   for (const Shape* param_shape : domain) {
     b.AddInstruction(HloInstruction::CreateParameter(

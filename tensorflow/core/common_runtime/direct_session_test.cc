@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -40,12 +41,18 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+
+#ifdef GOOGLE_CUDA
+#include "cuda/include/cuda.h"
+#include "cuda/include/cuda_runtime_api.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace {
@@ -81,6 +88,7 @@ class DirectSessionMinusAXTest : public ::testing::Test {
     test::FillValues<float>(&a_tensor, a_values);
     Node* a = test::graph::Constant(&graph, a_tensor);
     a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    a_ = a->name();
 
     Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
     test::FillValues<float>(&x_tensor, {1, 1});
@@ -97,12 +105,18 @@ class DirectSessionMinusAXTest : public ::testing::Test {
     y_neg_ = y_neg->name();
     y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
 
+    Node* z = test::graph::Unary(&graph, "Identity", y_neg);
+    z_ = z->name();
+    z->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
     test::graph::ToGraphDef(&graph, &def_);
   }
 
+  string a_;
   string x_;
   string y_;
   string y_neg_;
+  string z_;
   GraphDef def_;
 };
 
@@ -133,7 +147,6 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
 
   // Run the test twice to ensure that the Make/Run/Release cycle is hermetic.
   for (int i = 0; i < 2; ++i) {
@@ -172,6 +185,159 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
         str_util::StrContains(s.error_message(), "No such callable handle"));
+  }
+}
+
+TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  {
+    // Directly wire the output of node a to the output of node y, making the
+    // callable graph into "Neg(a);".
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(y_neg_ + ":0");
+
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+    ASSERT_EQ(1, outputs.size());
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(-3.0, mat(0, 0));
+    EXPECT_FLOAT_EQ(-2.0, mat(0, 1));
+    EXPECT_FLOAT_EQ(1.0, mat(1, 0));
+    EXPECT_FLOAT_EQ(0.0, mat(1, 1));
+    TF_ASSERT_OK(session->ReleaseCallable(handle));
+  }
+
+  {
+    // Directly wire the output of node a to the output of node y, making the
+    // callable graph into "Neg(a);"; also fetch the result of a.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(a_ + ":0");
+    callable_options.add_fetch(y_neg_ + ":0");
+
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+    ASSERT_EQ(2, outputs.size());
+    auto mat_a = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(3.0, mat_a(0, 0));
+    EXPECT_FLOAT_EQ(2.0, mat_a(0, 1));
+    EXPECT_FLOAT_EQ(-1.0, mat_a(1, 0));
+    EXPECT_FLOAT_EQ(0.0, mat_a(1, 1));
+
+    auto mat_y_neg = outputs[1].matrix<float>();
+    ASSERT_TRUE(outputs[1].IsInitialized());
+    EXPECT_FLOAT_EQ(-3.0, mat_y_neg(0, 0));
+    EXPECT_FLOAT_EQ(-2.0, mat_y_neg(0, 1));
+    EXPECT_FLOAT_EQ(1.0, mat_y_neg(1, 0));
+    EXPECT_FLOAT_EQ(0.0, mat_y_neg(1, 1));
+    TF_ASSERT_OK(session->ReleaseCallable(handle));
+  }
+
+  {
+    // Wire the output of "Neg(Matmul(a, x))" to the output of "a",
+    // creating an invalid cycle.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(y_ + ":0");
+    c->set_to_tensor(a_ + ":0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(
+        str_util::StrContains(s.error_message(), "would create a cycle"));
+  }
+
+  {
+    // Attempt to wire a non-existent node to a node that does exist.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor("unknown_node:0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown node"));
+  }
+
+  {
+    // Attempt to wire a non-existent output from a node that does
+    // exist to another node.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":17");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown edge"));
+  }
+
+  {
+    // Attempt to wire a tensor to a node that doesn't exist.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor("unknown_node:0");
+    callable_options.add_fetch(y_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsNotFound(s));
+    EXPECT_TRUE(
+        str_util::StrContains(s.error_message(), "unable to find feed output"));
+  }
+
+  {
+    // Attempt to wire two tensors to the same tensor.
+    CallableOptions callable_options;
+    TensorConnection* c1 = callable_options.add_tensor_connection();
+    c1->set_from_tensor(a_ + ":0");
+    c1->set_to_tensor(y_neg_ + ":0");
+    TensorConnection* c2 = callable_options.add_tensor_connection();
+    c2->set_from_tensor(x_ + ":0");
+    c2->set_to_tensor(y_neg_ + ":0");
+    callable_options.add_fetch(z_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  }
+
+  {
+    // Attempt to wire a tensor to a tensor that is also being fed.
+    CallableOptions callable_options;
+    TensorConnection* c = callable_options.add_tensor_connection();
+    c->set_from_tensor(a_ + ":0");
+    c->set_to_tensor(y_ + ":0");
+    callable_options.add_feed(y_ + ":0");
+    callable_options.add_fetch(y_neg_ + ":0");
+
+    Session::CallableHandle handle;
+    Status s = session->MakeCallable(callable_options, &handle);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
   }
 }
 
@@ -654,6 +820,55 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
 }
 
+TEST(DirectSessionTest, TestTensorConnectionUseTwice) {
+  Graph graph(OpRegistry::Global());
+
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a_tensor, {1.0, 2.0, 3.0, 4.0});
+  Node* a = test::graph::Constant(&graph, a_tensor);
+
+  Tensor dummy_tensor(DT_FLOAT, TensorShape({1}));
+  test::FillValues<float>(&dummy_tensor, {-1.0});
+
+  Node* left = test::graph::Constant(&graph, dummy_tensor);
+  Node* right = test::graph::Constant(&graph, dummy_tensor);
+
+  // y = A * x
+  Node* y = test::graph::Add(&graph, left, right);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  CallableOptions callable_options;
+  // Directly wire the output of node a to the outputs of nodes left
+  // and right, making the callable graph into "a + a;".
+  TensorConnection* c_left = callable_options.add_tensor_connection();
+  c_left->set_from_tensor(a->name() + ":0");
+  c_left->set_to_tensor(left->name() + ":0");
+  TensorConnection* c_right = callable_options.add_tensor_connection();
+  c_right->set_from_tensor(a->name() + ":0");
+  c_right->set_to_tensor(right->name() + ":0");
+
+  callable_options.add_fetch(y->name() + ":0");
+
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+  ASSERT_EQ(1, outputs.size());
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(2.0, mat(0, 0));
+  EXPECT_FLOAT_EQ(4.0, mat(0, 1));
+  EXPECT_FLOAT_EQ(6.0, mat(1, 0));
+  EXPECT_FLOAT_EQ(8.0, mat(1, 1));
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+}
+
 TEST(DirectSessionTest, FetchMultipleTimes) {
   Graph g(OpRegistry::Global());
   Tensor seven_tensor(DT_INT32, TensorShape());
@@ -680,6 +895,125 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
     ASSERT_TRUE(t.IsInitialized()) << i;
     EXPECT_EQ(7, t.flat<int32>()(0)) << i;
   }
+}
+
+TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+  RunOptions run_options;
+  run_options.set_inter_op_thread_pool(-1);
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  // Fetch without feeding.
+  Status s = session->Run(
+      run_options, {},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs, nullptr);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(1.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(2.0, outputs[1].flat<float>()(0));
+
+  s = session->Run(
+      {}, {second_identity->name() + ":0", first_identity->name() + ":0"}, {},
+      &outputs);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(2.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(1.0, outputs[1].flat<float>()(0));
+
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  Tensor value_22(DT_FLOAT, TensorShape({}));
+  value_22.scalar<float>()() = 22.0;
+
+  // Feed [first_const, second_const]
+  s = session->Run(
+      {{first_const->name(), value_11}, {second_const->name(), value_22}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [second_const, first_const]
+  s = session->Run(
+      {{second_const->name(), value_22}, {first_const->name(), value_11}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [first_const, first_const]
+  s = session->Run(
+      run_options,
+      {{first_const->name(), value_11}, {first_const->name(), value_22}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs, nullptr);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+}
+
+REGISTER_OP("ThreadID").Input("x: int64").Output("y: int64").Doc(R"doc(
+ThreadID returns the thread ID that called compute.
+
+x: int64
+y: int64
+)doc");
+
+// The ThreadID kernel returns the thread ID that executed Compute.
+class ThreadIDOp : public OpKernel {
+ public:
+  explicit ThreadIDOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* out_tensor = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("y", TensorShape({}), &out_tensor));
+    std::hash<std::thread::id> hasher;
+    out_tensor->scalar<int64>()() =
+        static_cast<int64>(hasher(std::this_thread::get_id()));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("ThreadID").Device(DEVICE_CPU), ThreadIDOp);
+
+TEST(DirectSessionTest, SessionSyncRun) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "ThreadID", x);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  std::hash<std::thread::id> hasher;
+  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
+            static_cast<int64>(outputs[0].scalar<int64>()()));
 }
 
 REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
@@ -1025,36 +1359,23 @@ TEST(DirectSessionTest, TimeoutSession) {
       device: '/device:CPU:0'
       attr {
         key: 'capacity'
-        value {
-          i: 10
-        }
+        value { i: 10 }
       }
       attr {
         key: 'component_types'
-        value {
-          list {
-            type: DT_FLOAT
-          }
-        }
+        value { list { type: DT_FLOAT } }
       }
       attr {
         key: 'container'
-        value {
-          s: ''
-        }
+        value { s: '' }
       }
       attr {
         key: 'shapes'
-        value {
-          list {
-          }
-        }
+        value { list {} }
       }
       attr {
         key: 'shared_name'
-        value {
-          s: ''
-        }
+        value { s: '' }
       }
     }
     node {
@@ -1064,24 +1385,15 @@ TEST(DirectSessionTest, TimeoutSession) {
       device: '/device:CPU:0'
       attr {
         key: 'component_types'
-        value {
-          list {
-            type: DT_FLOAT
-          }
-        }
+        value { list { type: DT_FLOAT } }
       }
       attr {
         key: 'timeout_ms'
-        value {
-          i: -1
-        }
+        value { i: -1 }
       }
     }
-    versions {
-      producer: 9
-    }
-  )proto",
-                                        &graph);
+    versions { producer: 9 }
+  )proto", &graph);
 
   {
     // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
@@ -1144,11 +1456,8 @@ TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
       op: 'CancellationMgrPollingOp'
       device: '/device:CPU:0'
     }
-    versions {
-      producer: 9
-    }
-  )proto",
-                                        &graph);
+    versions { producer: 9 }
+  )proto", &graph);
 
   // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
   SessionOptions options;
@@ -1211,6 +1520,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   p = options.config.add_session_inter_op_thread_pool();
   if (use_global_pools) p->set_global_name("small pool");
   p->set_num_threads(1);
+  const int kSyncPool = -1;
   const int kLargePool = 0;
   const int kSmallPool = 1;
 
@@ -1253,7 +1563,11 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
           EXPECT_FLOAT_EQ(1.2, flat(0));
           num_done.fetch_add(1);
         };
-        tp->Schedule(fn);
+        if (tp != nullptr) {
+          tp->Schedule(fn);
+        } else {
+          fn();
+        }
       };
 
   // For blocking states:
@@ -1274,9 +1588,10 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
 
   tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
 
-  // Launch 2 session run calls. Neither will finish until the blocking op is
+  // Launch a session run call. It will not finish until the blocking op is
   // unblocked, because it is using all threads in the small pool.
   add_session_run_call(tp1, y, kSmallPool);
+
   blocking_op_state->AwaitState(1);  // Wait for the blocking op to Compute.
 
   // These will block on <BlockingOpState>.
@@ -1295,10 +1610,15 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   delete tp2;
   EXPECT_EQ(kUnblockedThreads, num_done.load());
 
+  // Launch a session call using this thread. This will finish as it runs
+  // synchronously in this thread.
+  add_session_run_call(nullptr, x, kSyncPool);
+
   // Unblock the blocked op and wait for the blocked functions to finish.
   blocking_op_state->MoveToState(1, 2);
   delete tp1;
-  EXPECT_EQ(kUnblockedThreads + kBlockedThreads + 1, num_done.load());
+
+  EXPECT_EQ(kUnblockedThreads + kBlockedThreads + 1 + 1, num_done.load());
   delete blocking_op_state;
   blocking_op_state = nullptr;
 }
@@ -1343,7 +1663,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   {
     std::unique_ptr<Session> session(NewSession(options));
     TF_ASSERT_OK(session->Create(def));
-    for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
+    for (int pool_num = -2; pool_num <= 1; pool_num += 3) {
       RunOptions run_options;
       run_options.set_inter_op_thread_pool(pool_num);
       std::vector<Tensor> outputs;
@@ -1520,6 +1840,292 @@ TEST(DirectSessionTest, LocalDeviceManager) {
   TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
   ASSERT_TRUE(mgr != nullptr);
   EXPECT_GT(mgr->ListDevices().size(), 0);
+}
+
+// y = tf.square(x)
+GraphDef CreateGraphForYEqualsXSquared() {
+  GraphDef graph_def;
+  const char* text_proto = R"EOF(
+node {
+  name: "x"
+  op: "Placeholder"
+  attr { key: "dtype" value { type: DT_FLOAT } }
+  attr { key: "shape" value { shape { unknown_rank: true } } }
+}
+node {
+  name: "y"
+  op: "Square"
+  input: "x"
+  attr { key: "T" value { type: DT_FLOAT } }
+}
+versions {
+  producer: 26
+}
+  )EOF";
+
+  QCHECK(protobuf::TextFormat::ParseFromString(text_proto, &graph_def));
+  return graph_def;
+}
+
+// A graph that consumes and produces string tensors
+// (which are not GPU-compatible, i.e., there are no
+// GPU kernels for these operations).
+bool IsCUDATensor(const Tensor& t) {
+#ifdef GOOGLE_CUDA
+  cudaPointerAttributes attributes;
+  cudaError_t err =
+      cudaPointerGetAttributes(&attributes, t.tensor_data().data());
+  if (err == cudaErrorInvalidValue) return false;
+  CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
+  return (attributes.memoryType == cudaMemoryTypeDevice);
+#else
+  return false;
+#endif
+}
+
+string GPUDeviceName(Session* session) {
+  std::vector<DeviceAttributes> devices;
+  TF_CHECK_OK(session->ListDevices(&devices));
+  for (const DeviceAttributes& d : devices) {
+    if (d.device_type() == "GPU" || d.device_type() == "gpu") {
+      return d.name();
+    }
+  }
+  return "";
+}
+
+TEST(DirectSessionTest, FeedAndFetchTensorsInDeviceMemory) {
+  std::unique_ptr<Session> session(NewSession(SessionOptions()));
+  const string gpu_device_name = GPUDeviceName(session.get());
+  if (gpu_device_name.empty()) {
+    LOG(INFO) << "Skipping test since no GPU is available";
+    return;
+  }
+
+  TF_ASSERT_OK(session->Create(CreateGraphForYEqualsXSquared()));
+
+  CallableOptions opts;
+  opts.add_feed("x:0");
+  opts.add_fetch("y:0");
+
+  Tensor gpu_tensor;
+
+  {
+    Session::CallableHandle feed_cpu_fetch_gpu;
+    opts.mutable_fetch_devices()->insert({"y:0", gpu_device_name});
+    opts.set_fetch_skip_sync(true);
+    TF_ASSERT_OK(session->MakeCallable(opts, &feed_cpu_fetch_gpu));
+    Tensor input(DT_FLOAT, {});
+    input.scalar<float>()() = 2.0f;
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(
+        session->RunCallable(feed_cpu_fetch_gpu, {input}, &outputs, nullptr));
+    TF_ASSERT_OK(session->ReleaseCallable(feed_cpu_fetch_gpu));
+    ASSERT_EQ(1, outputs.size());
+    gpu_tensor = outputs[0];
+    ASSERT_TRUE(IsCUDATensor(gpu_tensor));
+  }
+
+  {
+    Session::CallableHandle feed_gpu_fetch_cpu;
+    opts.clear_fetch_devices();
+    opts.mutable_feed_devices()->insert({"x:0", gpu_device_name});
+    TF_ASSERT_OK(session->MakeCallable(opts, &feed_gpu_fetch_cpu));
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(feed_gpu_fetch_cpu, {gpu_tensor},
+                                      &outputs, nullptr));
+    TF_ASSERT_OK(session->ReleaseCallable(feed_gpu_fetch_cpu));
+    ASSERT_EQ(1, outputs.size());
+    // The output is in CPU/host memory, so it can be dereferenced.
+    ASSERT_EQ(16.0, outputs[0].scalar<float>()());
+  }
+}
+
+GraphDef CreateIdentityGraphDef(DataType dtype) {
+  GraphDef def;
+
+  AttrValue dtype_attr;
+  dtype_attr.set_type(dtype);
+
+  AttrValue shape_attr;
+  shape_attr.mutable_shape()->set_unknown_rank(true);
+
+  auto* placeholder = def.add_node();
+  placeholder->set_name("x");
+  placeholder->set_op("Placeholder");
+  placeholder->mutable_attr()->insert({"dtype", dtype_attr});
+  placeholder->mutable_attr()->insert({"shape", shape_attr});
+
+  auto* identity = def.add_node();
+  identity->set_name("y");
+  identity->set_op("Identity");
+  identity->add_input("x");
+  identity->mutable_attr()->insert({"T", dtype_attr});
+
+  return def;
+}
+
+void TestFeedAndFetchTensorsInDeviceMemory(
+    const SessionOptions& session_options, DataType dtype) {
+  std::unique_ptr<Session> session(NewSession(session_options));
+  const string gpu_device_name = GPUDeviceName(session.get());
+  if (gpu_device_name.empty()) {
+    LOG(INFO) << "Skipping test since no GPU is available";
+    return;
+  }
+
+  TF_ASSERT_OK(session->Create(CreateIdentityGraphDef(dtype)))
+      << DataType_Name(dtype);
+
+  CallableOptions opts;
+  opts.add_feed("x:0");
+  opts.add_fetch("y:0");
+
+  Tensor gpu_tensor;
+  Tensor host_tensor(dtype, {3});
+  {
+    // Ask for the fetched tensor to be backed by device memory.
+    // Even though the kernel that created the tensor produced it in host
+    // memory.
+    opts.mutable_fetch_devices()->insert({"y:0", gpu_device_name});
+    opts.set_fetch_skip_sync(true);
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(opts, &handle)) << DataType_Name(dtype);
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {host_tensor}, &outputs, nullptr))
+        << DataType_Name(dtype);
+    TF_ASSERT_OK(session->ReleaseCallable(handle)) << DataType_Name(dtype);
+    ASSERT_EQ(1, outputs.size()) << DataType_Name(dtype);
+    gpu_tensor = outputs[0];
+    ASSERT_TRUE(IsCUDATensor(gpu_tensor)) << DataType_Name(dtype);
+  }
+
+  {
+    // Feed a tensor backed by device memory, even though the operations in the
+    // graph expect it in host memory.
+    opts.clear_fetch_devices();
+    opts.mutable_feed_devices()->insert({"x:0", gpu_device_name});
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(opts, &handle)) << DataType_Name(dtype);
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {gpu_tensor}, &outputs, nullptr))
+        << DataType_Name(dtype);
+    TF_ASSERT_OK(session->ReleaseCallable(handle)) << DataType_Name(dtype);
+    ASSERT_EQ(1, outputs.size());
+    const StringPiece actual_data = outputs[0].tensor_data();
+    const StringPiece expected_data = host_tensor.tensor_data();
+    EXPECT_EQ(expected_data.size(), actual_data.size()) << DataType_Name(dtype);
+    EXPECT_EQ(0, memcmp(expected_data.data(), actual_data.data(),
+                        std::min(expected_data.size(), actual_data.size())))
+        << DataType_Name(dtype);
+  }
+}
+
+void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
+    const SessionOptions& session_options, DataType dtype) {
+  std::unique_ptr<Session> session(NewSession(session_options));
+  const string gpu_device_name = GPUDeviceName(session.get());
+  if (gpu_device_name.empty()) {
+    LOG(INFO) << "Skipping test since no GPU is available";
+    return;
+  }
+
+  TF_ASSERT_OK(session->Create(CreateIdentityGraphDef(dtype)))
+      << DataType_Name(dtype);
+
+  CallableOptions opts;
+  opts.add_feed("x:0");
+  opts.add_fetch("y:0");
+
+  // Fail when asking to fetch into GPU memory.
+  {
+    opts.mutable_fetch_devices()->insert({"y:0", gpu_device_name});
+    opts.set_fetch_skip_sync(true);
+    Session::CallableHandle handle;
+    Status status = session->MakeCallable(opts, &handle);
+    EXPECT_FALSE(status.ok()) << DataType_Name(dtype);
+    EXPECT_TRUE(str_util::StrContains(
+        status.error_message(),
+        strings::StrCat(
+            "Cannot feed or fetch tensor 'y:0' from device ", gpu_device_name,
+            " as feeding/fetching from GPU devices is not yet supported for ",
+            DataTypeString(dtype), " tensors")))
+        << DataType_Name(dtype) << ", Status: " << status;
+  }
+
+  // Fail when feeding from GPU memory.
+  {
+    opts.clear_feed_devices();
+    opts.mutable_feed_devices()->insert({"x:0", gpu_device_name});
+    Session::CallableHandle handle;
+    Status status = session->MakeCallable(opts, &handle);
+    EXPECT_FALSE(status.ok());
+    EXPECT_TRUE(str_util::StrContains(
+        status.error_message(),
+        strings::StrCat(
+            "Cannot feed or fetch tensor 'x:0' from device ", gpu_device_name,
+            " as feeding/fetching from GPU devices is not yet supported for ",
+            DataTypeString(dtype), " tensors")))
+        << DataType_Name(dtype) << ", Status: " << status;
+  }
+}
+
+void TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(
+    const SessionOptions& opts) {
+  // Feeding/fetching on device does not work for all DataTypes as it
+  // relies on the implementation of the _Arg and _Retval kernels which
+  // are not registered for some types or consume/produce inputs/outputs
+  // in host memory for some types.
+  //
+  // Run through all datatypes to validate that either:
+  // (a) MakeCallable fails (because the given type cannot be fed/fetched
+  //     in device memory),
+  //     OR
+  // (b) Succeeds: RunCallable should gladly accept inputs in device memory
+  //     and produce output tensors in device memory.
+  for (int i = DataType_MIN; i <= DataType_MAX; ++i) {
+    if (!DataType_IsValid(i)) continue;
+    const DataType dtype = static_cast<DataType>(i);
+    switch (dtype) {
+      case DT_INVALID:
+        break;
+      case DT_BFLOAT16:
+      case DT_BOOL:
+      case DT_COMPLEX128:
+      case DT_COMPLEX64:
+      case DT_DOUBLE:
+      case DT_FLOAT:
+      case DT_HALF:
+      case DT_INT16:
+      case DT_INT64:
+      case DT_INT8:
+      case DT_UINT16:
+      case DT_UINT8:
+        TestFeedAndFetchTensorsInDeviceMemory(opts, dtype);
+        break;
+      default:
+        // Ignore all REF types since Tensors of this type aren't intended to
+        // be fed (and attempting to create one via the Tensor constructor
+        // will result in a LOG(FATAL)).
+        if (!IsRefType(dtype)) {
+          TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(opts, dtype);
+        }
+        break;
+    }
+  }
+}
+
+TEST(DirectSessionTest, FeedAndFetchTensorsInDeviceMemory_AllDataTypes) {
+  SessionOptions opts;
+  opts.config.set_allow_soft_placement(false);
+  TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(opts);
+}
+
+TEST(DirectSessionTest,
+     FeedAndFetchTensorsInDeviceMemory_AllDataTypes_SoftPlacement) {
+  SessionOptions opts;
+  opts.config.set_allow_soft_placement(true);
+  TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(opts);
 }
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls

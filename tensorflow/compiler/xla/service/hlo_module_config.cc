@@ -28,10 +28,10 @@ namespace xla {
 
 using tensorflow::strings::StrAppend;
 
-HloModuleConfig::HloModuleConfig() {}
-
-HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape)
-    : entry_computation_layout_(program_shape) {}
+HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape,
+                                 bool ignore_layouts)
+    : entry_computation_layout_(
+          ComputationLayout(program_shape, ignore_layouts)) {}
 
 void HloModuleConfig::SetDefaultComputationLayout(
     const ProgramShape& program_shape) {

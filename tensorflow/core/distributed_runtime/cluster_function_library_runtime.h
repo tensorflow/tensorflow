@@ -27,8 +27,10 @@ struct WorkerSession;
 // functions across processes by making RPCs.
 class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
  public:
-  ClusterFunctionLibraryRuntime(WorkerSession* worker_session)
-      : worker_session_(worker_session) {}
+  ClusterFunctionLibraryRuntime(WorkerSession* worker_session,
+                                bool create_worker_session_called)
+      : worker_session_(worker_session),
+        create_worker_session_called_(create_worker_session_called) {}
 
   ~ClusterFunctionLibraryRuntime() override;
 
@@ -51,6 +53,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   mutable mutex mu_;
   WorkerSession* const worker_session_ = nullptr;  // not owned.
+  const bool create_worker_session_called_;
 
   struct FunctionData {
     const string graph_handle;

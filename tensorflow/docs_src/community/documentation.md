@@ -402,24 +402,24 @@ types and default values.
 
 For example:
 
-    ```c++
-    REGISTER_OP("PngDecode")
-      .Input("contents: string")
-      .Attr("channels: int = 0")
-      .Output("image: uint8")
-      .Doc(R"doc(
-    Decodes the contents of a PNG file into a uint8 tensor.
+```c++
+REGISTER_OP("PngDecode")
+  .Input("contents: string")
+  .Attr("channels: int = 0")
+  .Output("image: uint8")
+  .Doc(R"doc(
+Decodes the contents of a PNG file into a uint8 tensor.
 
-    contents: PNG file contents.
-    channels: Number of color channels, or 0 to autodetect based on the input.
-      Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.
-      If the input has a different number of channels, it will be transformed
-      accordingly.
-    image:= A 3-D uint8 tensor of shape `[height, width, channels]`.
-      If `channels` is 0, the last dimension is determined
-      from the png contents.
-    )doc");
-    ```
+contents: PNG file contents.
+channels: Number of color channels, or 0 to autodetect based on the input.
+  Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.
+  If the input has a different number of channels, it will be transformed
+  accordingly.
+image:= A 3-D uint8 tensor of shape `[height, width, channels]`.
+  If `channels` is 0, the last dimension is determined
+  from the png contents.
+)doc");
+```
 
 Results in this piece of Markdown:
 
@@ -429,12 +429,12 @@ Results in this piece of Markdown:
 
     #### Args:
 
-    *  <b>contents</b>: A string Tensor. PNG file contents.
-    *  <b>channels</b>: An optional int. Defaults to 0.
+    *  **contents**: A string Tensor. PNG file contents.
+    *  **channels**: An optional int. Defaults to 0.
        Number of color channels, or 0 to autodetect based on the input.
        Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.  If the
        input has a different number of channels, it will be transformed accordingly.
-    *  <b>name</b>: A name for the operation (optional).
+    *  **name**: A name for the operation (optional).
 
     #### Returns:
     A 3-D uint8 tensor of shape `[height, width, channels]`.  If `channels` is
@@ -442,7 +442,7 @@ Results in this piece of Markdown:
 
 Much of the argument description is added automatically. In particular, the doc
 generator automatically adds the name and type of all inputs, attrs, and
-outputs. In the above example, `<b>contents</b>: A string Tensor.` was added
+outputs. In the above example, `contents: A string Tensor.` was added
 automatically. You should write your additional text to flow naturally after
 that description.
 
@@ -664,10 +664,10 @@ This generates the following Args section in
 
     #### Args:
 
-    * <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The PNG-encoded
+    * **`contents`**: A `Tensor` of type `string`. 0-D.  The PNG-encoded
       image.
-    * <b>`channels`</b>: An optional `int`. Defaults to `0`. Number of color
+    * **`channels`**: An optional `int`. Defaults to `0`. Number of color
       channels for the decoded image.
-    * <b>`dtype`</b>: An optional `tf.DType` from: `tf.uint8,
+    * **`dtype`**: An optional `tf.DType` from: `tf.uint8,
       tf.uint16`. Defaults to `tf.uint 8`.
-    * <b>`name`</b>: A name for the operation (optional).
+    * **`name`**: A name for the operation (optional).

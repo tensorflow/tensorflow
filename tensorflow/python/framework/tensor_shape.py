@@ -459,6 +459,9 @@ class Dimension(object):
     else:
       return self._value >= other.value
 
+  def __reduce__(self):
+    return Dimension, (self._value,)
+
 
 def as_dimension(value):
   """Converts the given value to a Dimension.
@@ -931,6 +934,9 @@ class TensorShape(object):
       return True
     return self._dims != other.dims
 
+  def __reduce__(self):
+    return TensorShape, (self._dims,)
+
 
 def as_shape(shape):
   """Converts the given object to a TensorShape."""
@@ -955,9 +961,12 @@ def unknown_shape(ndims=None):
     return TensorShape([Dimension(None)] * ndims)
 
 
+_SCALAR_SHAPE = TensorShape([])
+
+
 def scalar():
   """Returns a shape representing a scalar."""
-  return TensorShape([])
+  return _SCALAR_SHAPE
 
 
 def vector(length):

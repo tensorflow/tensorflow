@@ -31,7 +31,7 @@ namespace tensorflow {
 // future to support these features.
 //
 // TODO(skyewm): de/serialize in MetaGraphDef so imported while loops will be
-// differentiable. Figure out backwards compatability story.
+// differentiable. Figure out backwards compatibility story.
 class WhileContext {
  public:
   WhileContext(StringPiece frame_name, std::vector<Node*> enter_nodes,

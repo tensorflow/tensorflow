@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
 #include "tensorflow/core/platform/s3/aws_logging.h"
-#include "tensorflow/core/platform/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/config/AWSProfileConfigLoader.h>
@@ -156,7 +156,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
-  objectp.Consume("/");
+  str_util::ConsumePrefix(&objectp, "/");
   *object = objectp.ToString();
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
@@ -300,10 +300,10 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
 
     Aws::SDKOptions options;
     options.cryptoOptions.sha256Factory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256Factory>(AWSCryptoAllocationTag);
     };
     options.cryptoOptions.sha256HMACFactory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256HmacFactory>(AWSCryptoAllocationTag);
     };
     Aws::InitAPI(options);
 

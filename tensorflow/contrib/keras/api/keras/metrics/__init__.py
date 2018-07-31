@@ -19,28 +19,28 @@ from __future__ import division
 from __future__ import print_function
 
 # Metrics functions.
-from tensorflow.python.keras._impl.keras.metrics import binary_accuracy
-from tensorflow.python.keras._impl.keras.metrics import binary_crossentropy
-from tensorflow.python.keras._impl.keras.metrics import categorical_accuracy
-from tensorflow.python.keras._impl.keras.metrics import categorical_crossentropy
-from tensorflow.python.keras._impl.keras.metrics import cosine_proximity
-from tensorflow.python.keras._impl.keras.metrics import hinge
-from tensorflow.python.keras._impl.keras.metrics import kullback_leibler_divergence
-from tensorflow.python.keras._impl.keras.metrics import mean_absolute_error
-from tensorflow.python.keras._impl.keras.metrics import mean_absolute_percentage_error
-from tensorflow.python.keras._impl.keras.metrics import mean_squared_error
-from tensorflow.python.keras._impl.keras.metrics import mean_squared_logarithmic_error
-from tensorflow.python.keras._impl.keras.metrics import poisson
-from tensorflow.python.keras._impl.keras.metrics import sparse_categorical_crossentropy
-from tensorflow.python.keras._impl.keras.metrics import sparse_top_k_categorical_accuracy
-from tensorflow.python.keras._impl.keras.metrics import squared_hinge
-from tensorflow.python.keras._impl.keras.metrics import top_k_categorical_accuracy
+from tensorflow.python.keras.metrics import binary_accuracy
+from tensorflow.python.keras.metrics import binary_crossentropy
+from tensorflow.python.keras.metrics import categorical_accuracy
+from tensorflow.python.keras.metrics import categorical_crossentropy
+from tensorflow.python.keras.metrics import cosine_proximity
+from tensorflow.python.keras.metrics import hinge
+from tensorflow.python.keras.metrics import kullback_leibler_divergence
+from tensorflow.python.keras.metrics import mean_absolute_error
+from tensorflow.python.keras.metrics import mean_absolute_percentage_error
+from tensorflow.python.keras.metrics import mean_squared_error
+from tensorflow.python.keras.metrics import mean_squared_logarithmic_error
+from tensorflow.python.keras.metrics import poisson
+from tensorflow.python.keras.metrics import sparse_categorical_crossentropy
+from tensorflow.python.keras.metrics import sparse_top_k_categorical_accuracy
+from tensorflow.python.keras.metrics import squared_hinge
+from tensorflow.python.keras.metrics import top_k_categorical_accuracy
 
 # Auxiliary utils.
 # pylint: disable=g-bad-import-order
-from tensorflow.python.keras._impl.keras.metrics import deserialize
-from tensorflow.python.keras._impl.keras.metrics import serialize
-from tensorflow.python.keras._impl.keras.metrics import get
+from tensorflow.python.keras.metrics import deserialize
+from tensorflow.python.keras.metrics import serialize
+from tensorflow.python.keras.metrics import get
 
 del absolute_import
 del division

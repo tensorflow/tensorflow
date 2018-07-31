@@ -51,13 +51,13 @@ of the feature's splits. Will be added to the previous node values to constitute
 the values of the right nodes.
 END
   }
-  attr {
+  in_arg {
     name: "max_depth"
     description: <<END
 Max depth of the tree to build.
 END
   }
-  attr {
+  in_arg {
     name: "learning_rate"
     description: <<END
 shrinkage const for each new tree.

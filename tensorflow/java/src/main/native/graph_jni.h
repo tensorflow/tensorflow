@@ -73,6 +73,15 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Graph_toGraphDef(JNIEnv *,
                                                                   jclass,
                                                                   jlong);
 
+/*
+ * Class:     org_tensorflow_Graph
+ * Method:    name
+ * Signature: (JLjava/lang/String;[J[I[J[I[J[I)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
+    JNIEnv *, jclass, jlong, jstring, jlongArray, jintArray, jlongArray,
+    jintArray, jlongArray, jintArray);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

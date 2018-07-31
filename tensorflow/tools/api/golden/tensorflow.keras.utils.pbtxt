@@ -46,7 +46,7 @@ tf_module {
   }
   member_method {
     name: "multi_gpu_model"
-    argspec: "args=[\'model\', \'gpus\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'model\', \'gpus\', \'cpu_merge\', \'cpu_relocation\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
   }
   member_method {
     name: "normalize"

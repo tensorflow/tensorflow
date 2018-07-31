@@ -137,12 +137,12 @@ TF_XLA_FLAGS=--xla_generate_hlo_graph=.* python mnist_softmax_xla.py
 ```
 
 Open the timeline file created (`timeline.ctf.json`).  The rendered timeline
-should look similar to the picture below with one long bar labeled `_XlaLaunch`.
+should look similar to the picture below with one long bar labeled `XlaLaunch`.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/jit_timeline_gpu_xla.png">
 </div>
 
-To understand what is happening in `_XlaLaunch`, look at the console output for
+To understand what is happening in `XlaLaunch`, look at the console output for
 statements similar to the following:
 
 ```shell

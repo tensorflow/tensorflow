@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/visitable_allocator.h"
+#include "tensorflow/core/framework/allocator.h"
 
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -68,6 +68,9 @@ static const double kLargeAllocationWarningThreshold = 0.1;
 // exceeds this threshold.
 static const double kTotalAllocationWarningThreshold = 0.5;
 
+static const int kMaxSingleAllocationWarnings = 5;
+static const int kMaxTotalAllocationWarnings = 1;
+
 // Cache first invocation to port::AvailableRam, as it can be expensive.
 static int64_t LargeAllocationWarningBytes() {
   static int64_t value = static_cast<int64>(port::AvailableRam() *
@@ -88,21 +91,25 @@ void EnableCPUAllocatorFullStats(bool enable) {
   cpu_allocator_collect_full_stats = enable;
 }
 
-class CPUAllocator : public VisitableAllocator {
+namespace {
+// A default Allocator for CPU devices.  ProcessState::GetCPUAllocator() will
+// return a different version that may perform better, but may also lack the
+// optional stats triggered by the functions above.  TODO(tucker): migrate all
+// uses of cpu_allocator() except tests to use ProcessState instead.
+class CPUAllocator : public Allocator {
  public:
   CPUAllocator()
-      : total_allocation_warning_triggered_(false), allocation_begun_(false) {}
+      : single_allocation_warning_count_(0),
+        total_allocation_warning_count_(0) {}
 
   ~CPUAllocator() override {}
 
   string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    if (!allocation_begun_) {
-      allocation_begun_ = true;
-    }
-
-    if (num_bytes > LargeAllocationWarningBytes()) {
+    if (num_bytes > LargeAllocationWarningBytes() &&
+        single_allocation_warning_count_ < kMaxSingleAllocationWarnings) {
+      ++single_allocation_warning_count_;
       LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
                    << 100 * kLargeAllocationWarningThreshold
                    << "% of system memory.";
@@ -120,45 +127,23 @@ class CPUAllocator : public VisitableAllocator {
           std::max<int64>(stats_.max_alloc_size, alloc_size);
 
       if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
-          !total_allocation_warning_triggered_) {
+          total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {
+        ++total_allocation_warning_count_;
         LOG(WARNING) << "Total allocated memory " << stats_.bytes_in_use
                      << "exceeds " << 100 * kTotalAllocationWarningThreshold
                      << "% of system memory";
-        total_allocation_warning_triggered_ = true;
       }
     }
-
-    // visit each Visitor in alloc_visitors_
-    if (p != nullptr) {
-      for (const Visitor& v : alloc_visitors_) {
-        v(p, num_bytes);
-      }
-    }
-
     return p;
   }
 
   void DeallocateRaw(void* ptr) override {
-    std::size_t alloc_size;
-    bool init_alloc_size = false;
     if (cpu_allocator_collect_stats) {
-      alloc_size = port::MallocExtension_GetAllocatedSize(ptr);
-      init_alloc_size = true;
+      const std::size_t alloc_size =
+          port::MallocExtension_GetAllocatedSize(ptr);
       mutex_lock l(mu_);
       stats_.bytes_in_use -= alloc_size;
     }
-
-    // visit each Visitor in free_visitors_
-    if (ptr != nullptr) {
-      if (!init_alloc_size) {
-        alloc_size = port::MallocExtension_GetAllocatedSize(ptr);
-        init_alloc_size = true;
-      }
-      for (const Visitor& v : free_visitors_) {
-        v(ptr, alloc_size);
-      }
-    }
-
     port::AlignedFree(ptr);
   }
 
@@ -178,48 +163,54 @@ class CPUAllocator : public VisitableAllocator {
     return port::MallocExtension_GetAllocatedSize(ptr);
   }
 
-  // REQUIRES: can only add visitors before the first Allocate call
-
-  void AddAllocVisitor(Visitor visitor) override {
-    mutex_lock lock(visitor_mutex_);
-    CHECK(!allocation_begun_)
-        << "AddAllocVisitor may not be called after allocation has begun.";
-    alloc_visitors_.push_back(visitor);
-  }
-
-  void AddFreeVisitor(Visitor visitor) override {
-    mutex_lock lock(visitor_mutex_);
-    CHECK(!allocation_begun_)
-        << "AddFreeVisitor may not be called after allocation has begun.";
-    free_visitors_.push_back(visitor);
-  }
-
  private:
   mutex mu_;
   AllocatorStats stats_ GUARDED_BY(mu_);
-  bool total_allocation_warning_triggered_ GUARDED_BY(mu_);
 
-  // visitor_mutex_ protects write access to alloc_visitors_ and free_visitors_.
-  // While write access is mutually exclusive, reads may happen concurrently.
-  // This is okay because we may only append to alloc_visitors_ and
-  // free_visitors_ before first allocation, and subsequently we only read these
-  // vectors.
-  mutex visitor_mutex_;
-  std::vector<Visitor> alloc_visitors_;
-  std::vector<Visitor> free_visitors_;
-  std::atomic<bool> allocation_begun_;
+  // Use <atomic> for single allocations to avoid mutex contention when
+  // statistics are disabled.
+  std::atomic<int> single_allocation_warning_count_;
+  int total_allocation_warning_count_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };
 
+class CPUAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() override { return new CPUAllocator; }
+
+  SubAllocator* CreateSubAllocator(int numa_node) override {
+    return new CPUSubAllocator(new CPUAllocator);
+  }
+
+ private:
+  class CPUSubAllocator : public SubAllocator {
+   public:
+    explicit CPUSubAllocator(CPUAllocator* cpu_allocator)
+        : cpu_allocator_(cpu_allocator) {}
+
+    void* Alloc(size_t alignment, size_t num_bytes) override {
+      return cpu_allocator_->AllocateRaw(alignment, num_bytes);
+    }
+
+    void Free(void* ptr, size_t num_bytes) override {
+      cpu_allocator_->DeallocateRaw(ptr);
+    }
+
+   private:
+    CPUAllocator* cpu_allocator_;
+  };
+};
+
+REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocatorFactory);
+}  // namespace
+
 Allocator* cpu_allocator() {
-  static Allocator* cpu_alloc = AllocatorRegistry::Global()->GetAllocator();
+  static Allocator* cpu_alloc =
+      AllocatorFactoryRegistry::singleton()->GetAllocator();
   if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
     cpu_alloc = new TrackingAllocator(cpu_alloc, true);
   }
   return cpu_alloc;
 }
-
-REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocator);
-
 }  // namespace tensorflow

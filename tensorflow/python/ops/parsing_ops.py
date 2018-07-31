@@ -1176,8 +1176,13 @@ def _parse_single_sequence_example_raw(serialized,
 
 # Swap `name` and `na_value` for backward compatibility.
 @tf_export("decode_csv")
-def decode_csv(records, record_defaults, field_delim=",",
-               use_quote_delim=True, name=None, na_value=""):
+def decode_csv(records,
+               record_defaults,
+               field_delim=",",
+               use_quote_delim=True,
+               name=None,
+               na_value="",
+               select_cols=None):
   """Convert CSV records to tensors. Each column maps to one tensor.
 
   RFC 4180 format is expected for the CSV records.
@@ -1200,19 +1205,32 @@ def decode_csv(records, record_defaults, field_delim=",",
       Bullet 5).
     name: A name for the operation (optional).
     na_value: Additional string to recognize as NA/NaN.
+    select_cols: Optional sorted list of column indices to select. If specified,
+      only this subset of columns will be parsed and returned.
 
   Returns:
     A list of `Tensor` objects. Has the same type as `record_defaults`.
     Each tensor will have the same shape as records.
+
+  Raises:
+    ValueError: If any of the arguments is malformed.
   """
-  # TODO(martinwicke), remove the wrapper when new Python API generator is done.
+  if select_cols is not None and any(select_cols[i] >= select_cols[i + 1]
+                                     for i in range(len(select_cols) - 1)):
+    raise ValueError("select_cols is not strictly increasing.")
+  if select_cols is not None and select_cols[0] < 0:
+    raise ValueError("select_cols contains negative values.")
+  if select_cols is not None and len(select_cols) != len(record_defaults):
+    raise ValueError("Length of select_cols and record_defaults do not match.")
   return gen_parsing_ops.decode_csv(
       records=records,
       record_defaults=record_defaults,
       field_delim=field_delim,
       use_quote_delim=use_quote_delim,
       na_value=na_value,
-      name=name)
+      name=name,
+      select_cols=select_cols,
+  )
 
 
 # TODO(b/70890287): Combine the implementation of this op and

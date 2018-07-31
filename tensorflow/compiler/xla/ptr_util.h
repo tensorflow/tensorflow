@@ -28,26 +28,8 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace xla {
-
-template <typename T>
-std::unique_ptr<T> WrapUnique(T* ptr) {
-  return tensorflow::WrapUnique<T>(ptr);
-}
-
-template <typename T, typename... Args>
-typename tensorflow::helper::MakeUniqueResult<T>::scalar MakeUnique(
-    Args&&... args) {
-  return tensorflow::MakeUnique<T, Args...>(std::forward<Args>(args)...);
-}
-
-// Overload for array of unknown bound.
-// The allocation of arrays needs to use the array form of new,
-// and cannot take element constructor arguments.
-template <typename T>
-typename tensorflow::helper::MakeUniqueResult<T>::array MakeUnique(size_t n) {
-  return tensorflow::MakeUnique<T>(n);
-}
-
+using tensorflow::MakeUnique;
+using tensorflow::WrapUnique;
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PTR_UTIL_H_

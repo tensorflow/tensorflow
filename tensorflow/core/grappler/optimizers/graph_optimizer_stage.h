@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_
 
 #include <unordered_map>
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -44,16 +45,19 @@ const NodeScopeAndName ParseNodeScopeAndName(const string& node_name);
 struct GraphOptimizerContext {
   GraphOptimizerContext(const std::unordered_set<string>* nodes_to_preserve,
                         GraphDef* optimized_graph,
-                        GraphProperties* graph_properties, NodeMap* node_map)
+                        GraphProperties* graph_properties, NodeMap* node_map,
+                        RewriterConfig::Toggle opt_level)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
         graph_properties(graph_properties),
-        node_map(node_map) {}
+        node_map(node_map),
+        opt_level(opt_level) {}
 
   const std::unordered_set<string>* nodes_to_preserve;
   GraphDef* optimized_graph;
   GraphProperties* graph_properties;
   NodeMap* node_map;
+  RewriterConfig::Toggle opt_level;
 };
 
 Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
@@ -134,6 +138,18 @@ class GraphOptimizerStage {
   // and remove template parameter.
   virtual Status TrySimplify(NodeDef* node, Result* result) = 0;
 
+  // Return InvalidArgumentError if node is not supported by the optimizer
+  // stage.
+  // TODO(ezhulenev): make this check part of non-virtual public API
+  // (TrySimplify), and make virtual implementation protected.
+  Status EnsureNodeIsSupported(const NodeDef* node) const {
+    return IsSupported(node)
+               ? Status::OK()
+               : errors::InvalidArgument(
+                     "Node ", node->name(), " is not supported by optimizer ",
+                     optimizer_name_, " and stage ", stage_name_);
+  }
+
   // Get a name for a new node, created by this stage, based on one or multiple
   // nodes of an original graph.
   const string OptimizedNodeName(const NodeScopeAndName& node) const {
@@ -170,7 +186,10 @@ class GraphOptimizerStage {
     return ::tensorflow::grappler::AddEmptyNode(ctx_, name);
   }
 
- protected:  // Data members
+ protected:
+  const GraphOptimizerContext& ctx() const { return ctx_; }
+
+ private:  // Data members
   const string optimizer_name_;
   const string stage_name_;
   const GraphOptimizerContext ctx_;
@@ -225,7 +244,34 @@ class GraphOptimizerStagePipeline {
     return false;
   }
 
+  // Pass a node through all registered optimizer stages, until break predicate
+  // is true or a stage fails.
+  //
+  // Returns any stage failure status, or else Status::OK().
+  Status PassThroughAllStagesWithStatus(NodeDef* node, Result* result) {
+    for (auto& stage : stages_) {
+      if (!stage->IsSupported(node)) {
+        continue;
+      }
+      const Status stage_status = stage->TrySimplify(node, result);
+      if (!stage_status.ok()) {
+        return stage_status;
+      } else if (break_predicate_(*result)) {
+        break;
+      }
+    }
+    return Status::OK();
+  }
+
   std::size_t NumStages() { return stages_.size(); }
+
+  std::vector<string> StageNames() {
+    std::vector<string> names;
+    for (const auto& stage : stages_) {
+      names.push_back(stage->stage_name());
+    }
+    return names;
+  }
 
  private:
   std::vector<std::unique_ptr<GraphOptimizerStage<Result>>> stages_;
@@ -237,4 +283,4 @@ class GraphOptimizerStagePipeline {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_

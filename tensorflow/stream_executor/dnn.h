@@ -25,6 +25,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <tuple>
 
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -37,8 +38,7 @@ namespace Eigen {
 struct half;
 }  // namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class HostBuffer;
 class Stream;
@@ -349,6 +349,8 @@ enum class FilterLayout : int64 {
   kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
                        // (major) output feature maps >> input feature maps >>
                        // rows >> columns (minor).
+  kOutputYXInput,      // major to minor:
+                       //   (output features, row, columns, input features)
   kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
                     // vector of 4 feature maps.
   kInputYXOutput,   // Same as dist_belief's default filter layout.
@@ -467,6 +469,9 @@ enum class PadAlignment : int64 {
 // Returns a string representation of the given padding alignment.
 string PadAlignmentString(PadAlignment alignment);
 
+// Print alignment to str. Needed to use CHECK_EQ between two PadAlignments.
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
+
 // Describes a convolution.
 //
 // Uses the named argument construction form:
@@ -543,6 +548,10 @@ class ConvolutionDescriptor {
     pad_alignment_ = pad_alignment;
     return *this;
   }
+  ConvolutionDescriptor& set_group_count(int group_count) {
+    group_count_ = group_count;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -566,6 +575,7 @@ class ConvolutionDescriptor {
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
   int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
   PadAlignment pad_alignment() const { return pad_alignment_; }
+  int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
   std::vector<int64> strides() const { return filter_strides_; }
@@ -578,6 +588,7 @@ class ConvolutionDescriptor {
   std::vector<int64> filter_strides_;
   std::vector<int64> dilation_rates_;
   PadAlignment pad_alignment_;
+  int group_count_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
@@ -702,7 +713,7 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(false) {}
+  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
       : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
   bool is_default() const { return algo_ == kDefaultAlgorithm; }
@@ -712,6 +723,7 @@ class AlgorithmDesc {
     return this->algo_ == other.algo_ &&
            this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
+  uint64 hash() const;
 
  private:
   enum { kDefaultAlgorithm = -1 };
@@ -875,6 +887,22 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 
 string ElementwiseOperationString(ElementwiseOperation op);
 
+// A simple class representing the version of the backing library, to
+// workaround the "too perfect forwarding" issue in gcc6+ compilers.
+// See PR#16309 and issue #18402 for links discussing the issue.
+class VersionInfo {
+ public:
+  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+      : major_(major), minor_(minor), patch_(patch) {}
+  int major_version() { return major_; }
+  int minor_version() { return minor_; }
+  int patch() { return patch_; }
+ private:
+  int major_;
+  int minor_;
+  int patch_;
+};
+
 // Suite of operations typically used for implementing Deep/Convolutional Neural
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
@@ -884,6 +912,12 @@ class DnnSupport {
   virtual ~DnnSupport() {}
 
   virtual port::Status Init() = 0;
+
+  // Gets the version of the backing library, as a VersionInfo object.
+  virtual port::StatusOr<VersionInfo> GetVersion() {
+    return port::UnimplementedError(
+        "DnnSupport::GetVersion not implemented on this platform.");
+  }
 
   // Performs a single-precision forward batch normalization operation onto
   // the stream.
@@ -1022,10 +1056,8 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: specifies which algorithm should be used for the
-  //    operation. If algorithm.is_default(), the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpretted by the
-  //    underlying implementation.
+  //  algorithm_config: specifies which algorithm should be used for the
+  //    operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1124,17 +1156,13 @@ class DnnSupport {
   //    convolution input.
   //  filter_descriptor: dimensions of the convolution filter.
   //  convolution_descriptor: stride of the convolution filter.
-  //  input. This can be DeviceMemory pointing to NULL only when activation_mode
-  //  is kNone.
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: an integer to specify which algorithm should be used for the
-  //    operation. kDefaultAlgorithm means the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpreted by the
-  //    underlying implementation.
+  //  algorithm_config: specifies which algorithm should be used for the
+  //    operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1191,6 +1219,7 @@ class DnnSupport {
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
+  // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
@@ -1523,14 +1552,16 @@ class DnnSupport {
                              const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<float>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<float>* output_data) = 0;
+                             DeviceMemory<float>* output_data,
+                             ScratchAllocator* workspace_allocator) = 0;
 
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<double>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<double>* output_data) {
+                             DeviceMemory<double>* output_data,
+                             ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for double.";
     return false;
   }
@@ -1540,7 +1571,8 @@ class DnnSupport {
                              const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data) {
+                             DeviceMemory<Eigen::half>* output_data,
+                             ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for float16.";
     return false;
   }
@@ -1553,7 +1585,8 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<double>& output_data,
                               const DeviceMemory<double>& input_diff_data,
-                              DeviceMemory<double>* output_diff_data) {
+                              DeviceMemory<double>* output_diff_data,
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1565,7 +1598,8 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
-                              DeviceMemory<float>* output_diff_data) {
+                              DeviceMemory<float>* output_diff_data,
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1577,7 +1611,8 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<Eigen::half>& output_data,
                               const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data) {
+                              DeviceMemory<Eigen::half>* output_diff_data,
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1624,7 +1659,8 @@ class DnnSupport {
       const DeviceMemory<float>& raw_data,
       const DeviceMemory<float>& normalized_data,
       const DeviceMemory<float>& normalized_variable_gradient,
-      DeviceMemory<float>* raw_variable_gradient) {
+      DeviceMemory<float>* raw_variable_gradient,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -2001,14 +2037,14 @@ class DnnSupport {
   //    is no longer in use.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
-                      dnn::RnnInputMode input_mode,
+                      int batch_size, dnn::RnnInputMode input_mode,
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64 seed,
                       ScratchAllocator* state_allocator) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnDescriptor is unimplemented");
   }
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -2022,8 +2058,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
@@ -2031,8 +2067,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnStateTensorDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.
@@ -2278,7 +2314,6 @@ class DnnSupport {
 };
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DNN_H_

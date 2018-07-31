@@ -215,6 +215,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
     ],
+    shard_count = 4,
 )
 
 # Estimators tests

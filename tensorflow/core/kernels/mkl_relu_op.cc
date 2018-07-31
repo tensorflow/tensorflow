@@ -23,9 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
@@ -38,7 +35,11 @@ using mkldnn::prop_kind;
 using mkldnn::relu_backward;
 using mkldnn::relu_forward;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -441,7 +442,9 @@ class MklReluOpBase : public OpKernel {
       // Allocate output and MklDnnShape tensors separately for possible
       // in-place operation
       OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                      {src_index}, dst_index, tf_shape_dst, &dst_tensor));
+                                      {static_cast<const int>(src_index)},
+                                      static_cast<const int>(dst_index),
+                                      tf_shape_dst, &dst_tensor));
       AllocateOutputSetMklShape(context, dst_index, dnn_shape_dst);
 
       // Destination memory descriptor is same as source memory descriptor.
@@ -611,7 +614,9 @@ class MklReluGradOpBase : public OpKernel {
       // Allocate diff_src and MklDnnShape tensors separately for possible
       // in-place operation
       OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                      {diff_dst_index}, diff_src_index, tf_shape_diff_src,
+                                      {static_cast<const int>(diff_dst_index)},
+                                      static_cast<const int>(diff_src_index),
+                                      tf_shape_diff_src,
                                       &diff_src_tensor));
       AllocateOutputSetMklShape(context, diff_src_index, dnn_shape_diff_src);
 

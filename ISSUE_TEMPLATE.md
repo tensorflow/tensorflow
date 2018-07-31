@@ -15,9 +15,10 @@ If you open a GitHub issue, here is our policy:
 ### System information
 - **Have I written custom code (as opposed to using a stock example script provided in TensorFlow)**:
 - **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
+- **Mobile device (e.g. iPhone 8, Pixel 2, Samsung Galaxy) if the issue happens on mobile device**:
 - **TensorFlow installed from (source or binary)**:
 - **TensorFlow version (use command below)**:
-- **Python version**: 
+- **Python version**:
 - **Bazel version (if compiling from source)**:
 - **GCC/Compiler version (if compiling from source)**:
 - **CUDA/cuDNN version**:

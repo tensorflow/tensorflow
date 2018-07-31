@@ -25,6 +25,7 @@ Train and evaluate TensorFlow models.
 *   @{tf.contrib.learn.LogisticRegressor}
 
 ## Distributed training utilities
+
 *   @{tf.contrib.learn.Experiment}
 *   @{tf.contrib.learn.ExportStrategy}
 *   @{tf.contrib.learn.TaskType}

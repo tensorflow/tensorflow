@@ -282,8 +282,16 @@ const string& InMemoryRunGraphRequest::session_handle() const {
   return session_handle_;
 }
 
+bool InMemoryRunGraphRequest::create_worker_session_called() const {
+  return create_worker_session_called_;
+}
+
 void InMemoryRunGraphRequest::set_session_handle(const string& handle) {
   session_handle_ = handle;
+}
+
+void InMemoryRunGraphRequest::set_create_worker_session_called(bool called) {
+  create_worker_session_called_ = called;
 }
 
 const string& InMemoryRunGraphRequest::graph_handle() const {
@@ -326,6 +334,20 @@ Status InMemoryRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
+// TODO(b/74355905): Add a specialized implementation that avoids
+// copying the tensor when at least two of the {client, master,
+// worker} are in the same process.
+Status InMemoryRunGraphRequest::AddSendFromRunCallableRequest(
+    const RunCallableRequest& run_callable_request, size_t i,
+    const string& send_key) {
+  Tensor tensor;
+  if (!ParseTensorProtoToTensor(run_callable_request.feed(i), &tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
+  }
+  sends_.emplace_back(send_key, std::move(tensor));
+  return Status::OK();
+}
+
 size_t InMemoryRunGraphRequest::num_recvs() const { return recvs_.size(); }
 
 const string& InMemoryRunGraphRequest::recv_key(size_t i) const {
@@ -364,6 +386,8 @@ const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
   if (!proto_version_) {
     proto_version_.reset(new RunGraphRequest);
     proto_version_->set_session_handle(session_handle());
+    proto_version_->set_create_worker_session_called(
+        create_worker_session_called());
     proto_version_->set_graph_handle(graph_handle());
     proto_version_->set_step_id(step_id());
     *proto_version_->mutable_exec_opts() = exec_opts();
@@ -387,6 +411,15 @@ const string& MutableProtoRunGraphRequest::session_handle() const {
 
 void MutableProtoRunGraphRequest::set_session_handle(const string& handle) {
   request_.set_session_handle(handle);
+}
+
+bool MutableProtoRunGraphRequest::create_worker_session_called() const {
+  return request_.create_worker_session_called();
+}
+
+void MutableProtoRunGraphRequest::set_create_worker_session_called(
+    bool called) {
+  request_.set_create_worker_session_called(called);
 }
 
 const string& MutableProtoRunGraphRequest::graph_handle() const {
@@ -439,6 +472,18 @@ Status MutableProtoRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
+// TODO(b/74355905): Add a specialized implementation that avoids
+// copying the tensor when at least two of the {client, master,
+// worker} are in the same process.
+Status MutableProtoRunGraphRequest::AddSendFromRunCallableRequest(
+    const RunCallableRequest& run_callable_request, size_t i,
+    const string& send_key) {
+  NamedTensorProto* send = request_.add_send();
+  send->set_name(send_key);
+  *send->mutable_tensor() = run_callable_request.feed(i);
+  return Status::OK();
+}
+
 size_t MutableProtoRunGraphRequest::num_recvs() const {
   return request_.recv_key_size();
 }
@@ -486,6 +531,10 @@ ProtoRunGraphRequest::ProtoRunGraphRequest(const RunGraphRequest* request)
 
 const string& ProtoRunGraphRequest::session_handle() const {
   return request_->session_handle();
+}
+
+bool ProtoRunGraphRequest::create_worker_session_called() const {
+  return request_->create_worker_session_called();
 }
 
 const string& ProtoRunGraphRequest::graph_handle() const {

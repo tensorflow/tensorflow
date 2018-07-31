@@ -100,6 +100,10 @@ message GrowingMetadata {
   // Number of layers that we have attempted to build. After pruning, these
   // layers might have been removed.
   int64 num_layers_attempted = 2;
+  // The start (inclusive) and end (exclusive) ids of the nodes in the latest
+  // layer of the latest tree.
+  int32 last_layer_node_start = 3;
+  int32 last_layer_node_end = 4;
 }
 
 // TreeEnsemble describes an ensemble of decision trees.
@@ -110,4 +114,21 @@ message TreeEnsemble {
   repeated TreeMetadata tree_metadata = 3;
   // Metadata that is used during the training.
   GrowingMetadata growing_metadata = 4;
+}
+
+// DebugOutput contains outputs useful for debugging/model interpretation, at
+// the individual example-level. Debug outputs that are available to the user
+// are: 1) Directional feature contributions (DFCs) 2) Node IDs for ensemble
+// prediction path 3) Leaf node IDs.
+message DebugOutput {
+  // Return the logits and associated feature splits across prediction paths for
+  // each tree, for every example, at predict time. We will use these values to
+  // compute DFCs in Python, by subtracting each child prediction from its
+  // parent prediction and associating this change with its respective feature
+  // id.
+  repeated int32 feature_ids = 1;
+  repeated float logits_path = 2;
+
+  // TODO(crawles): return 2) Node IDs for ensemble prediction path 3) Leaf node
+  // IDs.
 }

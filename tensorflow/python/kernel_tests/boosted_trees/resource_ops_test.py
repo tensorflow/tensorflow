@@ -36,16 +36,18 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
       stamp_token = ensemble.get_stamp_token()
       self.assertEqual(0, stamp_token.eval())
-      (_, num_trees, num_finalized_trees,
-       num_attempted_layers) = ensemble.get_states()
+      (_, num_trees, num_finalized_trees, num_attempted_layers,
+       nodes_range) = ensemble.get_states()
       self.assertEqual(0, num_trees.eval())
       self.assertEqual(0, num_finalized_trees.eval())
       self.assertEqual(0, num_attempted_layers.eval())
+      self.assertAllEqual([0, 1], nodes_range.eval())
 
   def testCreateWithProto(self):
     with self.test_session():
       ensemble_proto = boosted_trees_pb2.TreeEnsemble()
-      text_format.Merge("""
+      text_format.Merge(
+          """
         trees {
           nodes {
             bucketized_split {
@@ -141,6 +143,8 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 2
           num_layers_attempted: 6
+          last_layer_node_start: 16
+          last_layer_node_end: 19
         }
       """, ensemble_proto)
       ensemble = boosted_trees_ops.TreeEnsemble(
@@ -148,28 +152,31 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
           stamp_token=7,
           serialized_proto=ensemble_proto.SerializeToString())
       resources.initialize_resources(resources.shared_resources()).run()
-      (stamp_token, num_trees, num_finalized_trees,
-       num_attempted_layers) = ensemble.get_states()
+      (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+       nodes_range) = ensemble.get_states()
       self.assertEqual(7, stamp_token.eval())
       self.assertEqual(2, num_trees.eval())
       self.assertEqual(1, num_finalized_trees.eval())
       self.assertEqual(6, num_attempted_layers.eval())
+      self.assertAllEqual([16, 19], nodes_range.eval())
 
   def testSerializeDeserialize(self):
     with self.test_session():
       # Initialize.
       ensemble = boosted_trees_ops.TreeEnsemble('ensemble', stamp_token=5)
       resources.initialize_resources(resources.shared_resources()).run()
-      (stamp_token, num_trees, num_finalized_trees,
-       num_attempted_layers) = ensemble.get_states()
+      (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+       nodes_range) = ensemble.get_states()
       self.assertEqual(5, stamp_token.eval())
       self.assertEqual(0, num_trees.eval())
       self.assertEqual(0, num_finalized_trees.eval())
       self.assertEqual(0, num_attempted_layers.eval())
+      self.assertAllEqual([0, 1], nodes_range.eval())
 
       # Deserialize.
       ensemble_proto = boosted_trees_pb2.TreeEnsemble()
-      text_format.Merge("""
+      text_format.Merge(
+          """
         trees {
           nodes {
             bucketized_split {
@@ -201,6 +208,8 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 5
+          last_layer_node_start: 3
+          last_layer_node_end: 7
         }
       """, ensemble_proto)
       with ops.control_dependencies([
@@ -208,13 +217,15 @@ class ResourceOpsTest(test_util.TensorFlowTestCase):
               stamp_token=3,
               serialized_proto=ensemble_proto.SerializeToString())
       ]):
-        (stamp_token, num_trees, num_finalized_trees,
-         num_attempted_layers) = ensemble.get_states()
+        (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+         nodes_range) = ensemble.get_states()
       self.assertEqual(3, stamp_token.eval())
       self.assertEqual(1, num_trees.eval())
       # This reads from metadata, not really counting the layers.
       self.assertEqual(5, num_attempted_layers.eval())
       self.assertEqual(0, num_finalized_trees.eval())
+      self.assertAllEqual([3, 7], nodes_range.eval())
+
 
       # Serialize.
       new_ensemble_proto = boosted_trees_pb2.TreeEnsemble()

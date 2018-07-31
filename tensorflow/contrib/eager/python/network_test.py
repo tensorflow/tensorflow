@@ -20,12 +20,10 @@ import gc
 
 from tensorflow.contrib.eager.python import network
 from tensorflow.contrib.layers.python.layers import regularizers
-from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import math_ops
@@ -33,6 +31,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 # pylint: disable=not-callable
@@ -63,6 +62,12 @@ class RegularizedNetwork(network.Network):
 
 
 class NetworkTest(test.TestCase):
+
+  def test_checkpointing_not_implemented(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint = checkpointable_utils.Checkpoint(net=MyNetwork())
+    with self.assertRaises(NotImplementedError):
+      checkpoint.save(checkpoint_directory)
 
   def _save_modify_load_network_built(self, net, global_step=None):
     checkpoint_directory = self.get_temp_dir()
@@ -121,7 +126,7 @@ class NetworkTest(test.TestCase):
     self.assertAllEqual([[17.0], [34.0]], self.evaluate(result))
 
   # TODO(allenl): This test creates garbage in some Python versions
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNetworkSaveRestoreAlreadyBuilt(self):
     net = MyNetwork(name="abcd")
     with self.assertRaisesRegexp(
@@ -133,7 +138,7 @@ class NetworkTest(test.TestCase):
     self._save_modify_load_network_built(net, global_step=10)
 
   # TODO(allenl): This test creates garbage in some Python versions
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestoreDefaultGlobalStep(self):
     net = MyNetwork(name="abcd")
     net(constant_op.constant([[2.0]]))
@@ -144,7 +149,7 @@ class NetworkTest(test.TestCase):
     self.assertIn("abcd-4242", save_path)
 
   # TODO(allenl): This test creates garbage in some Python versions
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNetworkSaveAndRestoreIntoUnbuilt(self):
     save_dir = self.get_temp_dir()
     net1 = MyNetwork()
@@ -161,7 +166,7 @@ class NetworkTest(test.TestCase):
     self.assertAllEqual(self.evaluate(net1.variables[0]),
                         self.evaluate(net2.variables[0]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNetworkMatchesLayerVariableNames(self):
     zero = constant_op.constant([[0.]])
     layer_one = core.Dense(1, use_bias=False)
@@ -188,7 +193,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("two_layer_net/" + layer_two.variables[0].name,
                      net.second.variables[0].name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLoadIntoUnbuiltSharedLayer(self):
 
     class Owner(network.Network):
@@ -267,7 +272,7 @@ class NetworkTest(test.TestCase):
       network.restore_network_checkpoint(
           load_into, save_path, map_func=_restore_map_func)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRestoreIntoSubNetwork(self):
 
     class Parent(network.Network):
@@ -322,7 +327,7 @@ class NetworkTest(test.TestCase):
       # The checkpoint is incompatible.
       network.restore_network_checkpoint(save_into_parent, checkpoint)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCustomMapCollisionErrors(self):
 
     class Parent(network.Network):
@@ -367,7 +372,7 @@ class NetworkTest(test.TestCase):
       network.restore_network_checkpoint(
           loader, checkpoint, map_func=lambda n: "foo")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDefaultMapCollisionErrors(self):
 
     one = constant_op.constant([[1.]])
@@ -469,36 +474,6 @@ class NetworkTest(test.TestCase):
     self.assertIsInstance(net.trainable_weights[0],
                           resource_variable_ops.ResourceVariable)
 
-  def testGraphOpNames(self):
-    """Network operation names should match variable naming."""
-
-    def _check_op_prefixes(expected_prefix, checked_ops):
-      for operation in ops.get_default_graph().get_operations():
-        if operation.name == "ignore":
-          continue
-        if operation.name in checked_ops:
-          continue
-        checked_ops.add(operation.name)
-        self.assertStartsWith(expected_start=expected_prefix,
-                              actual=operation.name)
-        self.assertNotIn("my_network", operation.name[len(expected_prefix):])
-        self.assertNotIn("dense", operation.name[len(expected_prefix):])
-
-    with context.graph_mode():
-      net = MyNetwork()
-      zero = constant_op.constant([[0.]], name="ignore")
-      net(zero)
-      checked_ops = set()
-      _check_op_prefixes(expected_prefix="my_network/dense/",
-                         checked_ops=checked_ops)
-      net.net2 = net.track_layer(MyNetwork())
-      net.net2(zero)
-      _check_op_prefixes(expected_prefix="my_network/my_network/dense/",
-                         checked_ops=checked_ops)
-      MyNetwork()(zero)
-      _check_op_prefixes(expected_prefix="my_network_1/dense/",
-                         checked_ops=checked_ops)
-
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableRegularizers(self):
     net = RegularizedNetwork()
@@ -596,7 +571,7 @@ class NetworkTest(test.TestCase):
         expected_start="my_network_1/dense/",
         actual=outside_net_after.trainable_weights[0].name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testVariableScopeStripping(self):
     with variable_scope.variable_scope("scope1"):
       with variable_scope.variable_scope("scope2"):
@@ -621,7 +596,7 @@ class NetworkTest(test.TestCase):
     self.assertAllEqual([[42.]],
                         self.evaluate(restore_net.variables[0]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayerNamesRespected(self):
     class ParentNetwork(network.Network):
 
@@ -702,7 +677,7 @@ class NetworkTest(test.TestCase):
     self.assertStartsWith(expected_start="my_network_1/dense/",
                           actual=net2.trainable_weights[0].name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestableAnonymous(self):
 
     # The case where no explicit names are specified. We make up unique names,
@@ -746,7 +721,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("my_network", net2.first.name)
     self.assertEqual("my_network_1", net2.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestableExplicit(self):
 
     # We have explicit network names and everything is globally unique.
@@ -775,7 +750,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("first_unique_child_name", net.first.name)
     self.assertEqual("second_unique_child_name", net.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayerNetworkNameInteractions(self):
 
     # Same base name as core.Dense; Networks and non-Network Layers with the
@@ -826,7 +801,7 @@ class NetworkTest(test.TestCase):
                           actual=net.trainable_weights[4].name)
     self.assertEqual("mixed_layer_network", net.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestableExplicitCollisions(self):
 
     # We have explicit network names and they are unique within the layer
@@ -856,7 +831,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("nonunique_name", net.first.name)
     self.assertEqual("second_unique_child_name", net.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestableExplicitWithAnonymousParent(self):
 
     # A parent network is instantiated multiple times with explicitly named
@@ -898,7 +873,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("first_unique_child_name", net2.first.name)
     self.assertEqual("second_unique_child_name", net2.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestableExplicitSameLayerCollisions(self):
 
     # We have explicit network names and they are _not_ unique within the layer
@@ -916,7 +891,7 @@ class NetworkTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "nonunique_name"):
       ParentNetwork()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAnonymousVariableSharing(self):
 
     # Two "owned" Networks
@@ -1014,7 +989,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("my_network", net4.first.name)
     self.assertEqual("my_network", net4.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRecursiveLayerRenaming(self):
     core.Dense(1)  # Under default Layer naming, would change subsequent names.
 
@@ -1066,7 +1041,7 @@ class NetworkTest(test.TestCase):
     self.assertEqual("dense", net.second.first.name)
     self.assertEqual("dense_1", net.second.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCallInDifferentOrderThanConstruct(self):
     shared_network = MyNetwork()
 
@@ -1116,7 +1091,7 @@ class NetworkTest(test.TestCase):
     self.assertTrue(net2.first is net1.first)
     self.assertEqual("my_network", net2.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayerCallInDifferentOrderThanConstruct(self):
     # Same idea as testCallInDifferentOrderThanConstruct, but this time with a
     # non-Network Layer shared between two Networks rather than a
@@ -1169,7 +1144,7 @@ class NetworkTest(test.TestCase):
     self.assertTrue(net2.first is net1.first)
     self.assertEqual("dense", net2.second.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayerAlreadyBuilt(self):
     one = constant_op.constant([[1.]])
     core.Dense(1, use_bias=False)  # pre-built layers use global naming

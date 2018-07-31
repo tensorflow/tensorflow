@@ -33,7 +33,8 @@ _image_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_image_ops.so"))
 
 _IMAGE_DTYPES = set(
-    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
+    [dtypes.uint8, dtypes.int32, dtypes.int64,
+     dtypes.float16, dtypes.float32, dtypes.float64])
 
 ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
@@ -433,7 +434,7 @@ def bipartite_match(distance_mat,
       of rows of the input `distance_matrix`. If `row_to_col_match_indices[i]`
       is not -1, row i is matched to column `row_to_col_match_indices[i]`.
     col_to_row_match_indices: A vector of length num_columns, which is the
-      number of columns of the input ditance matrix.
+      number of columns of the input distance matrix.
       If `col_to_row_match_indices[j]` is not -1, column j is matched to row
       `col_to_row_match_indices[j]`.
   """
