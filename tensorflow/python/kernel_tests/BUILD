@@ -1718,7 +1718,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "matmul_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matmul_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
