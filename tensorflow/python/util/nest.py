@@ -73,7 +73,7 @@ def _sequence_like(instance, args):
   Returns:
     `args` with the type of `instance`.
   """
-  if isinstance(instance, dict):
+  if isinstance(instance, (dict, _collections.Mapping)):
     # Pack dictionaries in a deterministic order by sorting the keys.
     # Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -89,7 +89,7 @@ def _sequence_like(instance, args):
 
 
 def _yield_value(iterable):
-  if isinstance(iterable, dict):
+  if isinstance(iterable, (dict, _collections.Mapping)):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -215,7 +215,7 @@ def flatten_dict_items(dictionary):
     ValueError: If any key and value have not the same structure, or if keys are
       not unique.
   """
-  if not isinstance(dictionary, dict):
+  if not isinstance(dictionary, (dict, _collections.Mapping)):
     raise TypeError("input must be a dictionary")
   flat_dictionary = {}
   for i, v in _six.iteritems(dictionary):
@@ -455,7 +455,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
 
-    if check_types and isinstance(shallow_tree, dict):
+    if check_types and isinstance(shallow_tree, (dict, _collections.Mapping)):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
             "The two structures don't have the same keys. Input "
@@ -716,7 +716,7 @@ def yield_flat_paths(nest):
 
   # The _maybe_add_final_path_element function is used below in order to avoid
   # adding trailing slashes when the sub-element recursed into is a leaf.
-  if isinstance(nest, dict):
+  if isinstance(nest, (dict, _collections.Mapping)):
     for key in _sorted(nest):
       value = nest[key]
       for sub_path in yield_flat_paths(value):
@@ -760,3 +760,4 @@ def flatten_with_joined_string_paths(structure, separator="/"):
 
 
 _pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
+_pywrap_tensorflow.RegisterMappingClass(_collections.Mapping)

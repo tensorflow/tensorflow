@@ -1054,7 +1054,7 @@ class VariableScopeTest(test.TestCase):
           "testGetCollection_foo/testGetCollection_a:0"
       ])
 
-  def testGetTrainableVariables(self):
+  def testGetTrainableVariablesWithGetVariable(self):
     with self.test_session():
       _ = variable_scope.get_variable("testGetTrainableVariables_a", [])
       with variable_scope.variable_scope(
@@ -1062,10 +1062,72 @@ class VariableScopeTest(test.TestCase):
         _ = variable_scope.get_variable("testGetTrainableVariables_b", [])
         _ = variable_scope.get_variable(
             "testGetTrainableVariables_c", [], trainable=False)
+
+        # sync `ON_READ` sets trainable=False
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_d", [],
+            synchronization=variable_scope.VariableSynchronization.ON_READ)
         self.assertEqual(
             [v.name for v in scope.trainable_variables()],
-            ["testGetTrainableVariables_foo/"
-             "testGetTrainableVariables_b:0"])
+            ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_e", [],
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
+        ])
+
+      with self.assertRaisesRegexp(
+          ValueError, "Synchronization value can be set to "
+          "VariableSynchronization.ON_READ only for non-trainable variables. "
+          "You have specified trainable=True and "
+          "synchronization=VariableSynchronization.ON_READ."):
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_e", [],
+            synchronization=variable_scope.VariableSynchronization.ON_READ,
+            trainable=True)
+
+  def testGetTrainableVariablesWithVariable(self):
+    with self.test_session():
+      _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
+      with variable_scope.variable_scope(
+          "testGetTrainableVariables_foo") as scope:
+        _ = variable_scope.variable(1.0, name="testGetTrainableVariables_b")
+        _ = variable_scope.variable(
+            1.0, name="testGetTrainableVariables_c", trainable=False)
+
+        # sync `ON_READ` sets trainable=False
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_d",
+            synchronization=variable_scope.VariableSynchronization.ON_READ)
+        self.assertEqual(
+            [v.name for v in scope.trainable_variables()],
+            ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_e",
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
+        ])
+
+      with self.assertRaisesRegexp(
+          ValueError, "Synchronization value can be set to "
+          "VariableSynchronization.ON_READ only for non-trainable variables. "
+          "You have specified trainable=True and "
+          "synchronization=VariableSynchronization.ON_READ."):
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_e",
+            synchronization=variable_scope.VariableSynchronization.ON_READ,
+            trainable=True)
 
   def testGetGlobalVariables(self):
     with self.test_session():

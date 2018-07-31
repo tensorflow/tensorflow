@@ -203,7 +203,10 @@ download_tf_ecosystem() {
   cd "${ECOSYSTEM_DIR}"
   git clone "${TF_ECOSYSTEM_URL}"
   cd ecosystem
-  git checkout r${TF_VERSION}
+  # TF_VERSION is a semver string (<major>.<minor>.<patch>[-suffix])
+  # but the branch is just (r<major>.<minor>).
+  RELEASE_BRANCH=$(echo "${TF_VERSION}" | sed -e 's/\([0-9]\+\.[0-9]\+\)\.[0-9]\+.*/\1/')
+  git checkout r${RELEASE_BRANCH}
 
   # Copy the TensorFlow Hadoop source
   cp -r "${ECOSYSTEM_DIR}/ecosystem/hadoop/src" "${HADOOP_DIR}"

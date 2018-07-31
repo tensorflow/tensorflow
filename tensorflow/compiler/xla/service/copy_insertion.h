@@ -60,12 +60,6 @@ class CopyInsertion : public HloPassInterface {
   // (copies were inserted).
   StatusOr<bool> Run(HloModule* module) override;
 
-  // Try to remove as many copies from the module as possible without
-  // introducing live range interference. Only copy instructions that are
-  // eligible for copy elision are considered for removal.
-  Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
-                                 HloModule* module);
-
   // The CPU and GPU backend need additional copies added due to deficiencies in
   // buffer assignment. Specifically, copies are needed for constants live-out
   // of computations, and for values which are live-in and live-out of the same
@@ -77,12 +71,25 @@ class CopyInsertion : public HloPassInterface {
   // TODO(b/62548313): Remove this when buffer assignment is module-scoped.
   static StatusOr<bool> AddCopiesForBufferAssignment(HloModule* module);
 
+  // Try to remove as many copies from the module as possible without
+  // introducing live range interference. Only copy instructions that are
+  // eligible for copy elision are considered for removal.
+  Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
+                                 HloModule* module);
+
  private:
+  // Verifies that no HLO values have interfering live ranged assuming the
+  // ordering used by copy insertion.
+  Status VerifyNoLiveRangeInterference(HloModule* module);
+
+  Status AddCopiesToResolveInterference(HloModule* module);
+
+  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
+
   // Backend specific function that decides whether a fusion can share buffer
   // with its operand.
   HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer_;
 };
-
 
 }  // namespace xla
 

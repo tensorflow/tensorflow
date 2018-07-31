@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "regex_replace"
-    deprecation_message: "tf.regex_replace is deprecated, please use tf.strings.regex_replace instead."
+    deprecated: true
   }
 }

@@ -24,6 +24,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/autograph/pyct",
         "@gast_archive//:gast",
+        "@six_archive//:six",
     ],
 )
 

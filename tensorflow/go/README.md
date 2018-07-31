@@ -46,7 +46,7 @@ from source.
     ```sh
     cd ${GOPATH}/src/github.com/tensorflow/tensorflow
     ./configure
-    bazel build --config opt //tensorflow:libtensorflow.so
+    bazel build -c opt //tensorflow:libtensorflow.so
     ```
 
     This can take a while (tens of minutes, more if also building for GPU).

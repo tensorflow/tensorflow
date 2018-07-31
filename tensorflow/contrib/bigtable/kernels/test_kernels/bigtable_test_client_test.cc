@@ -286,5 +286,60 @@ TEST(BigtableTestClientTest, RowKeys) {
   EXPECT_TRUE(rows.Finish().ok());
 }
 
+TEST(BigtableTestClientTest, SampleKeys) {
+  std::shared_ptr<::google::cloud::bigtable::DataClient> client_ptr =
+      std::make_shared<BigtableTestClient>();
+  ::google::cloud::bigtable::noex::Table table(client_ptr, "test_table");
+
+  WriteCell("r1", "f1", "c1", "v1", &table);
+  WriteCell("r2", "f1", "c1", "v2", &table);
+  WriteCell("r3", "f1", "c1", "v3", &table);
+  WriteCell("r4", "f1", "c1", "v4", &table);
+  WriteCell("r5", "f1", "c1", "v5", &table);
+
+  grpc::Status status;
+  auto resp = table.SampleRows(status);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(3, resp.size());
+  EXPECT_EQ("r1", string(resp[0].row_key));
+  EXPECT_EQ(0, resp[0].offset_bytes);
+  EXPECT_EQ("r3", string(resp[1].row_key));
+  EXPECT_EQ(100, resp[1].offset_bytes);
+  EXPECT_EQ("r5", string(resp[2].row_key));
+  EXPECT_EQ(200, resp[2].offset_bytes);
+}
+
+TEST(BigtableTestClientTest, SampleKeysShort) {
+  std::shared_ptr<::google::cloud::bigtable::DataClient> client_ptr =
+      std::make_shared<BigtableTestClient>();
+  ::google::cloud::bigtable::noex::Table table(client_ptr, "test_table");
+
+  WriteCell("r1", "f1", "c1", "v1", &table);
+
+  grpc::Status status;
+  auto resp = table.SampleRows(status);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(1, resp.size());
+  EXPECT_EQ("r1", string(resp[0].row_key));
+}
+
+TEST(BigtableTestClientTest, SampleKeysEvenNumber) {
+  std::shared_ptr<::google::cloud::bigtable::DataClient> client_ptr =
+      std::make_shared<BigtableTestClient>();
+  ::google::cloud::bigtable::noex::Table table(client_ptr, "test_table");
+
+  WriteCell("r1", "f1", "c1", "v1", &table);
+  WriteCell("r2", "f1", "c1", "v2", &table);
+  WriteCell("r3", "f1", "c1", "v3", &table);
+  WriteCell("r4", "f1", "c1", "v4", &table);
+
+  grpc::Status status;
+  auto resp = table.SampleRows(status);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(2, resp.size());
+  EXPECT_EQ("r1", string(resp[0].row_key));
+  EXPECT_EQ("r3", string(resp[1].row_key));
+}
+
 }  // namespace
 }  // namespace tensorflow

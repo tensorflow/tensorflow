@@ -181,7 +181,7 @@ bool EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
         // future without worrying.
         static constexpr int kMinDistanceBetweenBadValues = 16;
         if (distance < kMinDistanceBetweenBadValues) {
-          if (allow_nudging_weights()) {
+          if (allow_nudging_weights() || has_default_ranges_flag()) {
             buffer_data[i] = 1;
             changed = true;
             continue;
@@ -200,6 +200,15 @@ bool EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
   }
 
   if (changed) {
+    if (has_default_ranges_flag()) {
+      std::cerr
+          << "Since the specified values of --default_ranges_min and "
+             "--default_ranges_max result in values incompatible with TFLite's "
+             "fast int8 kernels, "
+             "--allow_nudging_weights_to_use_fast_gemm_kernel "
+             "has been enabled. This may affect the accuracy of the model."
+          << std::endl;
+    }
     AddMessageF("Tweaked weights values for %s", LogName(op));
   }
 

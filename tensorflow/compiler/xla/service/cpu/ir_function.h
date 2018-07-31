@@ -54,7 +54,7 @@ class IrFunction {
   IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
              const bool optimize_for_size_requested,
              const bool enable_fast_math, llvm::Module* llvm_module,
-             llvm::IRBuilder<>* ir_builder, int64 num_dynamic_loop_bounds);
+             llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds);
   ~IrFunction();
 
   // Emit ir to read and return the set of ir values representing the dynamic
@@ -97,7 +97,7 @@ class IrFunction {
   // 'offset' from the "dynamic_loop_bounds" argument of this function.
   llvm::Value* GetDynamicLoopBound(int64 offset);
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Module* llvm_module_;
   llvm::IRBuilder<>::InsertPointGuard caller_insert_point_guard_;
 
@@ -116,7 +116,7 @@ class IrFunction {
 // Returns an array of compute function call argument ir values.
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece name,
+    llvm::IRBuilder<>* b, tensorflow::StringPiece name,
     llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
     llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg);
 
@@ -124,9 +124,8 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts,
-    llvm::IRBuilder<>* ir_builder, llvm::Function* parallel_function,
-    const string& name);
+    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
+    llvm::Function* parallel_function, const string& name);
 
 }  // namespace cpu
 }  // namespace xla

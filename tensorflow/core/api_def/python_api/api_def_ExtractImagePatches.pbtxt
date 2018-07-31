@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "extract_image_patches"
-    deprecation_message: "tf.extract_image_patches is deprecated, please use tf.image.extract_image_patches instead."
+    deprecated: true
   }
 }

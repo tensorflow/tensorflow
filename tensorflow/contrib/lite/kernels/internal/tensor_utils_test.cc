@@ -32,6 +32,22 @@ TEST(uKernels, ClipTest) {
                   {0.0, -0.5, 1.0, -1.5, 2.0, -2.0, 2.0, -2.0, 2.0, -2.0})));
 }
 
+TEST(uKernels, VectorScalarMultiply) {
+  constexpr int kVectorSize = 29;
+  static int8_t input[kVectorSize];
+  for (int i = 0; i < 29; ++i) {
+    input[i] = static_cast<int8_t>(i - 14);
+  }
+  const float scale = 0.1f;
+  std::vector<float> output(kVectorSize, 0.0f);
+  VectorScalarMultiply(input, kVectorSize, scale, output.data());
+  EXPECT_THAT(output,
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5,
+                   -0.4, -0.3, -0.2, -0.1, 0,    0.1,  0.2,  0.3,  0.4,  0.5,
+                   0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
+}
+
 TEST(uKernels, IsZeroTest) {
   constexpr int kVectorSize = 21;
   static float zeros[kVectorSize] = {0.0};

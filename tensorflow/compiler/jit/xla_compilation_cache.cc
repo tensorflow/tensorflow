@@ -209,7 +209,9 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  build_options.set_device_ordinal(client_->default_device_ordinal());
+  build_options.set_device_ordinal(options.device_ordinal != -1
+                                       ? options.device_ordinal
+                                       : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
 

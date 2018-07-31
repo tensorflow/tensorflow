@@ -53,7 +53,9 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
-      client, client->backend().memory_allocator(), true);
+      client, client->backend().memory_allocator(),
+      /*allocate_xla_tensors=*/true,
+      /*use_multiple_streams=*/metadata.UseMultipleStreams());
 
   launch_context.PopulateInputs(ctx, result, variables);
 

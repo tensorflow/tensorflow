@@ -536,6 +536,7 @@ class FakeParamOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_GPU), FakeParamOp);
 
 }  // namespace
 }  // namespace tensorflow

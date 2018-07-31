@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "string_to_number"
-    deprecation_message: "tf.string_to_number is deprecated, please use tf.strings.to_number instead."
+    deprecated: true
   }
 }
