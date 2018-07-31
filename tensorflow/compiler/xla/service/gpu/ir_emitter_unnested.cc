@@ -2068,6 +2068,7 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
+  auto keys = sort->operand(0);
   auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
   ShapeIndex keys_shape_index({});
   ShapeIndex values_shape_index({});
@@ -2076,41 +2077,25 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
     values_shape_index = ShapeIndex({1});
   }
   auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
+  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
 
-  // First copy the operand(s) to the output, so that we can sort in-place.
-  // TODO(b/26783907): Share buffer of output and operand when it is possible.
-  if (sort->operand(0)->IsConstant()) {
-    thunks.push_back(MakeUnique<HostToDeviceCopyThunk>(
-        /*source_address=*/sort->operand(0)->literal().untyped_data(),
-        /*destination_buffer=*/keys_destination,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(0)->shape()),
-        nullptr));
-  } else {
+  if (keys_destination != GetAllocationSlice(*keys)) {
     thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*sort->operand(0)),
+        /*source_address=*/GetAllocationSlice(*keys),
         /*destination_buffer=*/keys_destination,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(0)->shape()),
-        nullptr));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(keys->shape()), nullptr));
   }
-  if (values != nullptr) {
-    if (values->IsConstant()) {
-      thunks.push_back(MakeUnique<HostToDeviceCopyThunk>(
-          /*source_address=*/sort->operand(1)->literal().untyped_data(),
-          /*destination_buffer=*/GetAllocationSlice(*sort, values_shape_index),
-          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(1)->shape()),
-          nullptr));
-    } else {
-      thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
-          /*source_address=*/GetAllocationSlice(*sort->operand(1)),
-          /*destination_buffer=*/GetAllocationSlice(*sort, values_shape_index),
-          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(1)->shape()),
-          nullptr));
-    }
+  if (values != nullptr && values_destination != GetAllocationSlice(*values)) {
+    // TODO(b/26783907): Figure out why we never seem to share buffers for
+    // key/value sort.
+    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/GetAllocationSlice(*values),
+        /*destination_buffer=*/values_destination,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(values->shape()), nullptr));
   }
 
   int64 dimension_to_sort = sort->dimensions(0);
-  int64 dimension_to_sort_bound =
-      sort->operand(0)->shape().dimensions(dimension_to_sort);
+  int64 dimension_to_sort_bound = keys->shape().dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   auto index_type = b_.getInt64Ty();
 
@@ -2134,7 +2119,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       thunks.push_back(
           BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
       LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-          sort->operand(0)->shape(), ir_emitter_context_->device_description());
+          keys->shape(), ir_emitter_context_->device_description());
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
 
