@@ -228,6 +228,15 @@ class EstimatorConstructorTest(test.TestCase):
     self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
+  def test_empty_model_dir(self):
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn, model_dir='')
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
+
   def test_model_dir_in_run_config(self):
 
     class FakeConfig(run_config.RunConfig):
