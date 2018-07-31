@@ -180,7 +180,7 @@ static void GetTopN(const float* prediction,
         interpreter->ResizeInputTensor(input, sizes);
     }
     
-    NSAssert(interpreter->AllocateTensors() != kTfLiteOk, @"Failed to allocate tensors!");
+    NSAssert(interpreter->AllocateTensors() == kTfLiteOk, @"Failed to allocate tensors!");
     
     // Read the label list
     NSString* labels_path = [self filePathForResourceName:@"labels" withExtension:@"txt"];
