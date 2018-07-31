@@ -282,7 +282,6 @@ Please specify the NCCL version you want to use. If NCLL 2.2 is not installed, t
 
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
-<<<<<<< HEAD
 Please note that each additional compute capability significantly increases your
 build time and binary size. [Default is: 3.5,7.0] <b>6.1</b>
 
