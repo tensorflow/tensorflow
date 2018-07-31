@@ -1430,8 +1430,7 @@ class MklFusedBatchNormOp : public OpKernel {
     // set NAN mean value in case of empty input tensor
     int num_elements = tf_shape_scale.num_elements();
     auto batch_mean_data =  (*batch_mean_tensor)->flat<T>().data();
-    for (int k = 0; k < num_elements; k++)
-      batch_mean_data[k] = NAN;
+    std::fill_n(batch_mean_data, num_elements, NAN);
 
     // allocate batch variance output tensor
     MklDnnShape mkl_shape_batch_variance;
@@ -1442,8 +1441,7 @@ class MklFusedBatchNormOp : public OpKernel {
     CHECK_NOTNULL(*batch_variance_tensor);
     // set NAN variance value in case of empty input tensor
     auto batch_variance_data = (*batch_variance_tensor)->flat<T>().data();
-    for (int k = 0; k < num_elements; k++)
-        batch_variance_data[k] = NAN;
+    std::fill_n(batch_variance_data, num_elements, NAN);
 
     // Mean and variance (without Bessel's correction) saved for backward
     // computation to serve as pre-computed mean and variance.
@@ -1454,8 +1452,7 @@ class MklFusedBatchNormOp : public OpKernel {
     CHECK_NOTNULL(*saved_mean_tensor);
     // set NAN mean value in case of empty input tensor
     auto saved_mean_data = (*saved_mean_tensor)->flat<T>().data();
-    for (int k = 0; k < num_elements; k++)
-        saved_mean_data[k] = NAN;
+    std::fill_n(saved_mean_data, num_elements, NAN);
 
     MklDnnShape mkl_shape_saved_variance;
     mkl_shape_saved_variance.SetMklTensor(false);
@@ -1465,8 +1462,7 @@ class MklFusedBatchNormOp : public OpKernel {
     CHECK_NOTNULL(*saved_variance_tensor);
     // set NAN variance value in case of empty input tensor
     auto saved_variance_data = (*saved_variance_tensor)->flat<T>().data();
-    for (int k = 0; k < num_elements; k++)
-      saved_variance_data[k] = NAN;
+    std::fill_n(saved_variance_data, num_elements, NAN);
   }
 };
 
@@ -1706,10 +1702,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
     dnn_shape_diff_src.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDiffSrcIndex, diff_src_tensor,
                               tf_shape_src, dnn_shape_diff_src);
-    int num_elements = (*diff_src_tensor)->shape().num_elements();
     auto diff_src_data = (*diff_src_tensor)->flat<T>().data();
-    for (size_t i = 0; i < num_elements; i++)
-        diff_src_data[i] = 0;
+    std::fill_n(diff_src_data, (*diff_src_tensor)->shape().num_elements(), 0);
 
     Tensor* diff_scale_tensor = nullptr;
     Tensor* diff_shift_tensor = nullptr;
@@ -1735,20 +1729,16 @@ class MklFusedBatchNormGradOp : public OpKernel {
     AllocateOutputSetMklShape(context, kDiffScaleIndex, diff_scale_tensor,
                               tf_shape_scale_shift, mkl_shape_diff_scale);
     CHECK_NOTNULL(*diff_scale_tensor);
-    int diff_scale_num_elements = (*diff_scale_tensor)->shape().num_elements();
     auto diff_scale_data =  (*diff_scale_tensor)->flat<T>().data();
-    for (size_t i = 0; i < diff_scale_num_elements; i++)
-      diff_scale_data[i] = 0;
+    std::fill_n(diff_scale_data, (*diff_scale_tensor)->shape().num_elements(), 0);
 
     MklDnnShape mkl_shape_diff_shift;
     mkl_shape_diff_shift.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDiffShiftIndex, diff_shift_tensor,
                               tf_shape_scale_shift, mkl_shape_diff_shift);
     CHECK_NOTNULL(*diff_shift_tensor);
-    int diff_shift_num_elements = (*diff_shift_tensor)->shape().num_elements();
     auto diff_shift_data = (*diff_shift_tensor)->flat<T>().data();
-    for (size_t i = 0; i < diff_shift_num_elements; i++)
-      diff_shift_data[i] = 0;
+    std::fill_n(diff_shift_data, (*diff_shift_tensor)->shape().num_elements(), 0);
 
     // Placeholders for estimated_mean and estimated_variance, which are
     // used for inference and thus not needed here for gradient computation.
