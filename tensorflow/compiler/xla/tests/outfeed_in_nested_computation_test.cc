@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -22,9 +23,9 @@ namespace {
 // Tests that ensure outfeed instructions that are contained in nested
 // computations in non-root positions are executed.
 
-class LocalClientExecuteTest : public LocalClientTestBase {};
+class OutfeedInNestedComputationTest : public LocalClientTestBase {};
 
-TEST_F(LocalClientExecuteTest, OutfeedInWhile) {
+XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   XlaBuilder b(TestName());
 
   Shape state_tuple_array_shape = ShapeUtil::MakeShape(xla::S32, {10, 5});
@@ -117,7 +118,7 @@ TEST_F(LocalClientExecuteTest, OutfeedInWhile) {
   EXPECT_EQ(comp_result->Get<int32>({}), 0);
 }
 
-TEST_F(LocalClientExecuteTest, OutfeedInConditional) {
+XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   XlaBuilder b(TestName());
 
   Shape condition_shape = ShapeUtil::MakeShape(xla::PRED, {});
