@@ -1,6 +1,6 @@
 FROM debian:stretch
 
-LABEL maintainer="Jan Prach <jendap@google.com>"
+LABEL author="Reza Ebrahimi <reza.ebrahimi.dev@gmail.com>"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
