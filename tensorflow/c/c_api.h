@@ -1236,6 +1236,11 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     int noutputs, const TF_Output* outputs, const char* const* output_names,
     const TF_FunctionOptions* opts, const char* description, TF_Status* status);
 
+// Returns the name of the graph function.
+// The return value points to memory that is only usable until the next
+// mutation to *func.
+TF_CAPI_EXPORT extern const char* TF_FunctionName(TF_Function* func);
+
 // Write out a serialized representation of `func` (as a FunctionDef protocol
 // message) to `output_func_def` (allocated by TF_NewBuffer()).
 // `output_func_def`'s underlying buffer will be freed when TF_DeleteBuffer()
