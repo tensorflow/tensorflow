@@ -38,8 +38,8 @@ from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 # This is to avoid a circular dependency with cond_v2_impl.
@@ -255,9 +255,12 @@ class _DefinedFunction(object):
     # Constructed only when C API is enabled, lazily
     self._c_func = None
     self._sub_functions = dict()  # Constructed with _definition or _c_func
-    device_stack = ops.get_default_graph()._device_function_stack  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
+    # pylint: enable=protected-access
+
     # Get the innermost device if possbile.
-    self._caller_device = device_stack[-1] if device_stack else None
+    self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
     # the only part of FunctionDef that we cache in Python. When C API
@@ -354,7 +357,7 @@ class _DefinedFunction(object):
     if self._func_name:
       base_func_name = self._func_name
     else:
-      base_func_name = _get_func_name(self._func)
+      base_func_name = function_utils.get_func_name(self._func)
       if self._grad_func:
         base_func_name += ("_%s" % self._grad_func.name)
     kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
@@ -841,7 +844,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
     ValueError: if func returns None.
   """
   if not name:
-    name = _get_func_name(func)
+    name = function_utils.get_func_name(func)
   func_graph = _FuncGraph(name, capture_by_value)
 
   with func_graph.as_default(), ops.device(device):
@@ -1137,19 +1140,6 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs
-
-
-def _get_func_name(func):
-  _, func = tf_decorator.unwrap(func)
-  if callable(func):
-    if tf_inspect.isfunction(func):
-      return func.__name__
-    elif tf_inspect.ismethod(func):
-      return "%s.%s" % (func.__self__.__name__, func.__name__)
-    else:  # Probably a class instance with __call__
-      return type(func)
-  else:
-    raise ValueError("Argument must be callable")
 
 
 def get_extra_vars():

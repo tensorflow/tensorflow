@@ -7,7 +7,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
-// EXPERIMENTAL. Option for watching a node.
+// Option for watching a node in TensorFlow Debugger (tfdbg).
 message DebugTensorWatch {
   // Name of the node to watch.
   string node_name = 1;
@@ -51,7 +51,7 @@ message DebugTensorWatch {
   bool tolerate_debug_op_creation_failures = 5;
 }
 
-// EXPERIMENTAL. Options for initializing DebuggerState.
+// Options for initializing DebuggerState in TensorFlow Debugger (tfdbg).
 message DebugOptions {
   // Debugging options
   repeated DebugTensorWatch debug_tensor_watch_opts = 4;

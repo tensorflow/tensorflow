@@ -229,6 +229,8 @@ tensorflow/core/kernels/cast_op_impl_int32.cc
 tensorflow/core/kernels/cast_op_impl_int64.cc
 tensorflow/core/kernels/cast_op_impl_int8.cc
 tensorflow/core/kernels/cast_op_impl_uint16.cc
+tensorflow/core/kernels/cast_op_impl_uint32.cc
+tensorflow/core/kernels/cast_op_impl_uint64.cc
 tensorflow/core/kernels/cast_op_impl_uint8.cc
 tensorflow/core/kernels/boosted_trees/prediction_ops.cc
 tensorflow/core/kernels/boosted_trees/resource_ops.cc

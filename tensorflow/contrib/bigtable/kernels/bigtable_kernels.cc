@@ -40,7 +40,16 @@ class BigtableClientOp : public OpKernel {
     if (connection_pool_size_ == -1) {
       connection_pool_size_ = 100;
     }
-    OP_REQUIRES(ctx, connection_pool_size_ > 0,
+
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_receive_message_size",
+                                     &max_receive_message_size_));
+    // If left unset by the client code, set it to a default of 100. Note: the
+    // cloud-cpp default of 4 concurrent connections is far too low for high
+    // performance streaming.
+    if (max_receive_message_size_ == -1) {
+      max_receive_message_size_ = 1 << 24;  // 16 MBytes
+    }
+    OP_REQUIRES(ctx, max_receive_message_size_ > 0,
                 errors::InvalidArgument("connection_pool_size must be > 0"));
   }
 
@@ -67,7 +76,15 @@ class BigtableClientOp : public OpKernel {
               cinfo_.container(), cinfo_.name(), &resource,
               [this, ctx](
                   BigtableClientResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                auto client_options = google::cloud::bigtable::ClientOptions();
+                auto client_options =
+                    google::cloud::bigtable::ClientOptions()
+                        .set_connection_pool_size(connection_pool_size_)
+                        .set_data_endpoint("batch-bigtable.googleapis.com");
+                auto channel_args = client_options.channel_arguments();
+                channel_args.SetMaxReceiveMessageSize(
+                    max_receive_message_size_);
+                channel_args.SetUserAgentPrefix("tensorflow");
+                client_options.set_channel_arguments(channel_args);
                 std::shared_ptr<google::cloud::bigtable::DataClient> client =
                     google::cloud::bigtable::CreateDefaultDataClient(
                         project_id_, instance_id_, std::move(client_options));
@@ -87,6 +104,7 @@ class BigtableClientOp : public OpKernel {
   string project_id_;
   string instance_id_;
   int64 connection_pool_size_;
+  int32 max_receive_message_size_;
 
   mutex mu_;
   ContainerInfo cinfo_ GUARDED_BY(mu_);
@@ -240,6 +258,12 @@ class ToBigtableOp : public AsyncOpKernel {
         grpc::Status mutation_status;
         std::vector<::google::cloud::bigtable::FailedMutation> failures =
             resource->table().BulkApply(std::move(mutation), mutation_status);
+        if (!mutation_status.ok()) {
+          LOG(ERROR) << "Failure applying mutation: "
+                     << mutation_status.error_code() << " - "
+                     << mutation_status.error_message() << " ("
+                     << mutation_status.error_details() << ").";
+        }
         if (!failures.empty()) {
           for (const auto& failure : failures) {
             LOG(ERROR) << "Failure applying mutation on row ("
@@ -252,7 +276,7 @@ class ToBigtableOp : public AsyncOpKernel {
         }
         OP_REQUIRES_ASYNC(
             ctx, failures.empty() && mutation_status.ok(),
-            errors::Unknown("Failure while writing to BigTable: ",
+            errors::Unknown("Failure while writing to Cloud Bigtable: ",
                             mutation_status.error_code(), " - ",
                             mutation_status.error_message(), " (",
                             mutation_status.error_details(),

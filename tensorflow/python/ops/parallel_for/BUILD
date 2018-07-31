@@ -125,5 +125,4 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/losses",
     ],
-    tags = ["no_gpu"],  # TODO(b/80127739): test is flaky
 )

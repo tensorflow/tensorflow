@@ -21,7 +21,7 @@ cd "$SCRIPT_DIR/../../.."
 
 # Build library for supported architectures and packs them in a fat binary.
 make_library() {
-    for arch in x86_64 i386 armv7 armv7s arm64
+    for arch in x86_64 armv7 armv7s arm64
     do
         make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=${arch} \
         -j 8 \
@@ -29,7 +29,6 @@ make_library() {
     done
     lipo \
     tensorflow/contrib/lite/gen/lib/ios_x86_64/${1} \
-    tensorflow/contrib/lite/gen/lib/ios_i386/${1} \
     tensorflow/contrib/lite/gen/lib/ios_armv7/${1} \
     tensorflow/contrib/lite/gen/lib/ios_armv7s/${1} \
     tensorflow/contrib/lite/gen/lib/ios_arm64/${1} \

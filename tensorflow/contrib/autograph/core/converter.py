@@ -64,14 +64,28 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from enum import Enum
+
 
 from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.core import naming
+from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.pyct import ast_util
+from tensorflow.contrib.autograph.pyct import cfg
+from tensorflow.contrib.autograph.pyct import compiler
+from tensorflow.contrib.autograph.pyct import qual_names
 from tensorflow.contrib.autograph.pyct import transformer
+from tensorflow.contrib.autograph.pyct.static_analysis import activity
+from tensorflow.contrib.autograph.pyct.static_analysis import live_values
+from tensorflow.contrib.autograph.pyct.static_analysis import liveness
+from tensorflow.contrib.autograph.pyct.static_analysis import reaching_definitions
+from tensorflow.contrib.autograph.pyct.static_analysis import type_info
 
 # TODO(mdan): These contexts can be refactored into first class objects.
 # For example, we could define Program and Entity abstractions that hold on
 # to the actual entity and have conversion methods.
+
+# TODO(mdan): Add a test specific to this converter.
 
 
 class ProgramContext(object):
@@ -197,6 +211,46 @@ class Base(transformer.Base):
     self._used = False
     self._ast_depth = 0
 
+  def get_definition_directive(self, node, directive, arg, default):
+    """Returns the unique directive for a symbol, or a default if none exist.
+
+    See lang/directives.py for details on directives.
+
+    Args:
+      node: ast.AST
+      directive: Callable[..., Any]
+      arg: str
+      default: Any
+
+    Raises:
+      ValueError: if conflicting annotations have been found
+    """
+    defs = anno.getanno(node, anno.Static.ORIG_DEFINITIONS, ())
+    if not defs:
+      return default
+
+    # TODO(mdan): Simplify this.
+    arg_values = []
+    for def_ in defs:
+      if (directive not in def_.directives or
+          arg not in arg not in def_.directives[directive]):
+        continue
+      arg_value = def_.directives[directive][arg]
+      for prev_value in arg_values:
+        if not ast_util.matches(arg_value, prev_value):
+          qn = anno.getanno(node, anno.Basic.QN)
+          raise ValueError('%s has ambiguous annotations for %s(%s): %s, %s' %
+                           (qn, directive.__name__, arg,
+                            compiler.ast_to_source(arg_value).strip(),
+                            compiler.ast_to_source(prev_value).strip()))
+      arg_values.append(arg_value)
+
+    if not arg_values:
+      return default
+
+    arg_value, = arg_values
+    return arg_value
+
   def visit(self, node):
     if not self._ast_depth:
       if self._used:
@@ -208,3 +262,69 @@ class Base(transformer.Base):
       return super(Base, self).visit(node)
     finally:
       self._ast_depth -= 1
+
+
+class AnnotatedDef(reaching_definitions.Definition):
+
+  def __init__(self):
+    super(AnnotatedDef, self).__init__()
+    self.directives = {}
+
+
+class AgAnno(Enum):
+  """Annotation labels specific to AutoGraph. See anno.py."""
+
+  DIRECTIVES = 'User directives associated with the annotated statement.'
+
+  def __repr__(self):
+    return self.name
+
+
+def standard_analysis(node, context, is_initial=False):
+  """Performs a complete static analysis of the given code.
+
+  Args:
+    node: ast.AST
+    context: converter.EntityContext
+    is_initial: bool, whether this is the initial analysis done on the input
+        source code
+
+  Returns:
+    ast.AST, same as node, with the static analysis annotations added
+  """
+  # TODO(mdan): Clear static analysis here.
+  # TODO(mdan): Consider not running all analyses every time.
+  # TODO(mdan): Don't return a node because it's modified by reference.
+  graphs = cfg.build(node)
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, context.info, None)
+  node = reaching_definitions.resolve(node, context.info, graphs, AnnotatedDef)
+  node = liveness.resolve(node, context.info, graphs)
+  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
+  node = type_info.resolve(node, context.info)
+  # This second call allows resolving first-order class attributes.
+  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
+  if is_initial:
+    anno.dup(
+        node,
+        {
+            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
+        },
+    )
+  return node
+
+
+def apply_(node, context, converter_module):
+  """Applies a converter to an AST.
+
+  Args:
+    node: ast.AST
+    context: converter.EntityContext
+    converter_module: converter.Base
+
+  Returns:
+    ast.AST, the result of applying converter to node
+  """
+  node = standard_analysis(node, context)
+  node = converter_module.transform(node, context)
+  return node

@@ -288,6 +288,21 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
 
 )"
 },
+{
+"SendRecvWithHostTransfer",
+R"(HloModule HostTransferSendRecv_module
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, is_host_transfer=true
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
+  %constant = f32[] constant(2.1), sharding={maximal device=0}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, is_host_transfer=true
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
+}
+
+)"
+},
 // get-tuple-element
 {
 "GetTupleElement",
@@ -840,7 +855,7 @@ R"(HloModule sort
 
 ENTRY Sort {
   x = f32[1024]{0} parameter(0)
-  ROOT sorted = f32[1024]{0} sort(x)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
 }
 
 )"
@@ -853,7 +868,32 @@ R"(HloModule sort
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values)
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key)
+{
+"SortKeyR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  x = f32[1024,16]{0,1} parameter(0)
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key, Value)
+{
+"SortKeyValueR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024,16]{0,1} parameter(0)
+  values = s32[1024,16]{0,1} parameter(1)
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
 }
 
 )"
@@ -962,6 +1002,28 @@ add {
 ENTRY CrossReplicaSumWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
   ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+}
+
+)"
+},
+// Iota
+{
+"Iota",
+R"(HloModule iota
+
+ENTRY Iota {
+  ROOT iota = f32[100]{0} iota()
+}
+
+)"
+},
+// custom-call with window and dim_labels
+{
+"CustomCallWithWindowAndDimLabels",
+R"(HloModule CustomCallWithWindowAndDimLabels
+
+ENTRY Computation {
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, custom_call_target="target"
 }
 
 )"

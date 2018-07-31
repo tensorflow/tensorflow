@@ -15,6 +15,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+namespace {
 
 struct BufferElement {
   // The producer sets `status` if getting the input element fails.
@@ -473,4 +475,466 @@ class IteratorGetDeviceOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
                         IteratorGetDeviceOp);
 
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const DataTypeVector& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " types but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (expected[i] != received[i]) {
+      return errors::InvalidArgument("Data type mismatch at component ", i,
+                                     ": expected ", DataTypeString(expected[i]),
+                                     " but got ", DataTypeString(received[i]),
+                                     ".");
+    }
+  }
+  return Status::OK();
+}
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<PartialTensorShape>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " shapes but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (!expected[i].IsCompatibleWith(received[i])) {
+      return errors::InvalidArgument("Incompatible shapes at component ", i,
+                                     ": expected ", expected[i].DebugString(),
+                                     " but got ", received[i].DebugString(),
+                                     ".");
+    }
+  }
+
+  return Status::OK();
+}
+
+string SanitizeThreadSuffix(string suffix) {
+  string clean;
+  for (int i = 0; i < suffix.size(); ++i) {
+    const char ch = suffix[i];
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+      clean += ch;
+    } else {
+      clean += '_';
+    }
+  }
+  return clean;
+}
+
+class MultiDeviceIterator : public ResourceBase {
+ public:
+  MultiDeviceIterator(const DataTypeVector& output_types,
+                      const std::vector<PartialTensorShape>& output_shapes,
+                      const std::vector<string>& devices,
+                      std::unique_ptr<FunctionLibraryDefinition> flib_def,
+                      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                      FunctionLibraryRuntime* lib)
+      : output_types_(output_types),
+        output_shapes_(output_shapes),
+        devices_(devices),
+        flib_def_(std::move(flib_def)),
+        pflr_(std::move(pflr)),
+        lib_(lib) {
+    buffer_.resize(devices_.size());
+  }
+
+  string DebugString() override {
+    return strings::StrCat("MultiDeviceIterator");
+  }
+
+  Status Init(std::unique_ptr<IteratorBase> iterator, int64* incarnation_id) {
+    mutex_lock l(mu_);
+    if (iterator) {
+      TF_RETURN_IF_ERROR(
+          VerifyTypesMatch(output_types_, iterator->output_dtypes()));
+      TF_RETURN_IF_ERROR(
+          VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
+    }
+    host_iterator_.reset(iterator.release());
+    incarnation_id_++;
+    *incarnation_id = incarnation_id_;
+    max_buffer_size_ = 0;
+    num_elements_ = 0;
+    buffer_.clear();
+    buffer_.resize(devices_.size());
+    return Status::OK();
+  }
+
+  Status GetNextFromShard(IteratorContext* ctx, int shard_num,
+                          int64 incarnation_id,
+                          std::vector<Tensor>* out_tensors,
+                          bool* end_of_sequence) {
+    // TODO(rohanj): This might potentially strand elements in other shards.
+    // Opportunity to do smarter locking semantics.
+    mutex_lock l(mu_);
+    // Make sure we're in the right incarnation.
+    if (incarnation_id != incarnation_id_) {
+      return errors::InvalidArgument(
+          "Current incarnation: ", incarnation_id_,
+          "; Supplied incarnation: ", incarnation_id);
+    }
+    // Then look it up in the buffer.
+    if (!buffer_[shard_num].empty()) {
+      const HostBufferElement& elem = buffer_[shard_num].front();
+      *out_tensors = elem.value;
+      *end_of_sequence = elem.end_of_sequence;
+      Status s = elem.status;
+      buffer_[shard_num].pop_front();
+      return s;
+    }
+    std::shared_ptr<IteratorBase> captured_iterator(host_iterator_);
+    if (captured_iterator) {
+      if (lib_ != nullptr) {
+        ctx->set_lib(lib_);
+      }
+      while (true) {
+        HostBufferElement elem;
+        elem.status =
+            captured_iterator->GetNext(ctx, &elem.value, &elem.end_of_sequence);
+        int buffer_index = num_elements_ % devices_.size();
+        num_elements_++;
+        if (buffer_index == shard_num) {
+          out_tensors->swap(elem.value);
+          *end_of_sequence = elem.end_of_sequence;
+          return elem.status;
+        } else {
+          buffer_[buffer_index].push_back(std::move(elem));
+          // TODO(rohanj): Put an upper bound to buffer size.
+          if (buffer_[buffer_index].size() > max_buffer_size_) {
+            max_buffer_size_ = buffer_[buffer_index].size();
+            VLOG(1) << "MultiDeviceIterator: Max buffer size increased to: "
+                    << max_buffer_size_;
+          }
+        }
+      }
+    } else {
+      return errors::FailedPrecondition("Iterator not initialized");
+    }
+    return Status::OK();
+  }
+
+  const DataTypeVector& output_types() const { return output_types_; }
+
+  const std::vector<PartialTensorShape>& output_shapes() const {
+    return output_shapes_;
+  }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    tf_shared_lock l(mu_);
+    return lib_def_;
+  }
+
+ private:
+  struct HostBufferElement {
+    Status status;
+    bool end_of_sequence;
+    std::vector<Tensor> value;
+  };
+
+  mutex mu_;
+  const DataTypeVector output_types_;
+  const std::vector<PartialTensorShape> output_shapes_;
+  const std::vector<string> devices_;
+  int64 num_elements_ GUARDED_BY(mu_) = 0;
+  int64 max_buffer_size_ GUARDED_BY(mu_) = 0;
+  int64 incarnation_id_ GUARDED_BY(mu_) = 0;
+  std::vector<std::deque<HostBufferElement>> buffer_ GUARDED_BY(mu_);
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  FunctionLibraryRuntime* lib_ = nullptr;  // not owned.
+  std::shared_ptr<IteratorBase> host_iterator_;
+  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
+};
+
+// Just creates a MultiDeviceIterator and returns it.
+class MultiDeviceIteratorHandleOp : public OpKernel {
+ public:
+  explicit MultiDeviceIteratorHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+  }
+
+  // The resource is deleted from the resource manager only when it is private
+  // to kernel.
+  ~MultiDeviceIteratorHandleOp() override {
+    if (resource_ != nullptr) {
+      resource_->Unref();
+      if (cinfo_.resource_is_private_to_kernel()) {
+        if (!cinfo_.resource_manager()
+                 ->template Delete<MultiDeviceIterator>(cinfo_.container(),
+                                                        cinfo_.name())
+                 .ok()) {
+          // Do nothing; the resource can have been deleted by session resets.
+        }
+      }
+    }
+  }
+
+  void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_) {
+    {
+      mutex_lock l(mu_);
+      if (resource_ == nullptr) {
+        FunctionLibraryRuntime* lib;
+        std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+        OP_REQUIRES_OK(context, context->function_library()->Clone(
+                                    &flib_def, &pflr, &lib));
+        ResourceMgr* mgr = context->resource_manager();
+        OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
+
+        MultiDeviceIterator* resource;
+        OP_REQUIRES_OK(
+            context,
+            mgr->LookupOrCreate<MultiDeviceIterator>(
+                cinfo_.container(), cinfo_.name(), &resource,
+                [this, lib, &flib_def, &pflr](MultiDeviceIterator** ret)
+                    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                      *ret = new MultiDeviceIterator(
+                          output_types_, output_shapes_, devices_,
+                          std::move(flib_def), std::move(pflr), lib);
+                      return Status::OK();
+                    }));
+
+        Status s = VerifyResource(resource);
+        if (TF_PREDICT_FALSE(!s.ok())) {
+          resource->Unref();
+          context->SetStatus(s);
+          return;
+        }
+
+        resource_ = resource;
+      }
+    }
+    OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
+                                context, 0, cinfo_.container(), cinfo_.name(),
+                                MakeTypeIndex<MultiDeviceIterator>()));
+  }
+
+ private:
+  // During the first Compute(), resource is either created or looked up using
+  // shared_name. In the latter case, the resource found should be verified if
+  // it is compatible with this op's configuration. The verification may fail in
+  // cases such as two graphs asking queues of the same shared name to have
+  // inconsistent capacities.
+  Status VerifyResource(MultiDeviceIterator* resource) {
+    TF_RETURN_IF_ERROR(
+        VerifyTypesMatch(output_types_, resource->output_types()));
+    TF_RETURN_IF_ERROR(
+        VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
+    return Status::OK();
+  }
+
+  mutex mu_;
+  ContainerInfo cinfo_;  // Written once under mu_ then constant afterwards.
+  MultiDeviceIterator* resource_ GUARDED_BY(mu_) = nullptr;
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
+  const int graph_def_version_;
+  string name_;
+  string container_;
+  std::vector<string> devices_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("MultiDeviceIterator").Device(DEVICE_CPU),
+                        MultiDeviceIteratorHandleOp);
+
+// Calls init on the MultiDeviceIterator.
+class MultiDeviceIteratorInitOp : public OpKernel {
+ public:
+  explicit MultiDeviceIteratorInitOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    DatasetBase* dataset;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+    MultiDeviceIterator* resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
+    core::ScopedUnref unref(resource);
+
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    OP_REQUIRES_OK(ctx,
+                   dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    int64 incarnation_id;
+    OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), &incarnation_id));
+    Tensor tensor_incarnation_id(DT_INT64, TensorShape({}));
+    tensor_incarnation_id.scalar<int64>()() = incarnation_id;
+    OP_REQUIRES_OK(ctx,
+                   ctx->set_output("incarnation_id", tensor_incarnation_id));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("MultiDeviceIteratorInit").Device(DEVICE_CPU),
+                        MultiDeviceIteratorInitOp);
+
+// Calls GetNextFromShard(shard) and returns a vector of Tensors as output.
+// TODO(rohanj): Implement using BackgroundWorker that Derek built?
+class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
+ public:
+  explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx),
+        thread_pool_(new thread::ThreadPool(
+            ctx->env(), ThreadOptions(),
+            strings::StrCat("multi_device_iterator_get_next_thread_",
+                            SanitizeThreadSuffix(name())),
+            1 /* num_threads */, false /* low_latency_hint */)) {}
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    const Tensor* tensor_shard_num;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("shard_num", &tensor_shard_num), done);
+    int32 shard_num = tensor_shard_num->scalar<int32>()();
+
+    const Tensor* tensor_incarnation_id;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
+    int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
+
+    MultiDeviceIterator* iterator;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
+    thread_pool_->Schedule(std::bind(
+        [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
+          std::vector<Tensor> components;
+          bool end_of_sequence = false;
+
+          IteratorContext::Params params;
+          params.env = ctx->env();
+          params.runner = *(ctx->runner());
+          params.function_library = iterator->function_library();
+          DeviceBase* device = ctx->function_library()->device();
+          params.allocator_getter = [device](AllocatorAttributes attrs) {
+            return device->GetAllocator(attrs);
+          };
+          IteratorContext iter_ctx(std::move(params));
+
+          Status s =
+              iterator->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
+                                         &components, &end_of_sequence);
+          iterator->Unref();
+
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (end_of_sequence) {
+            ctx->SetStatus(errors::OutOfRange("End of sequence"));
+          } else {
+            for (int i = 0; i < components.size(); ++i) {
+              // TODO(mrry): Check that the shapes match the shape attrs.
+              ctx->set_output(i, components[i]);
+            }
+          }
+          done();
+        },
+        std::move(done)));
+  }
+
+ private:
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("MultiDeviceIteratorGetNextFromShard").Device(DEVICE_CPU),
+    MultiDeviceIteratorGetNextFromShardOp);
+
+class MultiDeviceIteratorToStringHandleOp : public OpKernel {
+ public:
+  explicit MultiDeviceIteratorToStringHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& resource_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
+                errors::InvalidArgument("resource_handle must be a scalar"));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an MultiDeviceIterator.
+    MultiDeviceIterator* resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    resource->Unref();
+
+    Tensor* string_handle_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &string_handle_t));
+    string_handle_t->scalar<string>()() =
+        resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("MultiDeviceIteratorToStringHandle").Device(DEVICE_CPU),
+    MultiDeviceIteratorToStringHandleOp);
+
+class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
+ public:
+  explicit MultiDeviceIteratorFromStringHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES(
+        ctx,
+        output_types_.empty() || output_shapes_.empty() ||
+            output_types_.size() == output_shapes_.size(),
+        errors::InvalidArgument("If both 'output_types' and 'output_shapes' "
+                                "are set, they must have the same length."));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& string_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(string_handle_t.shape()),
+                errors::InvalidArgument("string_handle must be a scalar"));
+
+    ResourceHandle resource_handle;
+    OP_REQUIRES(
+        ctx,
+        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        errors::InvalidArgument(
+            "Could not parse string_handle as a valid ResourceHandle"));
+
+    OP_REQUIRES(
+        ctx, resource_handle.device() == ctx->device()->attributes().name(),
+        errors::InvalidArgument("Attempted create an iterator on device \"",
+                                ctx->device()->attributes().name(),
+                                "\" from handle defined on device \"",
+                                resource_handle.device(), "\""));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an MultiDeviceIterator.
+    MultiDeviceIterator* resource;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, resource_handle, &resource));
+    core::ScopedUnref unref_iterator(resource);
+    if (!output_types_.empty()) {
+      OP_REQUIRES_OK(ctx,
+                     VerifyTypesMatch(output_types_, resource->output_types()));
+    }
+    if (!output_shapes_.empty()) {
+      OP_REQUIRES_OK(ctx, VerifyShapesCompatible(output_shapes_,
+                                                 resource->output_shapes()));
+    }
+
+    Tensor* resource_handle_t;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({}), &resource_handle_t));
+    resource_handle_t->scalar<ResourceHandle>()() = resource_handle;
+  }
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("MultiDeviceIteratorFromStringHandle").Device(DEVICE_CPU),
+    MultiDeviceIteratorFromStringHandleOp);
+
+}  // anonymous namespace
 }  // namespace tensorflow

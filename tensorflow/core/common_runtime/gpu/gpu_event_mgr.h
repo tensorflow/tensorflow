@@ -39,6 +39,25 @@ namespace tensorflow {
 
 class GPUOptions;
 
+// The callback provided to EventMgr::ThenExecute must not block or take a long
+// time.  If it does, performance may be impacted and GPU memory may be
+// exhausted.  This macro is for checking that an EventMgr thread is not
+// accidentally entering blocking parts of the code, e.g. the RPC subsystem.
+//
+// Intended use is something like
+//
+//   void RespondToAnRPC(Params* params) {
+//      WARN_IF_IN_EVENT_MGR_THREAD;
+//      if (params->status.ok()) { ...
+//
+namespace gpu_event_mgr {
+// Logs a stack trace if current execution thread belongs to this EventMgr
+// object.  If f is not nullptr, executes instead of  logging the stack trace.
+// trace.
+void WarnIfInCallback(std::function<void()> f);
+}  // namespace gpu_event_mgr
+#define WARN_IF_IN_EVENT_MGR_THREAD gpu_event_mgr::WarnIfInCallback(nullptr)
+
 // An object to keep track of pending Events in the StreamExecutor streams
 // and associated Tensors that cannot safely be deleted until the associated
 // Events are recorded.
@@ -74,6 +93,9 @@ class EventMgr {
     FreeMemory(to_free);
   }
 
+  // Execute func when all pending stream actions have completed.
+  // func must be brief and non-blocking since it executes in the one
+  // thread used for all such callbacks and also buffer deletions.
   inline void ThenExecute(se::Stream* stream, std::function<void()> func) {
     ToFreeVector to_free;
     {

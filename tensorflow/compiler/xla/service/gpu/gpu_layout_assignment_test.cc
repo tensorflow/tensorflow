@@ -132,10 +132,10 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
           HloInstruction::CreateParameter(4, aux_shape, "variance"));
 
       auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              Literal::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           shape,
@@ -201,10 +201,10 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
           HloInstruction::CreateParameter(2, offset_scale_shape, "offset"));
 
       auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              Literal::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
@@ -278,10 +278,10 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
             HloInstruction::CreateParameter(4, shape, "var"));
 
         auto* epsilon = builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
         auto* feature_index =
             builder.AddInstruction(HloInstruction::CreateConstant(
-                Literal::CreateR0<int64>(kFeatureIndex)));
+                LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
         auto* batchnorm =
             builder.AddInstruction(HloInstruction::CreateCustomCall(

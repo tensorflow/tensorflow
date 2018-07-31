@@ -206,8 +206,8 @@ class ApiTest(test.TestCase):
       return x
 
     with self.test_session() as sess:
-      x = api.converted_call(
-          test_fn, False, False, {}, constant_op.constant(-1))
+      x = api.converted_call(test_fn, False, False, {},
+                             constant_op.constant(-1))
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_method(self):
@@ -274,11 +274,25 @@ class ApiTest(test.TestCase):
         return self.x
 
     with self.test_session() as sess:
-      tc = api.converted_call(
-          TestClass, False, False, {}, constant_op.constant(-1))
+      tc = api.converted_call(TestClass, False, False, {},
+                              constant_op.constant(-1))
       # tc is now a converted object.
       x = tc.test_method()
       self.assertEqual(1, sess.run(x))
+
+  def test_converted_call_already_converted(self):
+
+    def f(x):
+      return x == 0
+
+    with self.test_session() as sess:
+      x = api.converted_call(f, False, False, {}, constant_op.constant(0))
+      self.assertTrue(sess.run(x))
+
+      converted_f = api.to_graph(f)
+      x = api.converted_call(converted_f, False, False, {},
+                             constant_op.constant(0))
+      self.assertTrue(sess.run(x))
 
   def test_to_graph_basic(self):
 
@@ -304,6 +318,13 @@ class ApiTest(test.TestCase):
 
     # Just check that it is parseable Python code.
     self.assertIsNotNone(parser.parse_str(compiled_code))
+
+  def test_source_map_attribute_present(self):
+
+    def test_fn(y):
+      return y**2
+
+    self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
 
 
 if __name__ == '__main__':

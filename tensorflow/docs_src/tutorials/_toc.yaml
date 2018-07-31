@@ -24,7 +24,7 @@ toc:
   - title: Overview
     path: /tutorials/eager/
   - title: Eager execution
-    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_intro.ipynb
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb
     status: external
   - title: Automatic differentiation
     path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb
@@ -37,15 +37,29 @@ toc:
     status: external
   - title: "Custom training: walkthrough"
     path: /tutorials/eager/custom_training_walkthrough
-  - title: Neural machine translation
+  - title: Translation with attention
     path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb
     status: external
+
+- title: ML at production scale
+  style: accordion
+  section:
+  - title: Linear model with Estimators
+    path: /tutorials/estimators/linear
+  - title: Wide and deep learning
+    path: https://github.com/tensorflow/models/tree/master/official/wide_deep
+    status: external
+  - title: Boosted trees
+    path: https://github.com/tensorflow/models/tree/master/official/boosted_trees
+    status: external
+  - title: Text classifier with TF-Hub
+    path: /hub/tutorials/text_classification_with_tf_hub
+  - title: Build a CNN using Estimators
+    path: /tutorials/estimators/cnn
 
 - title: Images
   style: accordion
   section:
-  - title: Build a CNN using Estimators
-    path: /tutorials/images/layers
   - title: Image recognition
     path: /tutorials/images/image_recognition
   - title: Image retraining
@@ -69,10 +83,6 @@ toc:
 - title: Data representation
   style: accordion
   section:
-  - title: Linear models
-    path: /tutorials/representation/wide
-  - title: Wide and deep learning
-    path: /tutorials/representation/wide_and_deep
   - title: Vector representations of words
     path: /tutorials/representation/word2vec
   - title: Kernel methods

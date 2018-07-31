@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "logical_not"
-    deprecation_message: "tf.logical_not is deprecated, please use tf.math.logical_not instead."
+    deprecated: true
   }
 }

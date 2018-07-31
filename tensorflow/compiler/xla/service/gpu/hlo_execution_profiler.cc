@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <stack>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -36,10 +37,9 @@ void InitAndStartTimer(std::stack<std::unique_ptr<se::Timer>>* timers,
   stream->InitTimer(timers->top().get()).ThenStartTimer(timers->top().get());
 }
 
-uint64 GetCyclesTaken(
-    std::stack<std::unique_ptr<se::Timer>>* timers,
-    const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
-    se::Stream* stream, double clock_rate_ghz) {
+uint64 GetCyclesTaken(std::stack<std::unique_ptr<se::Timer>>* timers,
+                      const std::vector<StreamPool::Ptr>& sub_streams,
+                      se::Stream* stream, double clock_rate_ghz) {
   CHECK_GT(timers->size(), 0);
   stream->ThenWaitFor(&sub_streams);
   stream->ThenStopTimer(timers->top().get());
@@ -52,7 +52,7 @@ uint64 GetCyclesTaken(
 
 HloExecutionProfiler::HloExecutionProfiler(
     bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
-    const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
+    const std::vector<StreamPool::Ptr>& sub_streams,
     const HloComputation* computation)
     : do_profile_(do_profile),
       profile_(profile),
@@ -99,6 +99,7 @@ void HloExecutionProfiler::StartHloInstruction() {
 void HloExecutionProfiler::FinishHloInstruction(
     const HloInstruction* hlo_instruction) {
   if (do_profile_) {
+    hlo_instructions_.erase(hlo_instruction);
     profile_->SetCyclesTakenBy(
         hlo_instruction,
         GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
@@ -108,6 +109,12 @@ void HloExecutionProfiler::FinishHloInstruction(
 std::unique_ptr<ScopedInstructionProfiler>
 HloExecutionProfiler::MakeScopedInstructionProfiler(
     const HloInstruction* hlo_instruction) {
+  if (do_profile_ && hlo_instruction != nullptr) {
+    // Make sure that we are not already measuring the time for the same
+    // 'hlo_instruction'.
+    CHECK(hlo_instructions_.insert(hlo_instruction).second)
+        << hlo_instruction->name();
+  }
   return MakeUnique<ScopedInstructionProfiler>(this, hlo_instruction);
 }
 

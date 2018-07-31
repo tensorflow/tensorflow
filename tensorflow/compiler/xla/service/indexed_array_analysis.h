@@ -268,6 +268,18 @@ class IndexedArrayAnalysis {
       tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
       Array* indices);
 
+  StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      ScalarIndexedConstantArray* lhs, ConstantArray* rhs);
+
+  StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      ConstantArray* lhs, ScalarIndexedConstantArray* rhs);
+
+  StatusOr<Array*> ComputeArrayForDot(const Shape& shape,
+                                      const DotDimensionNumbers& dim_numbers,
+                                      Array* lhs, Array* rhs);
+
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a
   // ScalarIndexedArray as indices.  If `source` happened to be a
