@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "equal"
-    deprecation_message: "tf.equal is deprecated, please use tf.math.equal instead."
+    deprecated: true
   }
 }

@@ -31,6 +31,8 @@ struct TrtDestroyer {
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
+bool IsGoogleTensorRTEnabled();
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

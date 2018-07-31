@@ -38,8 +38,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
       switch (element_type) {
         case F16:
           cast_result_to_fp16 = true;
-          operand_value = ir_builder_->CreateFPCast(operand_value,
-                                                    ir_builder_->getFloatTy());
+          operand_value = b_->CreateFPCast(operand_value, b_->getFloatTy());
           TF_FALLTHROUGH_INTENDED;
         case F32:
           function_name = "tanhf";
@@ -59,9 +58,9 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
       function->setDoesNotThrow();
       function->setDoesNotAccessMemory();
       // Create an instruction to call the function.
-      llvm::Value* result = ir_builder_->CreateCall(function, operand_value);
+      llvm::Value* result = b_->CreateCall(function, operand_value);
       if (cast_result_to_fp16) {
-        result = ir_builder_->CreateFPCast(result, ir_builder_->getHalfTy());
+        result = b_->CreateFPCast(result, b_->getHalfTy());
       }
       return result;
     }
@@ -77,8 +76,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
-      lhs = ir_builder_->CreateFPCast(lhs, ir_builder_->getFloatTy());
-      rhs = ir_builder_->CreateFPCast(rhs, ir_builder_->getFloatTy());
+      lhs = b_->CreateFPCast(lhs, b_->getFloatTy());
+      rhs = b_->CreateFPCast(rhs, b_->getFloatTy());
       TF_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "atan2f";
@@ -98,9 +97,9 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
   function->setDoesNotThrow();
   function->setDoesNotAccessMemory();
   // Create an instruction to call the function.
-  llvm::Value* result = ir_builder_->CreateCall(function, {lhs, rhs});
+  llvm::Value* result = b_->CreateCall(function, {lhs, rhs});
   if (cast_result_to_fp16) {
-    result = ir_builder_->CreateFPCast(result, ir_builder_->getHalfTy());
+    result = b_->CreateFPCast(result, b_->getHalfTy());
   }
   return result;
 }

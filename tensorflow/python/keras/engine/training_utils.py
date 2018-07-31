@@ -19,16 +19,149 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import math
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+
+
+def _map_nested(data, func):
+  """Maps each nested element using func."""
+  if isinstance(data, list):
+    return [_map_nested(nested_data, func) for nested_data in data]
+  elif isinstance(data, tuple):
+    return tuple(_map_nested(nested_data, func) for nested_data in data)
+  elif isinstance(data, dict):
+    return {
+        k: _map_nested(nested_data, func) for k, nested_data in data.items()
+    }
+  else:
+    return func(data)
+
+
+def _nested_all(data, cond_func):
+  """Checks if all elements in a nested structure satisfy cond_func."""
+  if isinstance(data, (tuple, list)):
+    return all([_nested_all(nested_data, cond_func) for nested_data in data])
+  elif isinstance(data, dict):
+    return all(
+        [_nested_all(nested_data, cond_func) for nested_data in data.values()])
+  else:
+    return cond_func(data)
+
+
+def _nested_any(data, cond_func):
+  """Checks if any nested_elements in a nested structure satisfy cond_func."""
+  if isinstance(data, (tuple, list)):
+    return any([_nested_any(nested_data, cond_func) for nested_data in data])
+  elif isinstance(data, dict):
+    return any(
+        [_nested_any(nested_data, cond_func) for nested_data in data.values()])
+  else:
+    return cond_func(data)
+
+
+def _convert_lists_to_tuples(data):
+  """Converts all lists to tuples, since Datasets expect tuples."""
+  if isinstance(data, (tuple, list)):
+    return tuple(_convert_lists_to_tuples(nested_data) for nested_data in data)
+  elif isinstance(data, dict):
+    return {
+        k: _convert_lists_to_tuples(nested_data)
+        for k, nested_data in data.items()
+    }
+  else:
+    return data
+
+
+def _get_batch_axis_size(data):
+  """Returns batch axis shape for nested data."""
+  if isinstance(data, (tuple, list)):
+    return _get_batch_axis_size(data[0])
+  elif isinstance(data, dict):
+    return _get_batch_axis_size(list(data.values()))
+  else:
+    return int(data.shape[0])
+
+
+def convert_to_iterator(x=None,
+                        y=None,
+                        sample_weights=None,
+                        batch_size=None,
+                        steps_per_epoch=None,
+                        epochs=1,
+                        shuffle=False):
+  """Converts NumPy arrays or EagerTensors to an EagerIterator.
+
+  Combines all provided data into a single EagerIterator.
+
+  Arguments:
+      x: NumPy array or EagerTensor,  or list of Numpy arrays or EagerTensors
+        representing inputs to a model.
+      y: Optional. NumPy array or EagerTensor, or list of Numpy arrays or
+        EagerTensors representing targets of a model.
+      sample_weights: Optional NumPy array or EagerTensor representing sample
+        weights.
+      batch_size: Used to batch data and calculate how many steps EagerIterator
+        should take per epoch.
+      steps_per_epoch: If provided, how many steps EagerIterator should take per
+        epoch.
+      epochs: Epochs to repeat iterator for.
+      shuffle: Whether to shuffle data after each epoch.
+
+  Raises:
+      ValueError: if steps_per_epoch cannot be calculated from the data
+      provided.
+
+  Returns:
+      (Iterator, steps_per_epoch).
+
+  """
+  if isinstance(x, iterator_ops.EagerIterator):
+    return x, steps_per_epoch
+
+  if not _nested_any(sample_weights, lambda x: x is None):
+    data = (x, y, sample_weights)
+  elif not _nested_any(y, lambda x: x is None):
+    data = (x, y)
+  else:
+    # always wrap in a tuple, so we know y, sample_weights weren't set
+    # even when x has multiple elements
+    data = (x,)
+
+  data = _convert_lists_to_tuples(data)
+  if steps_per_epoch is None and batch_size is not None:
+    num_samples = _get_batch_axis_size(data)
+    steps_per_epoch = int(math.ceil(num_samples / batch_size))
+
+  if steps_per_epoch is None:
+    raise ValueError('Could not determine steps_per_epoch.'
+                     'Please provide either batch_size or'
+                     'steps_per_epoch.')
+
+  # TODO(omalleyt) for NumPy arrays in graph mode
+  # placeholder ops should be used
+  # this is only ideal for eager mode
+  dataset = dataset_ops.Dataset.from_tensor_slices(data)
+
+  if batch_size is not None:
+    dataset = dataset.batch(batch_size)
+  if shuffle:
+    dataset = dataset.shuffle(buffer_size=10000)
+  dataset = dataset.repeat(epochs)
+  iterator = dataset.make_one_shot_iterator()
+
+  return iterator, steps_per_epoch
 
 
 def check_num_samples(ins,
@@ -128,8 +261,8 @@ def standardize_input_data(data,
     except KeyError as e:
       raise ValueError('No data provided for "' + e.args[0] + '". Need data '
                        'for each key in: ' + str(names))
-  elif isinstance(data, list):
-    if isinstance(data[0], list):
+  elif isinstance(data, (list, tuple)):
+    if isinstance(data[0], (list, tuple)):
       data = [np.asarray(d) for d in data]
     elif len(names) == 1 and isinstance(data[0], (float, int)):
       data = [np.asarray(data)]
@@ -482,6 +615,9 @@ def standardize_weights(y,
   Raises:
       ValueError: In case of invalid user-provided arguments.
   """
+  # Iterator may return sample_weight as 1-tuple
+  if isinstance(sample_weight, tuple):
+    sample_weight = sample_weight[0]
   if sample_weight_mode is not None:
     if sample_weight_mode != 'temporal':
       raise ValueError('"sample_weight_mode '
@@ -566,17 +702,16 @@ def populate_metric_names(model):
   for i in range(len(model.outputs)):
     metrics = model.nested_metrics[i]
     for metric in metrics:
-      base_metric_name = get_base_metric_name(metric)
+      base_metric_name = get_metric_name(metric)
       add_metric_name(model, base_metric_name, i)
 
 
-def get_base_metric_name(metric, weighted=False):
-  """Returns the metric name given the metric function.
+def get_metric_name(metric, weighted=False):
+  """Returns the metric name corresponding to the given metric input.
 
   Arguments:
       metric: Metric function name or reference.
-      weighted: Boolean indicating if the metric for which we are adding
-          names is weighted.
+      weighted: Boolean indicating if the given metric is weighted.
 
   Returns:
       a metric name.
@@ -598,6 +733,36 @@ def get_base_metric_name(metric, weighted=False):
     metric_name = metric_name_prefix + metric_name
 
   return metric_name
+
+
+def get_metric_function(metric, output_shape=None, loss_fn=None):
+  """Returns the metric function corresponding to the given metric input.
+
+  Arguments:
+      metric: Metric function name or reference.
+      output_shape: The shape of the output that this metric
+          will be calculated for.
+      loss_fn: The loss function used.
+
+  Returns:
+      The metric function.
+  """
+  if metric in ['accuracy', 'acc']:
+    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
+      return metrics_module.binary_accuracy  # case: binary accuracy
+    elif loss_fn == losses.sparse_categorical_crossentropy:
+      # case: categorical accuracy with sparse targets
+      return metrics_module.sparse_categorical_accuracy
+    return metrics_module.categorical_accuracy  # case: categorical accuracy
+  elif metric in ['crossentropy', 'ce']:
+    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
+      return metrics_module.binary_crossentropy  # case: binary cross-entropy
+    elif loss_fn == losses.sparse_categorical_crossentropy:
+      # case: categorical cross-entropy with sparse targets
+      return metrics_module.sparse_categorical_crossentropy
+    # case: categorical cross-entropy
+    return metrics_module.categorical_crossentropy
+  return metrics_module.get(metric)
 
 
 def add_metric_name(model, metric_name, index):
@@ -722,3 +887,25 @@ def cast_if_floating_dtype(x):
         for val in x
     ]
   return math_ops.cast(x, dtype=K.floatx()) if x.dtype.is_floating else x
+
+
+def get_output_sample_weight_and_mode(skip_target_weighing_indices,
+                                      sample_weight_mode, output_name,
+                                      output_index):
+  """Returns the sample weight and weight mode for a single output."""
+  if output_index in skip_target_weighing_indices:
+    return None, None
+
+  if sample_weight_mode == 'temporal':
+    default_value = [[1.]]
+    shape = [None, None]
+    mode = 'temporal'
+  else:
+    default_value = [1.]
+    shape = [None]
+    mode = None
+  weight = array_ops.placeholder_with_default(
+      constant_op.constant(default_value, dtype=K.floatx()),
+      shape=shape,
+      name=output_name + '_sample_weights')
+  return weight, mode

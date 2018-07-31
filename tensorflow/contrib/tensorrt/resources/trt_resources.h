@@ -64,7 +64,7 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
-  std::unique_ptr<nvinfer1::IGpuAllocator> allocator_;
+  std::unique_ptr<TRTBaseAllocator> allocator_;
   tensorflow::tensorrt::Logger logger_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;

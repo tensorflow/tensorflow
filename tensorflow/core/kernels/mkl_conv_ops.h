@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 
 #include <limits>
-#include <string>
 #include <vector>
 #include <memory>
 

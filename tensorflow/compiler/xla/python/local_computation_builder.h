@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -259,6 +259,9 @@ class LocalComputationBuilder {
   LocalOp ConvertElementType(const LocalOp& operand,
                              PrimitiveType new_element_type);
 
+  LocalOp BitcastConvertType(const LocalOp& operand,
+                             PrimitiveType new_element_type);
+
   LocalOp Call(const LocalComputation& local_computation,
                tensorflow::gtl::ArraySlice<LocalOp> operands);
 
@@ -333,6 +336,11 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(And)
   _FORWARD_BINOP(Or)
   _FORWARD_BINOP(Xor)
+  _FORWARD_BINOP(ShiftLeft)
+  _FORWARD_BINOP(ShiftRightArithmetic)
+  _FORWARD_BINOP(ShiftRightLogical)
+  _FORWARD_BINOP(Atan2)
+  _FORWARD_BINOP(Pow)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
@@ -346,13 +354,27 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Cos)
   _FORWARD_UNOP(Sin)
   _FORWARD_UNOP(Tanh)
-  _FORWARD_UNOP(Sqrt)
-  _FORWARD_UNOP(Square)
-  _FORWARD_BINOP(Pow)
   _FORWARD_UNOP(IsFinite)
-  _FORWARD_UNOP(Reciprocal)
   _FORWARD_UNOP(Neg)
   _FORWARD_UNOP(Sort)
+  _FORWARD_UNOP(Sqrt)
+  _FORWARD_UNOP(Rsqrt)
+  _FORWARD_UNOP(Square)
+  _FORWARD_UNOP(Reciprocal)
+  _FORWARD_UNOP(Erfc)
+  _FORWARD_UNOP(Erf)
+  _FORWARD_UNOP(ErfInv)
+  _FORWARD_UNOP(Lgamma)
+  _FORWARD_UNOP(Digamma)
+  _FORWARD_UNOP(Acos)
+  _FORWARD_UNOP(Asin)
+  _FORWARD_UNOP(Atan)
+  _FORWARD_UNOP(Tan)
+  _FORWARD_UNOP(Acosh)
+  _FORWARD_UNOP(Asinh)
+  _FORWARD_UNOP(Atanh)
+  _FORWARD_UNOP(Cosh)
+  _FORWARD_UNOP(Sinh)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP

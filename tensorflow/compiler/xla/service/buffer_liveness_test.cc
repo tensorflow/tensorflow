@@ -327,7 +327,7 @@ TEST_F(BufferLivenessTest, RootInstructionIsNotLastInSequentialOrder) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, vec_, "param"));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, param, param));
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto recv = builder.AddInstruction(
       HloInstruction::CreateRecv(vec_, token, /*channel_id=*/0));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
@@ -439,11 +439,13 @@ TEST_F(BufferLivenessTest, TupleConstantLiveOut) {
   // computation. The buffer containing {0, 1} is copied by GetTupleElement, and
   // the buffers containing {3} and 3 are dead.
   auto builder = HloComputation::Builder(TestName());
-  auto inner_tuple0 = Literal::MakeTuple(
-      {Literal::CreateR0<int64>(0).get(), Literal::CreateR0<int64>(1).get()});
-  auto inner_tuple1 = Literal::MakeTuple({Literal::CreateR0<int64>(3).get()});
+  auto inner_tuple0 =
+      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
+                              LiteralUtil::CreateR0<int64>(1).get()});
+  auto inner_tuple1 =
+      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(3).get()});
   auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::MakeTuple({inner_tuple0.get(), inner_tuple1.get()})));
+      LiteralUtil::MakeTuple({inner_tuple0.get(), inner_tuple1.get()})));
   builder.AddInstruction(HloInstruction::CreateGetTupleElement(
       inner_tuple0->shape(), tuple_constant, 0));
 
@@ -491,7 +493,7 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           tuple_element0_shape, tuple_param0, 0));
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+      LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
   auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
       tuple_element0_shape, HloOpcode::kAdd, tuple_element0, const0));
 
@@ -503,7 +505,7 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           tuple_element1_shape, tuple_param0, 1));
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f})));
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f})));
   auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
       tuple_element1_shape, HloOpcode::kAdd, tuple_element1, const1));
 
@@ -555,7 +557,7 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           tuple_element0_shape, tuple_param0, 0));
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+      LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
   auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
       tuple_element0_shape, HloOpcode::kAdd, tuple_element0, const0));
 
@@ -627,7 +629,7 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
         HloInstruction::CreateGetTupleElement(data_shape, tuple_param0, 1));
 
     auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR1<float>({2.f, 2.f, 2.f})));
+        LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
     HloInstruction* slice = nullptr;
     if (update_uses_tuple_element1) {
       // Create a slice instruction as an additional user of 'gte1'.
@@ -638,7 +640,7 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
             data_shape, gte1, update, starts));
@@ -757,7 +759,7 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
         HloInstruction::CreateGetTupleElement(data_shape, tuple_param0, 1));
 
     auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR1<float>({2.f, 2.f, 2.f})));
+        LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
 
     if (tuple_element1_has_two_uses) {
       // Add 'gte0' and 'gte1' to create another user of 'gte1'.
@@ -766,7 +768,7 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
             data_shape, gte1, update, starts));

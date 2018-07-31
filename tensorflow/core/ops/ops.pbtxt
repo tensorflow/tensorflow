@@ -2490,8 +2490,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -2674,8 +2672,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -3989,8 +3985,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4040,8 +4034,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4140,6 +4132,8 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
         type: DT_COMPLEX64
@@ -4165,6 +4159,8 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
         type: DT_COMPLEX64
@@ -4981,6 +4977,13 @@ op {
     name: "DstT"
     type: "type"
   }
+  attr {
+    name: "Truncate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "Ceil"
@@ -5730,8 +5733,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5809,8 +5810,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5888,8 +5887,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8592,8 +8589,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8664,8 +8659,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8736,8 +8729,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -12374,29 +12365,6 @@ op {
   }
 }
 op {
-  name: "IdentityDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
   name: "IdentityN"
   input_arg {
     name: "input"
@@ -13268,6 +13236,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandleV2"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -13324,6 +13322,34 @@ op {
   output_arg {
     name: "string_handle"
     type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorV2"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -15474,8 +15500,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15553,8 +15577,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15625,8 +15647,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15768,8 +15788,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -16977,6 +16995,71 @@ op {
   }
   input_arg {
     name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+}
+op {
+  name: "NonMaxSuppressionV4"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "valid_outputs"
+    type: DT_INT32
+  }
+  attr {
+    name: "pad_to_max_output_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "NonMaxSuppressionWithOverlaps"
+  input_arg {
+    name: "overlaps"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "overlap_threshold"
     type: DT_FLOAT
   }
   input_arg {
@@ -26144,6 +26227,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -27370,6 +27454,17 @@ op {
   }
 }
 op {
+  name: "SinkDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "Size"
   input_arg {
     name: "input"
@@ -27533,7 +27628,11 @@ op {
     type: DT_INT64
   }
   input_arg {
-    name: "stride"
+    name: "window_shift"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "window_stride"
     type: DT_INT64
   }
   output_arg {

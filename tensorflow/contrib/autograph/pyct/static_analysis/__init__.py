@@ -18,10 +18,14 @@ This module contains utilities to help annotate AST nodes with as much runtime
 information as can be possibly extracted without actually executing the code,
 under that assumption that the context in which the code will run is known.
 
-Note: It's a fair bet that this analysis cannot be reused across contexts
-without re-running it. In most cases, the context usually means referenced
-modules, which should be static enough to allow reuse, but that is not being
-reliably verified.
+Overall, the different analyses have the functions listed below:
+
+ * activity: inventories symbols read, written to, params, etc. at different
+     levels
+ * liveness, reaching_definitions: dataflow analyses based on the program's CFG
+     and using the symbol information gathered by activity analysis
+ * live_values, type_info: type and value inference based on dataflow
+     analysis and context information
 """
 
 from __future__ import absolute_import

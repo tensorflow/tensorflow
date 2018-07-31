@@ -44,6 +44,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
   StatusOr<std::unique_ptr<Literal>> ret;
   se::Stream* substream = stream->GetOrCreateSubStream();
+  substream->ThenWaitFor(stream);
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
 
@@ -64,6 +65,7 @@ Status TransferManager::TransferLiteralToDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   se::Stream* substream = stream->GetOrCreateSubStream();
+  substream->ThenWaitFor(stream);
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
   TF_RETURN_IF_ERROR(

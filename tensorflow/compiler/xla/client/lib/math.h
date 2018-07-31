@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace xla {
 
@@ -45,6 +45,43 @@ XlaOp Erf(XlaOp x);
 
 // Computes an approximation of the inverse of the error function.
 XlaOp ErfInv(XlaOp x);
+
+// Computes an approximation of the lgamma function.
+XlaOp Lgamma(XlaOp input);
+
+// Computes an approximation of the digamma function.
+XlaOp Digamma(XlaOp input);
+
+// Trigonometric functions
+
+// Computes the arc cosine of 'x'.
+XlaOp Acos(XlaOp x);
+
+// Computes the arc sine of 'x'.
+XlaOp Asin(XlaOp x);
+
+// Computes the arc tangent of 'x'.
+XlaOp Atan(XlaOp x);
+
+// Computes the tangent of 'x'.
+XlaOp Tan(XlaOp x);
+
+// Hyperbolic trigonometric functions
+
+// Computes the inverse hyperbolic cosine of 'x'.
+XlaOp Acosh(XlaOp x);
+
+// Computes the inverse hyperbolic sine of 'x'.
+XlaOp Asinh(XlaOp x);
+
+// Computes the inverse hyperbolic tangent of 'x'.
+XlaOp Atanh(XlaOp x);
+
+// Computes the hyperbolic cosine of 'x'.
+XlaOp Cosh(XlaOp x);
+
+// Computes the hyperbolic sine of 'x'.
+XlaOp Sinh(XlaOp x);
 
 }  // namespace xla
 

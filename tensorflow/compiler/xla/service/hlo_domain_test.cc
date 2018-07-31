@@ -97,12 +97,6 @@ class OpNameMetadata : public DomainMetadata {
 
   string ToString() const override { return opname_; }
 
-  Status NormalizeInstructions(
-      const DomainMetadata::Domain& domain) const override {
-    // For the purposes of this test, nothing to do.
-    return Status::OK();
-  }
-
   static tensorflow::StringPiece KindName() { return "opname"; }
 
  private:
@@ -124,7 +118,8 @@ std::unique_ptr<HloInstruction> OpNameDomainCreator(HloInstruction* instruction,
                                       std::move(user_side_metadata));
 }
 
-Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain) {
+Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
+                              const DomainMetadata* metadata) {
   // Nothing to do for the particular use this test make of the OpName domains.
   return Status::OK();
 }
@@ -159,7 +154,7 @@ ENTRY entry {
   EXPECT_FALSE(HasDomainEdge(module, "e", "d"));
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
-                           NormalizeShardingDomain);
+                           ShardingMetadata::NormalizeShardingDomain);
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
   EXPECT_TRUE(remover_changed);
 
@@ -227,7 +222,7 @@ ENTRY entry {
   EXPECT_FALSE(HasDomainEdge(module, "e", "d"));
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
-                           NormalizeShardingDomain);
+                           ShardingMetadata::NormalizeShardingDomain);
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
   EXPECT_TRUE(remover_changed);
 
@@ -277,7 +272,7 @@ ENTRY entry {
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
-                           NormalizeShardingDomain);
+                           ShardingMetadata::NormalizeShardingDomain);
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
   EXPECT_FALSE(remover_changed);
 
@@ -324,7 +319,7 @@ ENTRY entry {
   EXPECT_FALSE(HasDomainEdge(module, "e", "d"));
 
   HloDomainRemover sharding_remover(ShardingMetadata::KindName(),
-                                    NormalizeShardingDomain);
+                                    ShardingMetadata::NormalizeShardingDomain);
   TF_ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
                           sharding_remover.Run(module));
   EXPECT_TRUE(sharding_remover_changed);
@@ -411,7 +406,7 @@ ENTRY entry {
   }
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
-                           NormalizeShardingDomain);
+                           ShardingMetadata::NormalizeShardingDomain);
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
   EXPECT_TRUE(remover_changed);
 
@@ -434,6 +429,44 @@ ENTRY entry {
       new_tuple->sharding(),
       HloSharding::Tuple(new_tuple->shape(), {HloSharding::AssignDevice(1),
                                               HloSharding::AssignDevice(0)}));
+}
+
+TEST_F(HloDomainTest, EmptyRootDomain) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  %param = f32[1] parameter(0), sharding={maximal device=0}
+  %tuple = (f32[1]) tuple(%param),
+    sharding={maximal device=1}
+  ROOT %gte = f32[1] get-tuple-element(%tuple), index=0,
+    sharding={maximal device=1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
+
+  HloDomainIsolator isolator(CreateShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
+  EXPECT_TRUE(isolator_changed);
+
+  EXPECT_TRUE(HasDomainEdge(module, "tuple", "param"));
+  EXPECT_FALSE(HasDomainEdge(module, "gte", "tuple"));
+
+  // Remove %tuple and %gte (tuple simplification)
+  HloInstruction* gte = FindInstruction(module, "gte");
+  HloInstruction* tuple = FindInstruction(module, "tuple");
+  module->entry_computation()->set_root_instruction(tuple->mutable_operand(0));
+  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(gte));
+  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
+  EXPECT_TRUE(remover_changed);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->has_sharding());
+  EXPECT_EQ(root->sharding(), HloSharding::AssignDevice(1));
 }
 
 // Tests that text dumps of domain instructions can be parsed back, in the

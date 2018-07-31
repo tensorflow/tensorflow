@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
@@ -160,6 +161,12 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
         computed_array,
         ComputeArrayForReshape(instr->shape(),
                                FindOrDie(cache_, instr->operand(0))));
+  } else if (instr->opcode() == HloOpcode::kDot) {
+    TF_ASSIGN_OR_RETURN(
+        computed_array,
+        ComputeArrayForDot(instr->shape(), instr->dot_dimension_numbers(),
+                           FindOrDie(cache_, instr->operand(0)),
+                           FindOrDie(cache_, instr->operand(1))));
   } else {
     computed_array = nullptr;
   }
@@ -290,8 +297,7 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
   }
 
   if (auto* indexed = dynamic_cast<ScalarIndexedArray*>(source)) {
-    auto it = c_find(indexed->output_dims(), source_dim);
-    if (it != indexed->output_dims().end()) {
+    if (c_linear_search(indexed->output_dims(), source_dim)) {
       return FoldGatherOfGather(indexed, indices, source_dim, output_dims,
                                 shape);
     }
@@ -956,9 +962,175 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
   return Construct<ScalarIndexedConstantArray>(
       new_source, scalar_indexed_const->indices(),
       scalar_indexed_const->source_dim(),
-      std::vector<int64>(scalar_indexed_const->output_dims().begin(),
-                         scalar_indexed_const->output_dims().end()),
+      ArraySliceToVector(scalar_indexed_const->output_dims()),
       scalar_indexed_const->shape());
+}
+
+namespace {
+
+// Returns the non-contracting non-batch dimension (as per `contracting_dims`
+// and `batch_dims`) if there is exactly one, otherwise returns nullopt.
+gtl::optional<int64> GetOnlyNonContractingNonBatchDim(
+    int64 rank, ArraySlice<int64> contracting_dims,
+    ArraySlice<int64> batch_dims) {
+  gtl::optional<int64> result;
+  for (int64 dim = 0; dim < rank; dim++) {
+    if (!ArrayContains(contracting_dims, dim) &&
+        !ArrayContains(batch_dims, dim)) {
+      if (result.has_value()) {
+        return gtl::nullopt;
+      }
+      result = dim;
+    }
+  }
+  return result;
+}
+
+// Returns true if `indexed_array`, which is either the LHS or the RHS of a Dot
+// HLO, can be folded into the dot operation.  For now these conditions are both
+// necessary and sufficient.
+//
+// `tag` describes the caller.  Used only for logging.
+//
+// `contracting_dims` and `batch_dims` are the contracting and batch dimensions
+// of whatever operand `indexed_array` is to the dot (LHS or RHS).
+bool CanFoldDotIntoIndexedArray(
+    tensorflow::StringPiece tag,
+    Analysis::ScalarIndexedConstantArray* indexed_array,
+    ArraySlice<int64> contracting_dims, ArraySlice<int64> batch_dims) {
+  gtl::optional<int64> non_contracting_non_batch_dim =
+      GetOnlyNonContractingNonBatchDim(ShapeUtil::Rank(indexed_array->shape()),
+                                       contracting_dims, batch_dims);
+  if (!non_contracting_non_batch_dim.has_value()) {
+    VLOG(3) << tag << ": multiple or no non-contracting non-batch dimensions";
+    return false;
+  }
+
+  if (indexed_array->output_dims().size() != 1 ||
+      indexed_array->output_dims()[0] != *non_contracting_non_batch_dim) {
+    VLOG(3) << tag << ": output dims != the lhs non-contracting non-batch dim";
+    return false;
+  }
+
+  int64 indexed_array_rank = ShapeUtil::Rank(indexed_array->shape());
+  if (indexed_array->source_dim() < (indexed_array_rank - 2)) {
+    // This restriction can be lifted by inserting reshape nodes.
+    VLOG(3) << tag
+            << ": source dim is not in the low two dims, won't be able to form "
+               "a matmul";
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
+
+StatusOr<Analysis::Array*>
+IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
+    const Shape& shape, const DotDimensionNumbers& dim_numbers,
+    ScalarIndexedConstantArray* lhs, ConstantArray* rhs) {
+  VLOG(3) << "ComputeArrayForDotWithIndexedLhs(" << ToString(lhs) << " "
+          << ToString(rhs);
+  if (!CanFoldDotIntoIndexedArray(
+          "ComputeArrayForDotWithIndexedLhs", lhs, /*contracting_dims=*/
+          AsInt64Slice(dim_numbers.lhs_contracting_dimensions()),
+          /*batch_dims=*/AsInt64Slice(dim_numbers.lhs_batch_dimensions()))) {
+    return nullptr;
+  }
+
+  int64 lhs_rank = ShapeUtil::Rank(lhs->shape());
+  DotDimensionNumbers new_dim_numbers = dim_numbers;
+  new_dim_numbers.set_lhs_contracting_dimensions(
+      0, lhs->source_dim() == (lhs_rank - 1) ? (lhs_rank - 2) : (lhs_rank - 1));
+
+  TF_ASSIGN_OR_RETURN(Literal * literal_for_new_source,
+                      TakeOwnership(HloEvaluator{}.EvaluateDotOp(
+                          new_dim_numbers, lhs->literal(), *rhs->literal())));
+
+  // The new source dimension is wherever the non-batch non-contracting LHS
+  // dimension "went".
+  int64 new_source_dim = dim_numbers.lhs_batch_dimensions_size() +
+                         dim_numbers.rhs_batch_dimensions_size();
+
+  ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);
+  return Construct<ScalarIndexedConstantArray>(
+      new_source, lhs->indices(), new_source_dim,
+      ArraySliceToVector(lhs->output_dims()), shape);
+}
+
+StatusOr<Analysis::Array*>
+IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
+    const Shape& shape, const DotDimensionNumbers& dim_numbers,
+    ConstantArray* lhs, ScalarIndexedConstantArray* rhs) {
+  VLOG(3) << "ComputeArrayForDotWithIndexedRhs(" << ToString(lhs) << " "
+          << ToString(rhs);
+  if (!CanFoldDotIntoIndexedArray(
+          "ComputeArrayForDotWithIndexedRhs", rhs, /*contracting_dims=*/
+          AsInt64Slice(dim_numbers.rhs_contracting_dimensions()),
+          /*batch_dims=*/AsInt64Slice(dim_numbers.rhs_batch_dimensions()))) {
+    return nullptr;
+  }
+
+  int64 rhs_rank = ShapeUtil::Rank(rhs->shape());
+
+  DotDimensionNumbers new_dim_numbers = dim_numbers;
+  new_dim_numbers.set_rhs_contracting_dimensions(
+      0, rhs->source_dim() == (rhs_rank - 1) ? (rhs_rank - 2) : (rhs_rank - 1));
+
+  TF_ASSIGN_OR_RETURN(Literal * literal_for_new_source,
+                      TakeOwnership(HloEvaluator{}.EvaluateDotOp(
+                          new_dim_numbers, *lhs->literal(), rhs->literal())));
+
+  // The new source dimension is wherever the non-batch non-contracting RHS
+  // dimension "went".
+  int64 new_source_dim = dim_numbers.lhs_batch_dimensions_size() +
+                         dim_numbers.rhs_batch_dimensions_size() + 1;
+
+  ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);
+  return Construct<ScalarIndexedConstantArray>(
+      new_source, rhs->indices(), new_source_dim,
+      ArraySliceToVector(rhs->output_dims()), shape);
+}
+
+StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
+    const Shape& shape, const DotDimensionNumbers& dim_numbers, Array* lhs,
+    Array* rhs) {
+  // Intuitively, if
+  //
+  //  - The LHS of a dot product is a gathered sequence of rows from a constant
+  //    array (i.e. LHS[I,J] = Const[Indices[I],J]) and the RHS is a constant
+  //
+  //  OR
+  //
+  //  - If the RHS of a dot product is a gathered sequence of columns from a
+  //    constant array (i.e. RHS[I,J] = Const[I, Indices[J]]) and the LHS is a
+  //    constant
+  //
+  // then the result of the dot product itself is a gather from a constant
+  // array.  E.g. Dot(LHS, ConstRhs) where LHS[I,J] = Const[Indices[I],J] can be
+  // rewritten as Result where Result[I,J] = Dot(Const, ConstRhs)[Indices[I],
+  // J].
+  //
+  // We do a general version of this rewrite here.
+  VLOG(3) << "ComputeArrayForDot(" << ToString(lhs) << " " << ToString(rhs);
+  if (auto* lhs_indexed_array =
+          dynamic_cast<ScalarIndexedConstantArray*>(lhs)) {
+    if (auto* rhs_constant = dynamic_cast<ConstantArray*>(rhs)) {
+      return ComputeArrayForDotWithIndexedLhs(shape, dim_numbers,
+                                              lhs_indexed_array, rhs_constant);
+    }
+  }
+
+  if (auto* rhs_indexed_array =
+          dynamic_cast<ScalarIndexedConstantArray*>(rhs)) {
+    if (auto* lhs_constant = dynamic_cast<ConstantArray*>(lhs)) {
+      return ComputeArrayForDotWithIndexedRhs(shape, dim_numbers, lhs_constant,
+                                              rhs_indexed_array);
+    }
+  }
+
+  return nullptr;
 }
 
 tensorflow::StringPiece IndexedArrayAnalysisPrinterPass::name() const {

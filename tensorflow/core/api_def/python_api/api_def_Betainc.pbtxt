@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "betainc"
-    deprecation_message: "tf.betainc is deprecated, please use tf.math.betainc instead."
+    deprecated: true
   }
 }

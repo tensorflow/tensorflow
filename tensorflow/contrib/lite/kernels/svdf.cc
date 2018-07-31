@@ -16,7 +16,6 @@ limitations under the License.
 // SVDF op that compresses a fully connected op via low-rank matrix
 // factorization. See https://research.google.com/pubs/archive/43813.pdf for
 // details.
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -105,7 +104,7 @@ constexpr int kStateTensor = 0;
 constexpr int kOutputTensor = 1;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* op_data = new OpData;
+  auto* op_data = new OpData();
   op_data->float_weights_time_initialized = false;
   context->AddTensors(context, /*tensors_to_add=*/4,
                       &op_data->scratch_tensor_index);

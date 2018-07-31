@@ -130,7 +130,7 @@ class FuncRegistry(object):
   def __init__(self):
     self._lock = threading.Lock()
     self._unique_id = 0  # GUARDED_BY(self._lock)
-    # Only store weakrefs to the funtions. The strong reference is stored in
+    # Only store weakrefs to the functions. The strong reference is stored in
     # the graph.
     self._funcs = weakref.WeakValueDictionary()
 

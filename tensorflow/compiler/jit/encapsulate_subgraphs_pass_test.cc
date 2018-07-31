@@ -742,10 +742,13 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   Scope root = Scope::NewRootScope().ExitOnError().WithDevice(
       "/job:localhost/replica:0/task:0/cpu:0");
   auto x1 = ops::Placeholder(root.WithOpName("x1"), DT_FLOAT);
-  auto const_x2 = ops::Const(root.WithOpName("const_x2"), 10.0f);
+  auto x2 = ops::Placeholder(root.WithOpName("x2"), DT_FLOAT);
+  auto const_guarantee_x2 =
+      ops::GuaranteeConst(root.WithOpName("const_guarantee_x2"), x2);
   auto const_guarantee_x1 =
       ops::GuaranteeConst(root.WithOpName("const_guarantee_x1"), x1);
-  auto add1 = ops::Add(root.WithOpName("add1"), const_guarantee_x1, const_x2);
+  auto add1 =
+      ops::Add(root.WithOpName("add1"), const_guarantee_x1, const_guarantee_x2);
   add1.node()->AddAttr("_encapsulate", "encapsulate1");
 
   Graph graph_before(OpRegistry::Global());

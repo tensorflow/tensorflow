@@ -109,12 +109,13 @@ class AdamOptimizer(optimizer.Optimizer):
     self._updated_lr = None
 
   def _get_beta_accumulators(self):
-    if context.executing_eagerly():
-      graph = None
-    else:
-      graph = ops.get_default_graph()
-    return (self._get_non_slot_variable("beta1_power", graph=graph),
-            self._get_non_slot_variable("beta2_power", graph=graph))
+    with ops.init_scope():
+      if context.executing_eagerly():
+        graph = None
+      else:
+        graph = ops.get_default_graph()
+      return (self._get_non_slot_variable("beta1_power", graph=graph),
+              self._get_non_slot_variable("beta2_power", graph=graph))
 
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first

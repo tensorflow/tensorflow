@@ -110,7 +110,6 @@ class TopologyConstructionTest(test.TestCase):
     layer = keras.layers.BatchNormalization()
     _ = layer.apply(x1)
 
-    print('BN updates', layer._updates)
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
@@ -960,9 +959,6 @@ class DeferredModeTest(test.TestCase):
       def call(self, inputs):
         return inputs[0] + inputs[1]
 
-      def compute_output_shape(self, input_shape):
-        return input_shape[0]
-
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable
     c = keras.layers.Dense(2)(c)
 
@@ -976,6 +972,101 @@ class DeferredModeTest(test.TestCase):
       self.assertEqual(len(outputs), 2)
       self.assertEqual(outputs[0].shape.as_list(), [10, 16])
       self.assertEqual(outputs[1].shape.as_list(), [10, 2])
+
+
+class DefaultShapeInferenceBehaviorTest(test.TestCase):
+
+  def _testShapeInference(self, model, input_shape, expected_output_shape):
+    input_value = np.random.random(input_shape)
+    output_value = model.predict(input_value)
+    self.assertEqual(output_value.shape, expected_output_shape)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSingleInputCase(self):
+
+    class LayerWithOneInput(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs):
+        return keras.backend.dot(inputs, self.w)
+
+    inputs = input_layer_lib.Input(shape=(3,))
+    layer = LayerWithOneInput()
+
+    if context.executing_eagerly():
+      self.assertEqual(
+          layer.compute_output_shape((None, 3)).as_list(), [None, 4])
+      # As a side-effect, compute_output_shape builds the layer.
+      self.assertTrue(layer.built)
+      # We can still query the layer's compute_output_shape with compatible
+      # input shapes.
+      self.assertEqual(
+          layer.compute_output_shape((6, 3)).as_list(), [6, 4])
+
+    outputs = layer(inputs)
+    model = keras.Model(inputs, outputs)
+    self._testShapeInference(model, (2, 3), (2, 4))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testMultiInputOutputCase(self):
+
+    class MultiInputOutputLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs):
+        a = keras.backend.dot(inputs[0], self.w)
+        b = a + inputs[1]
+        return [a, b]
+
+    input_a = input_layer_lib.Input(shape=(3,))
+    input_b = input_layer_lib.Input(shape=(4,))
+    output_a, output_b = MultiInputOutputLayer()([input_a, input_b])
+    model = keras.Model([input_a, input_b], [output_a, output_b])
+    output_a_val, output_b_val = model.predict(
+        [np.random.random((2, 3)), np.random.random((2, 4))])
+    self.assertEqual(output_a_val.shape, (2, 4))
+    self.assertEqual(output_b_val.shape, (2, 4))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTrainingArgument(self):
+
+    class LayerWithTrainingArg(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs, training):
+        return keras.backend.dot(inputs, self.w)
+
+    inputs = input_layer_lib.Input(shape=(3,))
+    outputs = LayerWithTrainingArg()(inputs, training=False)
+    model = keras.Model(inputs, outputs)
+    self._testShapeInference(model, (2, 3), (2, 4))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testUnsupportedSignature(self):
+
+    class LayerWithAdditionalArg(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.w = array_ops.ones(shape=(3, 4))
+
+      def call(self, inputs, some_arg):
+        return keras.backend.dot(inputs, self.w) + some_arg
+
+    inputs = input_layer_lib.Input(shape=(3,))
+    if context.executing_eagerly():
+      with self.assertRaises(NotImplementedError):
+        outputs = LayerWithAdditionalArg()(inputs, some_arg=0)
+    else:
+      # Works with graph mode because the graph of ops is built together with
+      # the graph of layers.
+      outputs = LayerWithAdditionalArg()(inputs, some_arg=0)
+      _ = keras.Model(inputs, outputs)
 
 
 class GraphUtilsTest(test.TestCase):
