@@ -106,7 +106,7 @@ bool MergeReshapeIntoPrecedingTranspose::Run(Model* model,
                                              std::size_t op_index) {
   auto it = model->operators.begin() + op_index;
   auto* reshape_op = ConvertOperator<TensorFlowReshapeOperator*>(
-      it->get(), OperatorType::kTensorFlowReshape);
+      it->get(), OperatorType::kReshape);
 
   if (reshape_op == nullptr) {
     return false;

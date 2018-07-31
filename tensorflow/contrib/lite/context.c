@@ -76,7 +76,7 @@ void TfLiteTensorFree(TfLiteTensor* t) {
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        TfLiteQuantizationParams quantization, char* buffer,
                        size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, TfLiteTensor* tensor) {
+                       const void* allocation, bool is_variable, TfLiteTensor* tensor) {
   TfLiteTensorFree(tensor);
   tensor->type = type;
   tensor->name = name;
@@ -86,6 +86,7 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
   tensor->bytes = size;
   tensor->allocation_type = allocation_type;
   tensor->allocation = allocation;
+  tensor->is_variable = is_variable;
 }
 
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {

@@ -18,7 +18,7 @@ limitations under the License.
 // Initiates a TPU profiling on the TPUProfiler service at service_addr,
 // receives and dumps the profile data to a tensorboard log directory.
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 
 #include <cstdio>
 #include <ctime>
@@ -79,7 +79,9 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
     request.set_repository_root(repository_root);
     request.set_session_id(session_id);
   }
+  request.add_tools("op_profile");
   request.add_tools("input_pipeline");
+  request.add_tools("memory_viewer");
   request.add_tools("overview_page");
   *request.mutable_opts() = opts;
   std::cout << "Limiting the number of trace events to " << kMaxEvents

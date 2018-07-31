@@ -37,7 +37,7 @@ SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
 DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel" % TF_SRC_DIR
 GPU_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-gpu" % TF_SRC_DIR
-CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-cpu-mkl" % TF_SRC_DIR
+CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-mkl" % TF_SRC_DIR
 RELEVANT_FILES = [TF_SRC_DIR,
                   VERSION_H,
                   SETUP_PY,
@@ -247,16 +247,6 @@ def update_md_files(old_version, new_version):
                            "libtensorflow-%s.jar" % new_version, filepath)
     replace_string_in_line(r"<version>%s<\/version>" % old_version,
                            "<version>%s</version>" % new_version, filepath)
-
-  # Update any links to colab notebooks.
-  def colab_url(version):
-    version_string = "%s.%s.%s" % (version.major, version.minor, version.patch)
-    prefix = "https://colab.research.google.com/github/tensorflow/models/blob/r"
-    return prefix + version_string + "/"
-
-  replace_string_in_line(
-      colab_url(old_version), colab_url(new_version),
-      "%s/docs_src/get_started/eager.md" % TF_SRC_DIR)
 
 
 def major_minor_change(old_version, new_version):

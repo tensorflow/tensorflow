@@ -49,7 +49,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Unbatch")}));
@@ -62,7 +62,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "UnbatchDatasetOp::Dataset"; }
+    string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -80,8 +80,11 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params),
             current_index_(0),
             current_batch_size_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             shapes_(params.dataset->output_shapes().size()) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

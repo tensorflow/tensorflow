@@ -18,9 +18,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -64,7 +65,7 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
-    const Literal& literal, const DeviceHandle* device_handle) {
+    const LiteralSlice& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
   *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
@@ -91,7 +92,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
   return MakeUnique<GlobalData>(stub_, response.data());
 }
 
-Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
+Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
   *request.mutable_literal() = literal.ToProto();
@@ -409,8 +410,10 @@ StatusOr<string> Client::ExecutionStatsAsString(
   return string("[Execution Statistics] not available.");
 }
 
-StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
+    ChannelHandle::ChannelType type) {
   CreateChannelHandleRequest request;
+  request.set_channel_type(type);
   CreateChannelHandleResponse response;
 
   VLOG(1) << "making create channel handle request";
@@ -422,6 +425,18 @@ StatusOr<ChannelHandle> Client::CreateChannelHandle() {
   }
 
   return response.channel();
+}
+
+StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_DEVICE);
+}
+
+StatusOr<ChannelHandle> Client::CreateHostToDeviceChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::HOST_TO_DEVICE);
+}
+
+StatusOr<ChannelHandle> Client::CreateDeviceToHostChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_HOST);
 }
 
 }  // namespace xla

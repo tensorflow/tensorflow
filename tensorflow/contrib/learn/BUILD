@@ -284,6 +284,7 @@ py_test(
     tags = [
         "manual",
         "noasan",  # times out
+        "optonly",  # test is flaky without optimization.
     ],
     deps = [
         ":learn",

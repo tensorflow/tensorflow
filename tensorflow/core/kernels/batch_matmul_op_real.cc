@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(INTEL_MKL)
+#if !defined(INTEL_MKL) || defined(DO_NOT_USE_ML)
 TF_CALL_float(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_CPU);
 #endif

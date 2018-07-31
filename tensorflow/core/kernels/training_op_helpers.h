@@ -80,18 +80,8 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     Var* var;
     TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
     core::ScopedUnref unref_var(var);
-    if (lock_held) {
-      TF_RETURN_IF_ERROR(
-          PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
-      *out = *var->tensor();
-    } else {
-      mutex_lock ml(*var->mu());
-      if (!sparse) {
-        TF_RETURN_IF_ERROR(
-            PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
-      }
-      *out = *var->tensor();
-    }
+    TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
+    *out = *var->tensor();
     return Status::OK();
   }
   *out = ctx->mutable_input(input, lock_held);

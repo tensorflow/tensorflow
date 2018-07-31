@@ -366,6 +366,10 @@ class KeyValueTensorInitializer(TableInitializerBase):
     with ops.name_scope(
         self._name, values=(table.table_ref, self._keys,
                             self._values)) as scope:
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        scope += str(ops.uid())
       init_op = gen_lookup_ops.initialize_table_v2(
           table.table_ref, self._keys, self._values, name=scope)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
@@ -1108,6 +1112,10 @@ def index_table_from_tensor(vocabulary_list,
 
     shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        shared_name += str(ops.uid())
       table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,

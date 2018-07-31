@@ -23,6 +23,7 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 namespace comparisons {
+namespace {
 
 constexpr int kInputTensor1 = 0;
 constexpr int kInputTensor2 = 1;
@@ -66,6 +67,57 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
             GetTensorData<type>(input1), GetTensorDims(input1), \
             GetTensorData<type>(input2), GetTensorDims(input2), \
             GetTensorData<bool>(output), GetTensorDims(output));
+
+TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  // TODO(renjieliu): Support quantized data.
+  switch (input1->type) {
+    case kTfLiteFloat32:
+      TF_LITE_COMPARISON(float, Equal, requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      TF_LITE_COMPARISON(int32_t, Equal, requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      TF_LITE_COMPARISON(int64_t, Equal, requires_broadcast);
+      break;
+    default:
+      context->ReportError(context,
+                           "Does not support type %d, requires float|int",
+                           input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+// TODO(renjieliu): Refactor the logic to avoid duplications.
+TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  // TODO(renjieliu): Support quantized data.
+  switch (input1->type) {
+    case kTfLiteFloat32:
+      TF_LITE_COMPARISON(float, NotEqual, requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      TF_LITE_COMPARISON(int32_t, NotEqual, requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      TF_LITE_COMPARISON(int64_t, NotEqual, requires_broadcast);
+      break;
+    default:
+      context->ReportError(context,
+                           "Does not support type %d, requires float|int",
+                           input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
@@ -167,7 +219,21 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+}  // namespace
 }  // namespace comparisons
+
+TfLiteRegistration* Register_EQUAL() {
+  static TfLiteRegistration r = {
+      nullptr, nullptr, comparisons::ComparisonPrepare, comparisons::EqualEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_NOT_EQUAL() {
+  static TfLiteRegistration r = {nullptr, nullptr,
+                                 comparisons::ComparisonPrepare,
+                                 comparisons::NotEqualEval};
+  return &r;
+}
 
 TfLiteRegistration* Register_GREATER() {
   static TfLiteRegistration r = {nullptr, nullptr,

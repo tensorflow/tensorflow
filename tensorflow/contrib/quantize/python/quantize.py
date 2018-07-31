@@ -194,6 +194,8 @@ def _FindLayersToQuantize(graph):
                 /
          conv|fc
             |
+      [batch_to_space_nd]
+            |
     [post_conv_correction]
             |
      biasadd|folded_bias
@@ -247,9 +249,21 @@ def _FindLayersToQuantize(graph):
       ],
       ordered_inputs=False)
 
+  # For atrous convolutions a BatchToSpaceND will occur after the depthwise
+  # convolution.
+  batch_to_space_pattern = graph_matcher.OpTypePattern(
+      'BatchToSpaceND',
+      inputs=[
+          layer_pattern,
+          graph_matcher.OpTypePattern('*'),
+          graph_matcher.OpTypePattern('*')
+      ])
+
+  layer_output_pattern = graph_matcher.OneofPattern(
+      [batch_to_space_pattern, layer_pattern])
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
       'Mul',
-      inputs=[graph_matcher.OpTypePattern('*'), layer_pattern],
+      inputs=[graph_matcher.OpTypePattern('*'), layer_output_pattern],
       ordered_inputs=False)
   post_layer_op_correction_pattern = graph_matcher.OpTypePattern(
       'Add',
@@ -264,28 +278,37 @@ def _FindLayersToQuantize(graph):
       ],
       ordered_inputs=False)
 
+  # batch_norms with forced updates have an Identity operation at the end.
+  # TODO(suharshs): Find a way to easily skip extra Identity operations. The
+  # current issue is that doing so can often match patterns across many layers
+  # incorrectly.
+  batch_norm_identity = graph_matcher.OpTypePattern(
+      'Identity', inputs=[folded_bias_add_pattern])
+
   bias_add_pattern = graph_matcher.OpTypePattern(
-      'Add|BiasAdd', inputs=[layer_pattern, '*'], ordered_inputs=False)
+      'Add|BiasAdd', inputs=[layer_output_pattern, '*'], ordered_inputs=False)
 
   # The bias can come from the bias add or the folded bias add.
   bypass_pattern = graph_matcher.OpTypePattern(
       'Add',
       inputs=[
           graph_matcher.OneofPattern(
-              [bias_add_pattern, folded_bias_add_pattern]), '*'
+              [bias_add_pattern, folded_bias_add_pattern, batch_norm_identity]),
+          '*'
       ],
       ordered_inputs=False)
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
   # TODO(suharshs): We should ideally skip Identity operations instead of
-  # treating them as an activation.
+  # treating them as activations.
   activation_pattern = graph_matcher.OpTypePattern(
       '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
               bias_add_pattern,
               folded_bias_add_pattern,
+              batch_norm_identity,
               bypass_pattern,
           ])
       ])
@@ -371,14 +394,6 @@ def _FindLayersToQuantize(graph):
           _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
 
   return layer_matches
-
-
-def _HasPostActivationBypass(activation_op):
-  for activation_tensor in activation_op.outputs:
-    for output_op in activation_tensor.consumers():
-      if output_op.type == 'Add':
-        return True
-  return False
 
 
 class _LayerMatch(object):

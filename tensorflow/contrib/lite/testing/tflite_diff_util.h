@@ -40,10 +40,14 @@ struct DiffOptions {
   // Names of output tensors.
   // Example output_1,output_2
   std::vector<string> output_layer;
+  // Number of full runs (from building interpreter to checking outputs) in
+  // each of the passes. The first pass has a single inference, while the
+  // second pass does multiple inferences back to back.
+  int num_runs_per_pass;
 };
 
 // Run a single TensorFLow Lite diff test with a given options.
-bool RunDiffTest(const DiffOptions& options);
+bool RunDiffTest(const DiffOptions& options, int num_invocations);
 
 }  // namespace testing
 }  // namespace tflite

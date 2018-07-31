@@ -24,6 +24,7 @@ from tensorflow.contrib.distribute.python.mirrored_strategy import MirroredStrat
 from tensorflow.contrib.distribute.python.monitor import Monitor
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
+from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
 from tensorflow.python.training.distribute import *
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -41,6 +42,7 @@ _allowed_symbols = [
     'StandardInputStep',
     'StandardSingleLossStep',
     'TowerContext',
+    'TPUStrategy',
     'get_cross_tower_context',
     'get_distribution_strategy',
     'get_loss_reduction',

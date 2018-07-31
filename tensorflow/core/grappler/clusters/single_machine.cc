@@ -368,6 +368,15 @@ Status SingleMachine::ResetSession() {
   }
   coordinator_.reset(new Coordinator());
 
+  // Build the DeviceSet.
+  device_set_.reset(new DeviceSet);
+  const DeviceMgr* device_mgr;
+  TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
+  for (auto d : device_mgr->ListDevices()) {
+    device_set_->AddDevice(d);
+    // We currently don't care about the client device.
+  }
+
   return Status::OK();
 }
 

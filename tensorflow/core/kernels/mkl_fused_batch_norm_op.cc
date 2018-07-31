@@ -21,21 +21,21 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
-
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 using mkldnn::use_global_stats;
 using mkldnn::use_scale_shift;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
 
+#include "tensorflow/core/util/mkl_util.h"
 // TODO(inteltf) Address comments from PR 8968.
 
 namespace tensorflow {

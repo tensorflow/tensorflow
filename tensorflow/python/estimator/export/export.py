@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
@@ -93,7 +93,7 @@ def _check_tensor_key(name, error_label='feature'):
     raise ValueError('{} keys must be strings: {}.'.format(error_label, name))
 
 
-@tf_export('estimator.export.ServingInputReceiver')
+@estimator_export('estimator.export.ServingInputReceiver')
 class ServingInputReceiver(
     collections.namedtuple(
         'ServingInputReceiver',
@@ -161,7 +161,7 @@ class ServingInputReceiver(
         receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
-@tf_export('estimator.export.TensorServingInputReceiver')
+@estimator_export('estimator.export.TensorServingInputReceiver')
 class TensorServingInputReceiver(
     collections.namedtuple(
         'TensorServingInputReceiver',
@@ -263,7 +263,7 @@ class SupervisedInputReceiver(
         receiver_tensors=receiver_tensors)
 
 
-@tf_export('estimator.export.build_parsing_serving_input_receiver_fn')
+@estimator_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
@@ -313,7 +313,7 @@ def _placeholders_from_receiver_tensors_dict(input_vals,
   }
 
 
-@tf_export('estimator.export.build_raw_serving_input_receiver_fn')
+@estimator_export('estimator.export.build_raw_serving_input_receiver_fn')
 def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
   """Build a serving_input_receiver_fn expecting feature Tensors.
 
@@ -333,11 +333,7 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
     """A serving_input_receiver_fn that expects features to be fed directly."""
     receiver_tensors = _placeholders_from_receiver_tensors_dict(
         features, default_batch_size)
-
-    # TODO(b/34885899): remove the unnecessary copy
-    # The features provided are simply the placeholders, but we defensively copy
-    # the dict because it may be mutated.
-    return ServingInputReceiver(receiver_tensors, receiver_tensors.copy())
+    return ServingInputReceiver(receiver_tensors, receiver_tensors)
 
   return serving_input_receiver_fn
 
@@ -402,6 +398,42 @@ def build_raw_supervised_input_receiver_fn(features,
     return SupervisedInputReceiver(features_cp, labels_cp, receiver_tensors)
 
   return supervised_input_receiver_fn
+
+
+def build_supervised_input_receiver_fn_from_input_fn(input_fn, **input_fn_args):
+  """Get a function that returns a SupervisedInputReceiver matching an input_fn.
+
+  Note that this function calls the input_fn in a local graph in order to
+  extract features and labels. Placeholders are then created from those
+  features and labels in the default graph.
+
+  Args:
+    input_fn: An Estimator input_fn, which is a function that returns one of:
+
+      * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+          tuple (features, labels) with same constraints as below.
+      * A tuple (features, labels): Where `features` is a `Tensor` or a
+        dictionary of string feature name to `Tensor` and `labels` is a
+        `Tensor` or a dictionary of string label name to `Tensor`. Both
+        `features` and `labels` are consumed by `model_fn`. They should
+        satisfy the expectation of `model_fn` from inputs.
+
+    **input_fn_args: set of kwargs to be passed to the input_fn. Note that
+      these will not be checked or validated here, and any errors raised by
+      the input_fn will be thrown to the top.
+
+  Returns:
+    A function taking no arguments that, when called, returns a
+    SupervisedInputReceiver. This function can be passed in as part of the
+    input_receiver_map when exporting SavedModels from Estimator with multiple
+    modes.
+  """
+  # Wrap the input_fn call in a graph to prevent sullying the default namespace
+  with ops.Graph().as_default():
+    result = input_fn(**input_fn_args)
+    features, labels, _ = util.parse_input_fn_result(result)
+  # Placeholders are created back in the default graph.
+  return build_raw_supervised_input_receiver_fn(features, labels)
 
 
 ### Below utilities are specific to SavedModel exports.

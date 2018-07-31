@@ -85,6 +85,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "window_dataset_op",
+    srcs = ["window_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        ":window_dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "slide_dataset_op",
     srcs = ["slide_dataset_op.cc"],
     deps = [
@@ -358,6 +371,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -549,11 +563,47 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "optimize_dataset_op",
+    srcs = ["optimize_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/grappler/optimizers/data",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
+    srcs = ["dataset_ops.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "data",
     deps = [
         ":batch_dataset_op",
         ":cache_dataset_ops",
         ":concatenate_dataset_op",
+        ":dataset",
+        ":dataset_ops",
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
@@ -564,6 +614,7 @@ tf_kernel_library(
         ":iterator_ops",
         ":map_and_batch_dataset_op",
         ":map_dataset_op",
+        ":optimize_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
@@ -586,6 +637,7 @@ tf_kernel_library(
         ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
         ":unbatch_dataset_op",
+        ":window_dataset_op",
         ":writer_ops",
         ":zip_dataset_op",
     ],

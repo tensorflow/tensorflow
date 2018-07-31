@@ -26,6 +26,47 @@ from tensorflow.python.keras.utils.conv_utils import convert_kernel
 from tensorflow.python.util.tf_export import tf_export
 
 
+def get_source_inputs(tensor, layer=None, node_index=None):
+  """Returns the list of input tensors necessary to compute `tensor`.
+
+  Output will always be a list of tensors
+  (potentially with 1 element).
+
+  Arguments:
+      tensor: The tensor to start from.
+      layer: Origin layer of the tensor. Will be
+          determined via tensor._keras_history if not provided.
+      node_index: Origin node index of the tensor.
+
+  Returns:
+      List of input tensors.
+  """
+  if not hasattr(tensor, '_keras_history'):
+    return tensor
+
+  if layer is None or node_index:
+    layer, node_index, _ = tensor._keras_history
+  if not layer._inbound_nodes:
+    return [tensor]
+  else:
+    node = layer._inbound_nodes[node_index]
+    if not node.inbound_layers:
+      # Reached an Input layer, stop recursion.
+      return node.input_tensors
+    else:
+      source_tensors = []
+      for i in range(len(node.inbound_layers)):
+        x = node.input_tensors[i]
+        layer = node.inbound_layers[i]
+        node_index = node.node_indices[i]
+        previous_sources = get_source_inputs(x, layer, node_index)
+        # Avoid input redundancy.
+        for x in previous_sources:
+          if x not in source_tensors:
+            source_tensors.append(x)
+      return source_tensors
+
+
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
@@ -199,6 +240,61 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('Trainable params: {:,}'.format(trainable_count))
   print_fn('Non-trainable params: {:,}'.format(non_trainable_count))
   print_fn('_' * line_length)
+
+
+def gather_trainable_weights(trainable, sub_layers, extra_variables):
+  """Lists the trainable weights for an object with sub-layers.
+
+  Args:
+    trainable: Whether the object collecting the variables is trainable.
+    sub_layers: A flat list of Layer objects owned by this object, to collect
+      variables from.
+    extra_variables: Any extra variables to include. Their `.trainable` property
+      is used to categorize them.
+
+  Returns:
+    A list of collected trainable weights/variables.
+  """
+  if not trainable:
+    return []
+  weights = []
+  for layer in sub_layers:
+    weights += layer.trainable_weights
+  trainable_extra_variables = [
+      v for v in extra_variables if v.trainable]
+  return weights + trainable_extra_variables
+
+
+def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
+  """Lists the non-trainable weights for an object with sub-layers.
+
+  Args:
+    trainable: Whether the object collecting the variables is trainable.
+    sub_layers: A flat list of Layer objects owned by this object, to collect
+      variables from.
+    extra_variables: Any extra variables to include. Their `.trainable` property
+      is used to categorize them.
+
+  Returns:
+    A list of collected non-trainable weights/variables.
+  """
+  trainable_extra_variables = []
+  non_trainable_extra_variables = []
+  for v in extra_variables:
+    if v.trainable:
+      trainable_extra_variables.append(v)
+    else:
+      non_trainable_extra_variables.append(v)
+  weights = []
+  for layer in sub_layers:
+    weights += layer.non_trainable_weights
+  if not trainable:
+    trainable_weights = []
+    for layer in sub_layers:
+      trainable_weights += layer.trainable_weights
+    return (trainable_weights + trainable_extra_variables
+            + weights + non_trainable_extra_variables)
+  return weights + non_trainable_extra_variables
 
 
 @tf_export('keras.utils.convert_all_kernels_in_model')

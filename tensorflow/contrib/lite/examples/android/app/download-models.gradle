@@ -1,0 +1,74 @@
+/*
+ * download-models.gradle
+ *     Downloads model files from ${MODEL_URL} into application's asset folder
+ * Input:
+ *     project.ext.TMP_DIR: absolute path to hold downloaded zip files
+ *     project.ext.ASSET_DIR: absolute path to save unzipped model files
+ * Output:
+ *     3 model files will be downloaded into given folder of ext.ASSET_DIR
+ */
+// hard coded model files
+// LINT.IfChange
+
+def models = ['conv_actions_tflite.zip',
+              'mobilenet_ssd_tflite_v1.zip',
+              'mobilenet_v1_224_android_quant_2017_11_08.zip',
+              'coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip']
+// LINT.ThenChange(//tensorflow/contrib/lite/examples/android/BUILD)
+
+// Root URL for model archives
+def MODEL_URL = 'https://storage.googleapis.com/download.tensorflow.org/models/tflite'
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'de.undercouch:gradle-download-task:3.2.0'
+    }
+}
+
+import de.undercouch.gradle.tasks.download.Download
+task downloadFile(type: Download){
+    for (f in models) {
+        def modelUrl = MODEL_URL + "/" + f
+        println "Downloading ${f} from ${modelUrl}"
+        src modelUrl
+    }
+
+    dest new File(project.ext.TMP_DIR)
+    overwrite true
+}
+
+task extractModels(type: Copy) {
+    for (f in models) {
+        def localFile = f.split("/")[-1]
+        from zipTree(project.ext.TMP_DIR + '/' + localFile)
+    }
+
+    into file(project.ext.ASSET_DIR)
+    fileMode  0644
+    exclude '**/LICENSE'
+
+    def needDownload = false
+    for (f in models) {
+        def localFile = f.split("/")[-1]
+        if (!(new File(project.ext.TMP_DIR + '/' + localFile)).exists()) {
+            needDownload = true
+        }
+    }
+
+    if (needDownload) {
+        dependsOn downloadFile
+    }
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'assembleDebug') {
+        task.dependsOn 'extractModels'
+    }
+    if (task.name == 'assembleRelease') {
+        task.dependsOn 'extractModels'
+    }
+}
+

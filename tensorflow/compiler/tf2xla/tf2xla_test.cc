@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -73,8 +75,8 @@ TEST(ConvertGraphDefToXla, Sum) {
   TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
 
   // Set up arguments.
-  auto x_literal = xla::Literal::CreateR0<int32>(10);
-  auto y_literal = xla::Literal::CreateR0<int32>(32);
+  auto x_literal = xla::LiteralUtil::CreateR0<int32>(10);
+  auto y_literal = xla::LiteralUtil::CreateR0<int32>(32);
   auto x_global_or = client->TransferToServer(*x_literal);
   auto y_global_or = client->TransferToServer(*y_literal);
   TF_EXPECT_OK(x_global_or.status());

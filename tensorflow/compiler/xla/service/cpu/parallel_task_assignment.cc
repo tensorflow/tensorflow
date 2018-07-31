@@ -38,7 +38,7 @@ class SimpleCostModel : public ParallelCostModel {
     const int64 min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
     // Return target parallel task count in [1, max_parallelism_].
     return std::min(max_parallelism_,
-                    std::max(1LL, instruction_cost / min_cost_per_thread));
+                    std::max(int64{1}, instruction_cost / min_cost_per_thread));
   }
 
  private:
@@ -63,7 +63,7 @@ class DefaultCostModel : public ParallelCostModel {
     int64 max_parallelism;
     // Calculate flops-to-bytes-ratio for 'instruction'.
     const int64 bytes_accessed =
-        std::max(1LL, cost_analysis_->bytes_accessed(*instruction));
+        std::max(int64{1}, cost_analysis_->bytes_accessed(*instruction));
     const float flops_to_bytes_ratio =
         cost_analysis_->flop_count(*instruction) /
         static_cast<float>(bytes_accessed);
@@ -93,7 +93,7 @@ class DefaultCostModel : public ParallelCostModel {
     }
     // Return target parallel task count in [1, max_parallelism_].
     return std::min(max_parallelism,
-                    std::max(1LL, instruction_cost / min_cost_per_thread));
+                    std::max(int64{1}, instruction_cost / min_cost_per_thread));
   }
 
  private:

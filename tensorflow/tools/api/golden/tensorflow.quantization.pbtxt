@@ -1,0 +1,35 @@
+path: "tensorflow.quantization"
+tf_module {
+  member_method {
+    name: "dequantize"
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
+  }
+  member_method {
+    name: "fake_quant_with_min_max_args"
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'-6\', \'6\', \'8\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "fake_quant_with_min_max_args_gradient"
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'-6\', \'6\', \'8\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "fake_quant_with_min_max_vars"
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "fake_quant_with_min_max_vars_gradient"
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "fake_quant_with_min_max_vars_per_channel"
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "fake_quant_with_min_max_vars_per_channel_gradient"
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "quantized_concat"
+    argspec: "args=[\'concat_dim\', \'values\', \'input_mins\', \'input_maxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

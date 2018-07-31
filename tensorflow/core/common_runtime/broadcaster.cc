@@ -187,7 +187,7 @@ void Broadcaster::RunTree() {
       DeviceContext* op_dev_ctx = ctx_->op_device_context();
       CollectiveRemoteAccessLocal::MemCpyAsync(
           op_dev_ctx, op_dev_ctx, device_, device_, ctx_->input_alloc_attr(0),
-          ctx_->output_alloc_attr(0), input, output_,
+          ctx_->output_alloc_attr(0), input, output_, 0 /*steam_index*/,
           [this, &mu, &pending_count, &all_done](const Status& s) {
             mutex_lock l(mu);
             status_.Update(s);
@@ -239,7 +239,7 @@ void Broadcaster::DispatchRecv(int src_rank, Tensor* dst_tensor,
                           col_params_.task.is_local[src_idx], recv_buf_key,
                           device_, ctx_->op_device_context(),
                           ctx_->output_alloc_attr(0), dst_tensor,
-                          device_locality_, done);
+                          device_locality_, 0 /*stream_index*/, done);
 }
 
 }  // namespace tensorflow

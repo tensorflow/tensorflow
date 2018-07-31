@@ -23,6 +23,8 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+// TODO(pauldonnelly): 'signed_input' should really be called 'signed_output'.
+
 template <typename Device, typename T>
 struct QuantizeAndDequantizeOneScaleFunctor {
   void operator()(const Device& d, typename TTypes<T>::ConstVec input,
@@ -45,60 +47,59 @@ struct QuantizeAndDequantizeOneScaleImpl {
     if (!range_given) {
       input_min.device(d) = input.minimum();
       input_max.device(d) = input.maximum();
-    }
-    d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
-    d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
-
-    // Make sure the range is symmetric for signed quantization, or start from
-    // 0 for unsigned quantization.
-    max_range = std::max(std::abs(max_range), std::abs(min_range));
-
-    // If both min and max are 0, then the output should be just 0.
-    if (max_range == 0) {
-      out.device(d) = input.constant(T(0));
-      return;
-    }
-
-    if (signed_input) {
-      min_range = -max_range;
-
-      // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
-      // example, if it is 8 bits, we have the range [-127, 127]. So for input
-      // range of [-x, x], the scale should be 254/(2*x).
-      T scale = static_cast<T>((uint64_t{1} << (num_bits - 1)) - 1) / max_range;
-      T inverse_scale = T(1.0) / scale;
-      if (range_given) {
-        out.device(d) =
-            ((input.cwiseMin(max_range).cwiseMax(min_range) - min_range) *
-                 scale +
-             T(0.5))
-                    .floor() *
-                inverse_scale +
-            min_range;
-      } else {
-        // No need to compare with min and max as they are measured from the
-        // tensor.
-        out.device(d) =
-            ((input - min_range) * scale + T(0.5)).floor() * inverse_scale +
-            min_range;
-      }
+      d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
+      d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
     } else {
-      min_range = 0;
-      // If it is unsigned and num_bits == 8, the range with 8 bits is [0, 255].
-      // If the input range is [0, x], then the scale is x/255 instead of 254 as
-      // in the case above.
-      T scale = static_cast<T>((uint64_t{1} << num_bits) - 1) / max_range;
-      T inverse_scale = 1.0 / scale;
-      if (range_given) {
-        out.device(d) =
-            ((input.cwiseMin(max_range).cwiseMax(min_range)) * scale + T(0.5))
-                .floor() *
-            inverse_scale;
-      } else {
-        // No need to compare with min and max as they are measured from the
-        // tensor.
-        out.device(d) = (input * scale + T(0.5)).floor() * inverse_scale;
-      }
+      // Copy the range values from their respective tensors on the host.
+      min_range = input_min_tensor->scalar<T>()();
+      max_range = input_max_tensor->scalar<T>()();
+    }
+
+    // Calculate the range for the simulated integer quantization:
+    // e.g. [-128,127] for signed = true, num_bits = 8,
+    // or [0, 255] for signed = false, num_bits = 8.
+    const int64 min_quantized = signed_input ? -(1ULL << (num_bits - 1)) : 0;
+    const int64 max_quantized = min_quantized + ((1ULL << num_bits) - 1);
+
+    // Determine the maximum scaling factor that would scale
+    // [min_range, max_range] to not exceed [min_quantized, max_quantized],
+    // while keeping 0 unchanged.
+    const T scale_from_min_side = (min_quantized * min_range > 0)
+                                      ? min_quantized / min_range
+                                      : std::numeric_limits<T>::max();
+    const T scale_from_max_side = (max_quantized * max_range > 0)
+                                      ? max_quantized / max_range
+                                      : std::numeric_limits<T>::max();
+
+    // Note: Avoids changing the side of the range that determines scale.
+    T scale, inverse_scale;
+    if (scale_from_min_side < scale_from_max_side) {
+      scale = scale_from_min_side;
+      inverse_scale = min_range / min_quantized;
+      max_range = max_quantized * inverse_scale;
+    } else {
+      scale = scale_from_max_side;
+      inverse_scale = max_range / max_quantized;
+      min_range = min_quantized * inverse_scale;
+    }
+
+    if (range_given) {
+      // Note: The clamping here is to avoid overflow in the quantized type.
+      // The semantics of the op does not guarantee to clamp to the specified
+      // min_range and max_range - because we may have changed either min_range
+      // or max_range.
+      out.device(d) =
+          ((input.cwiseMin(max_range).cwiseMax(min_range) - min_range) * scale +
+           T(0.5))
+                  .floor() *
+              inverse_scale +
+          min_range;
+    } else {
+      // No need to clamp to min_range and max_range in this case as they were
+      // measured from the tensor.
+      out.device(d) =
+          ((input - min_range) * scale + T(0.5)).floor() * inverse_scale +
+          min_range;
     }
   }
 };

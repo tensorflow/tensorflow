@@ -131,6 +131,10 @@ class ResourceMgr {
   // "*resource". Otherwise, invokes creator() to create the resource.
   // The caller takes the ownership of one ref on "*resource".
   //
+  // WARNING: creator() must not call any methods on ResourceMgr during its
+  // execution, because a non-reentrant lock is held during the creator() call
+  // in order to guarantee atomicity of LookupOrCreate().
+  //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr
   template <typename T>
@@ -174,10 +178,19 @@ class ResourceMgr {
   mutable mutex mu_;
   std::unordered_map<string, Container*> containers_ GUARDED_BY(mu_);
 
+  template <typename T>
+  Status LookupInternal(const string& container, const string& name,
+                        T** resource) const
+      SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
   Status DoCreate(const string& container, TypeIndex type, const string& name,
-                  ResourceBase* resource) TF_MUST_USE_RESULT;
+                  ResourceBase* resource)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
   Status DoLookup(const string& container, TypeIndex type, const string& name,
-                  ResourceBase** resource) const TF_MUST_USE_RESULT;
+                  ResourceBase** resource) const
+      SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
   Status DoDelete(const string& container, uint64 type_hash_code,
                   const string& resource_name,
                   const string& type_name) TF_MUST_USE_RESULT;
@@ -362,6 +375,7 @@ Status ResourceMgr::Create(const string& container, const string& name,
                            T* resource) {
   CheckDeriveFromResourceBase<T>();
   CHECK(resource != nullptr);
+  mutex_lock l(mu_);
   return DoCreate(container, MakeTypeIndex<T>(), name, resource);
 }
 
@@ -369,6 +383,13 @@ template <typename T>
 Status ResourceMgr::Lookup(const string& container, const string& name,
                            T** resource) const {
   CheckDeriveFromResourceBase<T>();
+  tf_shared_lock l(mu_);
+  return LookupInternal(container, name, resource);
+}
+
+template <typename T>
+Status ResourceMgr::LookupInternal(const string& container, const string& name,
+                                   T** resource) const {
   ResourceBase* found = nullptr;
   Status s = DoLookup(container, MakeTypeIndex<T>(), name, &found);
   if (s.ok()) {
@@ -383,21 +404,23 @@ template <typename T>
 Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
                                    T** resource,
                                    std::function<Status(T**)> creator) {
-  Status s;
+  CheckDeriveFromResourceBase<T>();
   *resource = nullptr;
-  while (*resource == nullptr) {
-    s = Lookup(container, name, resource);
-    if (s.ok()) break;
-    s = creator(resource);
-    if (!s.ok()) break;
-    s = Create(container, name, *resource);
-    if (s.ok()) {
-      (*resource)->Ref();
-      break;
-    }
-    // Rare event. Concurrent racy creation. Redo the lookup.
-    *resource = nullptr;
+  Status s;
+  {
+    tf_shared_lock l(mu_);
+    s = LookupInternal(container, name, resource);
+    if (s.ok()) return s;
   }
+  mutex_lock l(mu_);
+  s = LookupInternal(container, name, resource);
+  if (s.ok()) return s;
+  TF_RETURN_IF_ERROR(creator(resource));
+  s = DoCreate(container, MakeTypeIndex<T>(), name, *resource);
+  if (!s.ok()) {
+    return errors::Internal("LookupOrCreate failed unexpectedly");
+  }
+  (*resource)->Ref();
   return s;
 }
 

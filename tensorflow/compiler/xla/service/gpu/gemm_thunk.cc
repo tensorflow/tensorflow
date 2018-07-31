@@ -252,7 +252,8 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       alpha_(alpha) {}
 
 Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                  se::Stream* stream) {
+                                  se::Stream* stream,
+                                  HloExecutionProfiler* profiler) {
   VLOG(2) << "Executing a GemmThunk";
 
   se::DeviceMemoryBase lhs_data =
@@ -352,6 +353,7 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                    alpha_, stream);
   };
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   bool launch_ok;
   if (LayoutUtil::Minor(output_shape_.layout(), 0) == 0) {
     launch_ok = launch(

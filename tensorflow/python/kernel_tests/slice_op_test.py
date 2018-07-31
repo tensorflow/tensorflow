@@ -225,7 +225,7 @@ class SliceTest(test.TestCase):
     self.assertAllEqual(m1.get_shape().as_list(), [1, 2, 3])
 
     m2 = array_ops.slice(z, [0, 0, 0], [constant_op.constant(1) + 0, 2, -1])
-    self.assertAllEqual(m2.get_shape().as_list(), [None, 2, None])
+    self.assertAllEqual(m2.get_shape().as_list(), [1, 2, 3])
 
 
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):

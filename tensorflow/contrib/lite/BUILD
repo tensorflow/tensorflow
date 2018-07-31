@@ -47,6 +47,10 @@ cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/contrib/lite/testing:util",
@@ -90,6 +94,16 @@ cc_library(
     deps = [":context"],
 )
 
+cc_library(
+    name = "kernel_api",
+    hdrs = [
+        "builtin_op_data.h",
+        "builtin_ops.h",
+        "context.h",
+        "context_util.h",
+    ],
+)
+
 exports_files(["builtin_ops.h"])
 
 cc_library(
@@ -118,6 +132,7 @@ cc_library(
     hdrs = [
         "allocation.h",
         "context.h",
+        "context_util.h",
         "error_reporter.h",
         "graph_info.h",
         "interpreter.h",
@@ -135,6 +150,7 @@ cc_library(
         ":memory_planner",
         ":schema_fbs_version",
         ":simple_memory_arena",
+        ":string",
         ":util",
         "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
@@ -174,6 +190,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "//tensorflow/contrib/lite/schema:schema_fbs",
@@ -187,6 +204,7 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":framework",
         ":string_util",
@@ -231,6 +249,7 @@ cc_test(
     name = "op_resolver_test",
     size = "small",
     srcs = ["op_resolver_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":framework",
         "//tensorflow/contrib/lite/testing:util",
@@ -263,6 +282,7 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":context",
         ":util",

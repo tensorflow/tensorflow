@@ -89,7 +89,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
           use_compression_(!compression_type.empty()),
           options_(options) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
@@ -106,7 +106,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "TextLineDatasetOp::Dataset"; }
+    string DebugString() const override { return "TextLineDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
@@ -323,7 +323,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           footer_bytes_(footer_bytes),
           buffer_size_(buffer_size) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
@@ -340,7 +340,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "FixedLengthRecordDatasetOp::Dataset";
     }
 
@@ -543,7 +543,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));
@@ -560,7 +560,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "TFRecordDatasetOp::Dataset"; }
+    string DebugString() const override { return "TFRecordDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,

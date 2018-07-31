@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/python/toco_python_api.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
+#include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_tooling.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
@@ -62,7 +63,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   std::string input_contents_txt = ConvertArg(input_contents_txt_raw, &error);
   if (error) return nullptr;
 
-  // Use toco to produce new outputs
+  // Use TOCO to produce new outputs.
   toco::ModelFlags model_flags;
   if (!model_flags.ParseFromString(model_flags_proto_txt)) {
     LOG(FATAL) << "Model proto failed to parse." << std::endl;
@@ -71,6 +72,16 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   if (!toco_flags.ParseFromString(toco_flags_proto_txt)) {
     LOG(FATAL) << "Toco proto failed to parse." << std::endl;
   }
+
+  auto& dump_options = *GraphVizDumpOptions::singleton();
+  if (toco_flags.has_dump_graphviz_dir()) {
+    dump_options.dump_graphviz = toco_flags.dump_graphviz_dir();
+  }
+  if (toco_flags.has_dump_graphviz_include_video()) {
+    dump_options.dump_graphviz_video = toco_flags.dump_graphviz_include_video();
+  }
+
+  // Convert model.
   std::unique_ptr<toco::Model> model =
       toco::Import(toco_flags, model_flags, input_contents_txt);
   toco::Transform(toco_flags, model.get());

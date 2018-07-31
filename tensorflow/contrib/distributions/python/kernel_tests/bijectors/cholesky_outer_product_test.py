@@ -61,6 +61,28 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
           atol=0.,
           rtol=1e-7)
 
+  def testNoBatchStaticJacobian(self):
+    x = np.eye(2)
+    bijector = bijectors.CholeskyOuterProduct()
+
+    # The Jacobian matrix is 2 * tf.eye(2), which has jacobian determinant 4.
+    self.assertAllClose(
+        np.log(4),
+        self.evaluate(bijector.forward_log_det_jacobian(x, event_ndims=2)))
+
+  def testNoBatchDynamicJacobian(self):
+    x = np.eye(2)
+    bijector = bijectors.CholeskyOuterProduct()
+    x_pl = array_ops.placeholder(dtypes.float32)
+
+    with self.test_session():
+      log_det_jacobian = bijector.forward_log_det_jacobian(x_pl, event_ndims=2)
+
+      # The Jacobian matrix is 2 * tf.eye(2), which has jacobian determinant 4.
+      self.assertAllClose(
+          np.log(4),
+          log_det_jacobian.eval({x_pl: x}))
+
   def testNoBatchStatic(self):
     x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
     y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)

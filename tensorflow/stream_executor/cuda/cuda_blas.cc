@@ -2155,10 +2155,7 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     const HostOrDeviceScalar<CompT> &beta, DeviceMemory<OutT> *c, int ldc,
     blas::ComputationType computation_type, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
-// CUDA < version 8 and GPUs < sm_50 don't support cublasGemmEx.
-#if CUDA_VERSION < 8000
-  return false;
-#else
+  // GPUs < sm_50 don't support cublasGemmEx.
   int cc_major, cc_minor;
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor) &&
@@ -2183,6 +2180,15 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
       return false;
     }
   }
+
+  // Return false if we might be hitting a cuBLAS bug that produces the wrong
+  // result. See nvbugs/2156201, b/79126339.
+#if CUDA_VERSION >= 9000 && CUDA_VERSION < 9020
+  if ((algorithm == CUBLAS_GEMM_DEFAULT || algorithm >= CUBLAS_GEMM_ALGO13) &&
+      std::max({m, n, k}) >= 2097153 && cc_major < 7) {
+    return false;
+  }
+#endif
 
   cudaDataType_t cuda_in_type = CUDADataType<InT>::type;
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
@@ -2213,7 +2219,6 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
         timer->GetElapsedMilliseconds());
   }
   return result;
-#endif
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(

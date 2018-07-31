@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
@@ -75,8 +76,10 @@ TEST(HloMatchersTest, Test) {
 }
 
 TEST(HloMatchersTest, CustomCallMatcher) {
-  auto c1 = HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3}));
-  auto c2 = HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3}));
+  auto c1 =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
+  auto c2 =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1, 2, 3}));
   auto call = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
 
@@ -147,6 +150,18 @@ TEST(HloMatchersTest, ShardingMatcher) {
                                             "param.1");
   p1->set_sharding(HloSharding::AssignDevice(1));
 
+  auto tuple_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
+       ShapeUtil::MakeShape(F32, {11})});
+  auto p2 = HloInstruction::CreateParameter(1, tuple_shape, "param.2");
+  Array<int64> assignment({2});
+  assignment.SetValues({0, 1});
+  auto sharding = HloSharding::Tuple(
+      tuple_shape,
+      {HloSharding::Tile(ShapeUtil::MakeShape(F32, {5}), assignment),
+       HloSharding::AssignDevice(1), HloSharding::Replicate()});
+  p2->set_sharding(sharding);
+
   EXPECT_THAT(p0.get(), op::NoSharding());
   EXPECT_THAT(p0.get(),
               ::testing::Not(op::Sharding(HloSharding::AssignDevice(1))));
@@ -154,6 +169,11 @@ TEST(HloMatchersTest, ShardingMatcher) {
   EXPECT_THAT(p1.get(),
               ::testing::Not(op::Sharding(HloSharding::AssignDevice(0))));
   EXPECT_THAT(p1.get(), op::Sharding(HloSharding::AssignDevice(1)));
+
+  EXPECT_THAT(
+      p2.get(),
+      op::Sharding(
+          "{{f32[5] devices=[2]0,1}, {maximal device=1}, {replicated}}"));
 
   EXPECT_THAT(Explain(p0.get(), op::Sharding(HloSharding::AssignDevice(1))),
               "%param.0 = f32[5]{0} parameter(0) has no sharding (expected: "
@@ -178,7 +198,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   EXPECT_THAT(root, op::Dot(op::Parameter(0), op::Parameter(1),

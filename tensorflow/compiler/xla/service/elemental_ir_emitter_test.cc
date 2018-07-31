@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace {
@@ -33,7 +33,7 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            tools::Parse(hlo_text, config));
+                            ParseHloString(hlo_text, config));
     EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), args, nullopt));
   }
 };
@@ -57,8 +57,8 @@ ENTRY main {
 }
 )";
 
-  std::unique_ptr<Literal> lhs = Literal::CreateR3<int32>({{{1}, {2}}});
-  std::unique_ptr<Literal> rhs = Literal::CreateR3<int32>({{{3}, {4}}});
+  std::unique_ptr<Literal> lhs = LiteralUtil::CreateR3<int32>({{{1}, {2}}});
+  std::unique_ptr<Literal> rhs = LiteralUtil::CreateR3<int32>({{{3}, {4}}});
   RunTest(hlo_text, {lhs.get(), rhs.get()});
 }
 }  // namespace

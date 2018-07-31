@@ -23,7 +23,7 @@ namespace ops {
 namespace builtin {
 namespace elementwise {
 
-TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
@@ -35,7 +35,8 @@ TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(input->dims));
 }
 
-TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
+inline TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node,
+                         float float_func(float)) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
@@ -44,7 +45,7 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
       const float* in = GetTensorData<float>(input);
       const float* in_end = in + elements;
       float* out = output->data.f;
-      for (; in < in_end; in++, out++) *out = std::sin(*in);
+      for (; in < in_end; in++, out++) *out = float_func(*in);
       return kTfLiteOk;
     }
     default: {
@@ -55,11 +56,45 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, std::sin);
+}
+
+TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, std::log);
+}
+
+TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, std::sqrt);
+}
+
+TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, [](float f) { return 1.f / std::sqrt(f); });
+}
+
 }  // namespace elementwise
 
 TfLiteRegistration* Register_SIN() {
-  static TfLiteRegistration r = {nullptr, nullptr, elementwise::SinPrepare,
+  static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
                                  elementwise::SinEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOG() {
+  static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
+                                 elementwise::LogEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_SQRT() {
+  static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
+                                 elementwise::SqrtEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_RSQRT() {
+  static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
+                                 elementwise::RsqrtEval};
   return &r;
 }
 

@@ -58,6 +58,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kConcatenate:
       case HloOpcode::kFusion:
       case HloOpcode::kMap:
+      case HloOpcode::kAfterAll:
       case HloOpcode::kTuple:
         EXPECT_TRUE(HloOpcodeIsVariadic(opcode));
         break;

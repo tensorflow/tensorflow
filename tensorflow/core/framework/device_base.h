@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -154,9 +154,7 @@ class DeviceBase {
   }
 
   // Does not take ownership.
-  void set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
-    eigen_cpu_device_ = d;
-  }
+  void set_eigen_cpu_device(Eigen::ThreadPoolDevice* d);
 
 #ifdef TENSORFLOW_USE_SYCL
   void set_eigen_sycl_device(Eigen::SyclDevice* d) { eigen_sycl_device_ = d; }
@@ -169,13 +167,10 @@ class DeviceBase {
     return nullptr;
   }
 
-  // Return the Allocator implementation to use based on the allocator
-  // attributes requested and the supplied resource manager. By
-  // default this ignores the resource manager and calls the base
-  // implementation but devices can override if they want to consult
-  // the resource manager when choosing the allocator.
-  virtual Allocator* GetStepAllocator(AllocatorAttributes attr,
-                                      ResourceMgr* /*step_resource_manager*/) {
+  // DEPRECATED: Use `this->GetAllocator()` or `this->GetScopedAllocator()`.
+  // This method is provided for backwards compatibility, and will be removed
+  // in a future release.
+  Allocator* GetStepAllocator(AllocatorAttributes attr, ResourceMgr*) {
     return GetAllocator(attr);
   }
 
@@ -189,10 +184,9 @@ class DeviceBase {
 
   virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }
 
-  virtual const Eigen::ThreadPoolDevice* eigen_cpu_device() {
-    CHECK(eigen_cpu_device_ != nullptr);
-    return eigen_cpu_device_;
-  }
+  bool has_eigen_cpu_device() const { return !eigen_cpu_devices_.empty(); }
+
+  virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
 
 #ifdef TENSORFLOW_USE_SYCL
   virtual const Eigen::SyclDevice* eigen_sycl_device() const {
@@ -245,7 +239,7 @@ class DeviceBase {
   // Set by GPUs as well as by TPU devices.
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   thread::ThreadPool* device_thread_pool_ = nullptr;
-  Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;
+  std::vector<Eigen::ThreadPoolDevice*> eigen_cpu_devices_;
 #ifdef TENSORFLOW_USE_SYCL
   Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
 #endif

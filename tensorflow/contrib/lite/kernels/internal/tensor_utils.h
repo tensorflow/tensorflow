@@ -17,19 +17,26 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 namespace tflite {
 namespace tensor_utils {
 
 // Limit a float input f between +abs_limit and -abs_limit.
 float Clip(float f, float abs_limit);
 
+// Checks if all entries of vector are zero.
+bool IsZeroVector(const float* vector, int v_size);
+
 // Quantizes a buffer of floating point values using a symmetric quantization
 // (i.e. linear quantization without an offset) to 8-bit signed integers.
 // It also outputs the range (min, max) of the floating point buffer, and the
 // scaling factor used to quantize the values.
 void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* min, float* max,
-                             float* scaling_factor);
+                             int8_t* quantized_values, float* min_value,
+                             float* max_value, float* scaling_factor);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -120,6 +127,10 @@ void Sub1Vector(const float* vector, int v_size, float* result);
 
 // Fill vector with 0.f.
 void ZeroVector(float* vector, int v_size);
+
+// Multiply all elements of vector with a scalar.
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result);
 
 // Clip elements of a vector using a abs_limit value.
 void ClipVector(const float* vector, int v_size, float abs_limit,

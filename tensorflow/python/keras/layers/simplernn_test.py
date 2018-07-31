@@ -29,7 +29,7 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 class SimpleRNNLayerTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_return_sequences_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -41,7 +41,7 @@ class SimpleRNNLayerTest(test.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dynamic_behavior_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -55,7 +55,7 @@ class SimpleRNNLayerTest(test.TestCase):
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dropout_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -68,7 +68,7 @@ class SimpleRNNLayerTest(test.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_implementation_mode_SimpleRNN(self):
     num_samples = 2
     timesteps = 3

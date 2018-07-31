@@ -22,6 +22,7 @@ import os
 import shutil
 
 import numpy as np
+import six
 
 from tensorflow.python import keras
 from tensorflow.python.platform import test
@@ -94,6 +95,29 @@ class TestIOUtils(test.TestCase):
     self.assertEqual(out_pred.shape, (50, 1))
     self.assertEqual(out_eval.shape, ())
     self.assertGreater(out_eval, 0)
+
+    # test slicing for shortened array
+    self.assertEqual(len(x_train[0:]), len(x_train))
+
+    # test __getitem__ invalid use cases
+    with self.assertRaises(IndexError):
+      _ = x_train[1000]
+    with self.assertRaises(IndexError):
+      _ = x_train[1000: 1001]
+    with self.assertRaises(IndexError):
+      _ = x_train[[1000, 1001]]
+    with self.assertRaises(IndexError):
+      _ = x_train[six.moves.range(1000, 1001)]
+    with self.assertRaises(IndexError):
+      _ = x_train[np.array([1000])]
+    with self.assertRaises(TypeError):
+      _ = x_train[None]
+
+    # test normalizer
+    normalizer = lambda x: x + 1
+    normalized_x_train = keras.utils.io_utils.HDF5Matrix(
+        h5_path, 'my_data', start=0, end=150, normalizer=normalizer)
+    self.assertAllClose(normalized_x_train[0][0], x_train[0][0] + 1)
 
 
 if __name__ == '__main__':

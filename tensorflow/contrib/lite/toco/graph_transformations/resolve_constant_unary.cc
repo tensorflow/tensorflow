@@ -53,13 +53,13 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     case OperatorType::kCast:
     case OperatorType::kLog:
     case OperatorType::kNeg:
-    case OperatorType::kTensorFlowRsqrt:
-    case OperatorType::kTensorFlowSqrt:
-    case OperatorType::kTensorFlowSquare:
-    case OperatorType::kTensorFlowSum:
-    case OperatorType::kTensorFlowMin:
-    case OperatorType::kTensorFlowMax:
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kRsqrt:
+    case OperatorType::kSqrt:
+    case OperatorType::kSquare:
+    case OperatorType::kSum:
+    case OperatorType::kReduceMin:  //  Reduction Min
+    case OperatorType::kReduceMax:  //  Reduction Max
+    case OperatorType::kReshape:
     case OperatorType::kRelu6:
     case OperatorType::kRelu1:
     case OperatorType::kRelu:
@@ -103,7 +103,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
 
   // The min-max is only copied for ops that copy data without arithmetic.
   // In future trivial transpose, etc, can be handled here.
-  if (unary_op->type == OperatorType::kTensorFlowReshape) {
+  if (unary_op->type == OperatorType::kReshape) {
     CopyMinMaxFromFirstInput(*unary_op, model);
   }
 
@@ -164,10 +164,10 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = outval;
     }
-  } else if (unary_op->type == OperatorType::kTensorFlowReshape) {
+  } else if (unary_op->type == OperatorType::kReshape) {
     CHECK(input_buffer_size == output_buffer_size);
     output_float_data = *input_float_data;
-  } else if (unary_op->type == OperatorType::kTensorFlowSum) {
+  } else if (unary_op->type == OperatorType::kSum) {
     CHECK_EQ(unary_op->inputs.size(), 2) << "Sum needs 2 inputs";
     if (!IsConstantParameterArray(*model, unary_op->inputs[1])) {
       AddMessageF("Axis input is non-constant");
@@ -196,7 +196,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = sum;
     }
-  } else if (unary_op->type == OperatorType::kTensorFlowMin) {
+  } else if (unary_op->type == OperatorType::kReduceMin) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
     for (int i = 0; i < output_dims_count; i++) {
@@ -207,7 +207,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       min = std::min(min, (*input_float_data)[i]);
     }
     output_float_data[0] = min;
-  } else if (unary_op->type == OperatorType::kTensorFlowMax) {
+  } else if (unary_op->type == OperatorType::kReduceMax) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
     for (int i = 0; i < output_dims_count; i++) {
@@ -220,9 +220,9 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     output_float_data[0] = max;
   } else if (unary_op->type == OperatorType::kNeg ||
              unary_op->type == OperatorType::kLog ||
-             unary_op->type == OperatorType::kTensorFlowRsqrt ||
-             unary_op->type == OperatorType::kTensorFlowSqrt ||
-             unary_op->type == OperatorType::kTensorFlowSquare) {
+             unary_op->type == OperatorType::kRsqrt ||
+             unary_op->type == OperatorType::kSqrt ||
+             unary_op->type == OperatorType::kSquare) {
     // Element-wise ops. Should have perfectly matching sizes here.
     for (int i = 0; i < output_dims_count; i++) {
       CHECK_EQ(output_shape.dims(i), input_shape.dims(i));
@@ -235,11 +235,11 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
         outval = -val;
       } else if (unary_op->type == OperatorType::kLog) {
         outval = std::log(val);
-      } else if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
+      } else if (unary_op->type == OperatorType::kRsqrt) {
         outval = 1.0f / std::sqrt(val);
-      } else if (unary_op->type == OperatorType::kTensorFlowSqrt) {
+      } else if (unary_op->type == OperatorType::kSqrt) {
         outval = std::sqrt(val);
-      } else if (unary_op->type == OperatorType::kTensorFlowSquare) {
+      } else if (unary_op->type == OperatorType::kSquare) {
         outval = val * val;
       } else {
         LOG(FATAL) << "should not get here.";

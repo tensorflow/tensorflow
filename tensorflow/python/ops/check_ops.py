@@ -341,8 +341,8 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                           y_sum, y_np[:y_sum]))
 
         index_and_values_str = ''
-        if x.shape == y.shape:
-          # If the shapes of x and y are the same,
+        if x.shape == y.shape and x.shape.as_list():
+          # If the shapes of x and y are the same (and not scalars),
           # Get the values that actually differed and their indices.
           # If shapes are different this information is more confusing
           # than useful.

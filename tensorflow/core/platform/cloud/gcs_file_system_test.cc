@@ -1107,7 +1107,7 @@ TEST(GcsFileSystemTest, FileExists_StatCache) {
                            "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "path%2Fsubfolder?fields=size%2Cgeneration%2Cupdated\n"
+           "path%2Fsubfolder%2F?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
            "", errors::NotFound("404"), 404),
@@ -1133,8 +1133,30 @@ TEST(GcsFileSystemTest, FileExists_StatCache) {
   // HTTP requests.
   for (int i = 0; i < 10; i++) {
     TF_EXPECT_OK(fs.FileExists("gs://bucket/path/file1.txt"));
-    TF_EXPECT_OK(fs.FileExists("gs://bucket/path/subfolder"));
+    TF_EXPECT_OK(fs.FileExists("gs://bucket/path/subfolder/"));
   }
+}
+
+TEST(GcsFileSystemTest, FileExists_DirectoryMark) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+      "dir%2F?fields=size%2Cgeneration%2Cupdated\n"
+      "Auth Token: fake_token\n"
+      "Timeouts: 5 1 10\n",
+      strings::StrCat("{\"size\": \"5\",\"generation\": \"1\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+      3600 /* stat cache max age */, 0 /* stat cache max entries */,
+      0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, 0 /* initial retry delay */,
+      kTestTimeoutConfig, nullptr /* gcs additional header */);
+
+  TF_EXPECT_OK(fs.FileExists("gs://bucket/dir/"));
+  TF_EXPECT_OK(fs.IsDirectory("gs://bucket/dir/"));
 }
 
 TEST(GcsFileSystemTest, GetChildren_NoItems) {
@@ -1932,6 +1954,14 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
            "Range: 0-15\n"
            "Timeouts: 5 1 20\n",
            "76543210"),
+       // IsDirectory is checking whether there are children objects.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsrc.txt%2F"
+           "&maxResults=1\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{}"),
        // Copying to the new location.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -2318,7 +2348,7 @@ TEST(GcsFileSystemTest, Stat_Cache) {
                            "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "subfolder?fields=size%2Cgeneration%2Cupdated\n"
+           "subfolder%2F?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
            "", errors::NotFound("404"), 404),
@@ -2348,7 +2378,7 @@ TEST(GcsFileSystemTest, Stat_Cache) {
     EXPECT_EQ(1010, stat.length);
     EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
-    TF_EXPECT_OK(fs.Stat("gs://bucket/subfolder", &stat));
+    TF_EXPECT_OK(fs.Stat("gs://bucket/subfolder/", &stat));
     EXPECT_EQ(0, stat.length);
     EXPECT_EQ(0, stat.mtime_nsec);
     EXPECT_TRUE(stat.is_directory);
@@ -2397,6 +2427,30 @@ TEST(GcsFileSystemTest, Stat_Cache_Flush) {
     EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
   }
+}
+
+TEST(GcsFileSystemTest, Stat_FilenameEndingWithSlash) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+      "dir%2F?fields=size%2Cgeneration%2Cupdated\n"
+      "Auth Token: fake_token\n"
+      "Timeouts: 5 1 10\n",
+      strings::StrCat("{\"size\": \"5\",\"generation\": \"1\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay*/, kTestTimeoutConfig,
+                   nullptr /* gcs additional header */);
+
+  FileStatistics stat;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/dir/", &stat));
+  EXPECT_EQ(5, stat.length);
+  EXPECT_TRUE(stat.is_directory);
 }
 
 TEST(GcsFileSystemTest, IsDirectory_NotFound) {
@@ -2938,8 +2992,8 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
 
 class TestGcsStats : public GcsStatsInterface {
  public:
-  void Init(GcsFileSystem* fs, GcsThrottle* throttle,
-            const FileBlockCache* block_cache) override {
+  void Configure(GcsFileSystem* fs, GcsThrottle* throttle,
+                 const FileBlockCache* block_cache) override {
     CHECK(fs_ == nullptr);
     CHECK(throttle_ == nullptr);
     CHECK(block_cache_ == nullptr);

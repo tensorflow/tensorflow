@@ -88,7 +88,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Sql")}));
@@ -102,7 +102,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "SqlDatasetOp::Dataset"; }
+    string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import boosted_trees_ops
 from tensorflow.python.platform import googletest
 
@@ -387,6 +390,41 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
               ],  # feature 1
           ],
           result.eval())
+
+  def _verify_precision(self, length):
+    with self.test_session():
+      max_splits = 1
+      num_buckets = 1
+      node_ids = array_ops.fill([length], 0)
+
+      gradients = constant_op.constant(
+          2.0 / length, dtype=dtypes.float32, shape=[length, 1])
+      hessians = constant_op.constant(
+          0.2 / length, dtype=dtypes.float32, shape=[length, 1])
+
+      bucketized_features = array_ops.zeros([length], dtype=dtypes.int32)
+
+      result = boosted_trees_ops.make_stats_summary(
+          node_ids, gradients, hessians, [bucketized_features], max_splits,
+          num_buckets)  # shape=[max_splits, num_buckets, num_features, 2]
+
+      self.assertAllClose([[[[2., 0.2]]]], result.eval())
+
+  def testMakeStatsSummaryNumericalPrecisionSmallBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=2000)
+
+  def testMakeStatsSummaryNumericalPrecisionMediumBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=100000)
+
+  def testMakeStatsSummaryNumericalPrecisionLargeBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=1000000)
+
+  def testMakeStatsSummaryNumericalPrecisionMegaBatch(self):
+    """Tests numeric precision."""
+    self._verify_precision(length=50000000)
 
 
 if __name__ == '__main__':

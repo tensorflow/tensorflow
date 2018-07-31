@@ -610,6 +610,9 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       // Turn input placeholders into identity nodes.
       CHECK_EQ(0, func_body_node.input_size());
       func_body_node.set_op("Identity");
+      (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
+      func_body_node.mutable_attr()->erase("dtype");
+      func_body_node.mutable_attr()->erase("shape");
       int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(
           strings::StrCat(func_inputs->name(), ":", input_idx));
@@ -626,9 +629,12 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       }
     }
 
-    // Add the node name as a prefix to avoid collisions after inlining.
-    func_body_node.set_name(
-        strings::StrCat(func_node.name(), "/", func_body_node.name()));
+    // Add the function node name as a prefix 1) to node name to avoid
+    // collisions; 2) to frame name to avoid multiple LoopCond nodes in one
+    // frame after inlining.
+    const string prefix = strings::StrCat(func_node.name(), "/");
+    TF_RETURN_IF_ERROR(
+        AddPrefixAndSuffixToNode(prefix, "" /* suffix */, &func_body_node));
 
     // Make sure the node is placed.
     func_body_node.set_device(func_node.device());
@@ -659,7 +665,7 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
 
 Status InlineSymbolicGradient(const NodeDef& node,
                               FunctionOptimizerContext* ctx,
-                              GraphDef* inlined_graph) {
+                              GraphDef* optimized_graph) {
   VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
 
   GraphDef graph_def;
@@ -747,7 +753,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
       }
     }
     inlined_node.set_device(node.device());
-    inlined_graph->add_node()->Swap(&inlined_node);
+    optimized_graph->add_node()->Swap(&inlined_node);
   }
 
   return Status::OK();
@@ -775,32 +781,62 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const NodeDef& node : item.graph.node()) {
     const string func_name = node.op();
 
+    // Each node optimization can modify optimized graph only by adding new
+    // nodes, we can check node size to make sure that graph was not modified.
+    const int num_nodes_before = optimized_graph->node_size();
+    const auto is_graph_modified = [&]() {
+      int num_nodes = optimized_graph->node_size();
+      CHECK_GE(num_nodes, num_nodes_before) << "Nodes should not be removed";
+      return num_nodes > num_nodes_before;
+    };
+
+    // Add a copy of an input graph node to the optimized graph.
+    const auto add_node_copy = [&]() { *optimized_graph->add_node() = node; };
+
+// Skip errors if optimized graph was not modified before error happened.
+#define TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(...)                     \
+  do {                                                             \
+    const Status _status = (__VA_ARGS__);                          \
+    if (TF_PREDICT_FALSE(!_status.ok() && is_graph_modified()))    \
+      return _status;                                              \
+    if (TF_PREDICT_FALSE(!_status.ok() && !is_graph_modified())) { \
+      VLOG(3) << "Skip error: " << _status.error_message();        \
+      add_node_copy();                                             \
+    }                                                              \
+  } while (0)
+
+    // 1. Inline symbolic gradients into the optimized graph.
     if (func_name == "SymbolicGradient" && inline_gradients) {
       // Inline symbolic gradients only if the corresponding function is inlined
       const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
       string f_name = f_attr != nullptr ? f_attr->func().name() : "";
       if (ctx.IsInlinedFunction(f_name)) {
-        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, &ctx, optimized_graph));
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+            InlineSymbolicGradient(node, &ctx, optimized_graph));
         continue;
       }
     }
 
+    // 2. Check if a node op is a function call.
     const FunctionDef* func = ctx.function_library().Find(func_name);
     if (func != nullptr) {
+      // 2a. Inline it if it's allowed to do so.
       if (inline_func && ctx.IsInlinedFunction(func_name)) {
         // Inline function body into the optimized graph}
-        TF_RETURN_IF_ERROR(InlineFunction(node, *func, ctx, optimized_graph));
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+            InlineFunction(node, *func, ctx, optimized_graph));
         continue;
       }
 
       // Do not specialize if function has custom gradient.
       const string grad_func = ctx.function_library().FindGradient(func_name);
 
+      // 2b. Specialize it to it's instantiation context if can't be inlined.
       if (specialize_func && grad_func.empty() &&
           (IsParametrized(*func) || HasTrulyConstInputs(node, ctx))) {
         // TODO(ezhulenev): Specialize function call if input has a known shape.
         // Specialize function body for its instantiation attributes and inputs.
-        TF_RETURN_IF_ERROR(
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
             SpecializeFunction(node, *func, &ctx, optimized_graph));
         continue;
       }
@@ -808,7 +844,9 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     // If we reached this point, node was not handled by any of the stages
     // (inline, specialize), simply add a copy to the graph.
-    *optimized_graph->add_node() = node;
+    add_node_copy();
+
+#undef TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED
   }
 
   *optimized_graph->mutable_versions() = item.graph.versions();

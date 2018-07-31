@@ -82,7 +82,18 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
 
   StatusOr<ScopedShapedBuffer> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
-  TF_RETURN_IF_ERROR(return_value.status());
+  if (!return_value.status().ok()) {
+    if (profile != nullptr) {
+      // Ensure the ThenStartTimer call has completed before we destroy timer.
+      // We already have a failure status to return, so just log this if it
+      // fails.
+      Status status = stream->BlockHostUntilDone();
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
+      }
+    }
+    return return_value.status();
+  }
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
@@ -116,6 +127,11 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     if (profile->compute_time_ns() == 0) {
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
+
+    const int64 executable_size_in_bytes = SizeInBytes();
+    if (executable_size_in_bytes != 0) {
+      profile->set_executable_size_in_bytes(executable_size_in_bytes);
+    }
   }
 
   if (profile_ptr != nullptr) {
@@ -129,19 +145,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   return return_value;
 }
 
-Status Executable::DumpSessionModule() {
-  TF_RET_CHECK(dumping());
-  const string& directory_path =
-      module_config().debug_options().xla_dump_executions_to();
-  VersionedComputationHandle versioned_handle = entry_computation_handle();
-  // This filename does not include the version number because the computation
-  // is only ever executed at one version.
-  string filename = tensorflow::strings::Printf(
-      "computation_%lld__%s__execution_%lld", versioned_handle.handle.handle(),
-      session_module_->entry().name().c_str(), ++execution_count_);
-  return Executable::DumpToDirectory(directory_path, filename,
-                                     *session_module_);
-}
+int64 Executable::SizeInBytes() { return -1; }
 
 Status Executable::DumpHloSnapshot() {
   TF_RET_CHECK(dumping_snapshot());
@@ -154,26 +158,6 @@ Status Executable::DumpHloSnapshot() {
       "computation_%lld__%s__execution_%lld", module.id(),
       module.entry_computation_name().c_str(), ++execution_count_);
   return Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot_);
-}
-
-/* static */ Status Executable::DumpToDirectory(
-    const string& directory_path, string filename,
-    const SessionModule& session_module) {
-  tensorflow::Env* env = tensorflow::Env::Default();
-  if (!env->IsDirectory(directory_path).ok()) {
-    // NB! CreateDir does not work reliably with multiple XLA threads -- two
-    // threads can race to observe the absence of the dump directory and
-    // simultaneously try to create it, causing the "losing" thread to get a
-    // "directory already exists" error.
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
-  }
-  filename = SanitizeFileName(std::move(filename));
-  string file_path = tensorflow::io::JoinPath(directory_path, filename);
-  string result;
-  TF_RET_CHECK(
-      tensorflow::SerializeToStringDeterministic(session_module, &result));
-  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
-                                       result);
 }
 
 /* static */ Status Executable::DumpToDirectory(

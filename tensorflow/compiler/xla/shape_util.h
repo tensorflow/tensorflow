@@ -27,9 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -61,6 +63,8 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  template <typename InputIt>
+  ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -70,10 +74,12 @@ class ShapeIndex {
   // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
-  std::vector<int64>::const_iterator begin() const { return indices_.begin(); }
-  std::vector<int64>::const_iterator end() const { return indices_.end(); }
-  std::vector<int64>::iterator begin() { return indices_.begin(); }
-  std::vector<int64>::iterator end() { return indices_.end(); }
+  using container_type = tensorflow::gtl::InlinedVector<int64, 2>;
+
+  container_type::const_iterator begin() const { return indices_.begin(); }
+  container_type::const_iterator end() const { return indices_.end(); }
+  container_type::iterator begin() { return indices_.begin(); }
+  container_type::iterator end() { return indices_.end(); }
 
   const int64* data() const { return indices_.data(); }
 
@@ -94,7 +100,7 @@ class ShapeIndex {
   string ToString() const;
 
  private:
-  std::vector<int64> indices_;
+  container_type indices_;
 };
 
 // A view into a ShapeIndex as above, with the cheap/easy ability to consume the
@@ -107,38 +113,41 @@ class ShapeIndex {
 class ShapeIndexView {
  public:
   ShapeIndexView(const ShapeIndex& shape_index, int64 offset = 0)
-      : ShapeIndexView(shape_index.data() + offset,
-                       shape_index.data() + shape_index.size()) {
+      : indices_(shape_index.data() + offset, shape_index.size() - offset) {
     CHECK_LE(offset, shape_index.size());
   }
-  ShapeIndexView(std::initializer_list<int64> indices)
-      : ShapeIndexView(indices.begin(), indices.end()) {}
+  ShapeIndexView(std::initializer_list<int64> indices) : indices_(indices) {}
   ShapeIndexView(const ShapeIndexView& other) = default;
 
   using iterator = const int64*;
 
-  iterator begin() const { return begin_; }
-  iterator end() const { return end_; }
-  int64 size() const { return std::distance(begin_, end_); }
-  bool empty() const { return begin_ == end_; }
+  iterator begin() const { return indices_.begin(); }
+  iterator end() const { return indices_.end(); }
+  int64 size() const { return indices_.size(); }
+  bool empty() const { return indices_.empty(); }
   int64 front() const {
     CHECK(!empty());
-    return *begin_;
+    return indices_.front();
   }
   ShapeIndexView ConsumeFront() const {
-    CHECK(!empty());
-    auto new_begin = begin_;
-    ++new_begin;
-    return ShapeIndexView(new_begin, end_);
+    ShapeIndexView result = *this;
+    result.indices_.pop_front();
+    return result;
   }
+  ShapeIndexView ConsumeBack() const {
+    ShapeIndexView result = *this;
+    result.indices_.pop_back();
+    return result;
+  }
+  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }
+
+  bool operator==(const ShapeIndexView& other) const;
+  bool operator!=(const ShapeIndexView& other) const;
 
   string ToString() const;
 
  private:
-  ShapeIndexView(iterator begin, iterator end) : begin_(begin), end_(end) {}
-
-  iterator begin_;
-  iterator end_;
+  tensorflow::gtl::ArraySlice<int64> indices_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
@@ -150,29 +159,40 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
 // properties, which do invariant checks before / after the operation.
 class ShapeUtil {
  public:
+  // Data structure which describes the coordinates and the shape, of a tuple
+  // shaped sub-shape.
+  struct IndexedShape {
+    IndexedShape() = default;
+    IndexedShape(ShapeIndex index, Shape shape)
+        : index(std::move(index)), shape(std::move(shape)) {}
+    ShapeIndex index;
+    Shape shape;
+  };
+
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1. Note that sparse shapes
   // may not actually be able to store this number of elements. See
   // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
   // elements that can be stored in a sparse shape.
-  // Precondition: !IsTuple(shape)
+  // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
-  // Returns true if 'shape' has zero elements.
-  static bool HasZeroElements(const Shape& shape);
+  // As ElementsIn(), but recurses through tuples.
+  static int64 ElementsInRecursive(const Shape& shape);
+
+  // Returns true if 'shape' is an array with zero elements.
+  static bool IsZeroElementArray(const Shape& shape);
 
   // Returns the number of bytes required for an allocation of shape.  The
   // |pointer_size| parameter is used for calculating the size of tuple
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  // Precondition: (!ShapeUtil::IsTuple(shape) || pointer_size > 0) &&
-  //               !ShapeUtil::IsOpaque(shape)
   static int64 ByteSizeOf(const Shape& shape, int64 pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //
-  // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
+  // Precondition: ShapeUtil::IsArray(shape)
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
@@ -231,7 +251,7 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that they have the same element type
+  // point types; otherwise, checks that that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
@@ -262,6 +282,9 @@ class ShapeUtil {
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
+  // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
+  static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
+
   // Returns the rank (number of dimensions) of the given shape.
   // Precondition: !IsTuple(shape)
   static int64 Rank(const Shape& shape);
@@ -279,10 +302,10 @@ class ShapeUtil {
   // Scalar-specific
 
   static bool IsScalar(const Shape& shape) {
-    return !IsTuple(shape) && !IsOpaque(shape) && Rank(shape) == 0;
+    return IsArray(shape) && Rank(shape) == 0;
   }
   static bool IsEffectiveScalar(const Shape& shape) {
-    return !IsTuple(shape) && !IsOpaque(shape) && TrueRank(shape) == 0;
+    return IsArray(shape) && TrueRank(shape) == 0;
   }
   static bool IsScalarF32(const Shape& shape);
 
@@ -311,13 +334,17 @@ class ShapeUtil {
   // into a custom operation.
   static Shape MakeOpaqueShape();
 
+  // Creates a token shape. Values of this shape are used for ordering
+  // side-effecting operations.
+  static Shape MakeTokenShape();
+
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
-  // Returns an empty tuple shape. Can be used to indicate side-effects.
+  // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
 
   // Checks whether the shape is initialized.
@@ -410,11 +437,15 @@ class ShapeUtil {
     return shape.element_type() == OPAQUE;
   }
 
+  // Returns whether the shape is an token value used for ordering
+  // side-effecting operations.
+  static bool IsToken(const Shape& shape) {
+    return shape.element_type() == TOKEN;
+  }
+
   // Returns whether the shape is an array.  Note that scalars are considered
   // arrays.
-  static bool IsArray(const Shape& shape) {
-    return !IsTuple(shape) && !IsOpaque(shape);
-  }
+  static bool IsArray(const Shape& shape);
 
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
@@ -423,7 +454,7 @@ class ShapeUtil {
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
 
-  // Returns true if shape is an empty tuple, or is an array with no elements.
+  // Returns true if shape is the nil shape (an empty tuple).
   static bool IsNil(const Shape& shape);
 
   // Returns the number of elements in the given tuple shape.
@@ -433,6 +464,9 @@ class ShapeUtil {
   // Returns the tuple element shape at given index.
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64 index);
+
+  // Returns the number of elements, recursively, in the given shape.
+  static int64 SubshapeCount(const Shape& shape);
 
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
@@ -453,13 +487,23 @@ class ShapeUtil {
   static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
-  // the given Shape argument.
+  // the given Shape argument. The non-Try variants check fail if index is
+  // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+  static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
+                                               ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
   // shape.
   static bool IsLeafIndex(const Shape& shape, const ShapeIndex& index);
+
+  // Returns the number of leaves in the shape.
+  static int64 GetLeafCount(const Shape& shape);
+
+  // Retrieves all the leaf shapes and their indexes, in the order walked by
+  // the ForEachSubshape() API.
+  static std::vector<IndexedShape> GetLeafShapes(const Shape& shape);
 
   // Calls the given visitor function for each subshape of the given shape.
   // Subshapes are visited in DFS pre-order starting with the entire shape
@@ -483,28 +527,18 @@ class ShapeUtil {
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
 
-  // Removes all degenerate dimensions (size one) from the given shape. The
-  // stripped minor_to_major preserves the relative ordering of non-degenerate
-  // dimensions. The stripped shape has the property that the underlying
-  // representation (bits in memory) for the stripped shape is the same as the
-  // original shape modulo padding. Examples:
-  //
-  // input shape:    F32 [1, 2, 1], minor_to_major = {0, 1, 2}
-  // stripped shape: F32 [2], minor_to_major = {0}
-  //
-  // input shape:    F32 [6, 1, 5], minor_to_major = {2, 0, 1}
-  // stripped shape: F32 [6, 5], minor_to_major = {1, 0}
-  //
-  // input shape:    F32 [1, 7, 1, 6, 5, 1], minor_to_major = {0, 2, 5, 4, 3, 1}
-  // stripped shape: F32 [7, 6, 5], minor_to_major = {0, 2, 1}
-  //
-  // input shape:    F32 [1, 1], minor_to_major = {0, 1}
-  // stripped shape: F32 [], minor_to_major = {}
-  // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
-  static Shape StripDegenerateDimensions(const Shape& shape);
+  // Returns true if `shape` (which must be an array) with degenerate dimensions
+  // (dimensions with bound 1).
+  static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i]
+  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  //
+  // Postcondition: For any valid permutation,
+  //
+  //   !HasLayout(shape) ||
+  //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
+  //                      InversePermutation(permutation)).
   static Shape PermuteDimensions(tensorflow::gtl::ArraySlice<int64> permutation,
                                  const Shape& shape);
 
@@ -626,6 +660,28 @@ class ShapeUtil {
         .IgnoreError();
   }
 
+  // These convenience wrappers don't take `base`, `count` and `incr`
+  // explicitly, but iterate over every element in `shape` instead.
+
+  template <typename FnType>
+  static Status ForEachIndexWithStatus(const Shape& shape,
+                                       const FnType& visitor_function) {
+    std::vector<int64> base(shape.dimensions_size());
+    std::vector<int64> incr(shape.dimensions_size(), 1);
+    return ForEachIndexWithStatus(shape, base,
+                                  /*count=*/AsInt64Slice(shape.dimensions()),
+                                  incr, visitor_function);
+  }
+
+  template <typename FnType>
+  static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
+    ForEachIndexWithStatus(shape,
+                           [&](tensorflow::gtl::ArraySlice<int64> indices) {
+                             return StatusOr<bool>(visitor_function(indices));
+                           })
+        .IgnoreError();
+  }
+
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
   // matter.
@@ -654,6 +710,10 @@ class ShapeUtil {
   static size_t Hash(const Shape& shape);
 
  private:
+  // Validates the shape size is sane. This makes sure it's safe to do
+  // calculations in int64 without overflowing.
+  static Status ValidateShapeSize(const Shape& shape);
+
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
@@ -665,7 +725,7 @@ class ShapeUtil {
                                      tensorflow::gtl::ArraySlice<int64> incr,
                                      const FnType& visitor_function,
                                      bool parallel = false) {
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (ShapeUtil::IsZeroElementArray(shape)) {
       return Status::OK();
     }
     CHECK_EQ(Rank(shape), base.size());

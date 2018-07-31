@@ -29,6 +29,8 @@ bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
     const HloModuleConfig& config);
+tensorflow::gtl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
+    const HloModuleConfig& config);
 
 }  // namespace options
 }  // namespace cpu

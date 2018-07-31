@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -30,7 +33,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* broadcast2 =
@@ -50,7 +53,7 @@ TEST_F(InstructionFusionTest,
        NonCostlyProducerAndOperandElementReusingConsumerFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
   HloInstruction* broadcast2 =
@@ -70,7 +73,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* reshape2 = builder.AddInstruction(
@@ -89,7 +92,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* transpose2 = builder.AddInstruction(
@@ -140,7 +143,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
 
 // Tests that broadcasts fused into a fusion with a reduce root.
 TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
 
     add {
@@ -165,11 +168,11 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
   EXPECT_THAT(root->fused_expression_root(),
-              op::Reduce(op::Broadcast(op::Parameter()), op::Parameter()));
+              op::Reduce(op::Broadcast(op::Constant()), op::Constant()));
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -191,7 +194,7 @@ TEST_F(InstructionFusionTest, BitcastIntoAdd) {
 }
 
 TEST_F(InstructionFusionTest, AddIntoBitcast) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -213,7 +216,7 @@ TEST_F(InstructionFusionTest, AddIntoBitcast) {
 }
 
 TEST_F(InstructionFusionTest, DontFuseGTE) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY DontFuseGTE {
     p0 = (f32[10], f32[10]) parameter(0)
@@ -229,7 +232,7 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
 }
 
 TEST_F(InstructionFusionTest, DotOutputFusion) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     alpha = f32[] constant(3)
@@ -252,13 +255,13 @@ TEST_F(InstructionFusionTest, DotOutputFusion) {
   EXPECT_THAT(
       root->fused_expression_root(),
       op::Multiply(op::Dot(op::Parameter(), op::Transpose(op::Parameter())),
-                   op::Broadcast(op::Parameter())));
+                   op::Broadcast(op::Constant())));
 }
 
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
 // duplicated and fused into both reduces.
 TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   Add {
     lhs = f32[] parameter(0)
@@ -281,14 +284,15 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
                   .ValueOrDie());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()));
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
+      << module->ToString();
 }
 
 // Compute sum(100/p0), where p0 has type s32, twice.  Check that the division
 // is *not* duplicated and fused into both reduces, because we say that integer
 // division is not cheap.
 TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   Add {
     lhs = s32[] parameter(0)
@@ -308,11 +312,12 @@ TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
 
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
                    .Run(module.get())
-                   .ValueOrDie());
+                   .ValueOrDie())
+      << module->ToString();
 }
 
 TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY NoOutputFusion {
     alpha = f32[] constant(3)
@@ -334,7 +339,301 @@ TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
   EXPECT_THAT(root->fused_expression_root(),
               op::Multiply(op::Multiply(op::Parameter(), op::Parameter()),
-                           op::Broadcast(op::Parameter())));
+                           op::Broadcast(op::Constant())));
+}
+
+// Counts the HLO ops with a given op code in the specified module.
+static int Count(const HloModule& module, HloOpcode op) {
+  int count = 0;
+  for (const auto* computation : module.computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == op) {
+        ++count;
+      }
+    }
+  }
+  return count;
+}
+
+// Returns an HLO instruction from the given computation with the op code.
+static StatusOr<const HloInstruction*> FindHloInstruction(
+    const HloComputation& computation, HloOpcode op) {
+  for (const auto* instruction : computation.instructions()) {
+    if (instruction->opcode() == op) {
+      return instruction;
+    }
+  }
+  return NotFound(
+      "Computation '%s' does not contain an instruction with op code '%s'.",
+      computation.name().c_str(), HloOpcodeString(op).c_str());
+}
+
+TEST_F(InstructionFusionTest, MultiOutputFusion) {
+  // sub --> add --> tuple
+  //  \---------------/
+  auto module = ParseHloString(R"(
+    HloModule test_module
+    ENTRY OutputFusion {
+     p0 = f32[4,3]{1,0} parameter(0)
+     p1 = f32[4,3]{1,0} parameter(1)
+     p2 = f32[4,3]{1,0} parameter(2)
+     sub = f32[4,3]{1,0} subtract(p0, p2)
+     add = f32[4,3]{1,0} add(sub, p1)
+     ROOT tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub, add)
+    })")
+                    .ValueOrDie();
+
+  ASSERT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  // Expect that there is one multi-output fusion and subtract has not been
+  // duplicated.
+  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1);
+  EXPECT_EQ(Count(*module, HloOpcode::kSubtract), 1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloInstruction* fusion,
+      FindHloInstruction(*module->entry_computation(), HloOpcode::kFusion));
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      op::Tuple(op::Add(op::Subtract(), op::Parameter()), op::Subtract()));
+}
+
+TEST_F(InstructionFusionTest, MultiOutputFusionExpensiveOp) {
+  // tanh --> add --> tuple
+  //  \---------------/
+  auto module = ParseHloString(R"(
+    HloModule test_module
+    ENTRY OutputFusion {
+     p0 = f32[4,3]{1,0} parameter(0)
+     p1 = f32[4,3]{1,0} parameter(1)
+     tanh = f32[4,3]{1,0} tanh(p0)
+     add = f32[4,3]{1,0} add(tanh, p1)
+     ROOT tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(tanh, add)
+    })")
+                    .ValueOrDie();
+
+  // TODO(tjoerg): Allow multi-output fusion for expensive operations like tanh.
+  ASSERT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie())
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, MultiOutputFusion2) {
+  // sub --> add1 --\--------\
+  //  \----------> add2 --> tuple
+  auto module = ParseHloString(R"(
+    HloModule test_module
+    ENTRY OutputFusion {
+     p0 = f32[4,3]{1,0} parameter(0)
+     p1 = f32[4,3]{1,0} parameter(1)
+     p2 = f32[4,3]{1,0} parameter(2)
+     sub = f32[4,3]{1,0} subtract(p0, p2)
+     add1 = f32[4,3]{1,0} add(sub, p1)
+     add2 = f32[4,3]{1,0} add(sub, add1)
+     ROOT tuple = (f32[4,3]{1,0}) tuple(add1, add2)
+    })")
+                    .ValueOrDie();
+
+  ASSERT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  // Expect that there is one multi-output fusion and subtract has not been
+  // duplicated.
+  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1);
+  EXPECT_EQ(Count(*module, HloOpcode::kSubtract), 1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloInstruction* fusion,
+      FindHloInstruction(*module->entry_computation(), HloOpcode::kFusion));
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Add(op::Subtract(), op::Add()),
+                        op::Add(op::Subtract(), op::Parameter())));
+}
+
+TEST_F(InstructionFusionTest, MultiOutputFusion3) {
+  // sub --> add1 ----\--------\
+  //  \ --> add2 --> add3 --> tuple
+  auto module = ParseHloString(R"(
+    HloModule test_module
+    ENTRY OutputFusion {
+     p0 = f32[4,3]{1,0} parameter(0)
+     p1 = f32[4,3]{1,0} parameter(1)
+     p2 = f32[4,3]{1,0} parameter(2)
+     p3 = f32[4,3]{1,0} parameter(3)
+     sub = f32[4,3]{1,0} subtract(p0, p2)
+     add1 = f32[4,3]{1,0} add(sub, p1)
+     add2 = f32[4,3]{1,0} add(p2, sub)
+     add3 = f32[4,3]{1,0} add(add1, add2)
+     ROOT tuple = (f32[4,3]{1,0}) tuple(add3, add2)
+    })")
+                    .ValueOrDie();
+
+  ASSERT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  // Expect that there is one multi-output fusion and subtract has not been
+  // duplicated.
+  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1);
+  EXPECT_EQ(Count(*module, HloOpcode::kSubtract), 1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloInstruction* fusion,
+      FindHloInstruction(*module->entry_computation(), HloOpcode::kFusion));
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Add(op::Add(), op::Add()),
+                        op::Add(op::Parameter(), op::Subtract())));
+}
+
+TEST_F(InstructionFusionTest, NoCyclesDueToMultiOutputFusion) {
+  // sub --> mul ---\
+  //  \--> call --> add --> tuple
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY OutputFusion {
+    c = f32[] constant(42)
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[4,3]{1,0} parameter(1)
+    sub = f32[4,3]{1,0} subtract(p0, p1)
+    mul = f32[4,3]{1,0} multiply(sub, c)
+    call = f32[4,3]{1,0} custom-call(sub), custom_call_target="foo"
+    add = f32[4,3]{1,0} add(mul, call)
+    ROOT tuple = (f32[4,3]{1,0}) tuple(add)
+  })")
+                    .ValueOrDie();
+
+  ASSERT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  // Visit instructions in post order to detect cycles.
+  // TODO(tjoerg): Add cycle detection to the HloVerifier.
+  class DummyVisitor : public DfsHloVisitorWithDefault {
+   public:
+    DummyVisitor() {}
+    Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+      return Status::OK();
+    }
+  } visitor;
+  for (const HloComputation* computation : module->MakeComputationPostOrder()) {
+    // Accept will return a FailedPrecondition when a cycle is detected.
+    EXPECT_TRUE(computation->root_instruction()->Accept(&visitor).ok());
+  }
+}
+
+TEST_F(InstructionFusionTest, NoMultiOutputFusionWithIncompatibleShapes) {
+  // sub[2,3] --> add[4,3] --> tuple([2,3], [4,3])
+  //  \-------------------------/
+  auto module = ParseHloString(R"(
+    HloModule test_module
+    ENTRY OutputFusion {
+     p0 = f32[2,3]{1,0} parameter(0)
+     p1 = f32[4,3]{1,0} parameter(1)
+     p2 = f32[2,3]{1,0} parameter(2)
+     sub = f32[2,3]{1,0} subtract(p0, p2)
+     add = f32[4,3]{1,0} add(sub, p1)
+     ROOT tuple = (f32[2,3]{1,0}, f32[4,3]{1,0}) tuple(sub, add)
+    })")
+                    .ValueOrDie();
+
+  // Multi-output fusion requires shapes to be compatible. Since `sub` and `add`
+  // have incompatible shapes, expect that no multi-output fusion happens.
+  ASSERT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie())
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseIntoInputFusionInstruction) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+
+  add_computation {
+    add_lhs = f32[] parameter(0)
+    add_rhs = f32[] parameter(1)
+    ROOT add_root = f32[] add(add_lhs, add_rhs)
+  }
+
+  fused_computation {
+    p1 = f32[10] parameter(0)
+    zero = f32[] constant(0)
+    ROOT f2_root = f32[] reduce(p1, zero), dimensions={0},
+           to_apply=add_computation
+  }
+
+  ENTRY entry {
+    p0 = f32[10] parameter(0)
+    mul = f32[10] multiply(p0, p0)
+    fusion = f32[] fusion(mul), kind=kInput, calls=fused_computation
+    ROOT tuple = (f32[10], f32[]) tuple(fusion, mul)
+  })")
+                    .ValueOrDie();
+
+  // Multi-output fusion is not supported for non-loop fusions at present. Since
+  // `fused_computation` is a input fusion, expect no multi-output fusion to
+  // happen.
+  ASSERT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie())
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseScalarConstant) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+
+  ENTRY FuseScalarConstant {
+    p0 = f32[] parameter(0)
+    c0 = f32[] constant(1)
+    add1 = f32[] add(p0, c0)
+    b0 = f32[2]{0} broadcast(add1), dimensions={}
+    c1 = f32[2]{0} constant({1, 2})
+    ROOT add2 = f32[2]{0} add(b0, c1)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Add(op::Broadcast(op::Add(op::Parameter(), op::Constant())),
+                      op::Parameter()));
+}
+
+// Check that we limit the number of operands to fusions we create.
+TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
+  constexpr int64 kNumParams = 200;
+  ASSERT_GT(kNumParams, GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion);
+
+  // Compute p0 + p1 + ... + pN.
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+  auto param0 =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  auto sum = param0;
+  for (int64 i = 1; i < kNumParams; ++i) {
+    auto param =
+        b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p"));
+    sum = b.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sum, param));
+  }
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(b.Build());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  for (const HloInstruction* instr : computation->instructions()) {
+    EXPECT_LE(instr->operand_count(),
+              GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion)
+        << instr->ToString();
+  }
 }
 
 }  // namespace gpu

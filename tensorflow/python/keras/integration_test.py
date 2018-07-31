@@ -29,6 +29,9 @@ from tensorflow.python.platform import test
 
 class KerasIntegrationTest(test.TestCase):
 
+  def test_version(self):
+    self.assertTrue(keras.__version__.endswith('-tf'))
+
   def test_vector_classification_sequential(self):
     with self.test_session():
       np.random.seed(1337)

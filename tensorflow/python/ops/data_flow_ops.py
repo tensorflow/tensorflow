@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
@@ -129,11 +130,6 @@ class QueueBase(object):
   @{tf.RandomShuffleQueue} for concrete
   implementations of this class, and instructions on how to create
   them.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -157,12 +153,7 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
-      RuntimeError: If eager execution is enabled.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "Queues are not supported when eager execution is enabled. "
-          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -179,6 +170,8 @@ class QueueBase(object):
     self._queue_ref = queue_ref
     if context.executing_eagerly():
       self._name = context.context().scope_name
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          queue_ref, None)
     else:
       self._name = self._queue_ref.op.name.split("/")[-1]
 
@@ -605,6 +598,11 @@ class QueueBase(object):
     else:
       return gen_data_flow_ops.queue_size(self._queue_ref, name=name)
 
+def _shared_name(shared_name):
+  if context.executing_eagerly():
+    return str(ops.uid())
+  return shared_name
+
 
 @tf_export("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
@@ -612,11 +610,6 @@ class RandomShuffleQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -690,7 +683,7 @@ class RandomShuffleQueue(QueueBase):
         min_after_dequeue=min_after_dequeue,
         seed=seed1,
         seed2=seed2,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -702,11 +695,6 @@ class FIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -752,7 +740,7 @@ class FIFOQueue(QueueBase):
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -767,11 +755,6 @@ class PaddingFIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -831,7 +814,7 @@ class PaddingFIFOQueue(QueueBase):
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -843,11 +826,6 @@ class PriorityQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -899,7 +877,7 @@ class PriorityQueue(QueueBase):
         component_types=types,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     priority_dtypes = [_dtypes.int64] + types

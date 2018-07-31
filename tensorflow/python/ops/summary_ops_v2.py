@@ -306,10 +306,11 @@ def create_db_writer(db_uri,
 def _make_summary_writer(name, factory, **kwargs):
   resource = gen_summary_ops.summary_writer(shared_name=name)
   init_op_fn = lambda: factory(resource, **kwargs)
-  # TODO(apassos): Consider doing this instead.
-  # if not context.executing_eagerly():
-  #   ops.get_default_session().run(init_op)
-  ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op_fn())
+  init_op = init_op_fn()
+  if not context.executing_eagerly():
+    # TODO(apassos): Consider doing this instead.
+    #   ops.get_default_session().run(init_op)
+    ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op)
   return SummaryWriter(resource, init_op_fn)
 
 
@@ -380,7 +381,8 @@ def summary_writer_function(name, tensor, function, family=None):
   with ops.device("cpu:0"):
     op = smart_cond.smart_cond(
         should_record_summaries(), record, _nothing, name="")
-    ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
 
 

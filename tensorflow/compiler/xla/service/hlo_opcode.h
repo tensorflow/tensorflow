@@ -69,6 +69,7 @@ namespace xla {
   V(kCrossReplicaSum, "cross-replica-sum")                   \
   V(kCustomCall, "custom-call")                              \
   V(kDivide, "divide")                                       \
+  V(kDomain, "domain")                                       \
   V(kDot, "dot")                                             \
   V(kDynamicSlice, "dynamic-slice")                          \
   V(kDynamicUpdateSlice, "dynamic-update-slice")             \
@@ -80,11 +81,13 @@ namespace xla {
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
   V(kGather, "gather")                                       \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
+  V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
   V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
+  V(kIota, "iota")                                           \
   V(kIsFinite, "is-finite")                                  \
   V(kLe, "less-than-or-equal-to", kHloOpcodeIsComparison)    \
   V(kLog, "log")                                             \
@@ -92,6 +95,7 @@ namespace xla {
   V(kAnd, "and")                                             \
   V(kNot, "not")                                             \
   V(kOr, "or")                                               \
+  V(kXor, "xor")                                             \
   V(kLt, "less-than", kHloOpcodeIsComparison)                \
   V(kMap, "map", kHloOpcodeIsVariadic)                       \
   V(kMaximum, "maximum")                                     \
@@ -130,6 +134,7 @@ namespace xla {
   V(kTrace, "trace")                                         \
   V(kTranspose, "transpose")                                 \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                   \
+  V(kTupleSelect, "tuple-select")                            \
   V(kWhile, "while")
 
 enum class HloOpcode {

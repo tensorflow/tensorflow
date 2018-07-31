@@ -24,6 +24,7 @@ import six
 
 from tensorflow.contrib.autograph.utils import builtins
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
 
@@ -32,7 +33,8 @@ class BuiltinsTest(test.TestCase):
   def test_dynamic_len_tf_scalar(self):
     a = constant_op.constant(1)
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 'len requires non-zero rank for tensor.*'):
       with self.test_session() as sess:
         sess.run(builtins.dynamic_builtin(len, a))
 
@@ -77,7 +79,7 @@ class BuiltinsTest(test.TestCase):
       return x
 
     # Functions that just have the names of builtins are rejected.
-    with self.assertRaises(ValueError):
+    with self.assertRaises(NotImplementedError):
       self.assertEqual(builtins.dynamic_builtin(range, 1), 1)
     if six.PY2:
       self.assertListEqual(
@@ -86,6 +88,20 @@ class BuiltinsTest(test.TestCase):
         list(builtins.dynamic_builtin(six.moves.range, 3)), [0, 1, 2])
     self.assertListEqual(
         list(builtins.dynamic_builtin(six.moves.xrange, 3)), [0, 1, 2])
+
+  def test_casts(self):
+    i = constant_op.constant(2, dtype=dtypes.int32)
+    f = constant_op.constant(1.0, dtype=dtypes.float32)
+
+    self.assertEqual(builtins.dynamic_builtin(int, i).dtype, dtypes.int32)
+    self.assertEqual(builtins.dynamic_builtin(int, f).dtype, dtypes.int32)
+    self.assertEqual(builtins.dynamic_builtin(float, i).dtype, dtypes.float32)
+    self.assertEqual(builtins.dynamic_builtin(float, f).dtype, dtypes.float32)
+
+    self.assertEqual(builtins.dynamic_builtin(int, True), 1)
+    self.assertEqual(builtins.dynamic_builtin(int, False), 0)
+    self.assertEqual(builtins.dynamic_builtin(float, True), 1.0)
+    self.assertEqual(builtins.dynamic_builtin(float, False), 0.0)
 
   def test_dynamic_print_tf(self):
     try:

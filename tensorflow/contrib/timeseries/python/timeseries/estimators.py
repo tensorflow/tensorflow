@@ -288,7 +288,7 @@ class StateSpaceRegressor(TimeSeriesRegressor):
   """An Estimator for general state space models."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None):
+               config=None, head_type=ts_head_lib.TimeSeriesRegressionHead):
     """See TimeSeriesRegressor. Uses the ChainingStateManager by default."""
     if not isinstance(model, state_space_model.StateSpaceModel):
       raise ValueError(
@@ -301,7 +301,8 @@ class StateSpaceRegressor(TimeSeriesRegressor):
         state_manager=state_manager,
         optimizer=optimizer,
         model_dir=model_dir,
-        config=config)
+        config=config,
+        head_type=head_type)
 
 
 class StructuralEnsembleRegressor(StateSpaceRegressor):
@@ -344,7 +345,8 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
                anomaly_prior_probability=None,
                optimizer=None,
                model_dir=None,
-               config=None):
+               config=None,
+               head_type=ts_head_lib.TimeSeriesRegressionHead):
     """Initialize the Estimator.
 
     Args:
@@ -401,6 +403,8 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
           from tf.train.Optimizer. Defaults to Adam with step size 0.02.
       model_dir: See `Estimator`.
       config: See `Estimator`.
+      head_type: The kind of head to use for the model (inheriting from
+          `TimeSeriesRegressionHead`).
     """
     if anomaly_prior_probability is not None:
       filtering_postprocessor = StateInterpolatingAnomalyDetector(
@@ -424,4 +428,5 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
         model=model,
         optimizer=optimizer,
         model_dir=model_dir,
-        config=config)
+        config=config,
+        head_type=head_type)

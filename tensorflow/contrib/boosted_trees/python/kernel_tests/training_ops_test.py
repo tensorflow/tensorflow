@@ -296,7 +296,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
           # Dropout does not change anything here, tree is not finalized.
-          dropout_probability=0.5).SerializeToString()
+          dropout_probability=0.5)
 
       # Prepare handler inputs.
       # Note that handlers 1 & 3 have the same gain but different splits.
@@ -321,9 +321,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the simpler split from handler 1 to be chosen.
@@ -443,7 +444,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
           # Dropout does not change anything here - tree is not finalized.
-          dropout_probability=0.5).SerializeToString()
+          dropout_probability=0.5)
 
       # Prepare handler inputs.
       # Handler 1 only has a candidate for partition 1, handler 2 has candidates
@@ -472,9 +473,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the split for partition 1 to be chosen from handler 1 and
@@ -632,8 +634,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=1,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
-          )
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
 
       # Prepare handler inputs.
       handler1_partitions = np.array([0], dtype=np.int32)
@@ -657,9 +658,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect a new tree to be added with the split from handler 1.
@@ -773,8 +775,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=1,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
-          )
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
 
       # Prepare handler inputs.
       # All handlers have negative gain.
@@ -794,9 +795,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           partition_ids=[handler1_partitions, handler2_partitions],
           gains=[handler1_gains, handler2_gains],
           splits=[handler1_split, handler2_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the ensemble to be empty.
@@ -839,8 +841,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=1,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.POST_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
-          )
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
 
       # Prepare handler inputs.
       # Note that handlers 1 & 3 have the same gain but different splits.
@@ -865,9 +866,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the simpler split from handler 1 to be chosen.
@@ -946,8 +948,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=2,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.POST_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
-          )
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
 
       # Prepare handler inputs.
       # All handlers have negative gain.
@@ -967,9 +968,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           partition_ids=[handler1_partitions, handler2_partitions],
           gains=[handler1_gains, handler2_gains],
           splits=[handler1_split, handler2_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the split from handler 2 to be chosen despite the negative gain.
@@ -1048,9 +1050,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           partition_ids=[handler1_partitions],
           gains=[handler1_gains],
           splits=[handler1_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the ensemble to be empty as post-pruning will prune
@@ -1094,8 +1097,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=2,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.POST_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
-          )
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
 
       # Prepare handler inputs.
       # Second handler has positive gain.
@@ -1115,9 +1117,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           partition_ids=[handler1_partitions, handler2_partitions],
           gains=[handler1_gains, handler2_gains],
           splits=[handler1_split, handler2_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the split from handler 2 to be chosen despite the negative gain.
@@ -1194,9 +1197,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           partition_ids=[handler1_partitions],
           gains=[handler1_gains],
           splits=[handler1_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the negative gain split of partition 1 to be pruned and the
@@ -1335,7 +1339,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.LAYER_BY_LAYER,
           # Dropout will have no effect, since the tree will not be fully grown.
-          dropout_probability=1.0).SerializeToString()
+          dropout_probability=1.0)
 
       # Prepare handler inputs.
       # Handler 1 only has a candidate for partition 1, handler 2 has candidates
@@ -1364,9 +1368,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect the split for partition 1 to be chosen from handler 1 and
@@ -1543,7 +1548,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
-          dropout_probability=1.0).SerializeToString()
+          dropout_probability=1.0)
 
       # Prepare handler inputs.
       handler1_partitions = np.array([0], dtype=np.int32)
@@ -1567,9 +1572,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       # Expect a new tree to be added with the split from handler 1.
@@ -1669,7 +1675,6 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
 
       learner_config.constraints.max_number_of_unique_feature_columns = 3
-      learner_config = learner_config.SerializeToString()
       # Prepare handler inputs.
       handler1_partitions = np.array([0], dtype=np.int32)
       handler1_gains = np.array([7.62], dtype=np.float32)
@@ -1692,9 +1697,10 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           ],
           gains=[handler1_gains, handler2_gains, handler3_gains],
           splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
+          learner_config=learner_config.SerializeToString(),
           dropout_seed=123,
-          center_bias=True)
+          center_bias=True,
+          max_tree_depth=learner_config.constraints.max_tree_depth)
       session.run(grow_op)
 
       _, serialized = session.run(

@@ -21,6 +21,7 @@ import importlib
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
@@ -281,6 +282,18 @@ class BetaTest(test.TestCase):
           sample_values.mean(axis=0), stats.beta.mean(a, b), atol=1e-2)
       self.assertAllClose(
           np.cov(sample_values, rowvar=0), stats.beta.var(a, b), atol=1e-1)
+
+  def testBetaFullyReparameterized(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(a)
+      tape.watch(b)
+      beta = beta_lib.Beta(a, b)
+      samples = beta.sample(100)
+    grad_a, grad_b = tape.gradient(samples, [a, b])
+    self.assertIsNotNone(grad_a)
+    self.assertIsNotNone(grad_b)
 
   # Test that sampling with the same seed twice gives the same results.
   def testBetaSampleMultipleTimes(self):

@@ -79,10 +79,10 @@ class GraphConstructor {
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
           uniquify_prefix(in.uniquify_prefix),
-          input_map(in.input_map),
+          input_map(in.input_map.begin(), in.input_map.end()),
           skip_mapped_nodes(in.skip_mapped_nodes),
           control_dependencies(in.control_dependencies),
-          return_tensors(in.return_tensors),
+          return_tensors(in.return_tensors.begin(), in.return_tensors.end()),
           return_nodes(in.return_nodes),
           importing(true),
           validate_colocation_constraints(in.validate_colocation_constraints),
@@ -121,7 +121,7 @@ class GraphConstructor {
       const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
       std::vector<std::pair<Node*, int>>* return_tensors,
       std::vector<Node*>* return_nodes,
-      std::vector<TensorId>* missing_unused_input_map_keys) {
+      std::vector<SafeTensorId>* missing_unused_input_map_keys) {
     if (versions) {
       TF_RETURN_IF_ERROR(CheckVersions(*versions, TF_GRAPH_DEF_VERSION,
                                        TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
@@ -142,7 +142,7 @@ class GraphConstructor {
                    ShapeRefiner* refiner,
                    std::vector<std::pair<Node*, int>>* return_tensors,
                    std::vector<Node*>* return_nodes,
-                   std::vector<TensorId>* missing_unused_input_map_keys)
+                   std::vector<SafeTensorId>* missing_unused_input_map_keys)
       : opts_(opts),
         node_defs_(node_defs),
         versions_(versions),
@@ -227,6 +227,10 @@ class GraphConstructor {
   // already unique in the graph.
   string FindUniqueName(StringPiece original_name);
 
+  // Decrement pending count for users of `processed` and add the ones that now
+  // have all of their pending inputs satisfied to `ready_`.
+  void UpdatePendingCountAndReady(int processed);
+
   // From constructor
   const Options opts_;
   const NodeDefSlice node_defs_;
@@ -247,7 +251,7 @@ class GraphConstructor {
   std::vector<Node*>* return_nodes_;
 
   // May be null. Not owned.
-  std::vector<TensorId>* missing_unused_input_map_keys_;
+  std::vector<SafeTensorId>* missing_unused_input_map_keys_;
 
   // Intermediate datastructure used to populate
   // `missing_unused_input_map_keys_`.
@@ -278,8 +282,9 @@ class GraphConstructor {
   // name, the value is the new unique name.
   std::unordered_map<string, string> uniquified_names_;
 
-  // Index of NodeDefs in node_defs_ with all inputs already converted.
-  std::vector<int> ready_;
+  // Index of NodeDefs in node_defs_ with all inputs already converted. We use a
+  // (sorted) set so nodes are created in the order defined in the GraphDef.
+  std::set<int> ready_;
 
   // Mapping between index within node_defs_ and the number of inputs that
   // still need to be converted.
@@ -313,6 +318,25 @@ class GraphConstructor {
   };
   std::vector<EdgeInfo> back_edges_;
 };
+
+void GraphConstructor::UpdatePendingCountAndReady(int processed) {
+  // We didn't consider NextIteration->Merge edges when computing
+  // pending_counts_ so we should not have to consider it here either.
+  bool is_next_iteration = IsNextIteration(*node_defs_[processed]);
+  for (size_t i = 0; i < outputs_[processed].size(); ++i) {
+    const int output = outputs_[processed][i];
+    bool is_next_iteration_to_merge_edge =
+        is_next_iteration && IsMerge(*node_defs_[output]);
+    if (!is_next_iteration_to_merge_edge) {
+      int* current_pending_count = &pending_count_[output];
+      CHECK_GT(*current_pending_count, 0);
+      (*current_pending_count)--;
+      if (*current_pending_count == 0) {
+        ready_.insert(output);
+      }
+    }
+  }
+}
 
 // This could be expensive but we don't expect to call it often, if at all (only
 // if there are multiple nodes in g_ with the same name)
@@ -520,7 +544,7 @@ Status GraphConstructor::InitFromEdges() {
       }
     }
     if (pending_count == 0) {
-      ready_.push_back(n);
+      ready_.insert(n);
     }
     pending_count_.push_back(pending_count);
   }
@@ -880,22 +904,6 @@ Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
   return Status::OK();
 }
 
-namespace {
-
-void UpdatePendingCountAndReady(
-    const std::vector<gtl::InlinedVector<int, 4>>& outputs, int o,
-    std::vector<int>* pending_count, std::vector<int>* ready) {
-  for (size_t i = 0; i < outputs[o].size(); ++i) {
-    const int output = outputs[o][i];
-    (*pending_count)[output]--;
-    if ((*pending_count)[output] == 0) {
-      ready->push_back(output);
-    }
-  }
-}
-
-}  // anonymous namespace
-
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
@@ -913,8 +921,8 @@ Status GraphConstructor::Convert() {
   // inputs, pending_counts_ with the number of inputs for each node and
   // outputs_ with the outputs of each node).
   while (!ready_.empty()) {
-    int o = ready_.back();
-    ready_.pop_back();
+    int o = *ready_.begin();
+    ready_.erase(ready_.begin());
     ++processed;
     inputs.clear();
     bool has_data_back_edge = false;
@@ -937,7 +945,7 @@ Status GraphConstructor::Convert() {
             IsNodeFullyMapped(original_node_def, &is_node_mapped));
         if (is_node_mapped) {
           // Skip this node after updating pending_count_ for outputs
-          UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
+          UpdatePendingCountAndReady(o);
           continue;
         }
       }
@@ -1030,10 +1038,18 @@ Status GraphConstructor::Convert() {
     TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
-    UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
+    UpdatePendingCountAndReady(o);
   }
 
   if (processed < node_defs_.size()) {
+    LOG(WARNING) << "IN " << __func__ << (node_defs_.size() - processed)
+                 << " NODES IN A CYCLE";
+    for (int64 i = 0; i < node_defs_.size(); i++) {
+      if (pending_count_[i] != 0) {
+        LOG(WARNING) << "PENDING: " << SummarizeNodeDef(*node_defs_[i])
+                     << "WITH PENDING COUNT = " << pending_count_[i];
+      }
+    }
     return errors::InvalidArgument(node_defs_.size() - processed,
                                    " nodes in a cycle");
   }

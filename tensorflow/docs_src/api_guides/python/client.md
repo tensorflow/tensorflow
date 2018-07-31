@@ -3,7 +3,7 @@
 
 This library contains classes for launching graphs and executing operations.
 
-@{$programmers_guide/low_level_intro$This guide} has examples of how a graph
+@{$guide/low_level_intro$This guide} has examples of how a graph
 is launched in a @{tf.Session}.
 
 ## Session management

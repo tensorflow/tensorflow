@@ -961,9 +961,12 @@ def unknown_shape(ndims=None):
     return TensorShape([Dimension(None)] * ndims)
 
 
+_SCALAR_SHAPE = TensorShape([])
+
+
 def scalar():
   """Returns a shape representing a scalar."""
-  return TensorShape([])
+  return _SCALAR_SHAPE
 
 
 def vector(length):

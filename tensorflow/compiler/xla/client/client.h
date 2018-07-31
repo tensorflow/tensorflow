@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/global_data.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -107,14 +107,14 @@ class Client {
   // device (and its replicas if replication is enabled). Otherwise, data is
   // transferred to the default device (and its replicas).
   StatusOr<std::unique_ptr<GlobalData>> TransferToServer(
-      const Literal& literal, const DeviceHandle* device_handle = nullptr);
+      const LiteralSlice& literal, const DeviceHandle* device_handle = nullptr);
 
   // Transfer the given literal to the Infeed interface of the device.
   //
   // device_handle and replica_id together specify a particular device; a device
   // assigned for the given replica_id among the replicas that the given device
   // handle belongs to.
-  Status TransferToInfeed(const Literal& literal, int64 replica_id = 0,
+  Status TransferToInfeed(const LiteralSlice& literal, int64 replica_id = 0,
                           const DeviceHandle* device_handle = nullptr);
 
   // Transfers from the Outfeed of the device.
@@ -153,8 +153,6 @@ class Client {
   //
   // If output_layout is non-null, then the output of the computation will be
   // stored using that layout.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<Literal>> ComputeConstant(
       const XlaComputation& computation,
       const Layout* output_layout = nullptr) const;
@@ -180,9 +178,14 @@ class Client {
   StatusOr<std::unique_ptr<ProgramShape>> GetComputationShape(
       const XlaComputation& computation);
 
-  // Creates a channel handle that can be used to transfer data between
-  // two computations via a pair of Send and Recv instructions.
+  // Creates a channel handle that can be used to transfer data between two
+  // computations on different devices via a pair of Send and Recv instructions.
   StatusOr<ChannelHandle> CreateChannelHandle();
+
+  // Create a channel for communicating with the host via a SendtoHost or
+  // RecvFromHost operation.
+  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle();
+  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle();
 
   StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
 
@@ -193,6 +196,9 @@ class Client {
   // ExecutionProfile returned from an execution of the computation.
   StatusOr<string> ExecutionStatsAsString(const XlaComputation& computation,
                                           const ExecutionProfile& profile);
+
+  StatusOr<ChannelHandle> CreateChannelHandleByType(
+      ChannelHandle::ChannelType type);
 
   ServiceInterface* stub_;  // Stub that this client is connected on.
 

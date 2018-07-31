@@ -287,7 +287,7 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
   const int64 result_index = compile_result.aot->result_buffer_index();
   const xla::BufferSizes& temp_sizes = compile_result.aot->buffer_sizes();
-  if (result_index < 0 || result_index > temp_sizes.size()) {
+  if (result_index < 0 || result_index >= temp_sizes.size()) {
     return errors::InvalidArgument("result index: ", result_index,
                                    " is outside the range of temp sizes: [0,",
                                    temp_sizes.size(), ")");

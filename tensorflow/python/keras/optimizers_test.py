@@ -145,6 +145,12 @@ class KerasOptimizersTest(test.TestCase):
     with self.assertRaises(NotImplementedError):
       optimizer.from_config(None)
 
+  def test_negative_clipvalue_or_clipnorm(self):
+    with self.assertRaises(ValueError):
+      _ = keras.optimizers.SGD(lr=0.01, clipvalue=-0.5)
+    with self.assertRaises(ValueError):
+      _ = keras.optimizers.Adam(clipnorm=-2.0)
+
 
 if __name__ == '__main__':
   test.main()

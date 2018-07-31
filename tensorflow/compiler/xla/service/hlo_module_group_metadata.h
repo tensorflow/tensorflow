@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -91,7 +92,7 @@ class HloModuleGroupMetadata {
     ComputationKind kind_ = ComputationKind::kInvalid;
   };
 
-  // Represents a channel and the 4 instructions that form the channel.
+  // Represents a channel and the instructions that form the channel.
   struct Channel {
     int64 id = -1;
     HloInstruction* send = nullptr;
@@ -117,12 +118,16 @@ class HloModuleGroupMetadata {
   // comment above on companion instructions.
   bool IsCompanionInstruction(HloInstruction* hlo) const;
 
-  // Returns true if the instruction is either a channel instruction or a
-  // companion instruction.
+  // Returns true if the instruction is either a channel instruction, a
+  // cross-module all-reduce instruction, or a companion instruction.
   bool InstructionCommunicates(HloInstruction* hlo) const;
 
   // Returns the Channel instance for the given channel id.
   const Channel& GetChannel(int64 channel_id) const;
+
+  // Returns the all-reduce instructions with the same all_reduce_id.
+  const std::vector<HloInstruction*>& GetAllReduceGroup(
+      int64 all_reduce_id) const;
 
   // Returns the computation that contains the peer channel instructions for
   // the given instruction.
@@ -147,6 +152,15 @@ class HloModuleGroupMetadata {
   // Returns the unique integer for each module. The returned id is the index of
   // the module in the module vector.
   int64 GetModuleId(const HloModule* module) const;
+
+  // Retrieves the device an instruction is assigned to. Either from the
+  // sharding information, or from the ordinal of the module the instruction
+  // is in.
+  tensorflow::gtl::optional<int64> GetInstructionDevice(
+      const HloInstruction& instruction) const;
+
+  // Returns the number of modules for devices (excluding the host module).
+  int64 GetDeviceModulesCount() const;
 
   // Returns the companion instructions for the given instruction.
   //
@@ -177,13 +191,14 @@ class HloModuleGroupMetadata {
   // Returns all channels in the module group.
   const std::vector<Channel>& channels() const { return channels_; }
 
-  // Returns the maximum channel id used in the module group.
+  // Returns the maximum channel id or all_reduce_id used in the module group.
   int64 max_channel_id() const { return max_channel_id_; }
 
  private:
   Status Build();
 
-  // Record all channel instructions and While instructions.
+  // Record all channel instructions, cross-module AllReduce instructions, and
+  // While/Conditional/Call instructions.
   Status RecordInstructions();
 
   // Verifies the given HloModules are well-formed and follow the specification,
@@ -220,6 +235,9 @@ class HloModuleGroupMetadata {
     return it != tracked_instructions_.end() ? &it->second : nullptr;
   }
 
+  // Dump all the collected module group statistics to the logs.
+  void DumpCollectedStats() const;
+
   // List of all companion instructions sets in the module.
   std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>
       companion_sets_;
@@ -231,11 +249,19 @@ class HloModuleGroupMetadata {
   tensorflow::gtl::FlatMap<const HloComputation*, TrackedInstruction>
       tracked_instructions_;
 
+  // Maps tracked instructions (kWhile, kConditional, kCall, ...) to the set of
+  // communicating instructions within the proper called computation(s).
+  tensorflow::gtl::FlatMap<HloInstruction*, std::vector<HloInstruction*>>
+      tracked_instructions_comms_;
+
   // All channels in the module.
   std::vector<Channel> channels_;
 
   // Map from channel ids to the index in channels_.
   tensorflow::gtl::FlatMap<int64, int64> channel_id_map_;
+
+  // Map from all-reduce ids to the all reduce instructions.
+  tensorflow::gtl::FlatMap<int64, std::vector<HloInstruction*>> all_reduce_map_;
 
   // The maximum channel id used in the module group.
   int64 max_channel_id_ = -1;

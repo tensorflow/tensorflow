@@ -38,17 +38,21 @@ class WhileUtil {
   };
 
   // Replaces `while_instr` with a new while instruction that is equivalent to
-  // `while_instr`, except that it has all of the HLO instructions in
+  // `while_instr` except that it has all of the HLO instructions in
   // `instructions` as live-in, loop invariant values.  These new live in values
   // are represented as new elements appended to the parameter of the while
   // loop, which must be of tuple shape.  GetTupleElement instructions computing
   // each new live in value is returned in the `while_body_live_in_values`
   // vector.
   //
-  // Precondition: `while_instr` must have a tuple shaped state.
+  // Deletes `while_instr` after replacing it.
   //
-  // Every instruction in `instructions` must be contained in the computation
-  // that contains `while_instr`.
+  // Preconditions:
+  //
+  //  `while_instr` must have a tuple shaped state.
+  //
+  //   Every instruction in `instructions` must be contained in the computation
+  //   that contains `while_instr`.
   static StatusOr<MakeInstructionsLiveInResult> MakeInstructionsLiveIn(
       HloInstruction* while_instr,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions);
