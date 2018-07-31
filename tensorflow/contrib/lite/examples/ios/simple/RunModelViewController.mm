@@ -223,7 +223,7 @@ static void GetTopN(const float* prediction,
         }
     }
     
-    NSAssert(interpreter->Invoke() != kTfLiteOk, @"Failed to invoke!");
+    NSAssert(interpreter->Invoke() == kTfLiteOk, @"Failed to invoke!");
     
     float* output = interpreter->typed_output_tensor<float>(0);
     const int output_size = 1000;
