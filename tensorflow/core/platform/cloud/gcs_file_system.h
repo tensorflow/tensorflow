@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
+#include "tensorflow/core/platform/cloud/compute_engine_metadata_client.h"
 #include "tensorflow/core/platform/cloud/expiring_lru_cache.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
@@ -275,12 +276,13 @@ class GcsFileSystem : public FileSystem {
 
   mutex mu_;
   std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
-  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
   mutex block_cache_lock_;
   std::unique_ptr<FileBlockCache> file_block_cache_
       GUARDED_BY(block_cache_lock_);
+  std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 
