@@ -91,7 +91,7 @@ limitations under the License.
 // Only string, half, float, int32, int64, bool, and quantized types
 // supported.
 #define TF_CALL_float(m) m(float)
-#define TF_CALL_double(m)
+#define TF_CALL_double(m) m(double)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
 #define TF_CALL_uint32(m)
 #define TF_CALL_uint8(m)
@@ -119,16 +119,18 @@ limitations under the License.
 
 #else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
-// Only float, int32, and bool are supported.
+// Only float, int32, bool and string and double are supported.
 #define TF_CALL_float(m) m(float)
-#define TF_CALL_double(m)
+#define TF_CALL_double(m) m(double)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
 #define TF_CALL_uint32(m)
 #define TF_CALL_uint8(m)
 #define TF_CALL_int16(m)
 
 #define TF_CALL_int8(m)
-#define TF_CALL_string(m)
+// Look at similar changes made here:
+// https://github.com/tensorflow/tensorflow/commit/6b753f33c99ae6010bfc7ec6b751a8e0a1bcdfab#diff-76e272a58ca1535b3e0ec93499779a14
+#define TF_CALL_string(m) m(string)
 #define TF_CALL_resource(m)
 #define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)

@@ -21,6 +21,8 @@ REGISTER6(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
 REGISTER6(BinaryOp, CPU, "AddV2", functor::add, float, Eigen::half, double,
           int32, int64, bfloat16);
 
+REGISTER(BinaryOp, CPU, "Add", functor::add, int32);
+
 #if GOOGLE_CUDA
 REGISTER3(BinaryOp, GPU, "Add", functor::add, float, Eigen::half, double);
 REGISTER3(BinaryOp, GPU, "AddV2", functor::add, float, Eigen::half, double);

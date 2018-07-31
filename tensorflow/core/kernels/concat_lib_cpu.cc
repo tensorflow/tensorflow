@@ -74,15 +74,16 @@ REGISTER(quint16)
 REGISTER(qint16)
 REGISTER(qint32)
 
-#if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
-    !defined(__ANDROID_TYPES_FULL__)
-    // Primarily used for SavedModel support on mobile. Registering it here only
-    // if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
-    // to avoid duplicate registration.
-    REGISTER(string);
-#endif  // defined(IS_MOBILE_PLATFORM) &&
-        // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
-        // !defined(__ANDROID_TYPES_FULL__)
+// Avoid duplicate registration. All platform support string registration.
+// #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
+//     !defined(__ANDROID_TYPES_FULL__)
+//     // Primarily used for SavedModel support on mobile. Registering it here only
+//     // if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
+//     // to avoid duplicate registration.
+//     REGISTER(string);
+// #endif  // defined(IS_MOBILE_PLATFORM) &&
+//         // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
+//         // !defined(__ANDROID_TYPES_FULL__)
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>

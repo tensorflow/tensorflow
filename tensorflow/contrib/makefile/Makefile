@@ -260,7 +260,7 @@ ifeq ($(TARGET),ANDROID)
 	else
 		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-$(HOST_ARCH)
 	endif
-    
+
 	ifndef ANDROID_ARCH
 		ANDROID_ARCH := armeabi-v7a
 	endif
@@ -307,7 +307,7 @@ ifeq ($(TARGET),ANDROID)
 		BIN_PREFIX := x86_64-linux-android
 		MARCH_OPTION :=
 	endif
-    
+
 	ifndef NDK_ROOT
     $(error "NDK_ROOT is not defined.")
 	endif
@@ -536,7 +536,7 @@ ifeq ($(TARGET),IOS)
 		-arch i386 \
 		-mno-sse \
 		-fembed-bitcode \
-		-D__thread=thread_local \
+		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
@@ -644,6 +644,7 @@ $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
+$(wildcard tensorflow/contrib/image/ops/*.cc) \
 tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 
 CORE_CC_EXCLUDE_SRCS := \

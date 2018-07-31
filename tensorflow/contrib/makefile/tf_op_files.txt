@@ -1,3 +1,8 @@
+tensorflow/contrib/image/kernels/image_ops.cc
+tensorflow/contrib/image/ops/image_ops.cc
+tensorflow/core/kernels/cwise_op_atan2.cc
+tensorflow/core/kernels/cwise_op_cos.cc
+tensorflow/core/kernels/cwise_op_sin.cc
 tensorflow/contrib/boosted_trees/ops/model_ops.cc
 tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
 tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
