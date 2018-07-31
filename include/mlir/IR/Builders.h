@@ -218,9 +218,9 @@ public:
   OperationStmt *createOperation(Identifier name, ArrayRef<MLValue *> operands,
                                  ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {
-    auto op =
+    auto *op =
         OperationStmt::create(name, operands, resultTypes, attributes, context);
-    block->getStatements().push_back(op);
+    block->getStatements().insert(insertPoint, op);
     return op;
   }
 
