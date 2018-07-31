@@ -15,12 +15,12 @@ bb0:
   %3 = alloc(%1, %2) : memref<?x?xf32, (d0, d1) -> (d0, d1), 1>
 
   // Test alloc with no dynamic dimensions and one symbol.
-  // CHECK: %4 = alloc()[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
+  // CHECK: %4 = alloc()[%1] : memref<2x4xf32, (d0, d1)[s0] -> (d0 + s0, d1), 1>
   %4 = alloc()[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
 
   // Test alloc with dynamic dimensions and one symbol.
-  // CHECK: %5 = alloc(%2)[%1] : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
-  %5 = alloc(%2)[%1] : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
+  // CHECK: %5 = alloc(%2)[%1] : memref<2x?xf32, (d0, d1)[s0] -> (d0 + s0, d1), 1>
+  %5 = alloc(%2)[%1] : memref<2x?xf32, (d0, d1)[s0] -> (d0 + s0, d1), 1>
 
   // CHECK:   return
   return

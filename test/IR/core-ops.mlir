@@ -1,12 +1,12 @@
 // RUN: %S/../../mlir-opt %s -o - | FileCheck %s
 
-// CHECK: #map0 = (d0) -> ((d0 + 1))
+// CHECK: #map0 = (d0) -> (d0 + 1)
 
-// CHECK: #map1 = (d0, d1) -> ((d0 + 1), (d1 + 2))
+// CHECK: #map1 = (d0, d1) -> (d0 + 1, d1 + 2)
 #map5 = (d0, d1) -> (d0 + 1, d1 + 2)
 
-// CHECK: #map2 = (d0, d1)[s0, s1] -> ((d0 + s1), (d1 + s0))
-// CHECK: #map3 = ()[s0] -> ((s0 + 1))
+// CHECK: #map2 = (d0, d1)[s0, s1] -> (d0 + s1, d1 + s0)
+// CHECK: #map3 = ()[s0] -> (s0 + 1)
 
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
 cfgfunc @cfgfunc_with_ops(f32) {

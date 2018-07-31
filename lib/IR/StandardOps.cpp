@@ -96,11 +96,9 @@ OpAsmParserResult AffineApplyOp::parse(OpAsmParser *parser) {
   auto *affineIntTy = builder.getAffineIntType();
 
   AffineMapAttr *mapAttr;
-  if (parser->parseAttribute(mapAttr))
-    return {};
-
   unsigned numDims;
-  if (parseDimAndSymbolList(parser, opInfos, operands, numDims))
+  if (parser->parseAttribute(mapAttr) ||
+      parseDimAndSymbolList(parser, opInfos, operands, numDims))
     return {};
   auto *map = mapAttr->getValue();
 
@@ -158,13 +156,11 @@ OpAsmParserResult AllocOp::parse(OpAsmParser *parser) {
   SmallVector<SSAValue *, 4> operands;
   SmallVector<OpAsmParser::OperandType, 4> operandsInfo;
 
-  // Parse the dimension operands and optional symbol operands.
+  // Parse the dimension operands and optional symbol operands, followed by a
+  // memref type.
   unsigned numDimOperands;
-  if (parseDimAndSymbolList(parser, operandsInfo, operands, numDimOperands))
-    return {};
-
-  // Parse memref type.
-  if (parser->parseColonType(type))
+  if (parseDimAndSymbolList(parser, operandsInfo, operands, numDimOperands) ||
+      parser->parseColonType(type))
     return {};
 
   // Check numDynamicDims against number of question marks in memref type.
