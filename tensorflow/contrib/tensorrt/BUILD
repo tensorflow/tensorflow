@@ -176,7 +176,11 @@ py_library(
 
 py_library(
     name = "trt_convert_py",
-    srcs = ["python/trt_convert.py"],
+    srcs = [
+        "python/nvidia_scope.py",
+        "python/trt_convert.py",
+        "python/quantization_hints.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",

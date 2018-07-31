@@ -23,4 +23,6 @@ from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 from tensorflow.contrib.tensorrt.python.trt_convert import calib_graph_to_infer_graph
 from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_graph
 from tensorflow.contrib.tensorrt.python.trt_convert import is_tensorrt_enabled
+from tensorflow.contrib.tensorrt.python.nvidia_scope import nvidia_scope
+from tensorflow.contrib.tensorrt.python.quantization_hints import numerical_hint
 # pylint: enable=unused-import,line-too-long
