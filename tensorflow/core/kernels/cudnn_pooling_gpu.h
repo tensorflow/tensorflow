@@ -38,7 +38,7 @@ template <typename T>
 class DnnPooling3dOp {
  public:
   static void Compute(OpKernelContext* context,
-                      perftools::gputools::dnn::PoolingMode pooling_mode,
+                      se::dnn::PoolingMode pooling_mode,
                       const std::array<int64, 3>& size,
                       const std::array<int64, 3>& stride,
                       const std::array<int64, 3>& padding,
@@ -52,7 +52,7 @@ template <typename T>
 class DnnPooling3dGradOp {
  public:
   static void Compute(OpKernelContext* context,
-                      perftools::gputools::dnn::PoolingMode pooling_mode,
+                      se::dnn::PoolingMode pooling_mode,
                       const std::array<int64, 3>& window,
                       const std::array<int64, 3>& stride,
                       const std::array<int64, 3>& padding,

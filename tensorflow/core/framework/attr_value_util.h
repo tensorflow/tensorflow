@@ -98,6 +98,19 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
 // probably not persist the returned value.
 uint64 AttrValueHash(const AttrValue& a);
 
+// WARNING: Equality check might return false-negative for large (> 32mb)
+// tensors defined with different TensorProto representations.
+//
+// A pair of consistent hash and equals functions that are guaranteed to be fast
+// with AttrValues that potentially can have very large Tensors (larger than
+// 32mb) defined by TensorProto. If large identical Tensors are defined using
+// different representations (e.g. one with tensor content, and second with
+// bool_val), they will have different hash code and equals will return false.
+// Small (less than 32mb) tensors with different TensorProto representations
+// hashed/compared by their tensor content.
+uint64 FastAttrValueHash(const AttrValue& a);
+bool FastAreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);
 

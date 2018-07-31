@@ -40,7 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class OpKernelContext;
 
@@ -160,15 +160,17 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH)
-
+REGISTER_SCATTER_ND_INDEX(string, scatter_nd_op::UpdateOp::ADD);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
+TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 #undef REGISTER_SCATTER_ND_MATH
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_INDEX
 #undef REGISTER_SCATTER_ND_FULL
 
-#ifdef TENSORFLOW_USE_SYCL
 // Implementation of update functor for SYCL.
+#ifdef TENSORFLOW_USE_SYCL
+
 template <typename T, typename Index, scatter_nd_op::UpdateOp OP, int IXDIM>
 struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
   Index operator()(
@@ -251,7 +253,7 @@ REGISTER_SCATTER_ND_MATH_SYCL(int32);
 #undef REGISTER_SCATTER_ND_INDEX_SYCL
 #undef REGISTER_SCATTER_ND_FULL_SYCL
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 

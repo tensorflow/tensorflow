@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -71,19 +72,20 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     OP_REQUIRES(ctx, XlaContext::Get(ctx).allow_cpu_custom_calls(),
                 errors::InvalidArgument(
                     "ArgMax implementation requires a CustomCall on CPU"));
-    xla::ComputationBuilder& b = *ctx->builder();
+    xla::XlaBuilder& b = *ctx->builder();
 
     // XLA passes <out> to the function, so it is not included here.
-    std::vector<xla::ComputationDataHandle> args;
+    std::vector<xla::XlaOp> args;
     args.push_back(ctx->Input(0));
-    args.push_back(b.ConstantLiteral(
-        *xla::Literal::CreateR1<int64>(input_shape.dim_sizes())));
+    args.push_back(xla::ConstantLiteral(
+        &b, *xla::LiteralUtil::CreateR1<int64>(input_shape.dim_sizes())));
     if (input_shape.dims() > 1) {
       // Don't bother passing the output shape and dim for the 1d case, since
       // the shape is always a scalar and the dim is always 0.
-      args.push_back(b.ConstantLiteral(
-          *xla::Literal::CreateR1<int64>(output_shape.dim_sizes())));
-      args.push_back(b.ConstantLiteral(*xla::Literal::CreateR0<int32>(dim)));
+      args.push_back(xla::ConstantLiteral(
+          &b, *xla::LiteralUtil::CreateR1<int64>(output_shape.dim_sizes())));
+      args.push_back(
+          xla::ConstantLiteral(&b, *xla::LiteralUtil::CreateR0<int32>(dim)));
     }
 
     xla::Shape xla_shape =
@@ -91,13 +93,15 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
 
     // Tell XLA to call the custom code, defined in
     // index_ops_kernel_argmax_float_1d.cc.
-    xla::ComputationDataHandle output;
+    xla::XlaOp output;
     switch (input_shape.dims()) {
       case 1:
-        output = b.CustomCall("argmax_float_1d_xla_impl", args, xla_shape);
+        output =
+            xla::CustomCall(&b, "argmax_float_1d_xla_impl", args, xla_shape);
         break;
       case 2:
-        output = b.CustomCall("argmax_float_2d_xla_impl", args, xla_shape);
+        output =
+            xla::CustomCall(&b, "argmax_float_2d_xla_impl", args, xla_shape);
         break;
       default:
         OP_REQUIRES(ctx, false,

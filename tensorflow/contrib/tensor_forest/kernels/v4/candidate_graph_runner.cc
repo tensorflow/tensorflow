@@ -14,8 +14,8 @@
 // =============================================================================
 #include "tensorflow/contrib/tensor_forest/kernels/v4/candidate_graph_runner.h"
 
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -58,8 +58,7 @@ CandidateGraphRunner::CandidateGraphRunner(
   // Features don't change, store them in a tensor.
   const auto& oblique = split.inequality_left_child_test().oblique();
   const int32 feat_size = oblique.features_size();
-  features_.reset(
-      new Tensor(tensorflow::DT_INT32, TensorShape({feat_size})));
+  features_.reset(new Tensor(tensorflow::DT_INT32, TensorShape({feat_size})));
   auto feat = features_->flat<int32>();
   int i = 0;
   for (const auto& id : oblique.features()) {
@@ -67,10 +66,10 @@ CandidateGraphRunner::CandidateGraphRunner(
   }
 }
 
-void CandidateGraphRunner::RunOp(
-    const string& name, const TensorNameValueList& inputs,
-    const std::vector<string>& output_tensor_names,
-    std::vector<Tensor>* outputs) {
+void CandidateGraphRunner::RunOp(const string& name,
+                                 const TensorNameValueList& inputs,
+                                 const std::vector<string>& output_tensor_names,
+                                 std::vector<Tensor>* outputs) {
   std::vector<string> op_name;
   if (name != kNoOp) {
     op_name.push_back(name);

@@ -50,9 +50,9 @@ class StringJoinOp : public OpKernel {
         } else {
           OP_REQUIRES(
               context, input_shape == input.shape(),
-              errors::InvalidArgument("Input shapes do not match: ",
-                                      input_shape.DebugString(), " vs. ",
-                                      input.shape().DebugString()));
+              errors::InvalidArgument(
+                  "Input shapes do not match: ", input_shape.DebugString(),
+                  " vs. ", input.shape().DebugString()));
         }
       }
     }

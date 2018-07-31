@@ -32,7 +32,7 @@ class SqliteQueryConnection : public QueryConnection {
   Status Open(const string& data_source_name, const string& query,
               const DataTypeVector& output_types) override;
   Status Close() override;
-  Status GetNext(std::vector<Tensor>* out_tensors,
+  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) override;
 
  private:

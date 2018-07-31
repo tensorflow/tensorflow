@@ -168,5 +168,14 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
   return Status::OK();
 }
 
+namespace internal {
+void SetTensorProtoShape(std::vector<size_t> shape,
+                         TensorShapeProto* shape_proto) {
+  for (auto dim : shape) {
+    shape_proto->mutable_dim()->Add()->set_size(dim);
+  }
+}
+}  // namespace internal
+
 }  // namespace tensor
 }  // namespace tensorflow

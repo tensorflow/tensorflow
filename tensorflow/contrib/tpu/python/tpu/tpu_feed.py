@@ -23,6 +23,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_sharding
 
 from tensorflow.python.framework import dtypes
@@ -368,12 +369,19 @@ class InfeedQueue(object):
       policy.freeze()
     self._validate()
 
-  def generate_dequeue_op(self):
+  def generate_dequeue_op(self, tpu_device=0):
     """Generates the device-side Op to dequeue a tuple from the queue.
 
     Implicitly freezes the queue configuration if it is not already
     frozen, which will raise errors if the shapes and types have not
     been fully specified.
+
+    Args:
+      tpu_device: The TPU device ordinal where the infeed instruction should be
+        placed. If None, no explicit placement will be performed, and it is up
+        to the user to call this API from within a proper TPU device scope.
+        The XLA code will fail if the TPU dequeue instruction is not bound to
+        any device.
 
     Returns:
       A list of Outputs corresponding to a shard of infeed dequeued
@@ -392,8 +400,13 @@ class InfeedQueue(object):
         policy.get_sharded_shape(shape)
         for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
     ]
-    return tpu_ops.infeed_dequeue_tuple(
-        dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    if tpu_device is not None:
+      with ops.device(tpu.core(tpu_device)):
+        return tpu_ops.infeed_dequeue_tuple(
+            dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    else:
+      return tpu_ops.infeed_dequeue_tuple(
+          dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
 
   def _generate_enqueue_op(self,
                            inputs,
@@ -448,7 +461,10 @@ class InfeedQueue(object):
             name=full_name,
             device_ordinal=tpu_ordinal)
 
-  def generate_enqueue_ops(self, sharded_inputs, tpu_ordinal_function=None):
+  def generate_enqueue_ops(self,
+                           sharded_inputs,
+                           tpu_ordinal_function=None,
+                           placement_function=None):
     """Generates the host-side Ops to enqueue the shards of a tuple.
 
     sharded_inputs is a list, one for each shard, of lists of
@@ -470,6 +486,9 @@ class InfeedQueue(object):
         shard index as input and returns the ordinal of the TPU device
         the shard's infeed should be placed on. tpu_ordinal_function must be
         set if the inputs are placed on CPU devices.
+      placement_function: if not None, a function that takes the shard index as
+        input and returns the host device where the enqueue op should be placed
+        on.
 
     Returns:
       A list of host-side Ops, one for each shard, that when executed together
@@ -495,8 +514,12 @@ class InfeedQueue(object):
       tpu_ordinal_function = lambda index: -1
     name_prefix = "%s/enqueue" % self._name
     return [
-        self._generate_enqueue_op(shard, name_prefix, index,
-                                  tpu_ordinal=tpu_ordinal_function(index))
+        self._generate_enqueue_op(
+            shard,
+            name_prefix,
+            index,
+            tpu_ordinal=tpu_ordinal_function(index),
+            device=placement_function(index) if placement_function else None)
         for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
     ]
 

@@ -85,10 +85,9 @@ struct Relu6Grad {
     // make sure not to propagate the associated gradient
     // value. This allows "features" to be either the input or the output of
     // the relu6.
-    backprops.device(d) =
-        gradients *
-        ((features > static_cast<T>(0)) * (features < static_cast<T>(6)))
-            .template cast<T>();
+    backprops.device(d) = gradients * ((features > static_cast<T>(0)) *
+                                       (features < static_cast<T>(6)))
+                                          .template cast<T>();
   }
 };
 
@@ -161,8 +160,8 @@ struct SeluGrad {
     const auto scale = static_cast<T>(1.0507009873554804934193349852946);
     const auto scale_alpha = static_cast<T>(1.7580993408473768599402175208123);
     backprops.device(d) =
-        (activations < static_cast<T>(0)).select(
-            gradients * (activations + scale_alpha), gradients * scale);
+        (activations < static_cast<T>(0))
+            .select(gradients * (activations + scale_alpha), gradients * scale);
   }
 };
 

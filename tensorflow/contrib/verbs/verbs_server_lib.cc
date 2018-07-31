@@ -49,8 +49,8 @@ VerbsServer::~VerbsServer() {
 Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
                                         GrpcChannelCache** channel_cache) {
   string name_prefix =
-      strings::StrCat("/job:", server_def.job_name(), "/replica:0", "/task:",
-                      server_def.task_index());
+      strings::StrCat("/job:", server_def.job_name(), "/replica:0",
+                      "/task:", server_def.task_index());
 
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(server_def, &channel_spec));

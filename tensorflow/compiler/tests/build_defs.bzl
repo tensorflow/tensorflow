@@ -51,12 +51,12 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     if backend == "cpu":
       backend_args += [
           "--test_device=XLA_CPU",
-          "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64"
+          "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64"
       ]
     elif backend == "gpu":
       backend_args += [
           "--test_device=XLA_GPU",
-          "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64"
+          "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16"
       ]
       backend_tags += ["requires-gpu-sm35"]
     elif backend in plugins:
@@ -89,4 +89,3 @@ def generate_backend_suites(backends=[]):
     backends = all_backends()
   for backend in backends:
     native.test_suite(name="%s_tests" % backend, tags=["tf_xla_%s" % backend])
-

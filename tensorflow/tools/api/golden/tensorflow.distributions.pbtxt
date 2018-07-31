@@ -68,10 +68,6 @@ tf_module {
     name: "Uniform"
     mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
   }
-  member {
-    name: "bijectors"
-    mtype: "<type \'module\'>"
-  }
   member_method {
     name: "kl_divergence"
     argspec: "args=[\'distribution_a\', \'distribution_b\', \'allow_nan_stats\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "

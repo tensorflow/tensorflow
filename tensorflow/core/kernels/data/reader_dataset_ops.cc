@@ -89,7 +89,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
           use_compression_(!compression_type.empty()),
           options_(options) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
@@ -106,7 +106,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "TextLineDatasetOp::Dataset"; }
+    string DebugString() const override { return "TextLineDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
@@ -141,7 +141,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
             if (s.ok()) {
               // Produce the line as output.
-              Tensor line_tensor(cpu_allocator(), DT_STRING, {});
+              Tensor line_tensor(ctx->allocator({}), DT_STRING, {});
               line_tensor.scalar<string>()() = line_contents;
               out_tensors->emplace_back(std::move(line_tensor));
               *end_of_sequence = false;
@@ -323,7 +323,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           footer_bytes_(footer_bytes),
           buffer_size_(buffer_size) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
@@ -340,7 +340,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "FixedLengthRecordDatasetOp::Dataset";
     }
 
@@ -384,7 +384,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
               TF_RETURN_IF_ERROR(
                   input_buffer_->ReadNBytes(dataset()->record_bytes_, &record));
               // Produce the record as output.
-              Tensor record_tensor(cpu_allocator(), DT_STRING, {});
+              Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
               record_tensor.scalar<string>()() = record;
               out_tensors->emplace_back(std::move(record_tensor));
               *end_of_sequence = false;
@@ -543,7 +543,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));
@@ -560,7 +560,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "TFRecordDatasetOp::Dataset"; }
+    string DebugString() const override { return "TFRecordDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
@@ -589,7 +589,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
-            Tensor result_tensor(cpu_allocator(), DT_STRING, {});
+            Tensor result_tensor(ctx->allocator({}), DT_STRING, {});
             Status s = reader_->ReadRecord(&result_tensor.scalar<string>()());
             if (s.ok()) {
               out_tensors->emplace_back(std::move(result_tensor));

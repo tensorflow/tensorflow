@@ -16,11 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_WINDOWS_SUBPROCESS_H_
 #define TENSORFLOW_PLATFORM_WINDOWS_SUBPROCESS_H_
 
+#include <memory>
+#include <vector>
+
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 // SubProcess is not yet implemented for Windows.
-class SubProcess {
-};
+class SubProcess {};
+
+std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
+  LOG(FATAL) << "CreateSubProcess NOT IMPLEMENTED for Windows yet ! ";
+  return nullptr;
+}
 
 }  // namespace tensorflow
 

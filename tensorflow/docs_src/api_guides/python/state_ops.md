@@ -83,6 +83,8 @@ automatically by the optimizers in most cases.
 *   @{tf.scatter_sub}
 *   @{tf.scatter_mul}
 *   @{tf.scatter_div}
+*   @{tf.scatter_min}
+*   @{tf.scatter_max}
 *   @{tf.scatter_nd_update}
 *   @{tf.scatter_nd_add}
 *   @{tf.scatter_nd_sub}

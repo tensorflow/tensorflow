@@ -39,10 +39,10 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
   if (*min_max_dim_value.first < 0 || *min_max_dim_value.second >= max_index) {
     bad_index = (*min_max_dim_value.first < 0) ? *min_max_dim_value.first
                                                : *min_max_dim_value.second;
-    return errors::InvalidArgument("Received a label value of ", bad_index,
-                                   " which is outside the valid range of [0, ",
-                                   max_index, ").  Label values: ",
-                                   labels.SummarizeValue(labels.NumElements()));
+    return errors::InvalidArgument(
+        "Received a label value of ", bad_index,
+        " which is outside the valid range of [0, ", max_index,
+        ").  Label values: ", labels.SummarizeValue(labels.NumElements()));
   }
   return Status::OK();
 }

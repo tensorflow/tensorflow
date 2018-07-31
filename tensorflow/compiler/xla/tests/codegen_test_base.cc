@@ -21,9 +21,11 @@ StatusOr<std::unique_ptr<Executable>> CodegenTestBase::CompileToExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   TF_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
                                       std::move(hlo_module),
-                                      backend().default_stream_executor()));
+                                      backend().default_stream_executor(),
+                                      /*device_allocator=*/nullptr));
   return backend().compiler()->RunBackend(std::move(hlo_module),
-                                          backend().default_stream_executor());
+                                          backend().default_stream_executor(),
+                                          /*device_allocator=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<AotCompilationResult>>

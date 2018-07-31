@@ -40,8 +40,8 @@ typedef Eigen::SyclDevice SYCLDevice;
 template <typename Device, typename T>
 class AdjustContrastOp : public OpKernel {
  public:
-  explicit AdjustContrastOp(OpKernelConstruction* context) : OpKernel(context) {
-  }
+  explicit AdjustContrastOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);

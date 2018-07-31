@@ -585,7 +585,6 @@ class DistributionShapeTest(test.TestCase):
   def testDistributionShapeGetDimsStatic(self):
     with self.test_session():
       shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
-      shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
       x = 1
       self.assertAllEqual((_empty_shape, _empty_shape, _empty_shape),
                           _constant(shaper.get_dims(x)))

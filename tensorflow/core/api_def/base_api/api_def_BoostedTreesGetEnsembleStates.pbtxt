@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "BoostedTreesGetEnsembleStates"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_ensemble_handle"
+    description: <<END
+Handle to the tree ensemble.
+END
+  }
+  out_arg {
+    name: "stamp_token"
+    description: <<END
+Stamp token of the tree ensemble resource.
+END
+  }
+  out_arg {
+    name: "num_trees"
+    description: <<END
+The number of trees in the tree ensemble resource.
+END
+  }
+  out_arg {
+    name: "num_finalized_trees"
+    description: <<END
+The number of trees that were finished successfully.
+END
+  }
+  out_arg {
+    name: "num_attempted_layers"
+    description: <<END
+The number of layers we attempted to build (but not necessarily succeeded).
+END
+  }
+  out_arg {
+    name: "last_layer_nodes_range"
+    description: <<END
+Rank size 2 tensor that contains start and end ids of the nodes in the latest
+layer.
+END
+
+  }
+  summary: "Retrieves the tree ensemble resource stamp token, number of trees and growing statistics."
+}

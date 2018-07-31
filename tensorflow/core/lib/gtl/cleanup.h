@@ -55,22 +55,21 @@ namespace gtl {
 template <typename F>
 class Cleanup {
  public:
-  Cleanup()
-      : released_(true), f_() {}
+  Cleanup() : released_(true), f_() {}
 
   template <typename G>
-  explicit Cleanup(G&& f)  // NOLINT
+  explicit Cleanup(G&& f)          // NOLINT
       : f_(std::forward<G>(f)) {}  // NOLINT(build/c++11)
 
   Cleanup(Cleanup&& src)  // NOLINT
-      : released_(src.is_released()), f_(src.release()) { }
+      : released_(src.is_released()), f_(src.release()) {}
 
   // Implicitly move-constructible from any compatible Cleanup<G>.
   // The source will be released as if src.release() were called.
   // A moved-from Cleanup can be safely destroyed or reassigned.
   template <typename G>
   Cleanup(Cleanup<G>&& src)  // NOLINT
-      : released_(src.is_released()), f_(src.release()) { }
+      : released_(src.is_released()), f_(src.release()) {}
 
   // Assignment to a Cleanup object behaves like destroying it
   // and making a new one in its place, analogous to unique_ptr
@@ -102,8 +101,8 @@ class Cleanup {
   F f_;
 };
 
-template <int&... ExplicitParameterBarrier,
-          typename F, typename DecayF = typename std::decay<F>::type>
+template <int&... ExplicitParameterBarrier, typename F,
+          typename DecayF = typename std::decay<F>::type>
 TF_MUST_USE_RESULT Cleanup<DecayF> MakeCleanup(F&& f) {
   return Cleanup<DecayF>(std::forward<F>(f));
 }

@@ -44,9 +44,9 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     sess = ops.get_default_session()
-    shape = list(shape)
+    shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
     num_operators = rng.randint(low=1, high=3)
@@ -56,33 +56,23 @@ class SquareLinearOperatorCompositionTest(
         for _ in range(num_operators)
     ]
 
-    if use_placeholder:
-      matrices_ph = [
-          array_ops.placeholder(dtype=dtype) for _ in range(num_operators)
-      ]
-      # Evaluate here because (i) you cannot feed a tensor, and (ii)
-      # values are random and we want the same value used for both mat and
-      # feed_dict.
-      matrices = sess.run(matrices)
-      operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorFullMatrix(m_ph) for m_ph in matrices_ph],
-          is_square=True)
-      feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
-    else:
-      operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorFullMatrix(m) for m in matrices])
-      feed_dict = None
-      # Should be auto-set.
-      self.assertTrue(operator.is_square)
+    lin_op_matrices = matrices
 
-    # Convert back to Tensor.  Needed if use_placeholder, since then we have
-    # already evaluated each matrix to a numpy array.
+    if use_placeholder:
+      lin_op_matrices = [
+          array_ops.placeholder_with_default(
+              matrix, shape=None) for matrix in matrices]
+
+    operator = linalg.LinearOperatorComposition(
+        [linalg.LinearOperatorFullMatrix(l) for l in lin_op_matrices],
+        is_square=True)
+
     matmul_order_list = list(reversed(matrices))
-    mat = ops.convert_to_tensor(matmul_order_list[0])
+    mat = matmul_order_list[0]
     for other_mat in matmul_order_list[1:]:
       mat = math_ops.matmul(other_mat, mat)
 
-    return operator, mat, feed_dict
+    return operator, mat
 
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues, 1, and 1.
@@ -148,9 +138,9 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     sess = ops.get_default_session()
-    shape = list(shape)
+    shape = list(build_info.shape)
 
     # Test only the case of 2 matrices.
     # The Square test uses either 1 or 2, so we have tested the case of 1 matrix
@@ -170,30 +160,22 @@ class NonSquareLinearOperatorCompositionTest(
                 shape_2, dtype=dtype)
     ]
 
-    if use_placeholder:
-      matrices_ph = [
-          array_ops.placeholder(dtype=dtype) for _ in range(num_operators)
-      ]
-      # Evaluate here because (i) you cannot feed a tensor, and (ii)
-      # values are random and we want the same value used for both mat and
-      # feed_dict.
-      matrices = sess.run(matrices)
-      operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorFullMatrix(m_ph) for m_ph in matrices_ph])
-      feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
-    else:
-      operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorFullMatrix(m) for m in matrices])
-      feed_dict = None
+    lin_op_matrices = matrices
 
-    # Convert back to Tensor.  Needed if use_placeholder, since then we have
-    # already evaluated each matrix to a numpy array.
+    if use_placeholder:
+      lin_op_matrices = [
+          array_ops.placeholder_with_default(
+              matrix, shape=None) for matrix in matrices]
+
+    operator = linalg.LinearOperatorComposition(
+        [linalg.LinearOperatorFullMatrix(l) for l in lin_op_matrices])
+
     matmul_order_list = list(reversed(matrices))
-    mat = ops.convert_to_tensor(matmul_order_list[0])
+    mat = matmul_order_list[0]
     for other_mat in matmul_order_list[1:]:
       mat = math_ops.matmul(other_mat, mat)
 
-    return operator, mat, feed_dict
+    return operator, mat
 
   def test_static_shapes(self):
     operators = [

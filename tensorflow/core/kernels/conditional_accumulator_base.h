@@ -160,7 +160,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
  * Modifications to convenience macros defined in core/framework/op_kernel.h.
  * The below macros return a boolean if the test fails, so that the calling
  * function can get an indication that a failure has occurred.
-*/
+ */
 #define OP_REQUIRES_BOOLEAN(CTX, EXP, STATUS)          \
   do {                                                 \
     if (!TF_PREDICT_TRUE(EXP)) {                       \

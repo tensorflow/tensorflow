@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
-#define TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <string>
 #include <utility>
@@ -25,11 +25,52 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/expiring_lru_cache.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
+#include "tensorflow/core/platform/cloud/gcs_throttle.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
+
+class GcsFileSystem;
+
+/// GcsStatsInterface allows for instrumentation of the GCS file system.
+///
+/// GcsStatsInterface and its subclasses must be safe to use from multiple
+/// threads concurrently.
+///
+/// WARNING! This is an experimental interface that may change or go away at any
+/// time.
+class GcsStatsInterface {
+ public:
+  /// Configure is called by the GcsFileSystem to provide instrumentation hooks.
+  ///
+  /// Note: Configure can be called multiple times (e.g. if the block cache is
+  /// re-initialized).
+  virtual void Configure(GcsFileSystem* fs, GcsThrottle* throttle,
+                         const FileBlockCache* block_cache) = 0;
+
+  /// RecordBlockLoadRequest is called to record a block load request is about
+  /// to be made.
+  virtual void RecordBlockLoadRequest(const string& file, size_t offset) = 0;
+
+  /// RecordBlockRetrieved is called once a block within the file has been
+  /// retrieved.
+  virtual void RecordBlockRetrieved(const string& file, size_t offset,
+                                    size_t bytes_transferred) = 0;
+
+  // RecordStatObjectRequest is called once a statting object request over GCS
+  // is about to be made.
+  virtual void RecordStatObjectRequest() = 0;
+
+  /// HttpStats is called to optionally provide a RequestStats listener
+  /// to be annotated on every HTTP request made to the GCS API.
+  ///
+  /// HttpStats() may return nullptr.
+  virtual HttpRequest::RequestStats* HttpStats() = 0;
+
+  virtual ~GcsStatsInterface() = default;
+};
 
 /// Google Cloud Storage implementation of a file system.
 ///
@@ -89,11 +130,23 @@ class GcsFileSystem : public FileSystem {
 
   void FlushCaches() override;
 
+  /// Set an object to collect runtime statistics from the GcsFilesystem.
+  void SetStats(GcsStatsInterface* stats);
+
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
-  size_t block_size() const { return file_block_cache_->block_size(); }
-  size_t max_bytes() const { return file_block_cache_->max_bytes(); }
-  uint64 max_staleness() const { return file_block_cache_->max_staleness(); }
+  size_t block_size() {
+    tf_shared_lock l(block_cache_lock_);
+    return file_block_cache_->block_size();
+  }
+  size_t max_bytes() {
+    tf_shared_lock l(block_cache_lock_);
+    return file_block_cache_->max_bytes();
+  }
+  uint64 max_staleness() {
+    tf_shared_lock l(block_cache_lock_);
+    return file_block_cache_->max_staleness();
+  }
   TimeoutConfig timeouts() const { return timeouts_; }
   string additional_header_name() const {
     return additional_header_ ? additional_header_->first : "";
@@ -149,7 +202,28 @@ class GcsFileSystem : public FileSystem {
 
   Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
 
+  /// \brief Sets a new AuthProvider on the GCS FileSystem.
+  ///
+  /// The new auth provider will be used for all subsequent requests.
+  void SetAuthProvider(std::unique_ptr<AuthProvider> auth_provider);
+
+  /// \brief Resets the block cache and re-instantiates it with the new values.
+  ///
+  /// This method can be used to clear the existing block cache and/or to
+  /// re-configure the block cache for different values.
+  ///
+  /// Note: the existing block cache is not cleaned up until all existing files
+  /// have been closed.
+  void ResetFileBlockCache(size_t block_size_bytes, size_t max_bytes,
+                           uint64 max_staleness_secs);
+
  private:
+  // GCS file statistics.
+  struct GcsFileStat {
+    FileStatistics base;
+    int64 generation_number = 0;
+  };
+
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
@@ -177,9 +251,15 @@ class GcsFileSystem : public FileSystem {
   Status GetChildrenBounded(const string& dir, uint64 max_results,
                             std::vector<string>* result, bool recursively,
                             bool include_self_directory_marker);
-  /// Retrieves file statistics assuming fname points to a GCS object.
+
+  /// Retrieves file statistics assuming fname points to a GCS object. The data
+  /// may be read from cache or from GCS directly.
   Status StatForObject(const string& fname, const string& bucket,
-                       const string& object, FileStatistics* stat);
+                       const string& object, GcsFileStat* stat);
+  /// Retrieves file statistics of file fname directly from GCS.
+  Status UncachedStatForObject(const string& fname, const string& bucket,
+                               const string& object, GcsFileStat* stat);
+
   Status RenameObject(const string& src, const string& target);
 
   std::unique_ptr<FileBlockCache> MakeFileBlockCache(size_t block_size,
@@ -190,18 +270,29 @@ class GcsFileSystem : public FileSystem {
   Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
                            char* buffer, size_t* bytes_transferred);
 
-  std::unique_ptr<AuthProvider> auth_provider_;
-  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
-  std::unique_ptr<FileBlockCache> file_block_cache_;
-  std::unique_ptr<GcsDnsCache> dns_cache_;
+  // Clear all the caches related to the file with name `filename`.
+  void ClearFileCaches(const string& fname);
 
-  using StatCache = ExpiringLRUCache<FileStatistics>;
+  mutex mu_;
+  std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
+  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  // block_cache_lock_ protects the file_block_cache_ pointer (Note that
+  // FileBlockCache instances are themselves threadsafe).
+  mutex block_cache_lock_;
+  std::unique_ptr<FileBlockCache> file_block_cache_
+      GUARDED_BY(block_cache_lock_);
+  std::unique_ptr<GcsDnsCache> dns_cache_;
+  GcsThrottle throttle_;
+
+  using StatCache = ExpiringLRUCache<GcsFileStat>;
   std::unique_ptr<StatCache> stat_cache_;
 
   using MatchingPathsCache = ExpiringLRUCache<std::vector<string>>;
   std::unique_ptr<MatchingPathsCache> matching_paths_cache_;
 
   TimeoutConfig timeouts_;
+
+  GcsStatsInterface* stats_ = nullptr;  // Not owned.
 
   /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
@@ -213,12 +304,12 @@ class GcsFileSystem : public FileSystem {
 };
 
 /// Google Cloud Storage implementation of a file system with retry on failures.
-class RetryingGcsFileSystem : public RetryingFileSystem {
+class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
   RetryingGcsFileSystem()
-      : RetryingFileSystem(std::unique_ptr<FileSystem>(new GcsFileSystem)) {}
+      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem)) {}
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_

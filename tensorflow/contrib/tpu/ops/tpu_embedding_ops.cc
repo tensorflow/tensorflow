@@ -50,7 +50,7 @@ namespace tensorflow {
 // TPU Embeddings use dedicated ops to enforce Host/TPU consistency in the
 // state of embedding table variables. Before beginning training or inference,
 // the model must Load the optimizer parameters into the TPU memories. Before
-// saving a checkpoint, the model must Retreieve the parameters back into the
+// saving a checkpoint, the model must Retrieve the parameters back into the
 // host CPU memory.
 
 REGISTER_OP("TPUEmbeddingLoadGradientDescentParameters")
@@ -263,7 +263,7 @@ REGISTER_OP("TPUEmbeddingReceiveActivations")
     .SetIsStateful()
     .SetShapeFn(tpu_embedding_config_util::ActivationShapes)
     .Doc(R"doc(
-An op that receives embeddng activations on the TPU.
+An op that receives embedding activations on the TPU.
 
 The TPU system performs the embedding lookups and aggregations specified by
 the arguments to TPUEmbeddingEnqueueSparseBatch. The results of these
@@ -293,7 +293,7 @@ REGISTER_OP("TPUEmbeddingActivations")
 An op enabling differentiation of TPU Embeddings.
 
 This op simply returns its first input, which is assumed to have been sliced
-from the Tensors returnd by TPUEmbeddingDequeueActivations. The presence of this
+from the Tensors returned by TPUEmbeddingDequeueActivations. The presence of this
 op, and its first argument being a trainable Variable, enables automatic
 differentiation of graphs containing embeddings via the TPU Embedding Python
 libraries.

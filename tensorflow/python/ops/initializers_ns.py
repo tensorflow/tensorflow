@@ -39,5 +39,8 @@ global_variables = _variables.global_variables_initializer
 local_variables = _variables.local_variables_initializer
 
 # Seal API.
+del absolute_import
+del division
+del print_function
 del init_ops
 del _variables

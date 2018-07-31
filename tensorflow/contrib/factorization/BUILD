@@ -66,6 +66,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -214,6 +215,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
     ],
+    shard_count = 4,
 )
 
 # Estimators tests
@@ -221,8 +223,12 @@ py_test(
     name = "kmeans_test",
     size = "medium",
     srcs = ["python/ops/kmeans_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67512932
+    tags = [
+        "nomac",  # b/73741358
+        "notsan",  # b/67512932
+    ],
     deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
@@ -237,6 +243,7 @@ py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -340,17 +347,4 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/kernel_tests/masked_matmul_benchmark.py",
-)
-
-# All files
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

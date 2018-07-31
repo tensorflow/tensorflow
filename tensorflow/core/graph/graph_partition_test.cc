@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -120,7 +121,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
       if (ndef.op() == "_Recv") {
         bool has_control = false;
         for (const string& input_name : ndef.input()) {
-          if (StringPiece(input_name).starts_with("^")) {
+          if (str_util::StartsWith(input_name, "^")) {
             has_control = true;
             break;
           }
@@ -128,7 +129,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
         EXPECT_TRUE(has_control);
       }
       // Must have a control loop
-      if (StringPiece(ndef.name()).starts_with("_cloop")) {
+      if (str_util::StartsWith(ndef.name(), "_cloop")) {
         if (ndef.op() == "Enter") {
           has_control_enter = true;
         }
@@ -328,11 +329,11 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
-  _Send(scope_a_.WithOpName("A1/_1"), c, "edge_1_A1", a, 82, b);
+  _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv =
-      _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_1_A1", a, 82, b);
+      _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_3_A1", a, 82, b);
   auto id = Identity(scope_b_.WithOpName("A1/_3"), recv);
   b1 = FloatInput(scope_b_.WithOpName("B1"));
   Combine(scope_b_.WithOpName("B2").WithControlDependencies(id), b1, b1);
@@ -352,18 +353,18 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
-  auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
+  _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
+  auto c = Const(scope_a_.WithOpName("A1/_2").WithControlDependencies(a1), {});
   // NOTE: Send 0 A1/_1 -> A1/_2 is not necessarily needed. We could
   // use A1/_0 -> A1/_4 as the control as a minor optimization.
-  _Send(scope_a_.WithOpName("A1/_1"), c, "edge_1_A1", a, 82, b);
-  _Send(scope_a_.WithOpName("A1/_4"), a1, "edge_2_A1", a, 82, b);
+  _Send(scope_a_.WithOpName("A1/_3"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv1 =
-      _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_1_A1", a, 82, b);
-  auto id1 = Identity(scope_b_.WithOpName("A1/_3"), recv1);
+      _Recv(scope_b_.WithOpName("A1/_4"), DT_FLOAT, "edge_3_A1", a, 82, b);
+  auto id1 = Identity(scope_b_.WithOpName("A1/_5"), recv1);
   auto recv2 =
-      _Recv(scope_b_.WithOpName("A1/_5"), DT_FLOAT, "edge_2_A1", a, 82, b);
+      _Recv(scope_b_.WithOpName("A1/_1"), DT_FLOAT, "edge_1_A1", a, 82, b);
   b1 = FloatInput(scope_b_.WithOpName("B1"));
   Combine(scope_b_.WithOpName("B2"), recv2, b1);
   FloatInput(scope_b_.WithOpName("B3").WithControlDependencies(id1));

@@ -126,13 +126,13 @@ REGISTER_KERNEL_BUILDER(Name("UniformCandidateSampler").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("LogUniformCandidateSampler").Device(DEVICE_CPU),
                         SimpleCandidateSamplerOp<LogUniformSampler>);
 
-REGISTER_KERNEL_BUILDER(Name("LearnedUnigramCandidateSampler")
-                            .Device(DEVICE_CPU),
-                        SimpleCandidateSamplerOp<UnigramSampler>);
+REGISTER_KERNEL_BUILDER(
+    Name("LearnedUnigramCandidateSampler").Device(DEVICE_CPU),
+    SimpleCandidateSamplerOp<UnigramSampler>);
 
-REGISTER_KERNEL_BUILDER(Name("ThreadUnsafeUnigramCandidateSampler")
-                            .Device(DEVICE_CPU),
-                        SimpleCandidateSamplerOp<ThreadUnsafeUnigramSampler>);
+REGISTER_KERNEL_BUILDER(
+    Name("ThreadUnsafeUnigramCandidateSampler").Device(DEVICE_CPU),
+    SimpleCandidateSamplerOp<ThreadUnsafeUnigramSampler>);
 
 class AllCandidateSamplerOp : public BaseCandidateSamplerOp {
  public:
@@ -197,8 +197,9 @@ class ComputeAccidentalHitsOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& in_true_candidates = context->input(0);
     const TensorShape& in_true_candidates_shape = in_true_candidates.shape();
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
-                             in_true_candidates_shape.dim_size(1) == num_true_,
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
+                    in_true_candidates_shape.dim_size(1) == num_true_,
                 errors::InvalidArgument(
                     "true_candidates must be a batch_size * num_true matrix"));
 

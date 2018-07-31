@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #ifndef PLATFORM_WINDOWS
-#include "grpc++/create_channel.h"
+#include "grpcpp/create_channel.h"
 #else
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
 #pragma comment(lib, "Ws2_32.lib")
@@ -52,7 +52,7 @@ namespace {
 
 // Creates an Event proto representing a chunk of a Tensor. This method only
 // populates the field of the Event proto that represent the envelope
-// informaion (e.g., timestmap, device_name, num_chunks, chunk_index, dtype,
+// information (e.g., timestamp, device_name, num_chunks, chunk_index, dtype,
 // shape). It does not set the value.tensor field, which should be set by the
 // caller separately.
 Event PrepareChunkEventProto(const DebugNodeKey& debug_node_key,
@@ -399,8 +399,8 @@ Status DebugIO::PublishDebugMetadata(
                               strings::Printf("%.14lld", session_run_index))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
-          event, io::Dirname(core_metadata_path).ToString(),
-          io::Basename(core_metadata_path).ToString()));
+          event, std::string(io::Dirname(core_metadata_path)),
+          std::string(io::Basename(core_metadata_path))));
     }
   }
 
@@ -574,8 +574,6 @@ Status DebugIO::CloseDebugURL(const string& debug_url) {
   }
 }
 
-static Status CloseDebugURL(const string& debug_url) { return Status::OK(); }
-
 Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                     const Tensor& tensor,
                                     const uint64 wall_time_us,
@@ -634,8 +632,8 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
   std::vector<Event> events;
   TF_RETURN_IF_ERROR(
       WrapTensorAsEvents(debug_node_key, tensor, wall_time_us, 0, &events));
-  return DumpEventProtoToFile(events[0], io::Dirname(file_path).ToString(),
-                              io::Basename(file_path).ToString());
+  return DumpEventProtoToFile(events[0], std::string(io::Dirname(file_path)),
+                              std::string(io::Basename(file_path)));
 }
 
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
@@ -644,7 +642,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
     return Status::OK();
   }
 
-  string parent_dir = io::Dirname(dir).ToString();
+  string parent_dir = std::string(io::Dirname(dir));
   if (!env->FileExists(parent_dir).ok()) {
     // The parent path does not exist yet, create it first.
     Status s = RecursiveCreateDir(env, parent_dir);  // Recursive call

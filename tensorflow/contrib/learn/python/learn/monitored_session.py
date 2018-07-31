@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A wrapper of Session API which runs hooks."""
+"""A wrapper of Session API which runs hooks (deprecated).
+
+These are deprecated aliases for classes and functions in `tf.train`. Please use
+those directly.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

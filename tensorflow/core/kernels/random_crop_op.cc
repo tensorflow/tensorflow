@@ -68,10 +68,10 @@ class RandomCropOp : public OpKernel {
     // Edge case. The target dimensions are larger then the image, so
     // zero-pad the image. This guarantees that the image will *always*
     // be [target_height, target_width] in size.
-    OP_REQUIRES(
-        context, width >= target_width,
-        errors::FailedPrecondition("width must be >= target_width: width = ",
-                                   width, ", target_width = ", target_width));
+    OP_REQUIRES(context, width >= target_width,
+                errors::FailedPrecondition(
+                    "width must be >= target_width: width = ", width,
+                    ", target_width = ", target_width));
     OP_REQUIRES(context, height >= target_height,
                 errors::FailedPrecondition(
                     "height must be >= target_height: height = ", height,
@@ -92,8 +92,8 @@ class RandomCropOp : public OpKernel {
 
     // TODO(shlens): Do this more efficiently with memcpy once padding is
     // available for smaller images.
-    typename TTypes<T, 3>::ConstTensor input_data = input.tensor<T, 3>();
-    typename TTypes<T, 3>::Tensor output_data = output->tensor<T, 3>();
+    typename TTypes<T, 3>::ConstTensor input_data(input.tensor<T, 3>());
+    typename TTypes<T, 3>::Tensor output_data(output->tensor<T, 3>());
 
     for (int y = 0; y < target_height; ++y) {
       for (int x = 0; x < target_width; ++x) {

@@ -28,10 +28,10 @@ class BatchMatMulOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result =
-        BatchDot(ctx->builder(), ctx->Input(0), ctx->Input(1), adj_x_, adj_y_);
-    OP_REQUIRES_OK(ctx, result.status());
-    ctx->SetOutput(0, result.ValueOrDie());
+    auto result = BatchDot(ctx->Input(0), ctx->Input(1),
+                           /*transpose_x=*/adj_x_, /*transpose_y=*/adj_y_,
+                           /*conjugate_x=*/adj_x_, /*conjugate_y=*/adj_y_);
+    ctx->SetOutput(0, result);
   }
 
  private:

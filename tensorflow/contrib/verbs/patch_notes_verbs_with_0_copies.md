@@ -64,7 +64,7 @@ The protocol messages themselves will remain mostly unchanged at the first stage
 	* type - The message type.
 	* request_index - Request index.
 	* is_dead/data_type/tensor_shape/tensor_bytes - The up-to-date meta-data.
-* **RDMA_MESSAGE_BUFFER_RESPONSE** - (receiver ==> sender) Tensor re-requset after meta-data update and reallocation of result/proxy tensors.
+* **RDMA_MESSAGE_BUFFER_RESPONSE** - (receiver ==> sender) Tensor re-request after meta-data update and reallocation of result/proxy tensors.
 	* type - The message type.
 	* name (name_size) - Name of the requested tensor.
 	* step_id - Step ID.

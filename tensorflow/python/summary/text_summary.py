@@ -26,10 +26,12 @@ from __future__ import print_function
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.summary_ops import tensor_summary
+from tensorflow.python.util.tf_export import tf_export
 
 PLUGIN_NAME = "text"
 
 
+@tf_export("summary.text")
 def text_summary(name, tensor, collections=None):
   """Summarizes textual data.
 

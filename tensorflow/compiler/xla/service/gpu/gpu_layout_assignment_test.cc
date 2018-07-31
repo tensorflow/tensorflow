@@ -69,7 +69,8 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
         *computation_layout.mutable_result_layout() =
             ShapeLayout(result_shape_with_layout);
 
-        GpuLayoutAssignment layout_assignment(&computation_layout);
+        GpuLayoutAssignment layout_assignment(
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
@@ -131,10 +132,10 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
           HloInstruction::CreateParameter(4, aux_shape, "variance"));
 
       auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              Literal::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           shape,
@@ -156,7 +157,8 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
         *computation_layout.mutable_result_layout() = ShapeLayout(result_shape);
       }
 
-      GpuLayoutAssignment layout_assignment(&computation_layout);
+      GpuLayoutAssignment layout_assignment(
+          &computation_layout, backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -199,10 +201,10 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
           HloInstruction::CreateParameter(2, offset_scale_shape, "offset"));
 
       auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              Literal::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
@@ -225,7 +227,8 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
                 {result_shape, offset_scale_shape, offset_scale_shape}));
       }
 
-      GpuLayoutAssignment layout_assignment(&computation_layout);
+      GpuLayoutAssignment layout_assignment(
+          &computation_layout, backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -275,10 +278,10 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
             HloInstruction::CreateParameter(4, shape, "var"));
 
         auto* epsilon = builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
         auto* feature_index =
             builder.AddInstruction(HloInstruction::CreateConstant(
-                Literal::CreateR0<int64>(kFeatureIndex)));
+                LiteralUtil::CreateR0<int64>(kFeatureIndex)));
 
         auto* batchnorm =
             builder.AddInstruction(HloInstruction::CreateCustomCall(
@@ -305,7 +308,8 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
                   {result_shape, scale_shape, scale_shape}));
         }
 
-        GpuLayoutAssignment layout_assignment(&computation_layout);
+        GpuLayoutAssignment layout_assignment(
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         // The first and fourth operands to the batchnorm call should have the

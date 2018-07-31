@@ -30,7 +30,7 @@ following sense:
   around,
 - The number of CDF axes does not extend, i.e., `CDF.ndim == data.ndim + 1`.
 
-In the previous example where data has shape (10, 10), the followings are
+In the previous example where data has shape (10, 10), the following are
 acceptable CDF shapes:
 
 - (10, 10, 65)

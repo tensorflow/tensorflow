@@ -56,9 +56,10 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
       errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
                               " instead of ", orig_input_tensor.dims()));
 
-  OP_REQUIRES(context, TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
-                           block_dims == orig_crops.dim_size(0) &&
-                           2 == orig_crops.dim_size(1),
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsMatrix(orig_crops.shape()) &&
+                  block_dims == orig_crops.dim_size(0) &&
+                  2 == orig_crops.dim_size(1),
               errors::InvalidArgument("crops should have shape [", block_dims,
                                       ", 2] instead of ",
                                       orig_crops.shape().DebugString()));

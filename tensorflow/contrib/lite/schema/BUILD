@@ -5,6 +5,7 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 py_binary(
     name = "upgrade_schema",
@@ -29,7 +30,10 @@ py_test(
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
     deps = [
         ":upgrade_schema",
         "//tensorflow/python:client_testlib",
@@ -62,6 +66,11 @@ cc_test(
         "schema.fbs",
         "schema_v3.fbs",
     ],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         "//tensorflow/core:lib_platform",
         "@com_google_googletest//:gtest",
@@ -69,14 +78,4 @@ cc_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
+tflite_portable_test_suite()

@@ -123,18 +123,16 @@ TEST(EmbeddingLookupOpTest, SimpleTestSqrtn) {
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
   m.Invoke();
 
-  EXPECT_THAT(
-      m.GetOutput(),
-      ElementsAreArray(ArrayFloatNear({
-          1.00, 1.01, 1.10, 1.11, 1.20, 1.21,  // Row 1
-          0.00, 0.00, 0.00, 0.00, 0.00, 0.00,  // -
-          6.00f / std::sqrt(20.0f), 6.06f / std::sqrt(20.0f),
-          6.60f / std::sqrt(20.0f), 6.66f / std::sqrt(20.0f),
-          7.20f / std::sqrt(20.0f),
-          7.26f /
-              std::sqrt(
-                  20.0f),  // 2 * Row 3 + 4 * Row 0,  // 2 * Row 3 + 4 * Row 0
-      })));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({
+                  1.00, 1.01, 1.10, 1.11, 1.20, 1.21,  // Row 1
+                  0.00, 0.00, 0.00, 0.00, 0.00, 0.00,  // -
+                  6.00f / std::sqrt(20.0f), 6.06f / std::sqrt(20.0f),
+                  6.60f / std::sqrt(20.0f), 6.66f / std::sqrt(20.0f),
+                  7.20f / std::sqrt(20.0f),
+                  7.26f / std::sqrt(20.0f),  // 2 * Row 3 + 4 * Row 0,  // 2 *
+                                             // Row 3 + 4 * Row 0
+              })));
 }
 
 TEST(EmbeddingLookupOpTest, Indices3DTest) {

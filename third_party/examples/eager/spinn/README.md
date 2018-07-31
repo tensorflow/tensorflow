@@ -22,7 +22,7 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
 - [`data.py`](../../../../tensorflow/contrib/eager/python/examples/spinn/data.py): Pipeline for loading and preprocessing the
    [SNLI](https://nlp.stanford.edu/projects/snli/) data and
    [GloVe](https://nlp.stanford.edu/projects/glove/) word embedding, written
-   using the [`tf.data`](https://www.tensorflow.org/programmers_guide/datasets)
+   using the [`tf.data`](https://www.tensorflow.org/guide/datasets)
    API.
 - [`spinn.py`](./spinn.py): Model definition and training routines.
   This example illustrates how one might perform the following actions with
@@ -65,4 +65,45 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
 
   ```bash
   tensorboard --logdir /tmp/spinn-logs
+  ```
+
+- After training, you may use the model to perform inference on input data in
+  the SNLI data format. The premise and hypotheses sentences are specified with
+  the command-line flags `--inference_premise` and `--inference_hypothesis`,
+  respectively. Each sentence should include the words, as well as parentheses
+  representing a binary parsing of the sentence. The words and parentheses
+  should all be separated by spaces. For instance,
+
+  ```bash
+  python spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
+      --inference_premise '( ( The dog ) ( ( is running ) . ) )' \
+      --inference_hypothesis '( ( The dog ) ( moves . ) )'
+  ```
+
+  which will generate an output like the following, due to the semantic
+  consistency of the two sentences.
+
+  ```none
+  Inference logits:
+    entailment:     1.101249 (winner)
+    contradiction:  -2.374171
+    neutral:        -0.296733
+  ```
+
+  By contrast, the following sentence pair:
+
+  ```bash
+  python spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
+      --inference_premise '( ( The dog ) ( ( is running ) . ) )' \
+      --inference_hypothesis '( ( The dog ) ( rests . ) )'
+  ```
+
+  will give you an output like the following, due to the semantic
+  contradiction of the two sentences.
+
+  ```none
+  Inference logits:
+    entailment:     -1.070098
+    contradiction:  2.798695 (winner)
+    neutral:        -1.402287
   ```

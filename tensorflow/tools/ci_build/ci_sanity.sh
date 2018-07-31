@@ -100,8 +100,9 @@ do_pylint() {
 "^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
 "^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
-"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
+"^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
@@ -177,7 +178,17 @@ do_pylint() {
   echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
-  grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  # Report only what we care about
+  # Ref https://pylint.readthedocs.io/en/latest/technical_reference/features.html
+  # E: all errors
+  # W0311 bad-indentation
+  # W0312 mixed-indentation
+  # C0330 bad-continuation
+  # C0301 line-too-long
+  # C0326 bad-whitespace
+  # W0611 unused-import
+  # W0622 redefined-builtin
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read -r LINE; do
@@ -313,7 +324,7 @@ do_external_licenses_check(){
   EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
+ bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -322,7 +333,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
+  bazel query "deps(${LICENSES_TARGET})" --keep_going \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -335,6 +346,18 @@ do_external_licenses_check(){
   comm -2 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${MISSING_LICENSES_FILE}
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
+
+  # Blacklist
+  echo ${MISSING_LICENSES_FILE}
+  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
+  mv temp.txt ${MISSING_LICENSES_FILE}
+
+  # Whitelist
+  echo ${EXTRA_LICENSE_FILE}
+  grep -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  mv temp.txt ${EXTRA_LICENSES_FILE}
+
+
 
   echo
   echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
@@ -409,7 +432,8 @@ cmd_status(){
 # out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/src/main/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/examples/android/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/schema/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
@@ -509,12 +533,17 @@ do_check_futures_test() {
   python check_futures_test.py
 }
 
+do_check_file_name_test() {
+  cd "$ROOT_DIR/tensorflow/tools/test"
+  python file_name_test.py
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_cmake_python_sanity")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Test entries in /tensorflow/contrib/cmake/python_{modules|protos|protos_cc}.txt for validity and consistency")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_cmake_python_sanity" "do_check_file_name_test")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Test entries in /tensorflow/contrib/cmake/python_{modules|protos|protos_cc}.txt for validity and consistency" "Check file names for cases")
 
 INCREMENTAL_FLAG=""
-DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
+DEFAULT_BAZEL_CONFIGS=""
 
 # Parse command-line arguments
 BAZEL_FLAGS=${DEFAULT_BAZEL_CONFIGS}

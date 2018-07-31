@@ -148,19 +148,7 @@ viewing. Do not include url parameters in the source code URL.
 Before building the documentation, you must first set up your environment by
 doing the following:
 
-1. If pip isn't installed on your machine, install it now by issuing the
-following command:
-
-        $ sudo easy_install pip
-
-2. Use pip to install codegen, mock, and pandas by issuing the following
-   command (Note: If you are using
-   a [virtualenv](https://virtualenv.pypa.io/en/stable/) to manage your
-   dependencies, you may not want to use sudo for these installations):
-
-        $ sudo pip install codegen mock pandas
-
-3. If bazel is not installed on your machine, install it now. If you are on
+1. If bazel is not installed on your machine, install it now. If you are on
    Linux, install bazel by issuing the following command:
 
         $ sudo apt-get install bazel  # Linux
@@ -168,10 +156,10 @@ following command:
     If you are on Mac OS, find bazel installation instructions on
     [this page](https://bazel.build/versions/master/docs/install.html#mac-os-x).
 
-4. Change directory to the top-level `tensorflow` directory of the TensorFlow
+2. Change directory to the top-level `tensorflow` directory of the TensorFlow
    source code.
 
-5. Run the `configure` script and answer its prompts appropriately for your
+3. Run the `configure` script and answer its prompts appropriately for your
    system.
 
         $ ./configure
@@ -414,24 +402,24 @@ types and default values.
 
 For example:
 
-    ```c++
-    REGISTER_OP("PngDecode")
-      .Input("contents: string")
-      .Attr("channels: int = 0")
-      .Output("image: uint8")
-      .Doc(R"doc(
-    Decodes the contents of a PNG file into a uint8 tensor.
+```c++
+REGISTER_OP("PngDecode")
+  .Input("contents: string")
+  .Attr("channels: int = 0")
+  .Output("image: uint8")
+  .Doc(R"doc(
+Decodes the contents of a PNG file into a uint8 tensor.
 
-    contents: PNG file contents.
-    channels: Number of color channels, or 0 to autodetect based on the input.
-      Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.
-      If the input has a different number of channels, it will be transformed
-      accordingly.
-    image:= A 3-D uint8 tensor of shape `[height, width, channels]`.
-      If `channels` is 0, the last dimension is determined
-      from the png contents.
-    )doc");
-    ```
+contents: PNG file contents.
+channels: Number of color channels, or 0 to autodetect based on the input.
+  Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.
+  If the input has a different number of channels, it will be transformed
+  accordingly.
+image:= A 3-D uint8 tensor of shape `[height, width, channels]`.
+  If `channels` is 0, the last dimension is determined
+  from the png contents.
+)doc");
+```
 
 Results in this piece of Markdown:
 
@@ -441,12 +429,12 @@ Results in this piece of Markdown:
 
     #### Args:
 
-    *  <b>contents</b>: A string Tensor. PNG file contents.
-    *  <b>channels</b>: An optional int. Defaults to 0.
+    *  **contents**: A string Tensor. PNG file contents.
+    *  **channels**: An optional int. Defaults to 0.
        Number of color channels, or 0 to autodetect based on the input.
        Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.  If the
        input has a different number of channels, it will be transformed accordingly.
-    *  <b>name</b>: A name for the operation (optional).
+    *  **name**: A name for the operation (optional).
 
     #### Returns:
     A 3-D uint8 tensor of shape `[height, width, channels]`.  If `channels` is
@@ -454,7 +442,7 @@ Results in this piece of Markdown:
 
 Much of the argument description is added automatically. In particular, the doc
 generator automatically adds the name and type of all inputs, attrs, and
-outputs. In the above example, `<b>contents</b>: A string Tensor.` was added
+outputs. In the above example, `contents: A string Tensor.` was added
 automatically. You should write your additional text to flow naturally after
 that description.
 
@@ -477,31 +465,29 @@ should use Markdown in the docstring.
 
 Here's a simple example:
 
-```python
-def foo(x, y, name="bar"):
-  """Computes foo.
+    def foo(x, y, name="bar"):
+      """Computes foo.
 
-  Given two 1-D tensors `x` and `y`, this operation computes the foo.
+      Given two 1-D tensors `x` and `y`, this operation computes the foo.
 
-  Example:
+      Example:
 
-  ```
-  # x is [1, 1]
-  # y is [2, 2]
-  tf.foo(x, y) ==> [3, 3]
-  ```
-  Args:
-    x: A `Tensor` of type `int32`.
-    y: A `Tensor` of type `int32`.
-    name: A name for the operation (optional).
+      ```
+      # x is [1, 1]
+      # y is [2, 2]
+      tf.foo(x, y) ==> [3, 3]
+      ```
+      Args:
+        x: A `Tensor` of type `int32`.
+        y: A `Tensor` of type `int32`.
+        name: A name for the operation (optional).
 
-  Returns:
-    A `Tensor` of type `int32` that is the foo of `x` and `y`.
+      Returns:
+        A `Tensor` of type `int32` that is the foo of `x` and `y`.
 
-  Raises:
-    ValueError: If `x` or `y` are not of type `int32`.
-  """
-```
+      Raises:
+        ValueError: If `x` or `y` are not of type `int32`.
+      """
 
 ## Description of the docstring sections
 
@@ -678,10 +664,10 @@ This generates the following Args section in
 
     #### Args:
 
-    * <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The PNG-encoded
+    * **`contents`**: A `Tensor` of type `string`. 0-D.  The PNG-encoded
       image.
-    * <b>`channels`</b>: An optional `int`. Defaults to `0`. Number of color
+    * **`channels`**: An optional `int`. Defaults to `0`. Number of color
       channels for the decoded image.
-    * <b>`dtype`</b>: An optional `tf.DType` from: `tf.uint8,
+    * **`dtype`**: An optional `tf.DType` from: `tf.uint8,
       tf.uint16`. Defaults to `tf.uint 8`.
-    * <b>`name`</b>: A name for the operation (optional).
+    * **`name`**: A name for the operation (optional).

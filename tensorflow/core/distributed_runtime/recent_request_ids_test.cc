@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -92,5 +94,16 @@ TEST(RecentRequestIds, Ordered2) { TestOrdered(2); }
 TEST(RecentRequestIds, Ordered3) { TestOrdered(3); }
 TEST(RecentRequestIds, Ordered4) { TestOrdered(4); }
 TEST(RecentRequestIds, Ordered5) { TestOrdered(5); }
+
+void BM_TrackUnique(int iters) {
+  RecentRequestIds recent_request_ids(100000);
+  RecvTensorRequest request;
+  for (int i = 0; i < iters; ++i) {
+    TF_CHECK_OK(recent_request_ids.TrackUnique(GetUniqueRequestId(),
+                                               "BM_TrackUnique", request));
+  }
+}
+
+BENCHMARK(BM_TrackUnique);
 
 }  // namespace tensorflow

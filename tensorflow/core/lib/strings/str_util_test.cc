@@ -430,4 +430,12 @@ TEST(StringReplace, EmptyStringReplaceAll) {
   EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/true));
 }
 
+TEST(Strnlen, Basic) {
+  EXPECT_EQ(0, str_util::Strnlen("ab", 0));
+  EXPECT_EQ(1, str_util::Strnlen("a", 1));
+  EXPECT_EQ(2, str_util::Strnlen("abcd", 2));
+  EXPECT_EQ(3, str_util::Strnlen("abc", 10));
+  EXPECT_EQ(4, str_util::Strnlen("a \t\n", 10));
+}
+
 }  // namespace tensorflow

@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Apply graph_transforms tool to MetaGraphDefs."""
+"""Apply graph_transforms tool to MetaGraphDefs.
+
+@@meta_graph_transform
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +33,7 @@ from tensorflow.python.framework import importer as _importer
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.saved_model import constants as _saved_model_constants
 from tensorflow.python.training import saver as _saver_lib
-from tensorflow.python.util import compat
+from tensorflow.python.util import compat as _compat
 from tensorflow.tools import graph_transforms as _graph_transforms
 
 
@@ -161,7 +164,7 @@ def _clean_save_and_restore(graph_def, op, removed_op_names):
   shapes = []
   dtypes = []
   for index, value in enumerate(name_op_value_tensor.string_val):
-    if not _is_removed(compat.as_str(value), removed_op_names):
+    if not _is_removed(_compat.as_str(value), removed_op_names):
       names.append(value)
       shapes.append(shape_op_value_tensor.string_val[index])
       dtypes.append(op.attr['dtypes'].list.type[index])
@@ -171,7 +174,14 @@ def _clean_save_and_restore(graph_def, op, removed_op_names):
   shape_op_value_tensor.tensor_shape.dim[0].size = len(shapes)
   op.attr['dtypes'].list.type[:] = dtypes
 
+  if not name_op.attr['_output_shapes'].list.shape:
+    name_op.attr['_output_shapes'].list.shape.add()
+    name_op.attr['_output_shapes'].list.shape[0].dim.add()
   name_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(names)
+
+  if not shape_op.attr['_output_shapes'].list.shape:
+    shape_op.attr['_output_shapes'].list.shape.add()
+    shape_op.attr['_output_shapes'].list.shape[0].dim.add()
   shape_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(shapes)
 
 
@@ -341,7 +351,7 @@ def _freeze_graph_with_def_protos(input_graph_def, output_node_names,
                                   input_saver_def, input_checkpoint):
   """Converts all variables in a graph and checkpoint into constants.
 
-  During this process, we need to retain certain initialzer nodes (e.g. table
+  During this process, we need to retain certain initializer nodes (e.g. table
   initializer nodes). Instead of determining which dependencies
   of the shared initializer node (e.g. group_deps) to keep, we
   reconstruct the connections between the individual initializer nodes and
@@ -644,7 +654,7 @@ def _is_removed_mentioned(s, removed_op_names):
   # /foo/bar. This regex ensures that we handle these two nodes
   # as separate entities.  It matches on nodes having names in the form of
   # '/foo/bar_x' as well as nodes having names in the form of 'foo.'
-  s_names = _re.findall(r'((?:[\/]?[a-zA-Z0-9\_]*)*)', compat.as_str_any(s))
+  s_names = _re.findall(r'((?:[\/]?[a-zA-Z0-9\_]*)*)', _compat.as_str_any(s))
   for removed_op_name in removed_op_names:
     for s_name in s_names:
       if s_name.endswith(removed_op_name):
@@ -730,9 +740,9 @@ def meta_graph_transform(
   for tag in tags:
     meta_graph_def.meta_info_def.tags.append(tag)
 
-  base_op_names = [compat.as_str(node.name)
+  base_op_names = [_compat.as_str(node.name)
                    for node in base_meta_graph_def.graph_def.node]
-  retained_op_names = [compat.as_str(node.name)
+  retained_op_names = [_compat.as_str(node.name)
                        for node in meta_graph_def.graph_def.node]
   removed_op_names = set(base_op_names) - set(retained_op_names)
 

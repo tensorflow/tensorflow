@@ -45,7 +45,7 @@ The pruning library allows for specification of the following hyper parameters:
 | do_not_prune | list of strings | [""] | list of layers names that are not pruned |
 | threshold_decay | float | 0.9 | The decay factor to use for exponential decay of the thresholds |
 | pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
-| nbins | integer | 255 | Number of bins to use for histogram computation |
+| nbins | integer | 256 | Number of bins to use for histogram computation |
 | block_height|integer | 1 | Number of rows in a block for block sparse matrices|
 | block_width |integer | 1 | Number of cols in a block for block sparse matrices|
 | block_pooling_function| string | AVG | The function to use to pool weight values in a block: average (AVG) or max (MAX)|
@@ -66,10 +66,10 @@ is the sparsity_function_begin_step. In this equation, the
 sparsity_function_exponent is set to 3.
 ### Adding pruning ops to the training graph
 
-The final step involves adding ops to the training graph that monitors the
-distribution of the layer's weight magnitudes and determines the layer threshold
-such masking all the weights below this threshold achieves the sparsity level
-desired for the current training step. This can be achieved as follows:
+The final step involves adding ops to the training graph that monitor the
+distribution of the layer's weight magnitudes and determine the layer threshold,
+such that masking all the weights below this threshold achieves the sparsity
+level desired for the current training step. This can be achieved as follows:
 
 ```python
 tf.app.flags.DEFINE_string(
@@ -79,7 +79,7 @@ tf.app.flags.DEFINE_string(
 with tf.graph.as_default():
 
   # Create global step variable
-  global_step = tf.train.get_global_step()
+  global_step = tf.train.get_or_create_global_step()
 
   # Parse pruning hyperparameters
   pruning_hparams = pruning.get_pruning_hparams().parse(FLAGS.pruning_hparams)
@@ -103,6 +103,7 @@ with tf.graph.as_default():
     mon_sess.run(mask_update_op)
 
 ```
+Ensure that `global_step` is being [incremented](https://www.tensorflow.org/api_docs/python/tf/train/Optimizer#minimize), otherwise pruning will not work!
 
 ## Example: Pruning and training deep CNNs on the cifar10 dataset
 
@@ -134,7 +135,7 @@ $ bazel-bin/$examples_dir/cifar10/cifar10_eval --run_once
 
 ### Block Sparsity
 
-For some hardware architectures, it may be beneficial to induce spatially correlated sparsity. To train models in which the weight tensors have block sparse structure, set *block_height* and *block_width* hyperparameters to the desired block configuration (2x2, 4x4, 4x1, 1x8, etc). Currently, block sparsity is supported for weight tensors with rank 2 only. The matrix is partitioned into non-overlapping blocks of size *[block_height, block_dim]* and the either the average or max absolute value in this block is taken as a proxy for the entire block (set by *block_pooling_function* hyperparameter).
+For some hardware architectures, it may be beneficial to induce spatially correlated sparsity. To train models in which the weight tensors have block sparse structure, set *block_height* and *block_width* hyperparameters to the desired block configuration (2x2, 4x4, 4x1, 1x8, etc). Currently, block sparsity is only supported for weight tensors which can be squeezed to rank 2. The matrix is partitioned into non-overlapping blocks of size *[block_height, block_dim]* and the either the average or max absolute value in this block is taken as a proxy for the entire block (set by *block_pooling_function* hyperparameter).
 The convolution layer tensors are always pruned used block dimensions of [1,1].
 
 ## References

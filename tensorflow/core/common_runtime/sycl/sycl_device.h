@@ -187,9 +187,9 @@ class GSYCLInterface {
       type = "Unknown";
     }
 
-    return strings::StrCat("id: ", device_id, ", type: ", type, ", name: ",
-                           name.c_str(), ", vendor: ", vendor.c_str(),
-                           ", profile: ", profile.c_str());
+    return strings::StrCat(
+        "id: ", device_id, ", type: ", type, ", name: ", name.c_str(),
+        ", vendor: ", vendor.c_str(), ", profile: ", profile.c_str());
   }
 };
 

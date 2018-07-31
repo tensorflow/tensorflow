@@ -63,8 +63,8 @@ __global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
                                       int64 ldu, const Scalar* M,
                                       const Scalar* U, const Scalar* S,
                                       Scalar* V) {
-  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
-    CUDA_AXIS_KERNEL_LOOP(i, config.virtual_thread_count, y) {
+  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
+    CUDA_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
       Scalar v = M[i + m * batch] * U[ldu * (i + m * batch)] * S[batch];
       CudaAtomicAdd(V + batch, v);
     }

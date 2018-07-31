@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -170,20 +172,20 @@ const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                          \
-  do {                                                               \
-    if (!(EXPR)) {                                                   \
-      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ",    \
-                                     ProtoShortDebugString(op_def)); \
-    }                                                                \
+#define VALIDATE(EXPR, ...)                                            \
+  do {                                                                 \
+    if (!(EXPR)) {                                                     \
+      return errors::InvalidArgument(                                  \
+          __VA_ARGS__, "; in OpDef: ", ProtoShortDebugString(op_def)); \
+    }                                                                  \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                           bool output, std::set<string>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
-  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()), "Duplicate name: ",
-           arg.name());
+  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()),
+           "Duplicate name: ", arg.name());
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -238,7 +240,7 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
 Status ValidateOpDef(const OpDef& op_def) {
   using ::tensorflow::strings::Scanner;
 
-  if (!StringPiece(op_def.name()).starts_with("_")) {
+  if (!str_util::StartsWith(op_def.name(), "_")) {
     VALIDATE(Scanner(op_def.name())
                  .One(Scanner::UPPERLETTER)
                  .Any(Scanner::LETTER_DIGIT)
@@ -250,19 +252,19 @@ Status ValidateOpDef(const OpDef& op_def) {
   std::set<string> names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {
     // Validate name
-    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()), "Duplicate name: ",
-             attr.name());
+    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()),
+             "Duplicate name: ", attr.name());
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
              attr.name(), " that matches a data type");
 
     // Validate type
     StringPiece type(attr.type());
-    bool is_list = type.Consume("list(");
+    bool is_list = str_util::ConsumePrefix(&type, "list(");
     bool found = false;
     for (StringPiece valid : {"string", "int", "float", "bool", "type", "shape",
                               "tensor", "func"}) {
-      if (type.Consume(valid)) {
+      if (str_util::ConsumePrefix(&type, valid)) {
         found = true;
         break;
       }
@@ -270,8 +272,9 @@ Status ValidateOpDef(const OpDef& op_def) {
     VALIDATE(found, "Unrecognized type '", type, "' in attr '", attr.name(),
              "'");
     if (is_list) {
-      VALIDATE(type.Consume(")"), "'list(' is missing ')' in attr ",
-               attr.name(), "'s type ", attr.type());
+      VALIDATE(str_util::ConsumePrefix(&type, ")"),
+               "'list(' is missing ')' in attr ", attr.name(), "'s type ",
+               attr.type());
     }
     VALIDATE(type.empty(), "Extra '", type, "' at the end of attr ",
              attr.name(), "'s type ", attr.type());
@@ -680,8 +683,8 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
     if (!penultimate_attr.has_default_value() ||
         !new_attr->has_default_value()) {
       return errors::InvalidArgument("Missing default for attr '",
-                                     penultimate_attr.name(), "' in op: ",
-                                     SummarizeOpDef(new_op));
+                                     penultimate_attr.name(),
+                                     "' in op: ", SummarizeOpDef(new_op));
     }
 
     // Actually test that the attr's default value hasn't changed.

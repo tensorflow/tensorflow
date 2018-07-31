@@ -173,7 +173,18 @@ type OpSpec struct {
 	// operation.
 	Attrs map[string]interface{}
 
-	// Other possible fields: Device, ColocateWith, ControlInputs.
+	// Operations that must be executed before executing the operation
+	// being added.
+	ControlDependencies []*Operation
+
+	// The device on which the operation should be executed.
+	// If omitted, an appropriate device will automatically be selected.
+	//
+	// For example, if set of "/device:GPU:0", then the operation will
+	// execute on GPU #0.
+	Device string
+
+	// Other possible fields: ColocateWith.
 }
 
 // AddOperation adds an operation to g.
@@ -204,6 +215,9 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			}
 		}
 	}
+	for _, in := range args.ControlDependencies {
+		C.TF_AddControlInput(cdesc, in.c)
+	}
 	status := newStatus()
 	for name, value := range args.Attrs {
 		if err := setAttr(cdesc, status, name, value); err != nil {
@@ -217,6 +231,11 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			// function to the C API.
 			return nil, fmt.Errorf("%v (memory will be leaked)", err)
 		}
+	}
+	if len(args.Device) > 0 {
+		cdevice := C.CString(args.Device)
+		C.TF_SetDevice(cdesc, cdevice)
+		C.free(unsafe.Pointer(cdevice))
 	}
 	c := C.TF_FinishOperation(cdesc, status.c)
 	if err := status.Err(); err != nil {

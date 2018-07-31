@@ -1,6 +1,6 @@
 path: "tensorflow.keras.utils.HDF5Matrix"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.io_utils.HDF5Matrix\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.io_utils.HDF5Matrix\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dtype"

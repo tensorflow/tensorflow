@@ -417,7 +417,7 @@ class MeanTensorTest(test.TestCase):
 
       self.assertAllClose([[-0.9 / 4., 3.525]], sess.run(mean), 5)
 
-  def testWeighted1d(self):
+  def testBinaryWeighted1d(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
@@ -443,6 +443,33 @@ class MeanTensorTest(test.TestCase):
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
+
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weights.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [[0.0025]])
+      _enqueue_vector(sess, weights_queue, [[0.005]])
+      _enqueue_vector(sess, weights_queue, [[0.01]])
+      _enqueue_vector(sess, weights_queue, [[0.0075]])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.mean_tensor(values, weights)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[0.8, 3.52]], sess.run(mean), 5)
 
   def testWeighted2d_1(self):
     with self.test_session() as sess:
@@ -1097,40 +1124,91 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.7, auc.eval(), 5)
 
-  def testAUCPRSpecialCase(self):
+  # Regarding the AUC-PR tests: note that the preferred method when
+  # calculating AUC-PR is summation_method='careful_interpolation'.
+  def testCorrectAUCPRSpecialCase(self):
     with self.test_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
-      auc, update_op = metrics.auc(labels, predictions, curve='PR')
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='careful_interpolation')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+      # expected ~= 0.79726744594
+      expected = 1 - math.log(1.5) / 2
+      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
-      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
-
-  def testAnotherAUCPRSpecialCase(self):
+  def testCorrectAnotherAUCPRSpecialCase(self):
     with self.test_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
           shape=(1, 7),
           dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 0, 1, 0, 1], shape=(1, 7))
-      auc, update_op = metrics.auc(labels, predictions, curve='PR')
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='careful_interpolation')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+      # expected ~= 0.61350593198
+      expected = (2.5 - 2 * math.log(4./3) - 0.25 * math.log(7./5)) / 3
+      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
-      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
-
-  def testThirdAUCPRSpecialCase(self):
+  def testThirdCorrectAUCPRSpecialCase(self):
     with self.test_session() as sess:
       predictions = constant_op.constant(
           [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
           shape=(1, 7),
           dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
-      auc, update_op = metrics.auc(labels, predictions, curve='PR')
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='careful_interpolation')
+
+      sess.run(variables.local_variables_initializer())
+      # expected ~= 0.90410597584
+      expected = 1 - math.log(4./3) / 3
+      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
+
+  def testIncorrectAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='trapezoidal')
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
+
+  def testAnotherIncorrectAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
+          shape=(1, 7),
+          dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 1, 0, 1, 0, 1], shape=(1, 7))
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='trapezoidal')
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
+
+  def testThirdIncorrectAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
+          shape=(1, 7),
+          dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
+      auc, update_op = metrics.auc(labels, predictions, curve='PR',
+                                   summation_method='trapezoidal')
 
       sess.run(variables.local_variables_initializer())
       self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)

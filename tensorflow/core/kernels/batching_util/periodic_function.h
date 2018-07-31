@@ -114,7 +114,7 @@ class PeriodicFunction {
   void RunLoop(int64 start) LOCKS_EXCLUDED(mutex_);
 
   const std::function<void()> function_;  // Actual client function
-  const int64 interval_micros_;    // Interval between calls.
+  const int64 interval_micros_;           // Interval between calls.
   const Options options_;
 
   // Protects state below.

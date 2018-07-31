@@ -1085,6 +1085,21 @@ class DummyCPUAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override {}
 };
 
+TEST(Tensor, SharesBufferWith) {
+  Tensor a_empty;
+  Tensor b_empty;
+  Tensor a(DT_FLOAT, TensorShape({1}));
+  Tensor b(DT_FLOAT, TensorShape({1}));
+  Tensor copy(a);
+  EXPECT_FALSE(a_empty.SharesBufferWith(a_empty));
+  EXPECT_FALSE(a_empty.SharesBufferWith(b_empty));
+  EXPECT_FALSE(a_empty.SharesBufferWith(a));
+  EXPECT_FALSE(a_empty.SharesBufferWith(copy));
+  EXPECT_TRUE(a.SharesBufferWith(a));
+  EXPECT_FALSE(a.SharesBufferWith(b));
+  EXPECT_TRUE(a.SharesBufferWith(copy));
+}
+
 TEST(Tensor, FailureToAllocate) {
   TensorShape shape({1});
   DummyCPUAllocator allocator;
@@ -1132,29 +1147,29 @@ TEST(Tensor, FailureToAllocate) {
 
 // On the alignment.
 //
-// As of 2015/8, tensorflow::Tensor allocates its buffer with 32-byte
+// As of 2018/5, tensorflow::Tensor allocates its buffer with 64-byte
 // alignment. Tensor::tensor/flat/vec/matrix methods requires the
 // buffer satisfies Eigen::Aligned (e.g., 16-bytes aligned usually,
-// and 32-bytes for AVX). Tensor::Slice requires the caller to ensure
-// its result is aligned if the caller intends to use those methods.
-// In this test case, we simply make sure each slice is 32-byte
-// aligned: sizeof(float) * 4 * 2 = 32.
+// 32-bytes for AVX, and 64-bytes for AVX512). Tensor::Slice requires
+// the caller to ensure its result is aligned if the caller intends
+// to use those methods. In this test case, we simply make sure each
+// slice is 64-byte aligned: sizeof(float) * 4 * 36 = 576.  576 % 64 = 0.
 TEST(Tensor, Slice_Basic) {
   Tensor saved;
   {  // General
-    Tensor x(DT_FLOAT, TensorShape({10, 4, 34}));
+    Tensor x(DT_FLOAT, TensorShape({10, 4, 36}));
     // Fills in known values.
     for (int i = 0; i < 10; ++i) {
       x.Slice(i, i + 1).flat<float>().setConstant(i * 1.f);
     }
     // A simple slice along dim0.
     Tensor y = x.Slice(4, 8);
-    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 4, 34})));
+    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 4, 36})));
     auto tx = x.tensor<float, 3>();
     auto ty = y.tensor<float, 3>();
     for (int i = 0; i < 4; ++i) {
       for (int j = 0; j < 4; ++j) {
-        for (int k = 0; k < 34; ++k) {
+        for (int k = 0; k < 36; ++k) {
           EXPECT_EQ(ty(i, j, k), 4.0 + i);
           EXPECT_EQ(&tx(4 + i, j, k), &ty(i, j, k));
         }
@@ -1171,7 +1186,7 @@ TEST(Tensor, Slice_Basic) {
     auto tz = z.tensor<float, 3>();
     EXPECT_EQ(1, z.dim_size(0));
     for (int j = 0; j < 4; ++j) {
-      for (int k = 0; k < 34; ++k) {
+      for (int k = 0; k < 36; ++k) {
         EXPECT_EQ(tz(0, j, k), 6.0);
       }
     }
@@ -1183,16 +1198,16 @@ TEST(Tensor, Slice_Basic) {
     EXPECT_EQ(1, saved.dim_size(0));
     auto tsaved = saved.tensor<float, 3>();
     for (int j = 0; j < 4; ++j) {
-      for (int k = 0; k < 34; ++k) {
+      for (int k = 0; k < 36; ++k) {
         EXPECT_EQ(tsaved(0, j, k), 6.0);
       }
     }
   }
   {  // Empty
-    Tensor x(DT_FLOAT, TensorShape({10, 0, 34}));
+    Tensor x(DT_FLOAT, TensorShape({10, 0, 36}));
     x.flat<float>().setRandom();
     Tensor y = x.Slice(4, 8);
-    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 0, 34})));
+    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 0, 36})));
   }
 
   {

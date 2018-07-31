@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #include <ctype.h>
+#include <algorithm>
 #include <vector>
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace str_util {
@@ -330,7 +332,7 @@ string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
                      bool replace_all) {
   // TODO(jlebar): We could avoid having to shift data around in the string if
   // we had a StringPiece::find() overload that searched for a StringPiece.
-  string res = s.ToString();
+  string res = std::string(s);
   size_t pos = 0;
   while ((pos = res.find(oldsub.data(), pos, oldsub.size())) != string::npos) {
     res.replace(pos, oldsub.size(), newsub.data(), newsub.size());
@@ -373,7 +375,7 @@ size_t RemoveWhitespaceContext(StringPiece* text) {
 }
 
 bool ConsumePrefix(StringPiece* s, StringPiece expected) {
-  if (s->starts_with(expected)) {
+  if (StartsWith(*s, expected)) {
     s->remove_prefix(expected.size());
     return true;
   }
@@ -381,7 +383,7 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
 }
 
 bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
-  if (s->ends_with(expected)) {
+  if (EndsWith(*s, expected)) {
     s->remove_suffix(expected.size());
     return true;
   }
@@ -447,9 +449,34 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
   return SplitAndParseAsInts<float>(text, delim,
                                     [](StringPiece str, float* value) {
                                       return strings::safe_strtof(
-                                          str.ToString().c_str(), value);
+                                          std::string(str).c_str(), value);
                                     },
                                     result);
+}
+
+size_t Strnlen(const char* str, const size_t string_max_len) {
+  size_t len = 0;
+  while (len < string_max_len && str[len] != '\0') {
+    ++len;
+  }
+  return len;
+}
+
+bool StrContains(StringPiece haystack, StringPiece needle) {
+  return std::search(haystack.begin(), haystack.end(), needle.begin(),
+                     needle.end()) != haystack.end();
+}
+
+bool StartsWith(StringPiece text, StringPiece prefix) {
+  return prefix.empty() ||
+         (text.size() >= prefix.size() &&
+          memcmp(text.data(), prefix.data(), prefix.size()) == 0);
+}
+
+bool EndsWith(StringPiece text, StringPiece suffix) {
+  return suffix.empty() || (text.size() >= suffix.size() &&
+                            memcmp(text.data() + (text.size() - suffix.size()),
+                                   suffix.data(), suffix.size()) == 0);
 }
 
 }  // namespace str_util

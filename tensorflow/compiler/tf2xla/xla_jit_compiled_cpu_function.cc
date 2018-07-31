@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -112,10 +113,10 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
 XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
-  // Convert the graph_def into an xla::Computation.
+  // Convert the graph_def into an xla::XlaComputation.
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
                       xla::ClientLibrary::GetOrCreateLocalClient());
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
                                                       &computation));
 
@@ -182,10 +183,10 @@ XlaJitCompiledCpuFunction::Compile(
   jit->static_data_.program_shape = jit->program_shape_.get();
 
   if (cpu_executable->hlo_profiling_enabled()) {
-    jit->static_data_.hlo_profile_printer =
-        &cpu_executable->hlo_profile_printer();
+    jit->static_data_.hlo_profile_printer_data =
+        &cpu_executable->hlo_profile_printer_data();
     jit->static_data_.profile_counters_size =
-        cpu_executable->hlo_profile_printer().profile_counters_size();
+        cpu_executable->hlo_profile_printer_data().profile_counters_size();
   }
 
   return std::move(jit_unique_ptr);

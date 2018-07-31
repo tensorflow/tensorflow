@@ -40,9 +40,7 @@ class FertileStatsResource : public ResourceBase {
     model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(params_);
   }
 
-  string DebugString() override {
-    return "FertileStats";
-  }
+  string DebugString() override { return "FertileStats"; }
 
   void ExtractFromProto(const FertileStats& stats);
 
@@ -50,8 +48,7 @@ class FertileStatsResource : public ResourceBase {
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
-  }
+  void Reset() {}
 
   // Reset the stats for a node, but leave the leaf_stats intact.
   void ResetSplitStats(int32 node_id, int32 depth) {
@@ -84,7 +81,6 @@ class FertileStatsResource : public ResourceBase {
   // was found.
   bool BestSplit(int32 node_id, SplitCandidate* best, int32* depth);
 
-
  private:
   mutex mu_;
   std::shared_ptr<LeafModelOperator> model_op_;
@@ -93,7 +89,6 @@ class FertileStatsResource : public ResourceBase {
 
   void AllocateNode(int32 node_id, int32 depth);
 };
-
 
 }  // namespace tensorforest
 }  // namespace tensorflow

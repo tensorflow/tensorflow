@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-
 namespace tensorflow {
 
 template <class Scalar>
@@ -40,7 +39,8 @@ class MatrixExponentialOp : public LinearAlgebraOp<Scalar> {
                      MatrixMaps* outputs) final {
     const ConstMatrixMap& input = inputs[0];
     if (input.rows() == 0) return;
-    using Matrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+    using Matrix =
+        Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     Matrix tmp = input;
     outputs->at(0) = tmp.exp();
   }
@@ -51,9 +51,9 @@ class MatrixExponentialOp : public LinearAlgebraOp<Scalar> {
 
 REGISTER_LINALG_OP("MatrixExponential", (MatrixExponentialOp<float>), float);
 REGISTER_LINALG_OP("MatrixExponential", (MatrixExponentialOp<double>), double);
-REGISTER_LINALG_OP("MatrixExponential",
-                   (MatrixExponentialOp<complex64>), complex64);
-REGISTER_LINALG_OP("MatrixExponential",
-                   (MatrixExponentialOp<complex128>), complex128);
+REGISTER_LINALG_OP("MatrixExponential", (MatrixExponentialOp<complex64>),
+                   complex64);
+REGISTER_LINALG_OP("MatrixExponential", (MatrixExponentialOp<complex128>),
+                   complex128);
 
 }  // namespace tensorflow

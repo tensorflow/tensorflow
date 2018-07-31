@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import time
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -109,7 +110,8 @@ class DecodeJpegBenchmark(test.Benchmark):
       start_time = time.time()
       for _ in xrange(num_iters):
         sess.run(r)
-    return time.time() - start_time
+      end_time = time.time()
+    return end_time - start_time
 
   def benchmarkDecodeJpegSmall(self):
     """Evaluate single DecodeImageOp for small size image."""

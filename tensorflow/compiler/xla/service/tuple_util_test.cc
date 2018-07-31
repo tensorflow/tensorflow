@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace {
@@ -37,7 +37,7 @@ ENTRY entry {
 )";
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      tools::Parse(hlo_string));
+                      ParseHloString(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);

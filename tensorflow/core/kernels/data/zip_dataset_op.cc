@@ -60,7 +60,7 @@ class ZipDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Zip")}));
@@ -74,7 +74,7 @@ class ZipDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ZipDatasetOp::Dataset"; }
+    string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -95,13 +95,16 @@ class ZipDatasetOp : public DatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params) {
-        input_impls_.reserve(params.dataset->inputs_.size());
-        size_t idx = 0;
-        for (const auto& input : params.dataset->inputs_) {
-          input_impls_.emplace_back(input->MakeIterator(
-              strings::StrCat(params.prefix, "[", idx++, "]")));
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
+        input_impls_.resize(dataset()->inputs_.size());
+        for (size_t i = 0; i < input_impls_.size(); ++i) {
+          TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
+              ctx, strings::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
         }
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,

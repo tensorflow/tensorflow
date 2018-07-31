@@ -29,6 +29,7 @@ using CpuDevice = Eigen::ThreadPoolDevice;
   template struct functor::MirrorPad<CpuDevice, T, int32, CPU_PROVIDED_IXDIM>; \
   template struct functor::MirrorPad<CpuDevice, T, int64, CPU_PROVIDED_IXDIM>;
 TF_CALL_POD_TYPES(DEFINE_CPU_SPECS);
+TF_CALL_string(DEFINE_CPU_SPECS);
 #undef DEFINE_CPU_SPECS
 
 #define DEFINE_CPU_SPECS(T)                                   \

@@ -23,9 +23,8 @@ END
   attr {
     name: "align_corners"
     description: <<END
-If true, rescale input by (new_height - 1) / (height - 1), which
-exactly aligns the 4 corners of images and resized images. If false, rescale
-by new_height / height. Treat similarly the width dimension.
+If true, the centers of the 4 corner pixels of the input and output tensors are
+aligned, preserving the values at the corner pixels. Defaults to false.
 END
   }
   summary: "Resize `images` to `size` using nearest neighbor interpolation."

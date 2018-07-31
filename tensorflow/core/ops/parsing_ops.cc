@@ -245,6 +245,7 @@ REGISTER_OP("DecodeCSV")
     .Attr("field_delim: string = ','")
     .Attr("use_quote_delim: bool = true")
     .Attr("na_value: string = ''")
+    .Attr("select_cols: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {

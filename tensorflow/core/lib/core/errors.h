@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
 #define TENSORFLOW_LIB_CORE_ERRORS_H_
 
+#include <sstream>
+
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -25,6 +28,33 @@ namespace tensorflow {
 namespace errors {
 
 typedef ::tensorflow::error::Code Code;
+
+namespace internal {
+
+// The DECLARE_ERROR macro below only supports types that can be converted
+// into StrCat's AlphaNum. For the other types we rely on a slower path
+// through std::stringstream. To add support of a new type, it is enough to
+// make sure there is an operator<<() for it:
+//
+//   std::ostream& operator<<(std::ostream& os, const MyType& foo) {
+//     os << foo.ToString();
+//     return os;
+//   }
+// Eventually absl::strings will have native support for this and we will be
+// able to completely remove PrepareForStrCat().
+template <typename T>
+typename std::enable_if<!std::is_constructible<strings::AlphaNum, T>::value,
+                        string>::type
+PrepareForStrCat(const T& t) {
+  std::stringstream ss;
+  ss << t;
+  return ss.str();
+}
+inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
+  return a;
+}
+
+}  // namespace internal
 
 // Append some context to an error message.  Each time we append
 // context put it on a new line, since it is possible for there
@@ -61,8 +91,10 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 #define DECLARE_ERROR(FUNC, CONST)                                       \
   template <typename... Args>                                            \
   ::tensorflow::Status FUNC(Args... args) {                              \
-    return ::tensorflow::Status(::tensorflow::error::CONST,              \
-                                ::tensorflow::strings::StrCat(args...)); \
+    return ::tensorflow::Status(                                         \
+        ::tensorflow::error::CONST,                                      \
+        ::tensorflow::strings::StrCat(                                   \
+            ::tensorflow::errors::internal::PrepareForStrCat(args)...)); \
   }                                                                      \
   inline bool Is##FUNC(const ::tensorflow::Status& status) {             \
     return status.code() == ::tensorflow::error::CONST;                  \
@@ -86,6 +118,25 @@ DECLARE_ERROR(PermissionDenied, PERMISSION_DENIED)
 DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
 
 #undef DECLARE_ERROR
+
+// Produces a formatted string pattern from the name which can uniquely identify
+// this node upstream to produce an informative error message. The pattern
+// followed is: {{node <name>}}
+// Note: The pattern below determines the regex _NODEDEF_NAME_RE in the file
+// tensorflow/python/client/session.py
+// LINT.IfChange
+inline string FormatNodeNameForError(const string& name) {
+  return strings::StrCat("{{node ", name, "}}");
+}
+// LINT.ThenChange(//tensorflow/python/client/session.py)
+template <typename T>
+string FormatNodeNamesForError(const T& names) {
+  ::tensorflow::str_util::Formatter<string> f(
+      [](string* output, const string& s) {
+        ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
+      });
+  return ::tensorflow::str_util::Join(names, ", ", f);
+}
 
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;

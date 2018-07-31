@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -75,7 +76,7 @@ class GraphMgr {
   // reference to cluster_flr to do cross process function calls.
   Status Register(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options,
-                  const DebugOptions& debug_options,
+                  const DebugOptions& debug_options, int64 collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr,
                   string* handle);
 
@@ -138,9 +139,11 @@ class GraphMgr {
     // Used to deregister a cost model when cost model is required in graph
     // manager.
     GraphMgr* graph_mgr;
+
+    int64 collective_graph_key;
   };
 
-  const WorkerEnv* worker_env_;             // Not owned.
+  const WorkerEnv* worker_env_;  // Not owned.
   DeviceMgr* device_mgr_;
 
   CostModelManager cost_model_manager_;
@@ -161,6 +164,7 @@ class GraphMgr {
 
   void StartParallelExecutors(const string& handle, int64 step_id, Item* item,
                               Rendezvous* rendezvous,
+                              CollectiveExecutor::Handle* ce_handle,
                               StepStatsCollector* collector,
                               CostGraphDef* cost_graph,
                               CancellationManager* cancellation_manager,
@@ -175,7 +179,7 @@ class GraphMgr {
 
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options,
-                  const DebugOptions& debug_options,
+                  const DebugOptions& debug_options, int64 collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,

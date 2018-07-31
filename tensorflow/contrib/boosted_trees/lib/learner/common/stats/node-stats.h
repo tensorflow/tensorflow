@@ -137,7 +137,7 @@ struct NodeStats {
         Eigen::MatrixXf hessian =
             TensorToEigenMatrix(grad_stats.second.t, grad_dim, grad_dim);
         // I is an identity matrix.
-        // The gain in general form is -g^T (H+l2 I)^-1 g.
+        // The gain in general form is g^T (H+l2 I)^-1 g.
         // The node weights are -(H+l2 I)^-1 g.
         Eigen::MatrixXf identity;
         identity.setIdentity(grad_dim, grad_dim);
@@ -240,7 +240,7 @@ struct NodeStats {
   // given regularized Hessian and gradient vector g.
   void CalculateWeightAndGain(const Eigen::MatrixXf& hessian_and_reg,
                               const Eigen::VectorXf& g) {
-    // The gain in general form is -g^T (Hessian_and_regularization)^-1 g.
+    // The gain in general form is g^T (Hessian_and_regularization)^-1 g.
     // The node weights are -(Hessian_and_regularization)^-1 g.
     Eigen::VectorXf weight;
     // If we want to calculate x = K^-1 v, instead of explicitly calculating

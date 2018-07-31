@@ -24,8 +24,11 @@ if (WIN32)
         ${jemalloc_INCLUDE_DIRS} 
         ${CMAKE_CURRENT_BINARY_DIR}/jemalloc/src/jemalloc/include/msvc_compat
     )
-    set(jemalloc_ADDITIONAL_CMAKE_OPTIONS -A x64)
-    set(jemalloc_STATIC_LIBRARIES ${jemalloc_BUILD}/Release/jemalloc.lib)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+        set(jemalloc_STATIC_LIBRARIES ${jemalloc_BUILD}/Release/jemalloc.lib)
+    else()
+        set(jemalloc_STATIC_LIBRARIES ${jemalloc_BUILD}/jemalloc.lib)
+    endif()
 else()
     set(jemalloc_STATIC_LIBRARIES ${jemalloc_BUILD}/Release/jemalloc.a)
 endif()
@@ -36,12 +39,12 @@ ExternalProject_Add(jemalloc
     URL_HASH ${jemalloc_HASH}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
-    CONFIGURE_COMMAND ${CMAKE_COMMAND}
+    BUILD_BYPRODUCTS ${jemalloc_STATIC_LIBRARIES}
+    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target jemalloc
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping install step."
+    CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -Dwith-jemalloc-prefix:STRING=jemalloc_
         -Dwithout-export:BOOL=ON
-        ${jemalloc_ADDITIONAL_CMAKE_OPTIONS}
-    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target jemalloc
-    INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping install step."
 )

@@ -20,6 +20,10 @@ tf_module {
     name: "ServingInputReceiver"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "TensorServingInputReceiver"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "build_parsing_serving_input_receiver_fn"
     argspec: "args=[\'feature_spec\', \'default_batch_size\'], varargs=None, keywords=None, defaults=[\'None\'], "

@@ -70,7 +70,6 @@ import heapq
 import math
 import os
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.platform import gfile
 from tensorflow.python.util.deprecation import deprecated
 

@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "cuda/include/cuda.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Identifies the memory space where an allocation resides. See
@@ -107,6 +106,16 @@ class CUDADriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
   static void DeviceDeallocate(CudaContext* context, void *location);
 
+  // Allocates a unified memory space of size bytes associated with the given
+  // context via cuMemAllocManaged.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb347ded34dc326af404aa02af5388a32
+  static void* UnifiedMemoryAllocate(CudaContext* context, uint64 bytes);
+
+  // Deallocates a unified memory space of size bytes associated with the given
+  // context via cuMemFree.
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
+  static void UnifiedMemoryDeallocate(CudaContext* context, void* location);
+
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0
@@ -148,7 +157,7 @@ class CUDADriver {
   // userspace processes is given here:
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static port::Status CreateContext(CUdevice device,
-                                    DeviceOptions device_options,
+                                    const DeviceOptions& device_options,
                                     CudaContext** context);
 
   // Destroys the provided context via cuCtxDestroy.
@@ -400,11 +409,19 @@ class CUDADriver {
 
   // Returns a grab-bag of device properties in a caller-owned device_properties
   // structure for device_ordinal via cuDeviceGetProperties.
-  // This call is deprecated in the NVIDIA driver API.
+  //
+  // This call is deprecated in the NVIDIA driver API; its replacement is
+  // GetDeviceAttribute
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE__DEPRECATED.html#group__CUDA__DEVICE__DEPRECATED_1g65a5b4e25186bd257df80b98c98cffe6
   static bool GetDeviceProperties(CUdevprop *device_properties,
                                   int device_ordinal);
+
+  // Gets a specific integer-valued property about the given device.
+  //
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
+  static port::StatusOr<int> GetDeviceAttribute(CUdevice_attribute attribute,
+                                                CUdevice device);
 
   // Returns whether ECC is enabled for the given CUdevice via
   // cuDeviceGetattribute with CU_DEVICE_ATTRIBUTE_ECC_ENABLED.
@@ -498,7 +515,6 @@ class CudaContext {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_

@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "UniqueDataset"
-  summary: "Creates a dataset that contains the unique elements of `input_dataset`."
-}

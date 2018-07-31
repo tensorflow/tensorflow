@@ -17,7 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import signal
+import sys
 import traceback
+
+import six
 
 # Google-internal import(s).
 from tensorflow.python.debug.lib import common
@@ -137,6 +141,24 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
             if not address.startswith(common.GRPC_URL_PREFIX) else address)
 
 
+def _signal_handler(unused_signal, unused_frame):
+  while True:
+    response = six.moves.input(
+        "\nSIGINT received. Quit program? (Y/n): ").strip()
+    if response in ("", "Y", "y"):
+      sys.exit(0)
+    elif response in ("N", "n"):
+      break
+
+
+def register_signal_handler():
+  try:
+    signal.signal(signal.SIGINT, _signal_handler)
+  except ValueError:
+    # This can happen if we are not in the MainThread.
+    pass
+
+
 class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
   """A tfdbg Session wrapper that can be used with TensorBoard Debugger Plugin.
 
@@ -185,13 +207,16 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
     # sent to the debug servers.
     self._sent_graph_version = -1
 
+    register_signal_handler()
+
   def run(self,
           fetches,
           feed_dict=None,
           options=None,
           run_metadata=None,
           callable_runner=None,
-          callable_runner_args=None):
+          callable_runner_args=None,
+          callable_options=None):
     if self._send_traceback_and_source_code:
       self._sent_graph_version = publish_traceback(
           self._grpc_debug_server_urls, self.graph, feed_dict, fetches,
@@ -202,4 +227,5 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
         options=options,
         run_metadata=run_metadata,
         callable_runner=callable_runner,
-        callable_runner_args=callable_runner_args)
+        callable_runner_args=callable_runner_args,
+        callable_options=callable_options)

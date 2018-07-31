@@ -41,7 +41,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import queue_runner_impl
 
-
 _BOSTON_INPUT_DIM = 13
 _IRIS_INPUT_DIM = 4
 
@@ -93,8 +92,8 @@ def boston_eval_fn():
       constant_op.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
   labels = array_ops.reshape(
       constant_op.constant(boston.target), [n_examples, 1])
-  return array_ops.concat([features, features], 0), array_ops.concat(
-      [labels, labels], 0)
+  return array_ops.concat([features, features],
+                          0), array_ops.concat([labels, labels], 0)
 
 
 def extract(data, key):
@@ -129,7 +128,10 @@ def linear_model_fn(features, labels, mode):
     (_, features), = features.items()
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return prediction, loss, train_op
 
 
@@ -139,7 +141,10 @@ def linear_model_fn_with_model_fn_ops(features, labels, mode):
                   model_fn.ModeKeys.INFER)
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return model_fn.ModelFnOps(
       mode=mode, predictions=prediction, loss=loss, train_op=train_op)
 
@@ -150,7 +155,10 @@ def logistic_model_no_mode_fn(features, labels):
   labels = array_ops.one_hot(labels, 3, 1, 0)
   prediction, loss = (models.logistic_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return {
       'class': math_ops.argmax(prediction, 1),
       'prob': prediction
@@ -173,7 +181,9 @@ class EstimatorInputTest(test.TestCase):
     scores = est.evaluate(
         x=boston_input,
         y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     del est
     # Create another estimator object with the same output dir.
     est2 = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
@@ -182,7 +192,9 @@ class EstimatorInputTest(test.TestCase):
     scores2 = est2.evaluate(
         x=boston_input,
         y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     self.assertAllClose(scores2['MSE'], scores['MSE'])
     predictions = np.array(list(est2.predict(x=boston_input)))
     other_score = _sklearn.mean_squared_error(predictions,
@@ -197,7 +209,9 @@ class EstimatorInputTest(test.TestCase):
     scores = est.score(
         x=boston.data,
         y=float64_labels,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     predictions = np.array(list(est.predict(x=boston.data)))
     other_score = _sklearn.mean_squared_error(predictions, boston.target)
     self.assertAllClose(scores['MSE'], other_score)
@@ -213,7 +227,9 @@ class EstimatorInputTest(test.TestCase):
     scores = est.evaluate(
         x=boston_input,
         y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     predictions = np.array(list(est.predict(x=boston_input)))
     other_score = _sklearn.mean_squared_error(predictions, boston.target)
     self.assertAllClose(other_score, scores['MSE'])
@@ -228,14 +244,15 @@ class EstimatorInputTest(test.TestCase):
     scores = est.score(
         x=iris.data,
         y=iris.target,
-        metrics={('accuracy', 'class'): metric_ops.streaming_accuracy})
+        metrics={
+            ('accuracy', 'class'): metric_ops.streaming_accuracy
+        })
     predictions = est.predict(x=iris.data)
     predictions_class = est.predict(x=iris.data, outputs=['class'])['class']
     self.assertEqual(predictions['prob'].shape[0], iris.target.shape[0])
     self.assertAllClose(predictions['class'], predictions_class)
-    self.assertAllClose(
-        predictions['class'], np.argmax(
-            predictions['prob'], axis=1))
+    self.assertAllClose(predictions['class'],
+                        np.argmax(predictions['prob'], axis=1))
     other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
     self.assertAllClose(scores['accuracy'], other_score)
     self.assertTrue('global_step' in scores)
@@ -250,17 +267,18 @@ class EstimatorInputTest(test.TestCase):
     scores = est.evaluate(
         x=iris_data,
         y=iris_target,
-        metrics={('accuracy', 'class'): metric_ops.streaming_accuracy})
+        metrics={
+            ('accuracy', 'class'): metric_ops.streaming_accuracy
+        })
     predictions = list(est.predict(x=iris_data))
     predictions_class = list(est.predict(x=iris_data, outputs=['class']))
     self.assertEqual(len(predictions), iris.target.shape[0])
     classes_batch = np.array([p['class'] for p in predictions])
     self.assertAllClose(classes_batch,
                         np.array([p['class'] for p in predictions_class]))
-    self.assertAllClose(
-        classes_batch,
-        np.argmax(
-            np.array([p['prob'] for p in predictions]), axis=1))
+    self.assertAllClose(classes_batch,
+                        np.argmax(
+                            np.array([p['prob'] for p in predictions]), axis=1))
     other_score = _sklearn.accuracy_score(iris.target, classes_batch)
     self.assertAllClose(other_score, scores['accuracy'])
     self.assertTrue('global_step' in scores)

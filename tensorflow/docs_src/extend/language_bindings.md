@@ -112,11 +112,11 @@ There are a few ways to get a list of the `OpDef`s for the registered ops:
     to interpret the `OpDef` messages.
 -   The C++ function `OpRegistry::Global()->GetRegisteredOps()` returns the same
     list of all registered `OpDef`s (defined in
-    [`tensorflow/core/framework/op.h`]). This can be used to write the generator
+    [`tensorflow/core/framework/op.h`](https://www.tensorflow.org/code/tensorflow/core/framework/op.h)). This can be used to write the generator
     in C++ (particularly useful for languages that do not have protocol buffer
     support).
 -   The ASCII-serialized version of that list is periodically checked in to
-    [`tensorflow/core/ops/ops.pbtxt`] by an automated process.
+    [`tensorflow/core/ops/ops.pbtxt`](https://www.tensorflow.org/code/tensorflow/core/ops/ops.pbtxt) by an automated process.
 
 The `OpDef` specifies the following:
 
@@ -159,7 +159,7 @@ between the generated code and the `OpDef`s checked into the repository, but is
 useful for languages where code is expected to be generated ahead of time like
 `go get` for Go and `cargo ops` for Rust. At the other end of the spectrum, for
 some languages the code could be generated dynamically from
-[`tensorflow/core/ops/ops.pbtxt`].
+[`tensorflow/core/ops/ops.pbtxt`](https://www.tensorflow.org/code/tensorflow/core/ops/ops.pbtxt).
 
 #### Handling Constants
 
@@ -229,6 +229,3 @@ and "while") is not available in languages other than Python. This will be
 updated when the [C API] provides necessary support.
 
 [C API]: https://www.tensorflow.org/code/tensorflow/c/c_api.h
-[`tensorflow/core/ops/ops.pbtxt`]: https://www.tensorflow.org/code/tensorflow/core/ops/ops.pbtxt
-[`tensorflow/python/BUILD`]: https://www.tensorflow.org/code/tensorflow/python/BUILD
-[`tensorflow/core/framework/op.h`]: https://www.tensorflow.org/code/tensorflow/core/framework/op.h

@@ -1,11 +1,11 @@
 path: "tensorflow.keras.optimizers.Adadelta"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.optimizers.Adadelta\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.optimizers.Optimizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Adadelta\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Optimizer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'lr\', \'rho\', \'epsilon\', \'decay\'], varargs=None, keywords=kwargs, defaults=[\'1.0\', \'0.95\', \'1e-08\', \'0.0\'], "
+    argspec: "args=[\'self\', \'lr\', \'rho\', \'epsilon\', \'decay\'], varargs=None, keywords=kwargs, defaults=[\'1.0\', \'0.95\', \'None\', \'0.0\'], "
   }
   member_method {
     name: "from_config"

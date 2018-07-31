@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double,
-          complex64, complex128);
+REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double, complex64,
+          complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Atanh", functor::atanh, float, double);

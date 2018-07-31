@@ -18,6 +18,7 @@
 See the @{$python/contrib.integrate} guide.
 
 @@odeint
+@@odeint_fixed
 """
 
 from __future__ import absolute_import

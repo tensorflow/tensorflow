@@ -1,7 +1,7 @@
 path: "tensorflow.keras.utils.GeneratorEnqueuer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.data_utils.GeneratorEnqueuer\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.data_utils.SequenceEnqueuer\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.data_utils.GeneratorEnqueuer\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.data_utils.SequenceEnqueuer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

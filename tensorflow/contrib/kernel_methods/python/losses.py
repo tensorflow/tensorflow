@@ -43,10 +43,10 @@ def sparse_multiclass_hinge_loss(
 
   This is a generalization of standard (binary) hinge loss. For a given instance
   with correct label c*, the loss is given by:
-    loss = max_{c != c*} logits_c - logits_{c*} + 1.
+    $$loss = max_{c != c*} logits_c - logits_{c*} + 1.$$
   or equivalently
-    loss = max_c { logits_c - logits_{c*} + I_{c != c*} }
-  where I_{c != c*} = 1 if c != c* and 0 otherwise.
+    $$loss = max_c { logits_c - logits_{c*} + I_{c != c*} }$$
+  where \\(I_{c != c*} = 1\ \text{if}\ c != c*\\) and 0 otherwise.
 
   Args:
     labels: `Tensor` of shape [batch_size] or [batch_size, 1]. Corresponds to

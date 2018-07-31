@@ -347,7 +347,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
 
   Two types of tests for FractionalAvgPoolGrad.
   1) Test fractional_avg_pool_grad() directly.
-    This type of test relies on gen_nn_ops._avg_pool_grad() returns the
+    This type of test relies on gen_nn_ops.avg_pool_grad() returns the
   correct result. For example:
     * input_tensor_shape = (1, 10, 10, 1)
     * window_size = (1, 2, 2, 1)
@@ -404,13 +404,13 @@ class FractionalAvgPoolGradTest(test.TestCase):
                 num_elements *= dim_size
               output_backprop = (self._PRNG.rand(num_elements) *
                                  1000).reshape(output_data.shape)
-              input_backprop_tensor = gen_nn_ops._avg_pool_grad(
+              input_backprop_tensor = gen_nn_ops.avg_pool_grad(
                   input_tensor.get_shape(), output_backprop, window_size,
                   stride_size, padding)
               input_backprop = input_backprop_tensor.eval()
               row_seq = list(range(0, num_rows + 1, row_window_size))
               col_seq = list(range(0, num_cols + 1, col_window_size))
-              fap_input_backprop_tensor = gen_nn_ops._fractional_avg_pool_grad(
+              fap_input_backprop_tensor = gen_nn_ops.fractional_avg_pool_grad(
                   input_tensor.get_shape(),
                   output_backprop,
                   row_seq,
@@ -443,7 +443,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
                 num_elements *= dim_size
               output_backprop = (self._PRNG.rand(num_elements) *
                                  1000).reshape(output_data.shape)
-              input_backprop_tensor = gen_nn_ops._avg_pool_grad(
+              input_backprop_tensor = gen_nn_ops.avg_pool_grad(
                   input_tensor.get_shape(), output_backprop, window_size,
                   stride_size, padding)
               input_backprop = input_backprop_tensor.eval()
@@ -451,7 +451,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
               col_seq = list(range(0, num_cols, col_window_size - 1))
               row_seq[-1] += 1
               col_seq[-1] += 1
-              fap_input_backprop_tensor = gen_nn_ops._fractional_avg_pool_grad(
+              fap_input_backprop_tensor = gen_nn_ops.fractional_avg_pool_grad(
                   input_tensor.get_shape(),
                   output_backprop,
                   row_seq,

@@ -26,6 +26,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(touts): switch to variables.Variable.
@@ -51,16 +52,19 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   they were created in and the scope of the variables they debias. They are also
   given a uniqifying-suffix.
 
-  Ex:
+  E.g.:
+
+  ```
     with tf.variable_scope('scope1'):
       with tf.variable_scope('scope2'):
         var = tf.get_variable('foo')
-        assign_moving_average(var, 0.0, 1.0)
-        assign_moving_average(var, 0.0, 0.9)
+        tf.assign_moving_average(var, 0.0, 1.0)
+        tf.assign_moving_average(var, 0.0, 0.9)
 
-    var.name: 'scope1/scope2/foo'
-    shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
-                      'scope1/scope2/scope1/scope2/foo/biased_1'
+    # var.name: 'scope1/scope2/foo'
+    # shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
+    #                   'scope1/scope2/scope1/scope2/foo/biased_1'
+  ```
 
   Args:
     variable: A Variable.
@@ -187,7 +191,7 @@ def _zero_debias(unbiased_var, value, decay):
   with variable_scope.variable_scope(
       unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         biased_initializer = init_ops.zeros_initializer(
             dtype=unbiased_var.dtype)(unbiased_var.get_shape())
         local_step_initializer = init_ops.zeros_initializer()
@@ -230,6 +234,7 @@ def _zero_debias(unbiased_var, value, decay):
       return unbiased_ema_delta
 
 
+@tf_export("train.ExponentialMovingAverage")
 class ExponentialMovingAverage(object):
   """Maintains moving averages of variables by employing an exponential decay.
 
@@ -339,6 +344,11 @@ class ExponentialMovingAverage(object):
     self._name = name
     self._averages = {}
 
+  @property
+  def name(self):
+    """The name of this ExponentialMovingAverage object."""
+    return self._name
+
   def apply(self, var_list=None):
     """Maintains moving averages of variables.
 
@@ -385,11 +395,11 @@ class ExponentialMovingAverage(object):
       # For variables: to lower communication bandwidth across devices we keep
       # the moving averages on the same device as the variables. For other
       # tensors, we rely on the existing device allocation mechanism.
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         if isinstance(var, variables.Variable):
           avg = slot_creator.create_slot(var,
                                          var.initialized_value(),
-                                         self._name,
+                                         self.name,
                                          colocate_with_primary=True)
           # NOTE(mrry): We only add `tf.Variable` objects to the
           # `MOVING_AVERAGE_VARIABLES` collection.
@@ -397,13 +407,15 @@ class ExponentialMovingAverage(object):
         else:
           avg = slot_creator.create_zeros_slot(
               var,
-              self._name,
-              colocate_with_primary=(var.op.type in ["Variable", "VariableV2"]))
+              self.name,
+              colocate_with_primary=(var.op.type in ["Variable",
+                                                     "VariableV2",
+                                                     "VarHandleOp"]))
           if self._zero_debias:
             zero_debias_true.add(avg)
       self._averages[var] = avg
 
-    with ops.name_scope(self._name) as scope:
+    with ops.name_scope(self.name) as scope:
       decay = ops.convert_to_tensor(self._decay, name="decay")
       if self._num_updates is not None:
         num_updates = math_ops.cast(self._num_updates,
@@ -455,7 +467,7 @@ class ExponentialMovingAverage(object):
     if var in self._averages:
       return self._averages[var].op.name
     return ops.get_default_graph().unique_name(
-        var.op.name + "/" + self._name, mark_as_used=False)
+        var.op.name + "/" + self.name, mark_as_used=False)
 
   def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.

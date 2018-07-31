@@ -26,9 +26,9 @@ namespace tensorflow {
 #if GOOGLE_CUDA
 namespace {
 template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 }  // namespace
@@ -36,15 +36,13 @@ perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
 
 namespace functor {
 template <typename T>
-void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx,
-                                     bool transa, bool transb, uint64 m,
-                                     uint64 n, uint64 k, T alpha, const T* a,
-                                     int lda, const T* b, int ldb, T beta, T* c,
-                                     int ldc) {
+void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
+                                     bool transb, uint64 m, uint64 n, uint64 k,
+                                     T alpha, const T* a, int lda, const T* b,
+                                     int ldb, T beta, T* c, int ldc) {
 #if GOOGLE_CUDA
-  perftools::gputools::blas::Transpose trans[] = {
-      perftools::gputools::blas::Transpose::kNoTranspose,
-      perftools::gputools::blas::Transpose::kTranspose};
+  se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
+                                 se::blas::Transpose::kTranspose};
 
   auto a_ptr = AsDeviceMemory(a);
   auto b_ptr = AsDeviceMemory(b);

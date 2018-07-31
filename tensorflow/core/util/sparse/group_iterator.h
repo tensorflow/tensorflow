@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
-#define TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
+#ifndef TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
+#define TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
 
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -78,7 +78,10 @@ class GroupIterable {
   typedef gtl::ArraySlice<int64> VarDimArray;
 
   GroupIterable(Tensor ix, Tensor vals, int dims, const VarDimArray& group_dims)
-      : ix_(ix), vals_(vals), dims_(dims), group_dims_(group_dims) {}
+      : ix_(ix),
+        vals_(vals),
+        dims_(dims),
+        group_dims_(group_dims.begin(), group_dims.end()) {}
 
   class IteratorStep;
 
@@ -127,7 +130,7 @@ class GroupIterable {
   Tensor ix_;
   Tensor vals_;
   const int dims_;
-  const VarDimArray group_dims_;
+  const gtl::InlinedVector<int64, 8> group_dims_;
 };
 
 // Implementation of Group::values<T>()
@@ -140,4 +143,4 @@ typename TTypes<T>::UnalignedVec Group::values() const {
 }  // namespace sparse
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
+#endif  // TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_

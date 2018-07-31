@@ -56,10 +56,12 @@ def nativeOutDir = 'libs/' + cpuType
 def nativeBuildRule = 'buildNativeBazel'
 def demoLibPath = '../../../bazel-bin/tensorflow/examples/android/libtensorflow_demo.so'
 def inferenceLibPath = '../../../bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so'
+
+// Override for Makefile builds.
 if (nativeBuildSystem == 'makefile') {
     nativeBuildRule = 'buildNativeMake'
-    demoLibPath = '../../../tensorflow/contrib/makefile/gen/lib/libtensorflow_demo.so'
-    inferenceLibPath = '../../../tensorflow/contrib/makefile/gen/lib/libtensorflow_inference.so'
+    demoLibPath = '../../../tensorflow/contrib/makefile/gen/lib/android_' + cpuType + '/libtensorflow_demo.so'
+    inferenceLibPath = '../../../tensorflow/contrib/makefile/gen/lib/android_' + cpuType + '/libtensorflow_inference.so'
 }
 
 // If building with Bazel, this is the location of the bazel binary.
@@ -154,7 +156,8 @@ task buildNativeMake(type: Exec) {
          '-s',  \
          'tensorflow/contrib/makefile/sub_makefiles/android/Makefile.in',  \
          '-t',  \
-         'libtensorflow_inference.so libtensorflow_demo.so'  \
+         'libtensorflow_inference.so libtensorflow_demo.so all'  \
+         , '-a', cpuType  \
          //, '-T'  // Uncomment to skip protobuf and speed up subsequent builds.
 }
 

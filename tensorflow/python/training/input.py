@@ -44,6 +44,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access
@@ -53,8 +54,11 @@ _restore_sparse = sparse_ops._take_many_sparse_from_tensors_map
 # pylint: enable=protected-access
 
 
+@tf_export("train.match_filenames_once")
 def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
+
+  NOTE: The order of the files returned can be non-deterministic.
 
   Args:
     pattern: A file pattern (glob), or 1D tensor of file patterns.
@@ -70,6 +74,7 @@ def match_filenames_once(pattern, name=None):
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
 
+@tf_export("train.limit_epochs")
 def limit_epochs(tensor, num_epochs=None, name=None):
   """Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
@@ -102,6 +107,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
       return array_ops.identity(tensor, name=name)
 
 
+@tf_export("train.input_producer")
 def input_producer(input_tensor,
                    element_shape=None,
                    num_epochs=None,
@@ -153,7 +159,7 @@ def input_producer(input_tensor,
   enabled. Please use the `tf.data` API to ingest data under eager execution.
   @end_compatibility
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -184,6 +190,7 @@ def input_producer(input_tensor,
     return q
 
 
+@tf_export("train.string_input_producer")
 def string_input_producer(string_tensor,
                           num_epochs=None,
                           shuffle=True,
@@ -253,6 +260,7 @@ def string_input_producer(string_tensor,
         cancel_op=cancel_op)
 
 
+@tf_export("train.range_input_producer")
 def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
                          capacity=32, shared_name=None, name=None):
   """Produces the integers from 0 to limit-1 in a queue.
@@ -290,6 +298,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
         shared_name, "fraction_of_%d_full" % capacity, name)
 
 
+@tf_export("train.slice_input_producer")
 def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
                          capacity=32, shared_name=None, name=None):
   """Produces a slice of each `Tensor` in `tensor_list`.
@@ -506,8 +515,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
     def _sparse_values_to_keep(t, keep_input):
       """Convert a per-row `keep_input` vector to a per-value one."""
       # Get the rows of every value in the sparse Tensor.
-      row_values = array_ops.reshape(
-          t.indices, [array_ops.shape(t.indices)[0], -1])[:, 0]
+      row_values = t.indices[:, 0]
       # The value should be kept iff the row should be kept.
       return array_ops.gather(keep_input, row_values)
     if keep_input.shape.ndims == 1:
@@ -728,7 +736,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
            allow_smaller_final_batch=False, shared_name=None,
            name=None):
   """Helper function for `batch` and `maybe_batch`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -766,7 +774,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
                 allow_smaller_final_batch=False, shared_name=None, name=None):
   """Helper function for `batch_join` and `maybe_batch_join`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -801,7 +809,7 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                    shapes=None, allow_smaller_final_batch=False,
                    shared_name=None, name=None):
   """Helper function for `shuffle_batch` and `maybe_shuffle_batch`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -846,7 +854,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
                         allow_smaller_final_batch=False, shared_name=None,
                         name=None):
   """Helper function for `shuffle_batch_join` and `maybe_shuffle_batch_join`."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError(
         "Input pipelines based on Queues are not supported when eager execution"
         " is enabled. Please use tf.data to ingest data into your model"
@@ -885,6 +893,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
 # Batching functions ----------------------------------------------------------
 
 
+@tf_export("train.batch")
 def batch(tensors, batch_size, num_threads=1, capacity=32,
           enqueue_many=False, shapes=None, dynamic_pad=False,
           allow_smaller_final_batch=False, shared_name=None, name=None):
@@ -979,6 +988,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
       name=name)
 
 
+@tf_export("train.maybe_batch")
 def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
                 allow_smaller_final_batch=False, shared_name=None, name=None):
@@ -1031,6 +1041,7 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       name=name)
 
 
+@tf_export("train.batch_join")
 def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
                shapes=None, dynamic_pad=False, allow_smaller_final_batch=False,
                shared_name=None, name=None):
@@ -1136,6 +1147,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
       name=name)
 
 
+@tf_export("train.maybe_batch_join")
 def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
                      enqueue_many=False, shapes=None, dynamic_pad=False,
                      allow_smaller_final_batch=False, shared_name=None,
@@ -1188,6 +1200,7 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
       name=name)
 
 
+@tf_export("train.shuffle_batch")
 def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                   num_threads=1, seed=None, enqueue_many=False, shapes=None,
                   allow_smaller_final_batch=False, shared_name=None, name=None):
@@ -1287,6 +1300,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       name=name)
 
 
+@tf_export("train.maybe_shuffle_batch")
 def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                         keep_input, num_threads=1, seed=None,
                         enqueue_many=False, shapes=None,
@@ -1346,6 +1360,7 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       name=name)
 
 
+@tf_export("train.shuffle_batch_join")
 def shuffle_batch_join(tensors_list, batch_size, capacity,
                        min_after_dequeue, seed=None, enqueue_many=False,
                        shapes=None, allow_smaller_final_batch=False,
@@ -1439,6 +1454,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
       name=name)
 
 
+@tf_export("train.maybe_shuffle_batch_join")
 def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
                              min_after_dequeue, keep_input, seed=None,
                              enqueue_many=False, shapes=None,

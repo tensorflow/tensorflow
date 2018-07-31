@@ -8,7 +8,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 ## Placeholders
 
 TensorFlow provides a placeholder operation that must be fed with data
-on execution.  For more info, see the section on @{$reading_data#feeding$Feeding data}.
+on execution.  For more info, see the section on @{$reading_data#Feeding$Feeding data}.
 
 *   @{tf.placeholder}
 *   @{tf.placeholder_with_default}
@@ -42,7 +42,7 @@ formats into tensors.
 
 ### Example protocol buffer
 
-TensorFlow's @{$reading_data#standard-tensorflow-format$recommended format for training examples}
+TensorFlow's @{$reading_data#standard_tensorflow_format$recommended format for training examples}
 is serialized `Example` protocol buffers, [described
 here](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
 They contain `Features`, [described

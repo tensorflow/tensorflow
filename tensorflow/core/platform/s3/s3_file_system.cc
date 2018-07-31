@@ -15,15 +15,18 @@ limitations under the License.
 #include "tensorflow/core/platform/s3/s3_file_system.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
 #include "tensorflow/core/platform/s3/aws_logging.h"
-#include "tensorflow/core/platform/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/config/AWSProfileConfigLoader.h>
 #include <aws/core/utils/FileSystemUtils.h>
+#include <aws/core/utils/StringUtils.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
+#include <aws/core/utils/StringUtils.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/CopyObjectRequest.h>
@@ -128,8 +131,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   return cfg;
 };
 
-
-void ShutdownClient(Aws::S3::S3Client *s3_client) {
+void ShutdownClient(Aws::S3::S3Client* s3_client) {
   if (s3_client != nullptr) {
     delete s3_client;
     Aws::SDKOptions options;
@@ -154,7 +156,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
-  objectp.Consume("/");
+  str_util::ConsumePrefix(&objectp, "/");
   *object = objectp.ToString();
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
@@ -166,7 +168,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
 class S3RandomAccessFile : public RandomAccessFile {
  public:
   S3RandomAccessFile(const string& bucket, const string& object,
-      std::shared_ptr<Aws::S3::S3Client> s3_client)
+                     std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket), object_(object), s3_client_(s3_client) {}
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
@@ -202,7 +204,7 @@ class S3RandomAccessFile : public RandomAccessFile {
 class S3WritableFile : public WritableFile {
  public:
   S3WritableFile(const string& bucket, const string& object,
-      std::shared_ptr<Aws::S3::S3Client> s3_client)
+                 std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket),
         object_(object),
         s3_client_(s3_client),
@@ -284,8 +286,8 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 }  // namespace
 
-S3FileSystem::S3FileSystem() :
-  s3_client_(nullptr, ShutdownClient), client_lock_() {}
+S3FileSystem::S3FileSystem()
+    : s3_client_(nullptr, ShutdownClient), client_lock_() {}
 
 S3FileSystem::~S3FileSystem() {}
 
@@ -298,15 +300,22 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
 
     Aws::SDKOptions options;
     options.cryptoOptions.sha256Factory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256Factory>(AWSCryptoAllocationTag);
     };
     options.cryptoOptions.sha256HMACFactory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256HmacFactory>(AWSCryptoAllocationTag);
     };
     Aws::InitAPI(options);
 
-    this->s3_client_ = std::shared_ptr<Aws::S3::S3Client>(
-        new Aws::S3::S3Client(GetDefaultClientConfig()));
+    // The creation of S3Client disables virtual addressing:
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAdressing = true)
+    // The purpose is to address the issue encountered when there is an `.`
+    // in the bucket name. Due to TLS hostname validation or DNS rules,
+    // the bucket may not be resolved. Disabling of virtual addressing
+    // should address the issue. See GitHub issue 16397 for details.
+    this->s3_client_ = std::shared_ptr<Aws::S3::S3Client>(new Aws::S3::S3Client(
+        GetDefaultClientConfig(),
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false));
   }
 
   return this->s3_client_;
@@ -400,7 +409,8 @@ Status S3FileSystem::GetChildren(const string& dir,
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
-    auto listObjectsOutcome = this->GetS3Client()->ListObjects(listObjectsRequest);
+    auto listObjectsOutcome =
+        this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
       string error = strings::StrCat(
           listObjectsOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -473,7 +483,8 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
       .WithMaxKeys(1);
   listObjectsRequest.SetResponseStreamFactory(
       []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto listObjectsOutcome = this->GetS3Client()->ListObjects(listObjectsRequest);
+  auto listObjectsOutcome =
+      this->GetS3Client()->ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
       stats->length = 0;
@@ -487,6 +498,11 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   return Status::OK();
 }
 
+Status S3FileSystem::GetMatchingPaths(const string& pattern,
+                                      std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
+}
+
 Status S3FileSystem::DeleteFile(const string& fname) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
@@ -495,7 +511,7 @@ Status S3FileSystem::DeleteFile(const string& fname) {
   deleteObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
 
   auto deleteObjectOutcome =
-    this->GetS3Client()->DeleteObject(deleteObjectRequest);
+      this->GetS3Client()->DeleteObject(deleteObjectRequest);
   if (!deleteObjectOutcome.IsSuccess()) {
     string error = strings::StrCat(
         deleteObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -542,7 +558,8 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
       .WithMaxKeys(2);
   listObjectsRequest.SetResponseStreamFactory(
       []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto listObjectsOutcome = this->GetS3Client()->ListObjects(listObjectsRequest);
+  auto listObjectsOutcome =
+      this->GetS3Client()->ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     auto contents = listObjectsOutcome.GetResult().GetContents();
     if (contents.size() > 1 ||
@@ -594,7 +611,8 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
-    auto listObjectsOutcome = this->GetS3Client()->ListObjects(listObjectsRequest);
+    auto listObjectsOutcome =
+        this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
       string error = strings::StrCat(
           listObjectsOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -607,13 +625,15 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       Aws::String src_key = object.GetKey();
       Aws::String target_key = src_key;
       target_key.replace(0, src_object.length(), target_object.c_str());
-      Aws::String source = Aws::String(src_bucket.c_str()) + "/" + src_key;
+      Aws::String source = Aws::String(src_bucket.c_str()) + "/" +
+                           Aws::Utils::StringUtils::URLEncode(src_key.c_str());
 
       copyObjectRequest.SetBucket(target_bucket.c_str());
       copyObjectRequest.SetKey(target_key);
       copyObjectRequest.SetCopySource(source);
 
-      auto copyObjectOutcome = this->GetS3Client()->CopyObject(copyObjectRequest);
+      auto copyObjectOutcome =
+          this->GetS3Client()->CopyObject(copyObjectRequest);
       if (!copyObjectOutcome.IsSuccess()) {
         string error = strings::StrCat(
             copyObjectOutcome.GetError().GetExceptionName().c_str(), ": ",

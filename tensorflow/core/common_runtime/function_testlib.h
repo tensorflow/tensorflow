@@ -25,6 +25,22 @@ namespace function {
 // {} -> y:DT_STRING (device where this op runs).
 FunctionDef FindDevice();
 
+class BlockingOpState {
+ public:
+  void AwaitState(int awaiting_state);
+
+  void MoveToState(int expected_current, int next);
+
+ private:
+  mutex mu_;
+  condition_variable cv_;
+  int state_ = 0;
+};
+
+extern BlockingOpState* blocking_op_state;
+
+FunctionDef BlockingOpFn();
+
 // Adds a function call to the given scope and returns the output for the node.
 // TODO(phawkins): replace with C++ API for calling functions, when that exists.
 Output Call(Scope* scope, const string& op_name, const string& fn_name,

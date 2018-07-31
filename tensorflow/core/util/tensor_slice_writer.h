@@ -101,8 +101,8 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
   // The tensor and the slice have to be compatible
   if (shape.dims() != slice.dims()) {
     return errors::Internal("Incompatible tensor shape and slice: ", "shape = ",
-                            shape.DebugString(), ", slice = ",
-                            slice.DebugString());
+                            shape.DebugString(),
+                            ", slice = ", slice.DebugString());
   }
   DataType dt = DataTypeToEnum<T>::value;
   // We need to add an entry for "name" if there isn't an entry already.
@@ -114,9 +114,9 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     CHECK_EQ(name, ssm.name()) << ProtoShortDebugString(ssm);
     TensorShape ssm_shape(ssm.shape());
     if (!shape.IsSameSize(ssm_shape)) {
-      return errors::Internal("Mismatching shapes: existing tensor = ",
-                              ssm_shape.DebugString(), ", trying to add name ",
-                              name, ", shape = ", shape.DebugString());
+      return errors::Internal(
+          "Mismatching shapes: existing tensor = ", ssm_shape.DebugString(),
+          ", trying to add name ", name, ", shape = ", shape.DebugString());
     }
     if (dt != ssm.type()) {
       return errors::Internal(

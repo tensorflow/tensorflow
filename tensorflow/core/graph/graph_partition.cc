@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -123,8 +124,8 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
     return false;
   }
 
-  Node* src = edge->src();
-  Node* dst = edge->dst();
+  const Node* src = edge->src();
+  const Node* dst = edge->dst();
   if (src->assigned_device_name() == dst->assigned_device_name()) {
     int src_port = edge->src_output();
     int dst_port = edge->dst_input();
@@ -141,7 +142,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
 
 // Return true iff (dst, dst_input) is specified on host memory.
 bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
-  Node* dst = edge->dst();
+  const Node* dst = edge->dst();
   int dst_port = edge->dst_input();
   if (info.device_types[dst->id()] != DEVICE_CPU) {
     if (edge->IsControlEdge()) return false;
@@ -213,6 +214,14 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
       cast_builder.Attr("_start_time", start_time);
     }
     cast_builder.Attr("DstT", cast_dtype);
+
+    if (cast_dtype == DT_BFLOAT16) {
+      // the below attribute specifies that the cast to bfloat16 should use
+      // truncation. This is needed to retain legacy behavior when we change
+      // the default bfloat16 casts to use rounding instead of truncation
+      cast_builder.Attr("Truncate", true);
+    }
+
     NodeDef* cast = gdef->add_node();
     *status = cast_builder.Finalize(cast);
     if (!status->ok()) return nullptr;
@@ -372,7 +381,7 @@ string ControlLoopName(const string& name) {
 
 bool IsControlLoop(const Node* node) {
   const string& name = node->name();
-  return StringPiece(name).starts_with("_cloop");
+  return str_util::StartsWith(name, "_cloop");
 }
 
 // An enter node for control flow.
@@ -784,7 +793,7 @@ Status TopologicalSortNodesWithTimePriority(
   for (int n = 0; n < gdef->node_size(); ++n) {
     const NodeDef* ndef = &gdef->node(n);
     for (int i = 0; i < ndef->input_size(); ++i) {
-      node_to_output_nodes[ParseTensorName(ndef->input(i)).first.ToString()]
+      node_to_output_nodes[std::string(ParseTensorName(ndef->input(i)).first)]
           .push_back(ndef);
     }
     int64 start_time;

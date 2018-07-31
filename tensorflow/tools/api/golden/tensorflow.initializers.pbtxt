@@ -1,16 +1,8 @@
 path: "tensorflow.initializers"
 tf_module {
   member {
-    name: "absolute_import"
-    mtype: "<type \'instance\'>"
-  }
-  member {
     name: "constant"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "division"
-    mtype: "<type \'instance\'>"
   }
   member {
     name: "identity"
@@ -23,10 +15,6 @@ tf_module {
   member {
     name: "orthogonal"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "print_function"
-    mtype: "<type \'instance\'>"
   }
   member {
     name: "random_normal"
@@ -55,6 +43,30 @@ tf_module {
   member_method {
     name: "global_variables"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "glorot_normal"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "glorot_uniform"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "he_normal"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "he_uniform"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "lecun_normal"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "lecun_uniform"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "local_variables"

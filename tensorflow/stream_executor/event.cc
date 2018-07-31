@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/event.h"
 
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/stream_executor/stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 Event::Event(StreamExecutor* stream_exec)
     : stream_exec_(stream_exec),
@@ -28,9 +27,12 @@ Event::Event(StreamExecutor* stream_exec)
           stream_exec_->implementation()->CreateEventImplementation()) {}
 
 Event::~Event() {
-  auto status = stream_exec_->DeallocateEvent(this);
-  if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+  // Deal with nullptr implementation_, as this event may have been std::moved.
+  if (stream_exec_ && implementation_) {
+    auto status = stream_exec_->DeallocateEvent(this);
+    if (!status.ok()) {
+      LOG(ERROR) << status.error_message();
+    }
   }
 }
 
@@ -48,5 +50,4 @@ Event::Status Event::PollForStatus() {
   return stream_exec_->PollForEventStatus(this);
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

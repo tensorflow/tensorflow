@@ -27,24 +27,24 @@ from tensorflow.python.platform import test
 
 class BaseReductionTest(test.TestCase):
 
-  def _tf_reduce(self, x, reduction_axes, keep_dims):
+  def _tf_reduce(self, x, reduction_axes, keepdims):
     raise NotImplementedError()
 
 
 class BigReductionTest(BaseReductionTest):
   """Test reductions for sum and boolean all over a wide range of shapes."""
 
-  def _tf_reduce_max(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_max(x, reduction_axes, keep_dims)
+  def _tf_reduce_max(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_max(x, reduction_axes, keepdims)
 
-  def _tf_reduce_all(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_all(x, reduction_axes, keep_dims)
+  def _tf_reduce_all(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_all(x, reduction_axes, keepdims)
 
-  def _tf_reduce_mean(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_mean(x, reduction_axes, keep_dims)
+  def _tf_reduce_mean(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_mean(x, reduction_axes, keepdims)
 
-  def _tf_reduce_sum(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_sum(x, reduction_axes, keep_dims)
+  def _tf_reduce_sum(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_sum(x, reduction_axes, keepdims)
 
   def testFloat32Sum(self):
     # make sure we test all possible kernel invocations

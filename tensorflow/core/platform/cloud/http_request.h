@@ -47,6 +47,46 @@ class HttpRequest {
     virtual HttpRequest* Create() = 0;
   };
 
+  /// RequestMethod is used to capture what type of HTTP request is made and
+  /// is used in conjunction with RequestStats for instrumentation and
+  /// monitoring of HTTP requests and their responses.
+  enum class RequestMethod : char {
+    kGet,
+    kPost,
+    kPut,
+    kDelete,
+  };
+
+  /// RequestMethodName converts a RequestMethod to the canonical method string.
+  inline static const char* RequestMethodName(RequestMethod m) {
+    switch (m) {
+      case RequestMethod::kGet:
+        return "GET";
+      case RequestMethod::kPost:
+        return "POST";
+      case RequestMethod::kPut:
+        return "PUT";
+      case RequestMethod::kDelete:
+        return "DELETE";
+      default:
+        return "???";
+    }
+  }
+
+  /// RequestStats is a class that can be used to instrument an Http Request.
+  class RequestStats {
+   public:
+    virtual ~RequestStats() = default;
+
+    /// RecordRequest is called right before a request is sent on the wire.
+    virtual void RecordRequest(const HttpRequest* request, const string& uri,
+                               RequestMethod method) = 0;
+
+    /// RecordResponse is called after the response has been received.
+    virtual void RecordResponse(const HttpRequest* request, const string& uri,
+                                RequestMethod method, const Status& result) = 0;
+  };
+
   HttpRequest() {}
   virtual ~HttpRequest() {}
 
@@ -72,6 +112,9 @@ class HttpRequest {
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   virtual void AddAuthBearerHeader(const string& auth_token) = 0;
+
+  /// Sets the RequestStats object to use to record the request and response.
+  virtual void SetRequestStats(RequestStats* stats) = 0;
 
   /// Makes the request a DELETE request.
   virtual void SetDeleteRequest() = 0;

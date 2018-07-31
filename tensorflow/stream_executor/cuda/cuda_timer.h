@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 class CUDAExecutor;
@@ -38,8 +37,9 @@ class CUDATimer : public internal::TimerInterface {
   explicit CUDATimer(CUDAExecutor *parent)
       : parent_(parent), start_event_(nullptr), stop_event_(nullptr) {}
 
-  // Note: teardown is explicitly handled in this API by a call to
+  // Note: teardown needs to be explicitly handled in this API by a call to
   // StreamExecutor::DeallocateTimer(), which invokes Destroy().
+  // TODO(csigg): Change to RAII.
   ~CUDATimer() override {}
 
   // Allocates the platform-specific pieces of the timer, called as part of
@@ -60,13 +60,13 @@ class CUDATimer : public internal::TimerInterface {
   // events.
   float GetElapsedMilliseconds() const;
 
-  // See perftools::gputools::Timer::Microseconds().
+  // See Timer::Microseconds().
   // TODO(leary) make this into an error code interface...
   uint64 Microseconds() const override {
     return GetElapsedMilliseconds() * 1e3;
   }
 
-  // See perftools::GPUTools::Timer::Nanoseconds().
+  // See Timer::Nanoseconds().
   uint64 Nanoseconds() const override { return GetElapsedMilliseconds() * 1e6; }
 
  private:
@@ -77,8 +77,14 @@ class CUDATimer : public internal::TimerInterface {
                          // executing in a stream.
 };
 
+struct TimerDeleter {
+  void operator()(CUDATimer *t) {
+    t->Destroy();
+    delete t;
+  }
+};
+
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_

@@ -48,7 +48,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
         return std::unique_ptr<IteratorBase>(new ForeverIterator(
@@ -69,7 +69,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "RepeatDatasetOp::Dataset"; }
+    string DebugString() const override { return "RepeatDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -108,9 +108,11 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
       explicit FiniteIterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params), i_(0) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -127,7 +129,8 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
           ++i_;
-          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         }
         *end_of_sequence = true;
         input_impl_.reset();
@@ -178,7 +181,8 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           bool first_call = false;
           if (!input_impl_) {
             first_call = true;
-            input_impl_ = dataset()->input_->MakeIterator(prefix());
+            TF_RETURN_IF_ERROR(
+                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -187,12 +191,11 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           } else {
             input_impl_.reset();
             if (first_call) {
-              // If the first call to GetNext() fails because the end of
-              // sequence has been reached, we return an OutOfRange error to
-              // terminate the iteration. (Otherwise, this iterator would loop
-              // infinitely and never produce a value.)
-              return errors::OutOfRange(
-                  "Attempted to repeat an empty dataset infinitely.");
+              // If the first call to GetNext() fails because the end
+              // of sequence has been reached, we terminate the
+              // iteration immediately. (Otherwise, this iterator
+              // would loop infinitely and never produce a value.)
+              return Status::OK();
             }
           }
         } while (true);
@@ -215,7 +218,8 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         if (reader->Contains(full_name("uninitialized"))) {
           input_impl_.reset();
         } else {
-          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         }
         return Status::OK();

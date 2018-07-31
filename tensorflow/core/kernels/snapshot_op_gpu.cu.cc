@@ -24,13 +24,10 @@ limitations under the License.
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
-#define REGISTER_KERNEL(TYPE)                                        \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("Snapshot").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      SnapshotOp<GPUDevice, TYPE>);
+// Definition of the GPU implementations declared in softsign_op.cc.
+#define DEFINE_GPU_KERNELS(T) template struct functor::Snapshot<GPUDevice, T>;
 
-TF_CALL_POD_TYPES(REGISTER_KERNEL);
-#undef REGISTER_KERNEL
+TF_CALL_POD_TYPES(DEFINE_GPU_KERNELS);
 
 }  // namespace tensorflow
 

@@ -21,10 +21,8 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -37,17 +35,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class BatchNormalizationTest(test.TestCase):
-
-  def SetProducerVersion(self, graph, producer_version):
-    # The C API doesn't expose altering GraphDefVersions. We can indirectly set
-    # it via import_graph_def though.
-    graph_def = graph_pb2.GraphDef()
-    graph_def.versions.producer = producer_version
-    with graph.as_default():
-      importer.import_graph_def(graph_def)
-    assert graph.graph_def_versions.producer, producer_version
 
   def _npBatchNorm(self, x, m, v, beta, gamma, epsilon,
                    scale_after_normalization, shift_after_normalization):
@@ -65,10 +53,9 @@ class BatchNormalizationTest(test.TestCase):
   def _tfBatchNormV1(self, x, m, v, beta, gamma, epsilon,
                      scale_after_normalization):
     """Original implementation."""
-    self.SetProducerVersion(ops.get_default_graph(), 8)
+    test_util.set_producer_version(ops.get_default_graph(), 8)
     return gen_nn_ops._batch_norm_with_global_normalization(
         x, m, v, beta, gamma, epsilon, scale_after_normalization)
-    # pylint: enable=protected-access
 
   def _tfBatchNormV1BW(self, x, m, v, beta, gamma, epsilon,
                        scale_after_normalization):
@@ -233,8 +220,8 @@ class BatchNormalizationTest(test.TestCase):
         epsilon = 0.001
         for scale_after_normalization in [True, False]:
           # _batch_norm_with_global_normalization_grad is deprecated in v9
-          self.SetProducerVersion(ops.get_default_graph(), 8)
-          grad = gen_nn_ops._batch_norm_with_global_normalization_grad(
+          test_util.set_producer_version(ops.get_default_graph(), 8)
+          grad = gen_nn_ops.batch_norm_with_global_normalization_grad(
               x, m, v, gamma, backprop, epsilon, scale_after_normalization)
           dx, dm, dv, db, dg = grad
           self.assertEqual(grad.dx, dx)
@@ -304,12 +291,16 @@ class BatchNormalizationTest(test.TestCase):
             self.assertAllClose(
                 tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
 
-  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001):
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    m_val = np.random.random_sample(param_shape).astype(np.float32)
-    v_val = np.random.random_sample(param_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
+  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001,
+                                    dtype=dtypes.float32,
+                                    param_dtype=dtypes.float32):
+    numpy_dtype = dtype.as_numpy_dtype
+    numpy_param_dtype = param_dtype.as_numpy_dtype
+    x_val = np.random.random_sample(x_shape).astype(numpy_dtype)
+    m_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
+    v_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
+    beta_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
+    gamma_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu) as sess:
         x = constant_op.constant(x_val, name="x")
@@ -344,8 +335,11 @@ class BatchNormalizationTest(test.TestCase):
     self._testBatchNormArbitraryShapes(
         (2, 3, 2, 4, 5), (1, 1, 1, 4, 5), atol=0.005)
 
+  def testBatchNormMixedPrecision(self):
+    self._testBatchNormArbitraryShapes((3, 3), (1, 3), dtype=dtypes.float16,
+                                       param_dtype=dtypes.float32, atol=0.001)
 
-@test_util.with_c_api
+
 class SufficientStatisticsTest(test.TestCase):
 
   def _npSuffStats(self, x, axes, shift, keep_dims):
@@ -405,7 +399,6 @@ class SufficientStatisticsTest(test.TestCase):
           self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
 
 
-@test_util.with_c_api
 class NormalizeMomentsTest(test.TestCase):
 
   def _npNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
@@ -449,7 +442,6 @@ class NormalizeMomentsTest(test.TestCase):
       self._testNormalizeMoments([2, 3], shift)
 
 
-@test_util.with_c_api
 class MomentsTest(test.TestCase):
 
   def _unweighted_moments(self, x, axes, keep_dims=False, extra_out_grads=None):
@@ -587,7 +579,6 @@ class MomentsTest(test.TestCase):
     self._testGlobalGradient(from_y="var")
 
 
-@test_util.with_c_api
 class WeightedMomentsTest(MomentsTest):
   """Tests for nn.weighted_moments.
 

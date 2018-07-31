@@ -16,8 +16,8 @@ There are four methods of getting data into a TensorFlow program:
 
 ## `tf.data` API
 
-See the @{$datasets$programmer's guide} for an in-depth explanation of
-@{tf.data.Dataset}. The `tf.data` API enables you to extract and preprocess data
+See the @{$guide/datasets} for an in-depth explanation of @{tf.data.Dataset}.
+The `tf.data` API enables you to extract and preprocess data
 from different input/file formats, and apply transformations such as batching,
 shuffling, and mapping functions over the dataset. This is an improved version
 of the old input methods---feeding and `QueueRunner`---which are described
@@ -184,7 +184,7 @@ The recommended way to read a TFRecord file is with a @{tf.data.TFRecordDataset}
     dataset = dataset.map(decode)
 ```
 
-To acomplish the same task with a queue based input pipeline requires the following code 
+To accomplish the same task with a queue based input pipeline requires the following code
 (using the same `decode` function from the above example): 
 
 ``` python
@@ -511,8 +511,8 @@ You can have the train and eval in the same graph in the same process, and share
 their trained variables or layers. See @{$variables$the shared variables tutorial}.
 
 To support the single-graph approach
-@{$programmers_guide/datasets$`tf.data`} also supplies
-@{$programmers_guide/datasets#creating_an_iterator$advanced iterator types} that
+@{$guide/datasets$`tf.data`} also supplies
+@{$guide/datasets#creating_an_iterator$advanced iterator types} that
 that allow the user to change the input pipeline without rebuilding the graph or
 session.
 

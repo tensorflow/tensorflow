@@ -52,11 +52,11 @@ __global__ void Count1D(CudaLaunchConfig config, int bufsize, int* outbuf) {
   }
 }
 __global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
-  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
-    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {
       if (y < 0) {  // y might overflow when testing extreme case
         break;
       }
@@ -66,15 +66,15 @@ __global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
   }
 }
 __global__ void Count3D(Cuda3DLaunchConfig config, int bufsize, int* outbuf) {
-  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
-    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {
       if (y < 0) {  // y might overflow when testing extreme case
         break;
       }
-      CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {
+      CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {
         if (z < 0) {  // z might overflow when testing extreme case
           break;
         }
@@ -87,6 +87,44 @@ __global__ void Count3D(Cuda3DLaunchConfig config, int bufsize, int* outbuf) {
   }
 }
 
+__global__ void CudaShuffleGetSrcLaneTest(unsigned* failure_count) {
+  unsigned lane_id = CudaLaneId();
+  for (int width = warpSize; width > 1; width /= 2) {
+    auto check_result = [&](const char* op_name, int param, unsigned actual,
+                            unsigned expected) {
+      if (actual != expected) {
+        printf("Cuda%sGetSrcLane(%d, %d) for lane %d returned %d, not %d\n",
+               op_name, param, width, lane_id, actual, expected);
+        CudaAtomicAdd(failure_count, 1);
+      }
+    };
+    for (int src_lane = -warpSize; src_lane <= warpSize; ++src_lane) {
+      unsigned actual_lane = detail::CudaShuffleGetSrcLane(src_lane, width);
+      unsigned expect_lane =
+          CudaShuffleSync(kCudaWarpAll, lane_id, src_lane, width);
+      check_result("Shuffle", src_lane, actual_lane, expect_lane);
+    }
+    for (unsigned delta = 0; delta <= warpSize; ++delta) {
+      unsigned actual_lane = detail::CudaShuffleUpGetSrcLane(delta, width);
+      unsigned expect_lane =
+          CudaShuffleUpSync(kCudaWarpAll, lane_id, delta, width);
+      check_result("ShuffleUp", delta, actual_lane, expect_lane);
+    }
+    for (unsigned delta = 0; delta <= warpSize; ++delta) {
+      unsigned actual_lane = detail::CudaShuffleDownGetSrcLane(delta, width);
+      unsigned expect_lane =
+          CudaShuffleDownSync(kCudaWarpAll, lane_id, delta, width);
+      check_result("ShuffleDown", delta, actual_lane, expect_lane);
+    }
+    for (int lane_lane = warpSize; lane_lane > 0; lane_lane /= 2) {
+      unsigned actual_lane = detail::CudaShuffleXorGetSrcLane(lane_lane, width);
+      unsigned expect_lane =
+          CudaShuffleXorSync(kCudaWarpAll, lane_id, lane_lane, width);
+      check_result("ShuffleXor", lane_lane, actual_lane, expect_lane);
+    }
+  }
+}
+
 }  // namespace
 
 class CudaLaunchConfigTest : public ::testing::Test {
@@ -94,7 +132,7 @@ class CudaLaunchConfigTest : public ::testing::Test {
   const int bufsize = 1024;
   int* outbuf = nullptr;
   Eigen::CudaStreamDevice stream;
-  GPUDevice d = GPUDevice(&stream);
+  Eigen::GpuDevice d = Eigen::GpuDevice(&stream);
 
   virtual void SetUp() {
     cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int) * bufsize);
@@ -111,27 +149,27 @@ class CudaLaunchConfigTest : public ::testing::Test {
 TEST_F(CudaLaunchConfigTest, GetCudaLaunchConfig) {
   CudaLaunchConfig cfg;
 
-  // test valid inputs
-  #define TEST_LAUNCH_PARAMETER(work_element_count)                             \
-    cfg = GetCudaLaunchConfig(bufsize, d);                                      \
-    SetOutbufZero<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>     \
-                                                                (cfg, outbuf);  \
-    CUDA_ASSERT_SUCCESS                                                         \
-    cfg = GetCudaLaunchConfig(work_element_count, d);                           \
-    Count1D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>> (         \
-        cfg, bufsize, outbuf);                                                  \
-    CUDA_EXPECT_SUCCESS                                                         \
-    EXPECT_EQ(work_element_count, std::accumulate(outbuf, outbuf + bufsize, 0));\
-                                                                                \
-    cfg = GetCudaLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);                 \
-    SetOutbufZero<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>     \
-                                                                (cfg, outbuf);  \
-    CUDA_ASSERT_SUCCESS                                                         \
-    cfg = GetCudaLaunchConfig(work_element_count, d, Count1D, 0, 0);            \
-    Count1D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>> (         \
-        cfg, bufsize, outbuf);                                                  \
-    CUDA_EXPECT_SUCCESS                                                         \
-    EXPECT_EQ(work_element_count, std::accumulate(outbuf, outbuf + bufsize, 0))
+// test valid inputs
+#define TEST_LAUNCH_PARAMETER(work_element_count)                              \
+  cfg = GetCudaLaunchConfig(bufsize, d);                                       \
+  SetOutbufZero<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(     \
+      cfg, outbuf);                                                            \
+  CUDA_ASSERT_SUCCESS                                                          \
+  cfg = GetCudaLaunchConfig(work_element_count, d);                            \
+  Count1D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(           \
+      cfg, bufsize, outbuf);                                                   \
+  CUDA_EXPECT_SUCCESS                                                          \
+  EXPECT_EQ(work_element_count, std::accumulate(outbuf, outbuf + bufsize, 0)); \
+                                                                               \
+  cfg = GetCudaLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);                  \
+  SetOutbufZero<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(     \
+      cfg, outbuf);                                                            \
+  CUDA_ASSERT_SUCCESS                                                          \
+  cfg = GetCudaLaunchConfig(work_element_count, d, Count1D, 0, 0);             \
+  Count1D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(           \
+      cfg, bufsize, outbuf);                                                   \
+  CUDA_EXPECT_SUCCESS                                                          \
+  EXPECT_EQ(work_element_count, std::accumulate(outbuf, outbuf + bufsize, 0))
 
   TEST_LAUNCH_PARAMETER(128);
   TEST_LAUNCH_PARAMETER(129);
@@ -143,7 +181,7 @@ TEST_F(CudaLaunchConfigTest, GetCudaLaunchConfig) {
   TEST_LAUNCH_PARAMETER(8192);
   TEST_LAUNCH_PARAMETER(123456);
   TEST_LAUNCH_PARAMETER(1 << 30);
-  #undef TEST_LAUNCH_PARAMETER
+#undef TEST_LAUNCH_PARAMETER
 }
 
 bool operator==(const Cuda2DLaunchConfig& a, const Cuda2DLaunchConfig& b) {
@@ -162,27 +200,27 @@ TEST_F(CudaLaunchConfigTest, GetCuda2DLaunchConfig) {
   Cuda2DLaunchConfig cfg;
   CudaLaunchConfig cfg1d;
 
-  // test valid inputs
-  #define TEST_LAUNCH_PARAMETER(dimx, dimy)                                     \
-    cfg1d = GetCudaLaunchConfig(bufsize, d);                                    \
-    SetOutbufZero<<<cfg1d.block_count, cfg1d.thread_per_block, 0, d.stream()>>> \
-                                                                (cfg1d, outbuf);\
-    CUDA_ASSERT_SUCCESS                                                         \
-    cfg = GetCuda2DLaunchConfig(dimx, dimy, d);                                 \
-    Count2D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>> (         \
-        cfg, bufsize, outbuf);                                                  \
-    CUDA_EXPECT_SUCCESS                                                         \
-    EXPECT_EQ(dimx * dimy, std::accumulate(outbuf, outbuf + bufsize, 0));       \
-                                                                                \
-    cfg1d = GetCudaLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);               \
-    SetOutbufZero<<<cfg1d.block_count, cfg1d.thread_per_block, 0, d.stream()>>> \
-                                                                (cfg1d, outbuf);\
-    CUDA_ASSERT_SUCCESS                                                         \
-    cfg = GetCuda2DLaunchConfig(dimx, dimy, d, Count2D, 0, 0);                  \
-    Count2D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>> (         \
-        cfg, bufsize, outbuf);                                                  \
-    CUDA_EXPECT_SUCCESS                                                         \
-    EXPECT_EQ(dimx * dimy, std::accumulate(outbuf, outbuf + bufsize, 0))
+// test valid inputs
+#define TEST_LAUNCH_PARAMETER(dimx, dimy)                                      \
+  cfg1d = GetCudaLaunchConfig(bufsize, d);                                     \
+  SetOutbufZero<<<cfg1d.block_count, cfg1d.thread_per_block, 0, d.stream()>>>( \
+      cfg1d, outbuf);                                                          \
+  CUDA_ASSERT_SUCCESS                                                          \
+  cfg = GetCuda2DLaunchConfig(dimx, dimy, d);                                  \
+  Count2D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(           \
+      cfg, bufsize, outbuf);                                                   \
+  CUDA_EXPECT_SUCCESS                                                          \
+  EXPECT_EQ(dimx* dimy, std::accumulate(outbuf, outbuf + bufsize, 0));         \
+                                                                               \
+  cfg1d = GetCudaLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);                \
+  SetOutbufZero<<<cfg1d.block_count, cfg1d.thread_per_block, 0, d.stream()>>>( \
+      cfg1d, outbuf);                                                          \
+  CUDA_ASSERT_SUCCESS                                                          \
+  cfg = GetCuda2DLaunchConfig(dimx, dimy, d, Count2D, 0, 0);                   \
+  Count2D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(           \
+      cfg, bufsize, outbuf);                                                   \
+  CUDA_EXPECT_SUCCESS                                                          \
+  EXPECT_EQ(dimx* dimy, std::accumulate(outbuf, outbuf + bufsize, 0))
 
   TEST_LAUNCH_PARAMETER(128, 128);
   TEST_LAUNCH_PARAMETER(129, 64);
@@ -195,24 +233,24 @@ TEST_F(CudaLaunchConfigTest, GetCuda2DLaunchConfig) {
   TEST_LAUNCH_PARAMETER(123456, 12);
   TEST_LAUNCH_PARAMETER(1, 1 << 30);
   TEST_LAUNCH_PARAMETER(1 << 30, 1);
-  #undef TEST_LAUNCH_PARAMETER
+#undef TEST_LAUNCH_PARAMETER
 }
 
 TEST_F(CudaLaunchConfigTest, GetCuda3DLaunchConfig) {
   Cuda3DLaunchConfig cfg;
   CudaLaunchConfig cfg1d;
 
-  // test valid inputs
-  #define TEST_LAUNCH_PARAMETER(dimx, dimy, dimz)                               \
-    cfg1d = GetCudaLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);               \
-    SetOutbufZero<<<cfg1d.block_count, cfg1d.thread_per_block, 0, d.stream()>>> \
-                                                                (cfg1d, outbuf);\
-    CUDA_ASSERT_SUCCESS                                                         \
-    cfg = GetCuda3DLaunchConfig(dimx, dimy, dimz, d, Count3D, 0, 0);            \
-    Count3D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>> (         \
-        cfg, bufsize, outbuf);                                                  \
-    CUDA_EXPECT_SUCCESS                                                         \
-    EXPECT_EQ(dimx * dimy * dimz, std::accumulate(outbuf, outbuf + bufsize, 0))
+// test valid inputs
+#define TEST_LAUNCH_PARAMETER(dimx, dimy, dimz)                                \
+  cfg1d = GetCudaLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);                \
+  SetOutbufZero<<<cfg1d.block_count, cfg1d.thread_per_block, 0, d.stream()>>>( \
+      cfg1d, outbuf);                                                          \
+  CUDA_ASSERT_SUCCESS                                                          \
+  cfg = GetCuda3DLaunchConfig(dimx, dimy, dimz, d, Count3D, 0, 0);             \
+  Count3D<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(           \
+      cfg, bufsize, outbuf);                                                   \
+  CUDA_EXPECT_SUCCESS                                                          \
+  EXPECT_EQ(dimx* dimy* dimz, std::accumulate(outbuf, outbuf + bufsize, 0))
 
   TEST_LAUNCH_PARAMETER(128, 128, 128);
   TEST_LAUNCH_PARAMETER(129, 64, 1024);
@@ -226,7 +264,17 @@ TEST_F(CudaLaunchConfigTest, GetCuda3DLaunchConfig) {
   TEST_LAUNCH_PARAMETER(1, 1, 1 << 30);
   TEST_LAUNCH_PARAMETER(1, 1 << 30, 1);
   TEST_LAUNCH_PARAMETER(1 << 30, 1, 1);
-  #undef TEST_LAUNCH_PARAMETER
+#undef TEST_LAUNCH_PARAMETER
+}
+
+TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
+  unsigned* failure_count;
+  ASSERT_EQ(cudaMallocManaged(&failure_count, sizeof(unsigned)), cudaSuccess);
+  *failure_count = 0;
+  CudaShuffleGetSrcLaneTest<<<1, 32>>>(failure_count);
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  ASSERT_EQ(*failure_count, 0);
+  cudaFree(failure_count);
 }
 
 }  // namespace tensorflow

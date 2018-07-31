@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementation of k-means clustering on top of `Estimator` API.
+"""Implementation of k-means clustering on top of `Estimator` API (deprecated).
 
 This module is deprecated. Please use
 @{tf.contrib.factorization.KMeansClustering} instead of
@@ -153,7 +153,12 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
 
 # TODO(agarwal,ands): support sharded input.
 class KMeansClustering(estimator.Estimator):
-  """An Estimator for K-Means clustering."""
+  """An Estimator for K-Means clustering.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
   SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
   COSINE_DISTANCE = clustering_ops.COSINE_DISTANCE
   RANDOM_INIT = clustering_ops.RANDOM_INIT

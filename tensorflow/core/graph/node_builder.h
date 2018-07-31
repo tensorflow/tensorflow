@@ -120,7 +120,7 @@ class NodeBuilder {
   const OpDef& op_def() const { return def_builder_.op_def(); }
 
  private:
-  static DataType SafeGetOutput(Node* node, int i, bool* error) {
+  static DataType SafeGetOutput(const Node* node, int i, bool* error) {
     if (node != nullptr && i >= 0 && i < node->num_outputs()) {
       *error = false;
       return node->output_type(i);
@@ -131,11 +131,11 @@ class NodeBuilder {
   }
 
   // If SafeGetOutput indicates a range error, add it to errors_.
-  void AddIndexError(Node* node, int i);
+  void AddIndexError(const Node* node, int i);
 
   // Set *dt and returns true if i is in range. Combines
   // SafeGetOutput() and AddIndexError().
-  bool GetOutputType(Node* node, int i, DataType* dt);
+  bool GetOutputType(const Node* node, int i, DataType* dt);
 
   NodeDefBuilder def_builder_;
   std::vector<NodeOut> inputs_;

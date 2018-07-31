@@ -80,7 +80,7 @@ class RangeSamplerOpsTest(test.TestCase):
     with self.test_session():
       true_classes = constant_op.constant(
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
-      _, _, sampled_expected_count = candidate_sampling_ops.all_candidate_sampler(
+      _, _, sampled_expected_count = candidate_sampling_ops.all_candidate_sampler(  # pylint: disable=line-too-long
           true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True)
       sampled_log_expected_count = math_ops.log(sampled_expected_count)
       result = sampled_log_expected_count.eval()

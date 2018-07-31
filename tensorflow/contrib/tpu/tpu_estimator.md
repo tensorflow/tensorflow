@@ -172,7 +172,7 @@ It is always recommended to port a small, simple model first to make sure that
 you are familiar with the basic concepts of `TPUEstimator` and test end-to-end
 behavior. Once your simple model runs, gradually add more functionality.
 In addition, there are several sample models, available at
-[github.com/tensorflow/tpu-demos](https://github.com/tensorflow/tpu-demos).
+[github.com/tensorflow/tpu](https://github.com/tensorflow/tpu).
 
 To convert your code from the vanilla `Estimator` class to use TPUs, change the
 following (note some of the details may change over time):
@@ -231,7 +231,7 @@ Refer to this link for all [Cloud TPU documentation](https://cloud.google.com/tp
 
 
 ### Profiling
-You can profile the `worker` by using instructions as spcified in the [Cloud TPU Tools](https://cloud.google.com/tpu/docs/cloud-tpu-tools).
+You can profile the `worker` by using instructions as specified in the [Cloud TPU Tools](https://cloud.google.com/tpu/docs/cloud-tpu-tools).
 
 
 ### Is `int64` supported?

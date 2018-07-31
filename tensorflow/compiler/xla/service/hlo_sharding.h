@@ -19,10 +19,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
 
+#include <map>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -70,31 +72,34 @@ class HloSharding {
 
   // Creates a new sharding for a tuple type. The given ShapeTree must have
   // elements for every leaf shape contained in the tuple.
-  static HloSharding Tuple(const ShapeTree<HloSharding>& sub_shardings) {
-    std::vector<HloSharding> flattened_list;
-    flattened_list.reserve(
-        std::distance(sub_shardings.leaf_begin(), sub_shardings.leaf_end()));
-    for (const auto& index_to_sharding : sub_shardings.leaves()) {
-      flattened_list.push_back(index_to_sharding.second);
-    }
-    return HloSharding(flattened_list);
-  }
+  static HloSharding Tuple(const ShapeTree<HloSharding>& sub_shardings);
 
-  // Creates a new sharding for a tuple type. The requested tuple shape must not
-  // be nested. For nested tuples, use the ShapeTree overload.
+  // Creates a new sharding for a tuple type. The number of elements in
+  // shardings must match the number of leaf nodes in tuple_shape. For
+  // empty tuples, the shardings array must have one element.
   static HloSharding Tuple(const Shape& tuple_shape,
-                           tensorflow::gtl::ArraySlice<HloSharding> shardings) {
-    CHECK(ShapeUtil::IsTuple(tuple_shape));
-    CHECK(!ShapeUtil::IsNestedTuple(tuple_shape));
-    std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
-    CHECK_EQ(flattened_list.size(), ShapeUtil::TupleElementCount(tuple_shape));
-    return HloSharding(flattened_list);
-  }
+                           tensorflow::gtl::ArraySlice<HloSharding> shardings);
+
+  // Creates a new sharding for a tuple type, with a single input sharding
+  // repeated on each leaf.
+  static HloSharding SingleTuple(const Shape& tuple_shape,
+                                 const HloSharding& sharding);
+
+  // If shape is an array, returns sharding, otherwise returns the tuple shaped
+  // sharding with all the leaf nodes having the same input sharding.
+  static HloSharding Single(const Shape& shape, const HloSharding& sharding);
 
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
+  // Checks whether device is a reserved device number. A reserved device number
+  // has usually a special meaning, with dedicated handling logic.
+  static bool IsReservedDevice(int64 device) { return device < 0; }
+
   OpSharding ToProto() const;
+
+  // Note that this string canonically has outer curly braces, e.g.
+  // "{replicated}".
   string ToString() const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
@@ -123,6 +128,14 @@ class HloSharding {
 
   // Returns true if the sharding defines an operation on the given device.
   bool UsesDevice(int64 device) const;
+
+  // Retrieves an histogram of the devices used by the sharding. The returned
+  // map has the device number as key, and the occurrence count as value.
+  // If a sharding does not have a device, it will not be incuded in the
+  // histogram. The count argument, if not nullptr, will receive the total
+  // number of elements this sharding is made of (one for array, N leaves for
+  // tuples).
+  std::map<int64, int64> UsedDevices(int64* count) const;
 
   // Returns the tile that should be executed on the given device.
   // REQUIRES: !IsTuple()
@@ -156,49 +169,42 @@ class HloSharding {
   // tuple, if IsTuple, or a ShapeTree with a single element containing this
   // sharding. Only the leaf elements are populated. This creates a new
   // ShapeTree object so is not cheap.
+  StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
   ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
-    if (IsTuple()) {
-      ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
-      CHECK_EQ(std::distance(result.leaf_begin(), result.leaf_end()),
-               tuple_elements_.size());
-      auto it = tuple_elements_.begin();
-      for (auto& index_to_sharding : result.leaves()) {
-        index_to_sharding.second = *it++;
-      }
-      return result;
-    } else {
-      return ShapeTree<HloSharding>(shape, *this);
-    }
+    return AsShapeTree(shape).ValueOrDie();
   }
+
+  // Retrieves the sub sharding at a given index, out of a tuple sharding.
+  // REQUIRES: IsTuple()
+  HloSharding GetSubSharding(const Shape& shape, const ShapeIndex& index) const;
+
+  // If the current sharding is a tuple sharding, return itself as result.
+  // Otherwise returns a tuple sharding for the input shape, with all the leaves
+  // having this object sharding.
+  StatusOr<HloSharding> GetTupleSharding(const Shape& shape) const;
+
+  // Extracts the sharding that is common within the current sharding.
+  // If the current sharding is not a tuple sharding, the current sharding will
+  // be returned. If it is a tuple, and all the tuple elements are common, the
+  // common element will be returned. Otherwise the optional will contain no
+  // value.
+  tensorflow::gtl::optional<HloSharding> ExtractSingleSharding() const;
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
-           protobuf_util::ProtobufEquals(tile_shape_, other.tile_shape_) &&
+           ShapeUtil::Compatible(tile_shape_, other.tile_shape_) &&
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_;
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
-  size_t Hash() const {
-    if (!tuple_) {
-      size_t h = 0;
-      for (const auto& element : tuple_elements_) {
-        h = tensorflow::Hash64Combine(h, element.Hash());
-      }
-      return h;
+  size_t Hash() const;
+
+  struct Hasher {
+    size_t operator()(const HloSharding& sharding) const {
+      return sharding.Hash();
     }
-    if (replicated_) {
-      return 0;
-    }
-    size_t h = 0;
-    for (uint32 v : tile_assignment_) {
-      h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
-    }
-    for (uint32 v : tile_shape_.dimensions()) {
-      h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
-    }
-    return h;
-  }
+  };
 
   // Gets the tile shape.
   // REQUIRES: !IsTileMaximal() && !IsTuple()
@@ -207,6 +213,26 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64>& tile_assignment() const { return tile_assignment_; }
 
+  // Returns the flattened list of all the leaf shardings in a tuple shape, by
+  // pre-order walk (ShapeTree iterator order).
+  // REQUIRES: IsTuple().
+  const std::vector<HloSharding>& tuple_elements() const {
+    return tuple_elements_;
+  }
+
+  // Return a new sharding that can apply to the given new shape.
+  // If this sharding is tile-maximal, the returned sharding will be the same as
+  // this sharding. If this sharding is not tile-maximal, the returned
+  // sharding's tile size will differ:
+  //   - Non-sharded dimensions will be adapted to be the same as `new_shape`;
+  //     tile_dimension(i) = new_shape.dimensions(i);
+  //   - Sharded dimensions will be kept the same unless `transform` is supplied
+  //     in which case tile_dimension(i) = transform(i, tile_dimension(i));
+  // REQUIRES: !IsTuple().
+  HloSharding TransformShardedTileShape(
+      const Shape& new_shape,
+      const std::function<int64(int64, int64)>& transform = nullptr) const;
+
  private:
   HloSharding()
       : replicated_(true),
@@ -214,6 +240,12 @@ class HloSharding {
         tuple_(false),
         tile_shape_(),
         tile_assignment_({0}) {}
+  // device_id values:
+  // -2: magic number to mean unassigned device, used by spatial partitioning
+  // -1: the id of the host
+  //  0 or positive: the id of a device
+  // NOTE(dimvar): -1 is needed for outside compilation. It can be removed once
+  // we have fully switched to the side-effect tokens.
   explicit HloSharding(int64 device_id)
       : replicated_(false),
         maximal_(true),
@@ -233,10 +265,18 @@ class HloSharding {
         tile_assignment_({0}),
         tuple_elements_(tuple_shardings) {}
 
+  // Checks that the number of elements in tuple_elements_ is consistent with
+  // the tuple shape passes as argument.
+  Status CheckLeafCount(const Shape& shape) const;
+
   // Internal helper to validate a tuple sharding.
   Status ValidateTuple(const Shape& shape, int64 num_devices) const;
+
   // Internal helper to validate a non-tuple (leaf) sharding.
   Status ValidateNonTuple(const Shape& shape, int64 num_devices) const;
+
+  // Returns the number of tuple_elements_ entries to fit the shape.
+  static int64 RequiredLeaves(const Shape& shape);
 
   bool replicated_;
   bool maximal_;
@@ -248,6 +288,8 @@ class HloSharding {
   // shardings in a tuple shape, by pre-order walk (ShapeTree iterator order).
   std::vector<HloSharding> tuple_elements_;
 };
+
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);
 
 }  // namespace xla
 

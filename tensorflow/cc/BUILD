@@ -433,6 +433,7 @@ tf_gen_op_wrappers_cc(
         "linalg_ops",
         "logging_ops",
         "lookup_ops",
+        "manip_ops",
         "math_ops",
         "nn_ops",
         "no_op",
@@ -529,7 +530,7 @@ cc_library_with_android_deps(
         "//tensorflow/core/api_def:base_api_def",
     ],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
@@ -617,18 +618,6 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(

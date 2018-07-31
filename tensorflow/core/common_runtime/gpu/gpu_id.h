@@ -40,7 +40,7 @@ namespace tensorflow {
 //   a BaseGPUDevice. Note that the configuration allows us to create multiple
 //   BaseGPUDevice per GPU hardware in order to use multi CUDA streams on the
 //   hardware, so the mapping between TF GPU id and CUDA GPU id is not a 1:1
-//   mappping, see the example below.
+//   mapping, see the example below.
 //
 // For example, assuming that in the machine we have GPU device with index 0, 1,
 // 2 and 3 (physical GPU id). Setting "CUDA_VISIBLE_DEVICES=1,2,3" will create

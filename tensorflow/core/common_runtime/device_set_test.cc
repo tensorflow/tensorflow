@@ -88,7 +88,9 @@ TEST_F(DeviceSetTest, PrioritizedDeviceTypeList) {
   // D3 is prioritized below D1.
   AddDevice("d3", "/job:a/replica:0/task:0/device:d3:0");
   EXPECT_EQ((std::vector<DeviceType>{
-                DeviceType("d2"), DeviceType("d1"), DeviceType("d3"),
+                DeviceType("d2"),
+                DeviceType("d1"),
+                DeviceType("d3"),
             }),
             types());
 }

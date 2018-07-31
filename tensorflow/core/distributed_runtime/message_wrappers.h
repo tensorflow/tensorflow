@@ -246,6 +246,9 @@ class RunGraphRequestWrapper {
   // namespace is used.
   virtual const string& session_handle() const = 0;
 
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  virtual bool create_worker_session_called() const = 0;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   virtual const string& graph_handle() const = 0;
@@ -293,6 +296,7 @@ class RunGraphRequestWrapper {
 class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
  public:
   virtual void set_session_handle(const string& handle) = 0;
+  virtual void set_create_worker_session_called(bool called) = 0;
   virtual void set_graph_handle(const string& handle) = 0;
   virtual void set_step_id(int64 step_id) = 0;
   virtual ExecutorOpts* mutable_exec_opts() = 0;
@@ -301,6 +305,9 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
   // request with the given `send_key`.
   virtual Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
+      const string& send_key) = 0;
+  virtual Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
       const string& send_key) = 0;
 
   virtual void add_recv_key(const string& recv_key) = 0;
@@ -314,6 +321,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   // RunGraphRequestWrapper methods.
   const string& session_handle() const override;
   const string& graph_handle() const override;
+  bool create_worker_session_called() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
   size_t num_sends() const override;
@@ -328,11 +336,15 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
 
   // MutableRunGraphRequestWrapper methods.
   void set_session_handle(const string& handle) override;
+  void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
+      const string& send_key) override;
+  Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
       const string& send_key) override;
   void add_recv_key(const string& recv_key) override;
   void set_is_partial(bool is_partial) override;
@@ -341,6 +353,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
 
  private:
   string session_handle_;
+  bool create_worker_session_called_ = false;
   string graph_handle_;
   int64 step_id_;
   ExecutorOpts exec_opts_;
@@ -364,6 +377,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
   const string& session_handle() const override;
+  bool create_worker_session_called() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -379,11 +393,15 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
 
   // MutableRunGraphRequestWrapper methods.
   void set_session_handle(const string& handle) override;
+  void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
+      const string& send_key) override;
+  Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
       const string& send_key) override;
   void add_recv_key(const string& recv_key) override;
   void set_is_partial(bool is_partial) override;
@@ -400,6 +418,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
 
   // RunGraphRequestWrapper methods.
   const string& session_handle() const override;
+  bool create_worker_session_called() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;

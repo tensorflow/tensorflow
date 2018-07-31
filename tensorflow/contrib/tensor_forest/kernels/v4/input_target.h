@@ -79,9 +79,7 @@ class TensorInputTarget : public StoredInputTarget<SingleDimStorageType> {
     return (*target_)(example_index * num_targets_ + target_index);
   }
 
-  const Tensor& original_tensor() const {
-    return original_tensor_;
-  }
+  const Tensor& original_tensor() const { return original_tensor_; }
 
  protected:
   Tensor original_tensor_;

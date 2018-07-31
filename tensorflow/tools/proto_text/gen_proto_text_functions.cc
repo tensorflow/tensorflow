@@ -130,7 +130,11 @@ int MainImpl(int argc, char** argv) {
 
       const string path = output_root + "/" + proto_path_no_suffix + suffix;
       FILE* f = fopen(path.c_str(), "w");
-      if (f == nullptr) return -1;
+      if (f == nullptr) {
+        // We don't expect this output to be generated. It was specified in the
+        // list of sources solely to satisfy a proto import dependency.
+        continue;
+      }
       if (fwrite(data.c_str(), 1, data.size(), f) != data.size()) {
         fclose(f);
         return -1;

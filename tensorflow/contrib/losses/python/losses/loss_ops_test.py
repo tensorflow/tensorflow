@@ -24,7 +24,6 @@ from tensorflow.contrib.framework.python.ops import arg_scope
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
@@ -471,7 +470,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       labels = constant_op.constant([[0, 1], [2, 3]])
       weights = constant_op.constant([1.2, 3.4, 5.6, 7.8])
 
-      with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.assertRaises(ValueError):
         loss_ops.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
 

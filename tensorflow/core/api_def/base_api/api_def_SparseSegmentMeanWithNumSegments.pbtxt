@@ -30,7 +30,7 @@ END
 Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
 misisng, the `output` tensor at that position will be zeroed.
 
-Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
 segments.
 END
 }

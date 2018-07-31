@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/cross_op.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/cross_op.h"
 
 namespace tensorflow {
 

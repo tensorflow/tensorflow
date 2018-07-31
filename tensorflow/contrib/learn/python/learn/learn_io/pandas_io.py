@@ -13,13 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Methods to allow pandas.DataFrame."""
+"""Methods to allow pandas.DataFrame (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn as core_pandas_input_fn
+from tensorflow.python.util.deprecation import deprecated
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -47,6 +53,7 @@ PANDAS_DTYPES = {
 }
 
 
+@deprecated(None, 'Please use tf.estimator.inputs.pandas_input_fn')
 def pandas_input_fn(x,
                     y=None,
                     batch_size=128,
@@ -66,6 +73,7 @@ def pandas_input_fn(x,
                               target_column=target_column)
 
 
+@deprecated(None, 'Please access pandas data directly.')
 def extract_pandas_data(data):
   """Extract data from pandas.DataFrame for predictors.
 
@@ -96,6 +104,7 @@ def extract_pandas_data(data):
                      'float, or bool. Found: ' + ', '.join(error_report))
 
 
+@deprecated(None, 'Please access pandas data directly.')
 def extract_pandas_matrix(data):
   """Extracts numpy matrix from pandas DataFrame.
 
@@ -111,6 +120,7 @@ def extract_pandas_matrix(data):
   return data.as_matrix()
 
 
+@deprecated(None, 'Please access pandas data directly.')
 def extract_pandas_labels(labels):
   """Extract data from pandas.DataFrame for labels.
 

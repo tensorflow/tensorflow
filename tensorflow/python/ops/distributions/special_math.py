@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -42,15 +41,15 @@ __all__ = [
 # then made more conservative just to be safe. (Conservative means use the
 # expansion more than we probably need to.) See `NdtrTest` in
 # special_math_test.py.
-LOGNDTR_FLOAT64_LOWER = -20
-LOGNDTR_FLOAT32_LOWER = -10
+LOGNDTR_FLOAT64_LOWER = np.array(-20, np.float64)
+LOGNDTR_FLOAT32_LOWER = np.array(-10, np.float32)
 
 # Upper bound values were chosen by examining for which values of 'x'
 # Log[cdf(x)] is 0, after which point we need to use the approximation
 # Log[cdf(x)] = Log[1 - cdf(-x)] approx -cdf(-x). We chose a value slightly
 # conservative, meaning we use the approximation earlier than needed.
-LOGNDTR_FLOAT64_UPPER = 8
-LOGNDTR_FLOAT32_UPPER = 5
+LOGNDTR_FLOAT64_UPPER = np.array(8, np.float64)
+LOGNDTR_FLOAT32_UPPER = np.array(5, np.float32)
 
 
 def ndtr(x, name="ndtr"):
@@ -91,7 +90,7 @@ def ndtr(x, name="ndtr"):
 def _ndtr(x):
   """Implements ndtr core logic."""
   half_sqrt_2 = constant_op.constant(
-      0.5 * math.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
+      0.5 * np.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
   w = x * half_sqrt_2
   z = math_ops.abs(w)
   y = array_ops.where(math_ops.less(z, half_sqrt_2),
@@ -190,18 +189,18 @@ def _ndtri(p):
 
   def _create_polynomial(var, coeffs):
     """Compute n_th order polynomial via Horner's method."""
-    if not coeffs:
-      return 0.
+    coeffs = np.array(coeffs, var.dtype.as_numpy_dtype)
+    if not coeffs.size:
+      return array_ops.zeros_like(var)
     return coeffs[0] + _create_polynomial(var, coeffs[1:]) * var
 
-  maybe_complement_p = array_ops.where(p > 1. - np.exp(-2.), 1. - p, p)
+  maybe_complement_p = array_ops.where(p > -np.expm1(-2.), 1. - p, p)
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
-  one_half = constant_op.constant(0.5, dtype=p.dtype)
   sanitized_mcp = array_ops.where(
       maybe_complement_p <= 0.,
-      array_ops.fill(array_ops.shape(p), one_half),
+      array_ops.fill(array_ops.shape(p), np.array(0.5, p.dtype.as_numpy_dtype)),
       maybe_complement_p)
 
   # Compute x for p > exp(-2): x/sqrt(2pi) = w + w**3 P0(w**2)/Q0(w**2).
@@ -213,13 +212,15 @@ def _ndtri(p):
 
   # Compute x for p <= exp(-2): x = z - log(z)/z - (1/z) P(1/z) / Q(1/z),
   # where z = sqrt(-2. * log(p)), and P/Q are chosen between two different
-  # arrays based on wether p < exp(-32).
+  # arrays based on whether p < exp(-32).
   z = math_ops.sqrt(-2. * math_ops.log(sanitized_mcp))
   first_term = z - math_ops.log(z) / z
-  second_term_small_p = (_create_polynomial(1. / z, p2)
-                         / _create_polynomial(1. / z, q2)) / z
-  second_term_otherwise = (_create_polynomial(1. / z, p1)
-                           / _create_polynomial(1. / z, q1)) / z
+  second_term_small_p = (
+      _create_polynomial(1. / z, p2) /
+      _create_polynomial(1. / z, q2) / z)
+  second_term_otherwise = (
+      _create_polynomial(1. / z, p1) /
+      _create_polynomial(1. / z, q1) / z)
   x_for_small_p = first_term - second_term_small_p
   x_otherwise = first_term - second_term_otherwise
 
@@ -330,23 +331,25 @@ def _log_ndtr_lower(x, series_order):
   """Asymptotic expansion version of `Log[cdf(x)]`, appropriate for `x<<-1`."""
   x_2 = math_ops.square(x)
   # Log of the term multiplying (1 + sum)
-  log_scale = -0.5 * x_2 - math_ops.log(-x) - 0.5 * math.log(2. * math.pi)
+  log_scale = -0.5 * x_2 - math_ops.log(-x) - 0.5 * np.log(2. * np.pi)
   return log_scale + math_ops.log(_log_ndtr_asymptotic_series(x, series_order))
 
 
 def _log_ndtr_asymptotic_series(x, series_order):
   """Calculates the asymptotic series used in log_ndtr."""
+  dtype = x.dtype.as_numpy_dtype
   if series_order <= 0:
-    return 1.
+    return np.array(1, dtype)
   x_2 = math_ops.square(x)
-  even_sum = 0.
-  odd_sum = 0.
+  even_sum = array_ops.zeros_like(x)
+  odd_sum = array_ops.zeros_like(x)
   x_2n = x_2  # Start with x^{2*1} = x^{2*n} with n = 1.
   for n in range(1, series_order + 1):
+    y = np.array(_double_factorial(2 * n - 1), dtype) / x_2n
     if n % 2:
-      odd_sum += _double_factorial(2 * n - 1) / x_2n
+      odd_sum += y
     else:
-      even_sum += _double_factorial(2 * n - 1) / x_2n
+      even_sum += y
     x_2n *= x_2
   return 1. + even_sum - odd_sum
 

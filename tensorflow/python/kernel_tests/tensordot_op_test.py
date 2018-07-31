@@ -56,9 +56,11 @@ class TensordotTest(test_lib.TestCase):
         axes_ph = array_ops.placeholder(dtypes.int32)
         output = math_ops.tensordot(a_ph, b_ph, axes_ph)
         _ = sess.run(
-            [output], feed_dict={a_ph: a,
-                                 b_ph: b,
-                                 axes_ph: (a_axes, b_axes)})
+            [output], feed_dict={
+                a_ph: a,
+                b_ph: b,
+                axes_ph: (a_axes, b_axes)
+            })
 
   def test_invalid_axes(self):
     a = [[1, 2], [3, 4]]
@@ -81,28 +83,29 @@ class TensordotTest(test_lib.TestCase):
       with self.test_session() as sess:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           _ = sess.run(
-              [output], feed_dict={a_ph: a,
-                                   b_ph: b,
-                                   axes_ph: axes_value})
+              [output], feed_dict={
+                  a_ph: a,
+                  b_ph: b,
+                  axes_ph: axes_value
+              })
 
   # Test case for 11950
   def test_valid_axis(self):
     for axes_value in [1, 2], [[1], [2]], [[], []], 0:
       with self.test_session() as sess:
-        np_a = np.ones((3,3))
+        np_a = np.ones((3, 3))
         np_b = np.array([2, 3, 1])[None, None]
         np_ans = np.tensordot(np_a, np_b, axes_value)
 
-        tf_a = array_ops.ones((3,3), dtype=dtypes.float32)
+        tf_a = array_ops.ones((3, 3), dtype=dtypes.float32)
         tf_b = constant_op.constant([2, 3, 1], dtype=dtypes.float32)[None, None]
         tf_ans = math_ops.tensordot(tf_a, tf_b, axes_value).eval()
 
         self.assertAllEqual(tf_ans.shape, np_ans.shape)
         self.assertAllEqual(tf_ans, np_ans)
 
-
   def test_partial_shape_inference(self):
-    for axes in ([1],[0]), 1:
+    for axes in ([1], [0]), 1:
       a = array_ops.placeholder(dtypes.float32)
       b = array_ops.placeholder(dtypes.float32)
       output = math_ops.tensordot(a, b, axes)
@@ -169,9 +172,11 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
           axes = array_ops.placeholder(dtypes.int32)
           c = math_ops.tensordot(a, b, axes)
           tf_ans = sess.run(
-              c, feed_dict={a: a_np,
-                            b: b_np,
-                            axes: (a_dims_np, b_dims_np)})
+              c, feed_dict={
+                  a: a_np,
+                  b: b_np,
+                  axes: (a_dims_np, b_dims_np)
+              })
         else:
           tf_ans = math_ops.tensordot(a_np, b_np, (a_dims_np, b_dims_np)).eval()
       self.assertAllClose(tf_ans, np_ans, rtol=tol, atol=tol)

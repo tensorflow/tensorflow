@@ -54,10 +54,9 @@ struct RGBToHSV {
     // TODO(wicke): all these assignments are only necessary because a combined
     // expression is larger than kernel parameter space. A custom kernel is
     // probably in order.
-    H.device(d) = (R == V).select(norm * (G - B),
-                                  (G == V).select(
-                                      norm * (B - R) + T(2) / T(6),
-                                      norm * (R - G) + T(4) / T(6)));
+    H.device(d) = (R == V).select(
+        norm * (G - B), (G == V).select(norm * (B - R) + T(2) / T(6),
+                                        norm * (R - G) + T(4) / T(6)));
     H.device(d) = (range > T(0)).select(H, H.constant(T(0)));
     H.device(d) = (H < T(0)).select(H + T(1), H);
   }

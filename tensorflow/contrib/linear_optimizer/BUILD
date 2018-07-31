@@ -41,6 +41,7 @@ py_test(
     size = "medium",
     srcs = ["python/kernel_tests/sdca_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows_gpu"],
     deps = [
         ":sdca_ops_py",
         ":sparse_feature_column_py",
@@ -126,6 +127,7 @@ py_library(
 py_test(
     name = "sdca_estimator_test",
     srcs = ["python/sdca_estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":sdca_estimator_py",
@@ -136,15 +138,4 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

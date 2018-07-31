@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -48,7 +48,7 @@ def adam_update_numpy(param,
   return param_t, m_t, v_t
 
 
-class AdamOptimizerTest(XLATestCase):
+class AdamOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:

@@ -27,27 +27,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace Eigen {
-namespace numext {
-#if GOOGLE_CUDA
-template <>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::complex<float> exp(
-    const std::complex<float>& x) {
-  auto com = ::expf(x.real());
-  auto res_real = com * ::cosf(x.imag());
-  auto res_imag = com * ::sinf(x.imag());
-  return std::complex<float>(res_real, res_imag);
-}
-template <>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::complex<double> exp(
-    const std::complex<double>& x) {
-  auto com = ::exp(x.real());
-  auto res_real = com * ::cos(x.imag());
-  auto res_imag = com * ::sin(x.imag());
-  return std::complex<double>(res_real, res_imag);
-}
-#endif
-}  // namespace numext
-
 namespace internal {
 
 template <typename T>
@@ -637,6 +616,12 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
+
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
@@ -784,6 +769,10 @@ struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+
+template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
 
 template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};

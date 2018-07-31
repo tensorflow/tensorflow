@@ -35,6 +35,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template struct FillProjectiveTransform<CPUDevice, uint8>;
 template struct FillProjectiveTransform<CPUDevice, int32>;
 template struct FillProjectiveTransform<CPUDevice, int64>;
+template struct FillProjectiveTransform<CPUDevice, Eigen::half>;
 template struct FillProjectiveTransform<CPUDevice, float>;
 template struct FillProjectiveTransform<CPUDevice, double>;
 
@@ -43,9 +44,9 @@ template struct FillProjectiveTransform<CPUDevice, double>;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 using functor::FillProjectiveTransform;
+using generator::Interpolation;
 using generator::INTERPOLATION_BILINEAR;
 using generator::INTERPOLATION_NEAREST;
-using generator::Interpolation;
 using generator::ProjectiveGenerator;
 
 template <typename Device, typename T>
@@ -72,11 +73,12 @@ class ImageProjectiveTransform : public OpKernel {
     const Tensor& transform_t = ctx->input(1);
     OP_REQUIRES(ctx, images_t.shape().dims() == 4,
                 errors::InvalidArgument("Input images must have rank 4"));
-    OP_REQUIRES(ctx, (TensorShapeUtils::IsMatrix(transform_t.shape()) &&
-                      (transform_t.dim_size(0) == images_t.dim_size(0) ||
-                       transform_t.dim_size(0) == 1) &&
-                      transform_t.dim_size(1) ==
-                          ProjectiveGenerator<Device, T>::kNumParameters),
+    OP_REQUIRES(ctx,
+                (TensorShapeUtils::IsMatrix(transform_t.shape()) &&
+                 (transform_t.dim_size(0) == images_t.dim_size(0) ||
+                  transform_t.dim_size(0) == 1) &&
+                 transform_t.dim_size(1) ==
+                     ProjectiveGenerator<Device, T>::kNumParameters),
                 errors::InvalidArgument(
                     "Input transform should be num_images x 8 or 1 x 8"));
     auto images = images_t.tensor<T, 4>();
@@ -98,6 +100,7 @@ class ImageProjectiveTransform : public OpKernel {
 TF_CALL_uint8(REGISTER);
 TF_CALL_int32(REGISTER);
 TF_CALL_int64(REGISTER);
+TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 

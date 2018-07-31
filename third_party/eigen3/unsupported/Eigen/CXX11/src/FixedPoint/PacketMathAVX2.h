@@ -1,6 +1,5 @@
-#ifndef EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
-#define EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
-
+#ifndef CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
+#define CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
 #ifdef _MSC_VER
 
 #include <immintrin.h>
@@ -28,7 +27,6 @@ inline int _mm256_extract_epi8_N1(const __m256i X)
 {
 	return _mm_extract_epi8(_mm256_extractf128_si256((X), 1 >> 4), 1 % 16);
 }
-
 
 namespace Eigen {
 namespace internal {
@@ -502,4 +500,4 @@ struct functor_traits<scalar_product_op<QInt32, double>> {
 }  // end namespace internal
 }  // end namespace Eigen
 
-#endif  // EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
+#endif  // CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_

@@ -114,7 +114,7 @@ REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_GPU), SendOp);
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_SYCL), SendOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(
@@ -160,7 +160,6 @@ Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
           if (!is_dead) {
             ctx->set_output(0, val);
           }
-          *ctx->is_output_dead() = is_dead;
         }
         done();
       },
@@ -169,9 +168,10 @@ Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
 }  // namespace
 
 void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
-  OP_REQUIRES(
+  OP_REQUIRES_ASYNC(
       ctx, ctx->rendezvous() != nullptr,
-      errors::Internal("Op kernel context needs to provide a rendezvous."));
+      errors::Internal("Op kernel context needs to provide a rendezvous."),
+      done);
 
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
@@ -198,7 +198,7 @@ REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_GPU), RecvOp);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_SYCL), RecvOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(
@@ -207,6 +207,6 @@ REGISTER_KERNEL_BUILDER(
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

@@ -277,6 +277,10 @@ class NestTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
 
+    inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
+    inp_ba = collections.OrderedDict([("b", (2, 3)), ("a", 1)])
+    nest.assert_shallow_structure(inp_ab, inp_ba)
+
   def testFlattenUpTo(self):
     input_tree = (((2, 2), (3, 3)), ((4, 9), (5, 5)))
     shallow_tree = ((True, True), (False, True))

@@ -19,13 +19,21 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+
+# The following two lines are redundant, in a sense. The first enables
+# good coding practice  *within* this file (`util.prefer_static_value`
+# rather than  `prefer_static_value`). The  second ensures  that users
+# also get the core utils when they import this file.
+from tensorflow.python.ops.distributions import util
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
 
@@ -442,6 +450,116 @@ def maybe_check_scalar_distribution(
     return assertions
 
 
+def pad_mixture_dimensions(x, mixture_distribution, categorical_distribution,
+                           event_ndims):
+  """Pad dimensions of event tensors for mixture distributions.
+
+  See `Mixture._sample_n` and `MixtureSameFamily._sample_n` for usage examples.
+
+  Args:
+    x: event tensor to pad.
+    mixture_distribution: Base distribution of the mixture.
+    categorical_distribution: `Categorical` distribution that mixes the base
+      distribution.
+    event_ndims: Integer specifying the number of event dimensions in the event
+      tensor.
+
+  Returns:
+    A padded version of `x` that can broadcast with `categorical_distribution`.
+  """
+  with ops.name_scope("pad_mix_dims", values=[x]):
+    def _get_ndims(d):
+      if d.batch_shape.ndims is not None:
+        return d.batch_shape.ndims
+      return array_ops.shape(d.batch_shape_tensor())[0]
+    dist_batch_ndims = _get_ndims(mixture_distribution)
+    cat_batch_ndims = _get_ndims(categorical_distribution)
+    pad_ndims = array_ops.where(
+        categorical_distribution.is_scalar_batch(),
+        dist_batch_ndims,
+        dist_batch_ndims - cat_batch_ndims)
+    s = array_ops.shape(x)
+    x = array_ops.reshape(x, shape=array_ops.concat([
+        s[:-1],
+        array_ops.ones([pad_ndims], dtype=dtypes.int32),
+        s[-1:],
+        array_ops.ones([event_ndims], dtype=dtypes.int32),
+    ], axis=0))
+    return x
+
+
 def static_value(x):
   """Returns the static value of a `Tensor` or `None`."""
   return tensor_util.constant_value(ops.convert_to_tensor(x))
+
+
+def move_dimension(x, source_idx, dest_idx):
+  """Move a single tensor dimension within its shape.
+
+  This is a special case of `tf.transpose()`, which applies
+  arbitrary permutations to tensor dimensions.
+
+  Args:
+    x: Tensor of rank `ndims`.
+    source_idx: Integer index into `x.shape` (negative indexing is
+      supported).
+    dest_idx: Integer index into `x.shape` (negative indexing is
+      supported).
+
+  Returns:
+    x_perm: Tensor of rank `ndims`, in which the dimension at original
+     index `source_idx` has been moved to new index `dest_idx`, with
+     all other dimensions retained in their original order.
+
+  Example:
+
+  ```python
+  x = tf.placeholder(shape=[200, 30, 4, 1, 6])
+  x_perm = _move_dimension(x, 1, 1) # no-op
+  x_perm = _move_dimension(x, 0, 3) # result shape [30, 4, 1, 200, 6]
+  x_perm = _move_dimension(x, 0, -2) # equivalent to previous
+  x_perm = _move_dimension(x, 4, 2) # result shape [200, 30, 6, 4, 1]
+  ```
+  """
+  ndims = util.prefer_static_rank(x)
+  if isinstance(source_idx, int):
+    dtype = dtypes.int32
+  else:
+    dtype = dtypes.as_dtype(source_idx.dtype)
+
+  # Handle negative indexing. Since ndims might be dynamic, this makes
+  # source_idx and dest_idx also possibly dynamic.
+  if source_idx < 0:
+    source_idx = ndims + source_idx
+  if dest_idx < 0:
+    dest_idx = ndims + dest_idx
+
+  # Construct the appropriate permutation of dimensions, depending
+  # whether the source is before or after the destination.
+  def move_left_permutation():
+    return util.prefer_static_value(
+        array_ops.concat([
+            math_ops.range(0, dest_idx, dtype=dtype),
+            [source_idx],
+            math_ops.range(dest_idx, source_idx, dtype=dtype),
+            math_ops.range(source_idx+1, ndims, dtype=dtype)], axis=0))
+
+  def move_right_permutation():
+    return util.prefer_static_value(
+        array_ops.concat([
+            math_ops.range(0, source_idx, dtype=dtype),
+            math_ops.range(source_idx+1, dest_idx+1, dtype=dtype),
+            [source_idx],
+            math_ops.range(dest_idx+1, ndims, dtype=dtype)], axis=0))
+
+  def x_permuted():
+    return array_ops.transpose(
+        x, perm=smart_cond.smart_cond(source_idx < dest_idx,
+                                      move_right_permutation,
+                                      move_left_permutation))
+
+  # One final conditional to handle the special case where source
+  # and destination indices are equal.
+  return smart_cond.smart_cond(math_ops.equal(source_idx, dest_idx),
+                               lambda: x,
+                               x_permuted)

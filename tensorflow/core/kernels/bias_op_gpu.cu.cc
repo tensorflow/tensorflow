@@ -24,6 +24,14 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/types.h"
+
+#include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
+#include "tensorflow/core/kernels/reduction_ops_common.h"
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -77,14 +85,14 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   }
   CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
-    BiasNHWCKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, input, bias, output, bias_size);
+    BiasNHWCKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, input, bias, output, bias_size);
   } else {
-    BiasNCHWKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, input, bias, output, bias_size,
-        image_size);
+    BiasNCHWKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, input, bias, output, bias_size,
+            image_size);
   }
 }
 
@@ -173,19 +181,13 @@ __global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
   // Accumulate the results in the shared memory into the first element.
   // No syncthreads is needed since this is only in the same warp.
   int32 thread_index = threadIdx.x;
-  if (thread_index < 16) {
-    s_data[thread_index] += s_data[thread_index + 16];
-    __syncwarp(0xFFFF);
-    if (thread_index < 8) s_data[thread_index] += s_data[thread_index + 8];
-    __syncwarp(0xFF);
-    if (thread_index < 4) s_data[thread_index] += s_data[thread_index + 4];
-    __syncwarp(0xF);
-    if (thread_index < 2) s_data[thread_index] += s_data[thread_index + 2];
-    __syncwarp(0x3);
+  if (thread_index < 32) {
+    AccT data = s_data[thread_index];
+    for (int32 delta = warpSize / 2; delta > 0; delta /= 2) {
+      data += CudaShuffleXorSync(kCudaWarpAll, data, delta);
+    }
     if (thread_index == 0) {
-      T val = T(s_data[0] + s_data[1]);
-      // The first thread writes out the accumulated result to global location.
-      CudaAtomicAdd(bias_backprop + bias_index, val);
+      CudaAtomicAdd(bias_backprop + bias_index, T(data));
     }
   }
 }
@@ -212,10 +214,10 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
   // Check if we have enough shared memory.
   if (shared_memory_size <= max_shared_memory_size) {
     if (data_format == FORMAT_NHWC) {
-      BiasGradNHWC_SharedAtomics<
-          T><<<config.block_count, config.thread_per_block, shared_memory_size,
-               d.stream()>>>(total_count, output_backprop, bias_backprop,
-                             bias_size);
+      BiasGradNHWC_SharedAtomics<T>
+          <<<config.block_count, config.thread_per_block, shared_memory_size,
+             d.stream()>>>(total_count, output_backprop, bias_backprop,
+                           bias_size);
     } else {
       // Round up the block count to multiple of bias_size.
       int group_size = (config.block_count + bias_size - 1) / bias_size;
@@ -223,25 +225,46 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
       if (config.thread_per_block < kWarpSize) {
         config.thread_per_block = kWarpSize;
       }
-      BiasGradNCHW_SharedAtomics<
-          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          output_backprop, bias_backprop, batch, bias_size, image_size,
-          group_size);
+      BiasGradNCHW_SharedAtomics<T>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              output_backprop, bias_backprop, batch, bias_size, image_size,
+              group_size);
     }
   } else {
     // Note that even if we don't have enough shared memory to fit the entire
     // output block, it is possible to process one group of elements at a time.
     // But for now, we simply fall back to the naive implementation.
     if (data_format == FORMAT_NHWC) {
-      BiasGradNHWC_Naive<
-          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          total_count, output_backprop, bias_backprop, bias_size);
+      BiasGradNHWC_Naive<T>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              total_count, output_backprop, bias_backprop, bias_size);
     } else {
-      BiasGradNCHW_Naive<
-          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          total_count, output_backprop, bias_backprop, bias_size, image_size);
+      BiasGradNCHW_Naive<T>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              total_count, output_backprop, bias_backprop, bias_size,
+              image_size);
     }
   }
+}
+
+template <typename T>
+void BiasGradGPU<T>::DoRowReduction(OpKernelContext* context, T* output,
+                                    const T* input, int rows, int cols) {
+  typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
+  Constants<GPUDevice> constants;
+  cub::Sum op;
+  functor::ReduceImpl<T, cub::Sum, T*, const T*, ReductionAxes>(
+      context, output, input, 2, rows, cols, 1, 1, constants.kOne, op);
+}
+
+template <typename T>
+void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
+                                    const T* input, int rows, int cols) {
+  typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
+  Constants<GPUDevice> constants;
+  cub::Sum op;
+  functor::ReduceImpl<T, cub::Sum, T*, const T*, ReductionAxes>(
+      context, output, input, 2, rows, cols, 1, 1, constants.kZero, op);
 }
 
 #define DEFINE_GPU_SPECS(T)   \

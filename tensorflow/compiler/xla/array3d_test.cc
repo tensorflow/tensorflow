@@ -69,6 +69,29 @@ TEST(Array3dTest, InitializerListCtor) {
   EXPECT_EQ(arr(2, 3, 1), 24);
 }
 
+TEST(Array3dTest, InitializerListCtorHalf) {
+  Array3D<Eigen::half> arr = {
+      {{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}, {7.0f, 8.0f}},
+      {{9.0f, 10.0f}, {11.0f, 12.0f}, {13.0f, 14.0f}, {15.0f, 16.0f}},
+      {{17.0f, 18.0f}, {19.0f, 20.0f}, {21.0f, 22.0f}, {23.0f, 24.0f}}};
+
+  EXPECT_EQ(arr.n1(), 3);
+  EXPECT_EQ(arr.n2(), 4);
+  EXPECT_EQ(arr.n3(), 2);
+  EXPECT_EQ(arr.num_elements(), 24);
+
+  EXPECT_EQ(arr(0, 0, 0), static_cast<Eigen::half>(1));
+  EXPECT_EQ(arr(0, 0, 1), static_cast<Eigen::half>(2));
+  EXPECT_EQ(arr(0, 1, 0), static_cast<Eigen::half>(3));
+  EXPECT_EQ(arr(0, 3, 1), static_cast<Eigen::half>(8));
+  EXPECT_EQ(arr(1, 0, 0), static_cast<Eigen::half>(9));
+  EXPECT_EQ(arr(1, 1, 1), static_cast<Eigen::half>(12));
+  EXPECT_EQ(arr(2, 0, 0), static_cast<Eigen::half>(17));
+  EXPECT_EQ(arr(2, 1, 1), static_cast<Eigen::half>(20));
+  EXPECT_EQ(arr(2, 2, 0), static_cast<Eigen::half>(21));
+  EXPECT_EQ(arr(2, 3, 1), static_cast<Eigen::half>(24));
+}
+
 TEST(Array3dTest, Fill) {
   Array3D<int> fullof7(2, 3, 4, 7);
   for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {

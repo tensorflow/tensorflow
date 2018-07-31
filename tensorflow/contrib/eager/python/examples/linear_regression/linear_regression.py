@@ -32,24 +32,16 @@ import tensorflow as tf
 
 import tensorflow.contrib.eager as tfe
 
+layers = tf.keras.layers
 
-class LinearModel(tfe.Network):
-  """A TensorFlow linear regression model.
 
-  Uses TensorFlow's eager execution.
-
-  For those familiar with TensorFlow graphs, notice the absence of
-  `tf.Session`. The `forward()` method here immediately executes and
-  returns output values. The `loss()` method immediately compares the
-  output of `forward()` with the target and returns the MSE loss value.
-  The `fit()` performs gradient-descent training on the model's weights
-  and bias.
-  """
+class LinearModel(tf.keras.Model):
+  """A TensorFlow linear regression model."""
 
   def __init__(self):
     """Constructs a LinearModel object."""
     super(LinearModel, self).__init__()
-    self._hidden_layer = self.track_layer(tf.layers.Dense(1))
+    self._hidden_layer = layers.Dense(1)
 
   def call(self, xs):
     """Invoke the linear model.
@@ -64,7 +56,7 @@ class LinearModel(tfe.Network):
 
 
 def mean_square_loss(model, xs, ys):
-  return tf.reduce_mean(tf.square(model(xs) - ys))
+  return tf.reduce_mean(tf.square(tf.subtract(model(xs), ys)))
 
 
 def fit(model, dataset, optimizer, verbose=False, logdir=None):
@@ -83,7 +75,6 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
   mse = lambda xs, ys: mean_square_loss(model, xs, ys)
   loss_and_grads = tfe.implicit_value_and_gradients(mse)
 
-  tf.train.get_or_create_global_step()
   if logdir:
     # Support for TensorBoard summaries. Once training has started, use:
     #   tensorboard --logdir=<logdir>
@@ -95,12 +86,13 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
     if verbose:
       print("Iteration %d: loss = %s" % (i, loss.numpy()))
 
-    optimizer.apply_gradients(grads, global_step=tf.train.get_global_step())
+    optimizer.apply_gradients(grads)
 
     if logdir:
       with summary_writer.as_default():
         with tf.contrib.summary.always_record_summaries():
-          tf.contrib.summary.scalar("loss", loss)
+          tf.contrib.summary.scalar("loss", loss, step=i)
+          tf.contrib.summary.scalar("step", i, step=i)
 
 
 def synthetic_dataset(w, b, noise_level, batch_size, num_batches):
@@ -127,7 +119,7 @@ def synthetic_dataset_helper(w, b, num_features, noise_level, batch_size,
 
 
 def main(_):
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
   # Ground-truth constants.
   true_w = [[-2.0], [4.0], [1.0]]
   true_b = [0.5]

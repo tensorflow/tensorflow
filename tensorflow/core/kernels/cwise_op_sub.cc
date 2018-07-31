@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER7(BinaryOp, CPU, "Sub", functor::sub, float, Eigen::half, double, int32,
-          int64, complex64, complex128);
+REGISTER8(BinaryOp, CPU, "Sub", functor::sub, float, Eigen::half, double, int32,
+          int64, bfloat16, complex64, complex128);
 #if !defined(__ANDROID_TYPES_SLIM__)
 // Sub op for int8, uint8, int16, uint16
 REGISTER4(BinaryOp, CPU, "Sub", functor::sub, int8, uint8, int16, uint16);
@@ -53,5 +53,5 @@ REGISTER_KERNEL_BUILDER(Name("Sub")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::sub<int32>>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

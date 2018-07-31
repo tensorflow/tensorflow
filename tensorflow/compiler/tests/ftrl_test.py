@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -30,7 +30,7 @@ from tensorflow.python.training import ftrl
 from tensorflow.python.training import gradient_descent
 
 
-class FtrlOptimizerTest(XLATestCase):
+class FtrlOptimizerTest(xla_test.XLATestCase):
 
   def initVariableAndGradient(self, dtype):
     var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -134,9 +134,15 @@ class FtrlOptimizerTest(XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-2.60260963, -4.29698515]), var0.eval(), float_rtol=1e-5)
+            np.array([-2.60260963, -4.29698515]),
+            var0.eval(),
+            float_rtol=1e-5,
+            half_rtol=1e-2)
         self.assertAllCloseAccordingToType(
-            np.array([-0.28432083, -0.56694895]), var1.eval(), float_rtol=1e-5)
+            np.array([-0.28432083, -0.56694895]),
+            var1.eval(),
+            float_rtol=1e-5,
+            half_rtol=1e-2)
 
   def testFtrlwithoutRegularization2(self):
     for dtype in self.float_types:
@@ -272,8 +278,8 @@ class FtrlOptimizerTest(XLATestCase):
       with self.test_session(), self.test_scope():
         val2, val3 = self.equivAdagradTest_AdagradPart(steps, dtype)
 
-    self.assertAllCloseAccordingToType(val0, val2, rtol=1e-4)
-    self.assertAllCloseAccordingToType(val1, val3, rtol=1e-4)
+    self.assertAllCloseAccordingToType(val0, val2, rtol=1e-4, half_rtol=1e-2)
+    self.assertAllCloseAccordingToType(val1, val3, rtol=1e-4, half_rtol=1e-2)
 
   def testEquivGradientDescentwithoutRegularization(self):
     steps = 5

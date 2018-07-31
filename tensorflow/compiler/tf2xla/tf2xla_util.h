@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -50,6 +51,10 @@ string TensorIdToString(const tf2xla::TensorId& id);
 // If <out_edges> is true, outgoing edges from <n> are considered; else incoming
 // edges are considered.
 Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
+
+// Add an allowed data type to the AttrConstraint with the given name.
+void AddDtypeToKernalDefConstraint(StringPiece name, DataType dtype,
+                                   KernelDef* kdef);
 
 }  // namespace tensorflow
 

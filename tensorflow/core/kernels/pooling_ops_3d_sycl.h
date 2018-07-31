@@ -281,12 +281,11 @@ class MaxPool3DGradSYCL {
 
     const T* input_data_n =
         input_data + n * p_.in_planes_ * p_.in_cols_ * p_.in_rows_ * p_.depth_;
-    const T* output_data_n =
-        output_data +
-        n * p_.out_planes_ * p_.out_cols_ * p_.out_rows_ * p_.depth_;
-    const T* input_backprop_n =
-        input_backprop +
-        n * p_.out_planes_ * p_.out_cols_ * p_.out_rows_ * p_.depth_;
+    const T* output_data_n = output_data + n * p_.out_planes_ * p_.out_cols_ *
+                                               p_.out_rows_ * p_.depth_;
+    const T* input_backprop_n = input_backprop + n * p_.out_planes_ *
+                                                     p_.out_cols_ *
+                                                     p_.out_rows_ * p_.depth_;
     for (int poolp = poolpstart; poolp < poolpend; ++poolp) {
       int pstart = poolp * p_.stride_planes_ - p_.pad_planes_;
       const int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);
@@ -678,9 +677,9 @@ class AvgPool3DGradSYCL {
     n /= p_.in_planes_;
 
     T gradient = T(0);
-    const T* input_backprop_n =
-        input_backprop +
-        n * p_.out_planes_ * p_.out_cols_ * p_.out_rows_ * p_.depth_;
+    const T* input_backprop_n = input_backprop + n * p_.out_planes_ *
+                                                     p_.out_cols_ *
+                                                     p_.out_rows_ * p_.depth_;
     for (int poolp = poolpstart; poolp < poolpend; ++poolp) {
       int pstart = poolp * p_.stride_planes_ - p_.pad_planes_;
       const int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);

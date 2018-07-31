@@ -89,7 +89,7 @@ bottom. Note that this is different from existing libraries such as cuDNN and
 Caffe, which explicitly specify the number of padded pixels and always pad the
 same number of pixels on both sides.
 
-For the `'VALID`' scheme, the output height and width are computed as:
+For the `'VALID'` scheme, the output height and width are computed as:
 
     out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
     out_width  = ceil(float(in_width - filter_width + 1) / float(strides[2]))
@@ -98,10 +98,10 @@ and no padding is used.
 
 Given the output size and the padding, the output can be computed as
 
-    output[b, i, j, :] =
-        sum_{di, dj} input[b, strides[1] * i + di - pad_top,
-                           strides[2] * j + dj - pad_left, ...] *
-                     filter[di, dj, ...]
+$$    output[b, i, j, :] =
+        sum_{d_i, d_j} input[b, strides[1] * i + d_i - pad_{top},\
+                           strides[2] * j + d_j - pad_{left}, ...] *
+                     filter[d_i, d_j,\ ...]$$
 
 where any value outside the original input image region are considered zero (
 i.e. we pad zero values around the border of the image).
@@ -161,12 +161,12 @@ Morphological operators are non-linear filters used in image processing.
 ](https://en.wikipedia.org/wiki/Dilation_(morphology))
 is the max-sum counterpart of standard sum-product convolution:
 
-    output[b, y, x, c] =
+$$    output[b, y, x, c] =
         max_{dy, dx} input[b,
                            strides[1] * y + rates[1] * dy,
                            strides[2] * x + rates[2] * dx,
                            c] +
-                     filter[dy, dx, c]
+                     filter[dy, dx, c]$$
 
 The `filter` is usually called structuring function. Max-pooling is a special
 case of greyscale morphological dilation when the filter assumes all-zero
@@ -176,12 +176,12 @@ values (a.k.a. flat structuring function).
 ](https://en.wikipedia.org/wiki/Erosion_(morphology))
 is the min-sum counterpart of standard sum-product convolution:
 
-    output[b, y, x, c] =
+$$    output[b, y, x, c] =
         min_{dy, dx} input[b,
                            strides[1] * y - rates[1] * dy,
                            strides[2] * x - rates[2] * dx,
                            c] -
-                     filter[dy, dx, c]
+                     filter[dy, dx, c]$$
 
 Dilation and erosion are dual to each other. The dilation of the input signal
 `f` by the structuring signal `g` is equal to the negation of the erosion of

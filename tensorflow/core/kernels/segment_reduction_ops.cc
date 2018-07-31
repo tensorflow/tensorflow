@@ -20,10 +20,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/kernels/segment_reduction_ops.h"
-#include <vector>
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/segment_reduction_ops.h"
+#include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -115,7 +115,7 @@ class SegmentReductionOp : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, 1> dims_to_reduce;
     dims_to_reduce[0] = 0;
 #else
-    Eigen::IndexList<Eigen::type2index<0>> dims_to_reduce;
+    Eigen::IndexList<Eigen::type2index<0> > dims_to_reduce;
 #endif
     Index start = 0, end = 1;
 
@@ -242,7 +242,7 @@ class SegmentSumGPUOp : public AsyncOpKernel {
       return;
     }
 
-    perftools::gputools::DeviceMemoryBase output_rows_device(
+    se::DeviceMemoryBase output_rows_device(
         const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
         (num_indices - 1));
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
@@ -320,7 +320,9 @@ class SegmentSumGPUOp : public AsyncOpKernel {
   REGISTER_CPU_KERNEL_SEGMENT("SegmentSum", Eigen::internal::SumReducer<type>, \
                               type, index_type, 0);                            \
   REGISTER_CPU_KERNEL_SEGMENT(                                                 \
-      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1)
+      "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type, 0); \
+  REGISTER_CPU_KERNEL_SEGMENT(                                                 \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1);
 
 #define REGISTER_REAL_CPU_KERNELS_ALL(type) \
   REGISTER_REAL_CPU_KERNELS(type, int32);   \
@@ -356,158 +358,180 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
 #undef REGISTER_GPU_SORTED_KERNELS_ALL
 #endif  // GOOGLE_CUDA
 
+// ____________________________________________________________________________
+// Unsorted segment reduction ops.
+
 namespace functor {
 
-// UnsortedSegmentSumFunctor implementation for CPUDevice.
-// todo: Remove duplicate code in UnsortedSegmentSumFunctor and UnsortedSegmentMaxFunctor.
-template <typename T, typename Index>
-struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
+// The ReductionFunctor implementation for CPU.
+template <typename T, typename Index, typename InitialValueF,
+          typename ReductionF>
+struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
+  void operator()(OpKernelContext* ctx, const Index num_segments,
+                  const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output) override {
-    output.setZero();
+                  typename TTypes<T, 2>::Tensor output) {
+    output.setConstant(InitialValueF()());
     if (data_size == 0) {
       return;
     }
     const int64 N = segment_ids.dimension(0);
+    ReductionF reduction;
     auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
     for (int64 i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
       if (j < 0) {
         continue;
       }
-      OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
+      OP_REQUIRES(ctx, FastBoundsCheck(j, num_segments),
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
-                      " = ", j, " is out of range [0, ", output_rows, ")"));
-      output.template chip<0>(j) += data_flat.template chip<0>(i);
+                      " = ", j, " is out of range [0, ", num_segments, ")"));
+      reduction(data_flat.template chip<0>(i), output.template chip<0>(j));
     }
   }
 };
-// UnsortedSegmentMaxFunctor implementation for CPUDevice.
-template <typename T, typename Index>
-struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output) override {
-    output.setConstant(std::numeric_limits<T>::lowest());
-    if (data_size == 0) {
-      return;
-    }
-    const int64 N = segment_ids.dimension(0);
-    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
-    for (int64 i = 0; i < N; ++i) {
-      Index j = internal::SubtleMustCopy(segment_ids(i));
-      OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
-                  errors::InvalidArgument(
-                      "segment_ids", SliceDebugString(segment_ids_shape, i),
-                      " = ", j, " is out of range [0, ", output_rows, ")"));
-      output.template chip<0>(j) =
-          data_flat.template chip<0>(i).cwiseMax(output.template chip<0>(j));
-    }
+
+template <typename T>
+using MatrixChip = Eigen::TensorChippingOp<0l, typename TTypes<T, 2>::Matrix>;
+
+template <typename T>
+using constMatrixChip =
+    Eigen::TensorChippingOp<0l, const typename TTypes<T, 2>::ConstMatrix>;
+
+// reduction functors
+template <typename T>
+struct SumOp {
+  void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
+    output += data;
+  }
+};
+
+template <typename T>
+struct MaxOp {
+  void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
+    output = data.cwiseMax(output);
+  }
+};
+
+template <typename T>
+struct MinOp {
+  void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
+    output = data.cwiseMin(output);
+  }
+};
+
+template <typename T>
+struct ProdOp {
+  void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
+    output *= data;
   }
 };
 }  // namespace functor
 
-// Base class for SegmentReductionOps that can handle unsorted segment
-// definitions
-// and specifying the size of the output in addition to a reduction function
-template <typename Device, class T, class Index>
-class UnsortedSegmentBaseOp : public OpKernel {
+// Static check routines not in the templated class to reduce code size
+static void UnsortedSegmentReductionValidation(OpKernel* op_kernel,
+                                               OpKernelContext* context,
+                                               const Tensor& data,
+                                               const Tensor& segment_ids,
+                                               const Tensor& num_segments) {
+  OP_REQUIRES(
+      context, op_kernel->IsLegacyScalar(num_segments.shape()),
+      errors::InvalidArgument("num_segments should be a scalar, not shape ",
+                              num_segments.shape().DebugString()));
+  OP_REQUIRES(
+      context, TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
+      errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
+                              " does not start with segment_ids.shape = ",
+                              segment_ids.shape().DebugString()));
+}
+
+static bool UnsortedSegmentReductionDoValidation(OpKernel* op_kernel,
+                                                 OpKernelContext* context,
+                                                 const Tensor& data,
+                                                 const Tensor& segment_ids,
+                                                 const Tensor& num_segments) {
+  UnsortedSegmentReductionValidation(op_kernel, context, data, segment_ids,
+                                     num_segments);
+  return context->status().ok();
+}
+
+// The UnsortedSegmentReduction OpKernel. The DeviceReductionFunctor
+// is the device specific implementation of the reduction. These device
+// specific implementations are templated themselves with the corresponding
+// initial value functors and reduction functors.
+template <typename T, typename Index, typename DeviceReductionFunctor>
+class UnsortedSegmentReductionOp : public OpKernel {
  public:
-  explicit UnsortedSegmentBaseOp(
-      OpKernelConstruction* context,
-      functor::UnsortedSegmentBaseFunctor<Device, T, Index>& functor)
-      : OpKernel(context), reduction_functor_(functor) {}
+  explicit UnsortedSegmentReductionOp(OpKernelConstruction* context)
+      : OpKernel(context), reduction_functor_(DeviceReductionFunctor()) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& data = context->input(0);
     const Tensor& segment_ids = context->input(1);
     const Tensor& num_segments = context->input(2);
-
-    OP_REQUIRES(
-        context, IsLegacyScalar(num_segments.shape()),
-        errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                                num_segments.shape().DebugString()));
-    OP_REQUIRES(
-        context,
-        TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
-        errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
-                                " does not start with segment_ids.shape = ",
-                                segment_ids.shape().DebugString()));
-
+    if (!UnsortedSegmentReductionDoValidation(this, context, data, segment_ids,
+                                              num_segments)) {
+      return;
+    }
     const auto segment_flat = segment_ids.flat<Index>();
     const Index output_rows =
         internal::SubtleMustCopy(num_segments.scalar<int32>()());
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("Input num_segments == ", output_rows,
                                         " must not be negative."));
-
     TensorShape output_shape;
     output_shape.AddDim(output_rows);
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
       output_shape.AddDim(data.dim_size(i));
     }
-
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     auto output_flat = output->flat_outer_dims<T>();
-
     auto data_ptr = data.template flat<T>().data();
-    reduction_functor_(context, context->template eigen_device<Device>(),
-                     output_rows, segment_ids.shape(), segment_flat,
-                     data.NumElements(), data_ptr, output_flat);
+    reduction_functor_(context, output_rows, segment_ids.shape(), segment_flat,
+                       data.NumElements(), data_ptr, output_flat);
   }
- private:
-  functor::UnsortedSegmentBaseFunctor<Device, T, Index>& reduction_functor_;
+
+ protected:
+  DeviceReductionFunctor reduction_functor_;
 };
 
-template <typename Device, class T, class Index>
-class UnsortedSegmentSumOp : public UnsortedSegmentBaseOp<Device, T, Index> {
- public:
-  explicit UnsortedSegmentSumOp(OpKernelConstruction* context)
-      : UnsortedSegmentBaseOp<Device, T, Index>(
-            context,
-            sum_functor_) {}
- private:
-    functor::UnsortedSegmentSumFunctor<Device, T, Index> sum_functor_;
-};
+#define REGISTER_CPU_KERNEL_UNSORTEDSEGMENT(                           \
+    name, type, index_type, initial_value_functor, reduction_functor)  \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name(name)                                                       \
+          .Device(DEVICE_CPU)                                          \
+          .TypeConstraint<type>("T")                                   \
+          .TypeConstraint<index_type>("Tindices"),                     \
+      UnsortedSegmentReductionOp<                                      \
+          type, index_type,                                            \
+          functor::UnsortedSegmentFunctor<CPUDevice, type, index_type, \
+                                          initial_value_functor,       \
+                                          reduction_functor> >)
 
-template <typename Device, class T, class Index>
-class UnsortedSegmentMaxOp : public UnsortedSegmentBaseOp<Device, T, Index> {
- public:
-  explicit UnsortedSegmentMaxOp(OpKernelConstruction* context)
-      : UnsortedSegmentBaseOp<Device, T, Index>(
-            context,
-            max_functor_) {}
- private:
-    functor::UnsortedSegmentMaxFunctor<Device, T, Index> max_functor_;
-};
+#define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                   \
+  REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type,  \
+                                      functor::Zero<type>,                     \
+                                      functor::SumOp<type>);                   \
+  REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMax", type, index_type,  \
+                                      functor::Lowest<type>,                   \
+                                      functor::MaxOp<type>);                   \
+  REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMin", type, index_type,  \
+                                      functor::Highest<type>,                  \
+                                      functor::MinOp<type>);                   \
+  REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentProd", type, index_type, \
+                                      functor::One<type>,                      \
+                                      functor::ProdOp<type>);
 
-#define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                  \
-  REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentSum")                          \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<type>("T")                      \
-                              .TypeConstraint<index_type>("Tindices"),        \
-                          UnsortedSegmentSumOp<CPUDevice, type, index_type>); \
-  REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentMax")                          \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<type>("T")                      \
-                              .TypeConstraint<index_type>("Tindices"),        \
-                          UnsortedSegmentMaxOp<CPUDevice, type, index_type>);
-
-#define REGISTER_COMPLEX_CPU_UNSORTED_KERNELS(type, index_type)        \
-  REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentSum")                   \
-                              .Device(DEVICE_CPU)                      \
-                              .TypeConstraint<type>("T")               \
-                              .TypeConstraint<index_type>("Tindices"), \
-                          UnsortedSegmentSumOp<CPUDevice, type, index_type>);
+#define REGISTER_COMPLEX_CPU_UNSORTED_KERNELS(type, index_type)                \
+  REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type,  \
+                                      functor::Zero<type>,                     \
+                                      functor::SumOp<type>);                   \
+  REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentProd", type, index_type, \
+                                      functor::One<type>,                      \
+                                      functor::ProdOp<type>)
 
 #define REGISTER_REAL_CPU_UNSORTED_KERNELS_ALL(type) \
   REGISTER_REAL_CPU_UNSORTED_KERNELS(type, int32);   \
@@ -520,30 +544,71 @@ class UnsortedSegmentMaxOp : public UnsortedSegmentBaseOp<Device, T, Index> {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_REAL_CPU_UNSORTED_KERNELS_ALL);
 REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex64);
 REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
+
 #undef REGISTER_REAL_CPU_UNSORTED_KERNELS
+#undef REGISTER_CPU_KERNEL_UNSORTEDSEGMENT
 #undef REGISTER_COMPLEX_CPU_UNSORTED_KERNELS
 #undef REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL
 #undef REGISTER_REAL_CPU_UNSORTED_KERNELS_ALL
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_UNSORTED_KERNELS(type, index_type)                \
-  REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentSum")                   \
-                              .Device(DEVICE_GPU)                      \
-                              .HostMemory("num_segments")              \
-                              .TypeConstraint<type>("T")               \
-                              .TypeConstraint<index_type>("Tindices"), \
-                          UnsortedSegmentSumOp<GPUDevice, type, index_type>);
+#define REGISTER_GPU_KERNEL_UNSORTEDSEGMENT(                                 \
+    name, type, index_type, initial_value_functor, reduction_kernel_functor) \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name(name)                                                             \
+          .Device(DEVICE_GPU)                                                \
+          .HostMemory("num_segments")                                        \
+          .TypeConstraint<type>("T")                                         \
+          .TypeConstraint<index_type>("Tindices"),                           \
+      UnsortedSegmentReductionOp<                                            \
+          type, index_type,                                                  \
+          functor::UnsortedSegmentFunctor<GPUDevice, type, index_type,       \
+                                          initial_value_functor,             \
+                                          reduction_kernel_functor> >)
 
-#define REGISTER_GPU_UNSORTED_KERNELS_ALL(type) \
-  REGISTER_GPU_UNSORTED_KERNELS(type, int32);   \
-  REGISTER_GPU_UNSORTED_KERNELS(type, int64);
+// sum is the only op that supports all input types currently
+#define REGISTER_REAL_GPU_UNSORTED_KERNELS(type, index_type)                   \
+  REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMax", type, index_type,  \
+                                      functor::Lowest<type>,                   \
+                                      functor::MaxOpGpu<type>);                \
+  REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMin", type, index_type,  \
+                                      functor::Highest<type>,                  \
+                                      functor::MinOpGpu<type>);                \
+  REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentProd", type, index_type, \
+                                      functor::One<type>,                      \
+                                      functor::ProdOpGpu<type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_UNSORTED_KERNELS_ALL);
-TF_CALL_complex64(REGISTER_GPU_UNSORTED_KERNELS_ALL);
-TF_CALL_complex128(REGISTER_GPU_UNSORTED_KERNELS_ALL);
-#undef REGISTER_GPU_UNSORTED_KERNELS
-#undef REGISTER_GPU_UNSORTED_KERNELS_ALL
+#define REGISTER_SUM_GPU_UNSORTED_KERNELS(type, index_type)                   \
+  REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type, \
+                                      functor::Zero<type>,                    \
+                                      functor::SumOpGpu<type>);
+
+#define REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL(type) \
+  REGISTER_REAL_GPU_UNSORTED_KERNELS(type, int32);   \
+  REGISTER_REAL_GPU_UNSORTED_KERNELS(type, int64);
+
+#define REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL(type) \
+  REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int32);   \
+  REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int64);
+
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_int32(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_int32(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_complex64(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_complex128(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+
+#undef REGISTER_GPU_KERNEL_UNSORTEDSEGMENT
+#undef REGISTER_REAL_GPU_UNSORTED_KERNELS
+#undef REGISTER_SUM_GPU_UNSORTED_KERNELS
+#undef REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL
+#undef REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL
+
 #endif  // GOOGLE_CUDA
+
+// ____________________________________________________________________________
+// Sparse segment reduction ops.
 
 // Same as SegmentReductionOp but takes as input a "sparse" tensor, represented
 // by two dense tensors, one containing the data, and the other containing
@@ -616,7 +681,12 @@ class SparseSegmentReductionOpBase : public OpKernel {
     // we need to explicitly set missing indices to the default value.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (num_indices == 0) return;
+    if (num_indices == 0) {
+      if (output_rows > 0) {
+        output->flat_outer_dims<T>().setConstant(default_value_);
+      }
+      return;
+    }
     OP_REQUIRES(context, output_rows > 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();
@@ -663,9 +733,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
           Reduce(input_flat, indices_vec, start, end - start, out);
       OP_REQUIRES(context, bad_offset < 0,
                   errors::InvalidArgument(
-                      "Bad: indices[", start + bad_offset, "] == ",
-                      indices_vec(start + bad_offset), " out of range [0, ",
-                      input_flat.dimension(0), ")"));
+                      "Bad: indices[", start + bad_offset,
+                      "] == ", indices_vec(start + bad_offset),
+                      " out of range [0, ", input_flat.dimension(0), ")"));
 
       start = end;
       ++end;

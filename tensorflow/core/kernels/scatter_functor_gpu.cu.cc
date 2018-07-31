@@ -23,15 +23,18 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPECS_OP(T, Index, op) \
-  template struct functor::ScatterFunctor<GPUDevice, T, Index, op>;
+#define DEFINE_GPU_SPECS_OP(T, Index, op)                           \
+  template struct functor::ScatterFunctor<GPUDevice, T, Index, op>; \
+  template struct functor::ScatterScalarFunctor<GPUDevice, T, Index, op>;
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)                       \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);    \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MUL);    \
-  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MIN);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MAX);
 
 #define DEFINE_GPU_SPECS(T)         \
   DEFINE_GPU_SPECS_INDEX(T, int32); \
@@ -39,6 +42,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
+DEFINE_GPU_SPECS_OP(bool, int32, scatter_op::UpdateOp::ASSIGN);
+DEFINE_GPU_SPECS_OP(bool, int64, scatter_op::UpdateOp::ASSIGN);
 // TODO(b/27222123): The following fails to compile due to lack of support for
 // fp16.
 // TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);

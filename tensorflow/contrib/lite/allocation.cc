@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <fcntl.h>
+#ifndef TFLITE_MCU
 #include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -22,14 +24,18 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 
 namespace tflite {
 
+#ifndef TFLITE_MCU
 MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
     : Allocation(error_reporter), mmapped_buffer_(MAP_FAILED) {
@@ -93,7 +99,9 @@ FileCopyAllocation::FileCopyAllocation(const char* filename,
                             filename);
     return;
   }
-  copied_buffer_ = std::move(buffer);
+  // Versions of GCC before 6.2.0 don't support std::move from non-const
+  // char[] to const char[] unique_ptrs.
+  copied_buffer_.reset(const_cast<char const*>(buffer.release()));
 }
 
 FileCopyAllocation::~FileCopyAllocation() {}
@@ -110,6 +118,7 @@ MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
   buffer_ = ptr;
   buffer_size_bytes_ = num_bytes;
 }
+#endif
 
 MemoryAllocation::~MemoryAllocation() {}
 

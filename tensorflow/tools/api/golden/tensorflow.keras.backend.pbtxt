@@ -70,7 +70,7 @@ tf_module {
   }
   member_method {
     name: "categorical_crossentropy"
-    argspec: "args=[\'target\', \'output\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'target\', \'output\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
   }
   member_method {
     name: "clear_session"
@@ -366,7 +366,7 @@ tf_module {
   }
   member_method {
     name: "relu"
-    argspec: "args=[\'x\', \'alpha\', \'max_value\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
+    argspec: "args=[\'x\', \'alpha\', \'max_value\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\', \'0\'], "
   }
   member_method {
     name: "repeat"
@@ -398,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "rnn"
-    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "round"
@@ -450,7 +450,7 @@ tf_module {
   }
   member_method {
     name: "softmax"
-    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
     name: "softplus"
@@ -462,7 +462,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'target\', \'output\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'target\', \'output\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
   }
   member_method {
     name: "spatial_2d_padding"

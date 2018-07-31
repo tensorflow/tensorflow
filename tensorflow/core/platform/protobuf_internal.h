@@ -45,8 +45,8 @@ Status ParseAny(const google::protobuf::Any& any, T* message,
 #ifdef TENSORFLOW_LITE_PROTOS
   if (any.type_url() != strings::StrCat("type.googleapis.com/", type_name)) {
     return errors::FailedPrecondition(
-        "Expected Any type_url for: ", type_name, ". Got: ",
-        string(any.type_url().data(), any.type_url().size()), ".");
+        "Expected Any type_url for: ", type_name,
+        ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
   }
   if (!message->ParseFromString(any.value())) {
     return errors::FailedPrecondition("Failed to unpack: ",

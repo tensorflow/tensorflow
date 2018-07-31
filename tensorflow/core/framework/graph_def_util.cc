@@ -29,14 +29,15 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
 string SummarizeGraphDef(const GraphDef& graph_def) {
   string ret;
-  strings::StrAppend(&ret, "versions = ",
-                     ProtoShortDebugString(graph_def.versions()), ";\n");
+  strings::StrAppend(
+      &ret, "versions = ", ProtoShortDebugString(graph_def.versions()), ";\n");
   for (const NodeDef& node : graph_def.node()) {
     strings::StrAppend(&ret, SummarizeNodeDef(node), ";\n");
   }
@@ -53,6 +54,12 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface& op_registry,
                                  int node_offset) {
+  return AddDefaultAttrsToGraphDef(graph_def, op_registry, node_offset, false);
+}
+
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface& op_registry,
+                                 int node_offset, bool skip_unknown_ops) {
   if (node_offset > graph_def->node_size()) {
     return errors::InvalidArgument(
         "Tried to add default attrs to GraphDef "
@@ -63,8 +70,12 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
     const OpDef* op_def;
-    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(node_def->op(), &op_def));
-    AddDefaultsToNodeDef(*op_def, node_def);
+    Status s = op_registry.LookUpOpDef(node_def->op(), &op_def);
+    if (s.ok()) {
+      AddDefaultsToNodeDef(*op_def, node_def);
+    } else if (!skip_unknown_ops) {
+      return s;
+    }
   }
 
   return Status::OK();
@@ -84,15 +95,15 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
   std::vector<string> to_remove;
   for (const auto& attr : node_def->attr()) {
     // If the attr is not in consumer_op_def and doesn't start with '_'...
-    if (!StringPiece(attr.first).starts_with("_") &&
+    if (!str_util::StartsWith(attr.first, "_") &&
         FindAttr(attr.first, *consumer_op_def) == nullptr) {
       const OpDef::AttrDef* producer_attr_def =
           FindAttr(attr.first, *producer_op_def);
       if (producer_attr_def == nullptr) {
         return errors::InvalidArgument(
-            "Attr '", attr.first, "' missing in producer's OpDef: ",
-            SummarizeOpDef(*producer_op_def), " but found in node: ",
-            SummarizeNodeDef(*node_def));
+            "Attr '", attr.first,
+            "' missing in producer's OpDef: ", SummarizeOpDef(*producer_op_def),
+            " but found in node: ", SummarizeNodeDef(*node_def));
       }
       // ...and it has the same value as the default in producer,
       if (producer_attr_def->has_default_value() &&

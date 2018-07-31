@@ -47,8 +47,8 @@ namespace boosted_trees {
 using boosted_trees::learner::LearnerConfig;
 using boosted_trees::learner::LearningRateConfig;
 using boosted_trees::learner::LearningRateDropoutDrivenConfig;
-using boosted_trees::models::MultipleAdditiveTrees;
 using boosted_trees::models::DecisionTreeEnsembleResource;
+using boosted_trees::models::MultipleAdditiveTrees;
 using boosted_trees::utils::DropoutUtils;
 using boosted_trees::utils::TensorUtils;
 
@@ -59,6 +59,7 @@ const char* kApplyDropoutAttributeName = "apply_dropout";
 const char* kApplyAveragingAttributeName = "apply_averaging";
 const char* kDropoutInfoOutputTensorName = "drop_out_tree_indices_weights";
 const char* kPredictionsTensorName = "predictions";
+const char* kLeafIndexTensorName = "leaf_index";
 
 void CalculateTreesToInclude(
     const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
@@ -170,15 +171,22 @@ class GradientTreesPredictionOp : public OpKernel {
     core::ScopedUnref unref_me(ensemble_resource);
     if (use_locking_) {
       tf_shared_lock l(*ensemble_resource->get_mutex());
-      DoCompute(context, ensemble_resource);
+      DoCompute(context, ensemble_resource,
+                /*return_output_leaf_index=*/false);
     } else {
-      DoCompute(context, ensemble_resource);
+      DoCompute(context, ensemble_resource,
+                /*return_output_leaf_index=*/false);
     }
   }
 
- private:
-  void DoCompute(OpKernelContext* context,
-                 DecisionTreeEnsembleResource* ensemble_resource) {
+ protected:
+  // return_output_leaf_index is a boolean variable indicating whether to output
+  // leaf index in prediction. Though this class invokes only with this param
+  // value as false, the subclass GradientTreesPredictionVerboseOp will invoke
+  // with the true value.
+  virtual void DoCompute(OpKernelContext* context,
+                         DecisionTreeEnsembleResource* ensemble_resource,
+                         const bool return_output_leaf_index) {
     // Read dense float features list;
     OpInputList dense_float_features_list;
     OP_REQUIRES_OK(context, TensorUtils::ReadDenseFloatFeatures(
@@ -267,6 +275,14 @@ class GradientTreesPredictionOp : public OpKernel {
                                           &output_predictions_t));
     auto output_predictions = output_predictions_t->matrix<float>();
 
+    // Allocate output leaf index matrix.
+    Tensor* output_leaf_index_t = nullptr;
+    if (return_output_leaf_index) {
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  kLeafIndexTensorName,
+                                  {batch_size, ensemble_resource->num_trees()},
+                                  &output_leaf_index_t));
+    }
     // Run predictor.
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
@@ -288,11 +304,13 @@ class GradientTreesPredictionOp : public OpKernel {
             i, weight * (num_ensembles - i + start_averaging) / num_ensembles);
       }
       MultipleAdditiveTrees::Predict(adjusted, trees_to_include, batch_features,
-                                     worker_threads, output_predictions);
+                                     worker_threads, output_predictions,
+                                     output_leaf_index_t);
     } else {
       MultipleAdditiveTrees::Predict(
           ensemble_resource->decision_tree_ensemble(), trees_to_include,
-          batch_features, worker_threads, output_predictions);
+          batch_features, worker_threads, output_predictions,
+          output_leaf_index_t);
     }
 
     // Output dropped trees and original weights.
@@ -302,7 +320,6 @@ class GradientTreesPredictionOp : public OpKernel {
                                 {2, static_cast<int64>(dropped_trees.size())},
                                 &output_dropout_info_t));
     auto output_dropout_info = output_dropout_info_t->matrix<float>();
-
     for (int32 i = 0; i < dropped_trees.size(); ++i) {
       output_dropout_info(0, i) = dropped_trees[i];
       output_dropout_info(1, i) = original_weights[i];
@@ -325,6 +342,27 @@ class GradientTreesPredictionOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("GradientTreesPrediction").Device(DEVICE_CPU),
                         GradientTreesPredictionOp);
+
+// GradientTreesPredictionVerboseOp is derived from GradientTreesPredictionOp
+// and have an additional output of tensor of rank 2 containing leaf ids for
+// each tree where an instance ended up with.
+class GradientTreesPredictionVerboseOp : public GradientTreesPredictionOp {
+ public:
+  explicit GradientTreesPredictionVerboseOp(OpKernelConstruction* const context)
+      : GradientTreesPredictionOp(context) {}
+
+ protected:
+  void DoCompute(OpKernelContext* context,
+                 DecisionTreeEnsembleResource* ensemble_resource,
+                 bool return_output_leaf_index) override {
+    GradientTreesPredictionOp::DoCompute(context, ensemble_resource,
+                                         /*return_output_leaf_index=*/true);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("GradientTreesPredictionVerbose").Device(DEVICE_CPU),
+    GradientTreesPredictionVerboseOp);
 
 class GradientTreesPartitionExamplesOp : public OpKernel {
  public:

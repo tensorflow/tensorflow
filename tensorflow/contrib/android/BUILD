@@ -1,6 +1,8 @@
 # Description:
 #   JNI-based Java inference interface for TensorFlow.
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -38,20 +40,6 @@ cc_library(
     alwayslink = 1,
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 # JAR with Java bindings to TF.
 android_library(
     name = "android_tensorflow_inference_java",
@@ -86,7 +74,7 @@ cc_binary(
         "-s",
         "-Wl,--gc-sections",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
-        LINKER_SCRIPT,
+        "$(location {})".format(LINKER_SCRIPT),
     ]),
     linkshared = 1,
     linkstatic = 1,

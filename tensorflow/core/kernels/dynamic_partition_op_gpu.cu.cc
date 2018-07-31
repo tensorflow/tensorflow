@@ -79,9 +79,9 @@ template <typename T>
 void RangeInit(const GPUDevice& d, const T start, const T delta,
                const int32 size, typename TTypes<T>::Flat out) {
   CudaLaunchConfig config = GetCudaLaunchConfig(size, d);
-  RangeInitKernel<
-      T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      start, delta, size, out.data());
+  RangeInitKernel<T>
+      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          start, delta, size, out.data());
 }
 
 // Given *num_runs pairs (key, value), this function moves the value
@@ -103,11 +103,10 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
   CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
-  GatherOpKernel<
-      T, int32,
-      true><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      params, indices, out, gather_dim_size, indices_size, slice_size,
-      out_size);
+  GatherOpKernel<T, int32, true>
+      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          params, indices, out, gather_dim_size, indices_size, slice_size,
+          out_size);
 }
 
 struct IdentityOp {
@@ -231,10 +230,10 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
 
     OP_REQUIRES_ASYNC(
         c, TensorShapeUtils::StartsWith(data.shape(), partitions.shape()),
-        errors::InvalidArgument("data.shape must start with partitions.shape, ",
-                                "got data.shape = ", data.shape().DebugString(),
-                                ", partitions.shape = ",
-                                partitions.shape().DebugString()),
+        errors::InvalidArgument(
+            "data.shape must start with partitions.shape, ",
+            "got data.shape = ", data.shape().DebugString(),
+            ", partitions.shape = ", partitions.shape().DebugString()),
         done);
 
     Tensor partition_count;
@@ -245,8 +244,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       AllocatorAttributes alloc_attr;
       alloc_attr.set_on_host(true);
       OP_REQUIRES_OK_ASYNC(
-          c, c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
-                              &partition_count, alloc_attr),
+          c,
+          c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
+                           &partition_count, alloc_attr),
           done);
       auto e_part_count = partition_count.flat<int32>();
       for (int i = 0; i < num_partitions_; i++) e_part_count(i) = 0;
@@ -259,8 +259,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
 
     // Prepare for counting.
     OP_REQUIRES_OK_ASYNC(
-        c, c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
-                            &partition_count),
+        c,
+        c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
+                         &partition_count),
         done);
     Tensor indices_out;
     // Count how many times each partition index occurs.
@@ -280,11 +281,12 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     alloc_attr.set_on_host(true);
     alloc_attr.set_gpu_compatible(true);
     OP_REQUIRES_OK_ASYNC(
-        c, c->allocate_temp(partition_count.dtype(), partition_count.shape(),
-                            &cpu_tensor, alloc_attr),
+        c,
+        c->allocate_temp(partition_count.dtype(), partition_count.shape(),
+                         &cpu_tensor, alloc_attr),
         done);
-    perftools::gputools::DeviceMemoryBase wrapped(
-        partition_count.flat<int32>().data(), num_partitions_ * sizeof(int32));
+    se::DeviceMemoryBase wrapped(partition_count.flat<int32>().data(),
+                                 num_partitions_ * sizeof(int32));
     const bool status =
         stream
             ->ThenMemcpy(cpu_tensor.flat<int32>().data(), wrapped,
@@ -340,9 +342,10 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32) * 8, cu_stream);
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
-        c, c->allocate_temp(
-               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
-               &cub_temp_storage),
+        c,
+        c->allocate_temp(DT_INT8,
+                         TensorShape({static_cast<int64>(temp_storage_bytes)}),
+                         &cub_temp_storage),
         done);
     // Radix-sort the partition information.
     cub::DeviceRadixSort::SortPairs(
@@ -376,8 +379,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     zero_functor(device, partition_count->flat<int32>());
     // Allocate memory for aggregates_out.
     OP_REQUIRES_OK_ASYNC(
-        c, c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
-                            &aggregates_out),
+        c,
+        c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
+                         &aggregates_out),
         done);
     // Obtain the pointers to inner buffers.
     int32* keys_in_ptr = partitions_out.flat<int32>().data();
@@ -408,9 +412,10 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                                    num_runs_ptr, reduction_op, N, cu_stream);
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
-        c, c->allocate_temp(
-               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
-               &cub_temp_storage),
+        c,
+        c->allocate_temp(DT_INT8,
+                         TensorShape({static_cast<int64>(temp_storage_bytes)}),
+                         &cub_temp_storage),
         done);
     // Run reduce-by-key. The effect is that we count how many times
     // each index appears in partitions. The distinct indices are stored

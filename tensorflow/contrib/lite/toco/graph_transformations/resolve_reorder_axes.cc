@@ -51,25 +51,17 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
 }
 
 bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
-  auto reorder_it = model->operators.begin() + op_index;
-  auto* reorder_op = static_cast<ReorderAxesOperator*>(reorder_it->get());
-  if (reorder_op->type != OperatorType::kReorderAxes) {
+  auto it = model->operators.begin() + op_index;
+  auto* op = it->get();
+  if (op->type != OperatorType::kReorderAxes) {
     return false;
   }
+  auto* reorder_op = static_cast<ReorderAxesOperator*>(op);
   const auto& input_array_name = reorder_op->inputs[0];
   const auto& output_array_name = reorder_op->outputs[0];
   auto& input_array = model->GetArray(input_array_name);
   auto& output_array = model->GetArray(output_array_name);
-  string constant_input_array_name = input_array_name;
   if (!input_array.buffer) {
-    const auto* op_producing_input = GetOpWithOutput(*model, input_array_name);
-    if (op_producing_input &&
-        op_producing_input->type == OperatorType::kFakeQuant) {
-      constant_input_array_name = op_producing_input->inputs[0];
-    }
-  }
-  auto& constant_input_array = model->GetArray(constant_input_array_name);
-  if (!constant_input_array.buffer) {
     return false;
   }
   // Yield until output dims have been resolved.
@@ -77,14 +69,14 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
     return false;
   }
   // Reorder the input array dims and buffer data
-  if (constant_input_array.buffer->type == ArrayDataType::kFloat) {
-    ReorderAxes<float, ArrayDataType::kFloat>(
-        reorder_op->input_axes_order, reorder_op->output_axes_order,
-        &constant_input_array, &output_array);
-  } else if (constant_input_array.buffer->type == ArrayDataType::kInt32) {
-    ReorderAxes<uint8, ArrayDataType::kUint8>(
-        reorder_op->input_axes_order, reorder_op->output_axes_order,
-        &constant_input_array, &output_array);
+  if (input_array.buffer->type == ArrayDataType::kFloat) {
+    ReorderAxes<float, ArrayDataType::kFloat>(reorder_op->input_axes_order,
+                                              reorder_op->output_axes_order,
+                                              &input_array, &output_array);
+  } else if (input_array.buffer->type == ArrayDataType::kInt32) {
+    ReorderAxes<uint8, ArrayDataType::kUint8>(reorder_op->input_axes_order,
+                                              reorder_op->output_axes_order,
+                                              &input_array, &output_array);
   } else {
     LOG(FATAL) << "Cannot ReorderAxes unless input buffer is float or uint8.";
   }
@@ -104,7 +96,7 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
 
   // Remove the op and output array.
   model->EraseArray(output_array_name);
-  model->operators.erase(reorder_it);
+  model->operators.erase(it);
   return true;
 }
 

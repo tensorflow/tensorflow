@@ -80,7 +80,7 @@ void SYCLAllocator::ClearStats() override {
 
 size_t SYCLAllocator::RequestedSize(void* ptr) {
   mutex_lock lock(mu_);
-  if(!sycl_device_) {
+  if (!sycl_device_) {
     return 0;
   }
   const auto& buffer = sycl_device_->get_sycl_buffer(ptr);

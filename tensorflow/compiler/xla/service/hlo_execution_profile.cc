@@ -40,87 +40,79 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
   }
 }
 
-std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
+std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis) {
-  using HloComputationInfo = HloProfilePrinter::HloComputationInfo;
-  using HloInstructionInfo = HloProfilePrinter::HloInstructionInfo;
+  using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
+  using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
-  HloComputationInfo* computation_infos =
-      new HloComputationInfo[hlo_profile_index_map.computation_count()];
+  size_t profile_counters_size = hlo_profile_index_map.total_count();
 
-  // There are two "indices" in play here.  The first one is the index of the
-  // HloComputationInfo or HloInstructionInfo in the array that contains said
-  // HloComputationInfo or HloInstructionInfo.  The second index is the index of
-  // the HloComputationInfo or HloInstructionInfo in the profile counters array,
-  // as decided by hlo_profile_index_map.  The latter index is always referred
-  // to as "profile_index".
+  std::unique_ptr<HloProfilePrinterData> profile_printer_data =
+      MakeUnique<HloProfilePrinterData>();
+  profile_printer_data->set_profile_counters_size(profile_counters_size);
+  profile_printer_data->mutable_computation_infos()->Reserve(
+      hlo_profile_index_map.computation_count());
 
-  size_t computation_index_in_static_data = 0;
-  size_t max_profile_index = hlo_profile_index_map.total_count();
-  for (const auto& pair : hlo_profile_index_map.computation_to_profile_idx()) {
-    CHECK_LT(pair.second, max_profile_index);
+  const auto& computation_to_profile_idx_map =
+      hlo_profile_index_map.computation_to_profile_idx();
+
+  // computation_to_profile_idx_map's order is not deterministic so create a
+  // deterministic computation_and_profile_idx_list so that we end up with a
+  // deterministic HloProfilePrinterData protobuf.
+
+  std::vector<std::pair<const HloComputation*, int64>>
+      computation_and_profile_idx_list(computation_to_profile_idx_map.begin(),
+                                       computation_to_profile_idx_map.end());
+
+  // The profile indices were computed deterministically in
+  // HloProfileIndexMap::HloProfileIndexMap.
+  c_sort(computation_and_profile_idx_list,
+         [](const std::pair<const HloComputation*, int64>& left,
+            const std::pair<const HloComputation*, int64>& right) {
+           return left.second < right.second;
+         });
+
+  for (const auto& pair : computation_and_profile_idx_list) {
+    CHECK_LT(pair.second, profile_counters_size);
     const HloComputation* computation = pair.first;
-    size_t current_computation_index = computation_index_in_static_data++;
     HloComputationInfo* computation_info =
-        &computation_infos[current_computation_index];
+        profile_printer_data->add_computation_infos();
 
-    computation_info->name = strdup(computation->name().c_str());
-    computation_info->profile_index = pair.second;
-    computation_info->instructions =
-        new HloInstructionInfo[computation->instruction_count()];
-    computation_info->instructions_size = computation->instruction_count();
+    computation_info->set_name(computation->name());
+    computation_info->set_profile_index(pair.second);
+    computation_info->mutable_instruction_infos()->Reserve(
+        computation->instruction_count());
 
-    size_t instruction_index_in_static_data = 0;
     for (const HloInstruction* hlo : computation->instructions()) {
-      HloProfilePrinter::HloInstructionInfo* instruction_info =
-          &computation_info->instructions[instruction_index_in_static_data++];
-      instruction_info->long_name = strdup(hlo->ToString().c_str());
-      instruction_info->short_name = strdup(
-          hlo->ToString(HloPrintOptions().set_compact_operands(true)).c_str());
-      instruction_info->category = strdup(hlo->ToCategory().c_str());
-      instruction_info->flop_count = cost_analysis.flop_count(*hlo);
-      instruction_info->transcendental_count =
-          cost_analysis.transcendental_count(*hlo);
-      instruction_info->bytes_accessed = cost_analysis.bytes_accessed(*hlo);
-      instruction_info->optimal_seconds = cost_analysis.optimal_seconds(*hlo);
-      instruction_info->profile_index =
-          hlo_profile_index_map.GetProfileIndexFor(*hlo);
-      CHECK_LT(instruction_info->profile_index, max_profile_index);
+      HloInstructionInfo* instruction_info =
+          computation_info->add_instruction_infos();
+      instruction_info->set_long_name(hlo->ToString());
+      instruction_info->set_short_name(
+          hlo->ToString(HloPrintOptions().set_compact_operands(true)));
+      instruction_info->set_category(hlo->ToCategory());
+      instruction_info->set_flop_count(cost_analysis.flop_count(*hlo));
+      instruction_info->set_transcendental_count(
+          cost_analysis.transcendental_count(*hlo));
+      instruction_info->set_bytes_accessed(cost_analysis.bytes_accessed(*hlo));
+      instruction_info->set_optimal_seconds(
+          cost_analysis.optimal_seconds(*hlo));
+      instruction_info->set_profile_index(
+          hlo_profile_index_map.GetProfileIndexFor(*hlo));
     }
   }
 
-  auto deleter = [](HloProfilePrinter::HloComputationInfo* computation_infos,
-                    int64 computation_infos_size) {
-    for (int64 i = 0; i < computation_infos_size; i++) {
-      HloInstructionInfo* instruction_infos = computation_infos[i].instructions;
-      for (int64 j = 0; j < computation_infos[i].instructions_size; j++) {
-        // We can't make instruction_infos[j].long_name etc. non-const pointers
-        // since they may point into static storage, so we have a const_cast
-        // here.
-        free(const_cast<char*>(instruction_infos[j].long_name));
-        free(const_cast<char*>(instruction_infos[j].short_name));
-        free(const_cast<char*>(instruction_infos[j].category));
-      }
-      delete[] instruction_infos;
-      free(const_cast<char*>(computation_infos[i].name));
-    }
-    delete[] computation_infos;
-  };
-
-  return MakeUnique<HloProfilePrinter>(
-      computation_infos, hlo_profile_index_map.computation_count(),
-      /*profile_counters_size=*/max_profile_index, deleter);
+  return profile_printer_data;
 }
 
 HloExecutionProfile::HloExecutionProfile(
-    const HloProfilePrinter* hlo_profile_printer,
+    const HloProfilePrinterData* hlo_profile_printer_data,
     const HloProfileIndexMap* hlo_profile_index_map)
-    : hlo_profile_printer_(*hlo_profile_printer),
+    : hlo_profile_printer_data_(*hlo_profile_printer_data),
       hlo_profile_index_map_(*hlo_profile_index_map),
       profile_counters_(
-          /*count*/ hlo_profile_index_map_.total_count(),
-          /*value*/ 0) {}
+          /*count=*/hlo_profile_index_map_.total_count(),
+          /*value=*/0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {

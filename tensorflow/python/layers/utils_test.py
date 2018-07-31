@@ -87,5 +87,6 @@ class ConvUtilsTest(test.TestCase):
     self.assertEqual(3, utils.deconv_output_length(4, 2, 'full', 1))
     self.assertEqual(6, utils.deconv_output_length(4, 2, 'full', 2))
 
+
 if __name__ == '__main__':
   test.main()

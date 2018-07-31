@@ -23,6 +23,31 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+REGISTER_OP("RegexReplace")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Input("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
+REGISTER_OP("RegexFullMatch")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
@@ -53,7 +78,7 @@ REGISTER_OP("ReduceJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int32, int64, complex64, float, double, bool, int8}")
+    .Attr("T: {int8, int16, int32, int64, complex64, float, double, bool}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -109,6 +134,29 @@ REGISTER_OP("StringSplit")
       return Status::OK();
     });
 
+REGISTER_OP("StringSplitV2")
+    .Input("input: string")
+    .Input("sep: string")
+    .Output("indices: int64")
+    .Output("values: string")
+    .Output("shape: int64")
+    .Attr("maxsplit: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")
@@ -137,9 +185,9 @@ REGISTER_OP("Substr")
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
         DimensionHandle len_dim = c->Dim(len_shape, i);
         if (c->Value(pos_dim) != c->Value(len_dim)) {
-          return errors::InvalidArgument("pos and len shapes must match: ",
-                                         c->DebugString(pos_shape), " vs. ",
-                                         c->DebugString(len_shape));
+          return errors::InvalidArgument(
+              "pos and len shapes must match: ", c->DebugString(pos_shape),
+              " vs. ", c->DebugString(len_shape));
         }
       }
       // c->input(0) is the ShapeHandle to input strings

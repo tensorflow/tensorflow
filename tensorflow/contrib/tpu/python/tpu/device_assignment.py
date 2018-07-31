@@ -87,6 +87,8 @@ class DeviceAssignment(object):
                                            core_assignment.shape))
 
     self._core_assignment = core_assignment
+    self._task_and_cores_to_replicas = self._compute_task_and_cores_to_replicas(
+        self._core_assignment, self._topology_tasks)
 
   def _invert_topology(self, topology):
     """Inverts a [task,device,axis] topology to [x,y,z] -> task/device maps."""
@@ -99,6 +101,34 @@ class DeviceAssignment(object):
         tasks[x, y, z] = task
         devices[x, y, z] = device
     return tasks, devices
+
+  def _compute_task_and_cores_to_replicas(self, core_assignment,
+                                          topology_tasks):
+    """Computes a nested dict which maps task and logical core to replicas."""
+    task_and_cores_to_replicas = {}
+    for replica in xrange(core_assignment.shape[0]):
+      for dx in xrange(core_assignment.shape[1]):
+        for dy in xrange(core_assignment.shape[2]):
+          for dz in xrange(core_assignment.shape[3]):
+            x, y, z = core_assignment[replica, dx, dy, dz, :]
+            task_id = topology_tasks[x, y, z]
+            if task_id not in task_and_cores_to_replicas:
+              task_and_cores_to_replicas[task_id] = {}
+            logical_core = (dx, dy, dz)
+            if logical_core not in task_and_cores_to_replicas[task_id]:
+              task_and_cores_to_replicas[task_id][logical_core] = set()
+
+            task_and_cores_to_replicas[task_id][logical_core].add(replica)
+
+    task_to_sorted_replica_id = {}
+
+    for task, core_to_replicas in task_and_cores_to_replicas.items():
+      core_to_sorted_replicas = {}
+      for core, replicas in core_to_replicas.items():
+        core_to_sorted_replicas[core] = sorted(replicas)
+
+      task_to_sorted_replica_id[task] = core_to_sorted_replicas
+    return task_to_sorted_replica_id
 
   @property
   def topology(self):
@@ -118,6 +148,11 @@ class DeviceAssignment(object):
       The computation shape.
     """
     return self._computation_shape
+
+  @property
+  def num_cores_per_replica(self):
+    """The number of cores per replica."""
+    return np.prod(self.computation_shape)
 
   @property
   def num_replicas(self):
@@ -147,6 +182,26 @@ class DeviceAssignment(object):
 
     logical_offset = tuple([replica] + logical_core.tolist() + [slice(3)])
     return tuple(self.core_assignment[logical_offset])
+
+  def lookup_replicas(self, task_id, logical_core):
+    """Lookup replica ids by task number and logical core.
+
+    Args:
+      task_id: TensorFlow task number.
+      logical_core: A tuple of three integers which represents a logical core.
+    Returns:
+      A sorted list of the replicas that are attached to that task and
+      logical_core.
+    Raises:
+      ValueError: If no replica exists in the task which contains the logical
+      core.
+    """
+    try:
+      return self._task_and_cores_to_replicas[task_id][logical_core]
+    except KeyError:
+      raise ValueError(
+          "Can not find any replica in task: {} contains logical_core: {} ".
+          format(task_id, logical_core))
 
   def tpu_ordinal(self, replica=0, logical_core=None):
     """Returns the ordinal of the TPU device assigned to a logical core."""

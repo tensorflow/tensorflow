@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-# Bijectors must be directly imported because `remove_undocumented` prevents
-# individual file imports.
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -197,8 +195,7 @@ class TransformedDistribution(distribution_lib.Distribution):
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Affine(
       shift=-1.,
-      scale_identity_multiplier=2.,
-      event_ndims=0),
+      scale_identity_multiplier=2.)
     name="NormalTransformedDistribution")
   ```
 
@@ -255,10 +252,10 @@ class TransformedDistribution(distribution_lib.Distribution):
       name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     name = name or (("" if bijector is None else bijector.name) +
                     distribution.name)
-    with ops.name_scope(name, values=[event_shape, batch_shape]):
+    with ops.name_scope(name, values=[event_shape, batch_shape]) as name:
       # For convenience we define some handy constants.
       self._zero = constant_op.constant(0, dtype=dtypes.int32, name="zero")
       self._empty = constant_op.constant([], dtype=dtypes.int32, name="empty")
@@ -419,48 +416,55 @@ class TransformedDistribution(distribution_lib.Distribution):
     # For caching to work, it is imperative that the bijector is the first to
     # modify the input.
     x = self.bijector.inverse(y)
-    ildj = self.bijector.inverse_log_det_jacobian(y)
+    event_ndims = self._maybe_get_static_event_ndims()
+
+    ildj = self.bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims)
     if self.bijector._is_injective:  # pylint: disable=protected-access
-      return self._finish_log_prob_for_one_fiber(y, x, ildj)
+      return self._finish_log_prob_for_one_fiber(y, x, ildj, event_ndims)
 
     lp_on_fibers = [
-        self._finish_log_prob_for_one_fiber(y, x_i, ildj_i)
+        self._finish_log_prob_for_one_fiber(y, x_i, ildj_i, event_ndims)
         for x_i, ildj_i in zip(x, ildj)]
     return math_ops.reduce_logsumexp(array_ops.stack(lp_on_fibers), axis=0)
 
-  def _finish_log_prob_for_one_fiber(self, y, x, ildj):
+  def _finish_log_prob_for_one_fiber(self, y, x, ildj, event_ndims):
     """Finish computation of log_prob on one element of the inverse image."""
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x)
     if self._is_maybe_event_override:
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
     log_prob += math_ops.cast(ildj, log_prob.dtype)
-    if self._is_maybe_event_override:
-      log_prob.set_shape(array_ops.broadcast_static_shape(
-          y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
+    if self._is_maybe_event_override and isinstance(event_ndims, int):
+      log_prob.set_shape(
+          array_ops.broadcast_static_shape(
+              y.get_shape().with_rank_at_least(1)[:-event_ndims],
+              self.batch_shape))
     return log_prob
 
   def _prob(self, y):
     x = self.bijector.inverse(y)
-    ildj = self.bijector.inverse_log_det_jacobian(y)
+    event_ndims = self._maybe_get_static_event_ndims()
+    ildj = self.bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims)
     if self.bijector._is_injective:  # pylint: disable=protected-access
-      return self._finish_prob_for_one_fiber(y, x, ildj)
+      return self._finish_prob_for_one_fiber(y, x, ildj, event_ndims)
 
     prob_on_fibers = [
-        self._finish_prob_for_one_fiber(y, x_i, ildj_i)
+        self._finish_prob_for_one_fiber(y, x_i, ildj_i, event_ndims)
         for x_i, ildj_i in zip(x, ildj)]
     return sum(prob_on_fibers)
 
-  def _finish_prob_for_one_fiber(self, y, x, ildj):
+  def _finish_prob_for_one_fiber(self, y, x, ildj, event_ndims):
     """Finish computation of prob on one element of the inverse image."""
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x)
     if self._is_maybe_event_override:
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
     prob *= math_ops.exp(math_ops.cast(ildj, prob.dtype))
-    if self._is_maybe_event_override:
-      prob.set_shape(array_ops.broadcast_static_shape(
-          y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
+    if self._is_maybe_event_override and isinstance(event_ndims, int):
+      prob.set_shape(
+          array_ops.broadcast_static_shape(
+              y.get_shape().with_rank_at_least(1)[:-event_ndims],
+              self.batch_shape))
     return prob
 
   def _log_cdf(self, y):
@@ -545,10 +549,17 @@ class TransformedDistribution(distribution_lib.Distribution):
           _ones_like(self.distribution.batch_shape_tensor())
       ], 0)
       entropy = array_ops.tile(entropy, multiples)
-    dummy = array_ops.zeros([], self.dtype)
-    entropy -= math_ops.cast(
-        self.bijector.inverse_log_det_jacobian(dummy),
-        entropy.dtype)
+    dummy = array_ops.zeros(
+        shape=array_ops.concat(
+            [self.batch_shape_tensor(), self.event_shape_tensor()],
+            0),
+        dtype=self.dtype)
+    event_ndims = (self.event_shape.ndims if self.event_shape.ndims is not None
+                   else array_ops.size(self.event_shape_tensor()))
+    ildj = self.bijector.inverse_log_det_jacobian(
+        dummy, event_ndims=event_ndims)
+
+    entropy -= math_ops.cast(ildj, entropy.dtype)
     entropy.set_shape(self.batch_shape)
     return entropy
 
@@ -610,3 +621,15 @@ class TransformedDistribution(distribution_lib.Distribution):
     n = (ndims - self._rotate_ndims) if rotate_right else self._rotate_ndims
     return array_ops.transpose(
         x, _concat_vectors(math_ops.range(n, ndims), math_ops.range(0, n)))
+
+  def _maybe_get_static_event_ndims(self):
+    if self.event_shape.ndims is not None:
+      return self.event_shape.ndims
+
+    event_ndims = array_ops.size(self.event_shape_tensor())
+    event_ndims_ = distribution_util.maybe_get_static_value(event_ndims)
+
+    if event_ndims_ is not None:
+      return event_ndims_
+
+    return event_ndims

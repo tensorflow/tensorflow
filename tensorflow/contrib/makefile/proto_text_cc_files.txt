@@ -12,11 +12,13 @@ tensorflow/core/platform/posix/env.cc
 tensorflow/core/platform/posix/load_library.cc
 tensorflow/core/platform/posix/env_time.cc
 tensorflow/core/platform/file_system.cc
+tensorflow/core/platform/file_system_helper.cc
 tensorflow/core/platform/env.cc
 tensorflow/core/platform/env_time.cc
 tensorflow/core/platform/setround.cc
 tensorflow/core/platform/denormal.cc
 tensorflow/core/platform/default/tracing.cc
+tensorflow/core/platform/default/mutex.cc
 tensorflow/core/platform/default/logging.cc
 tensorflow/core/platform/cpu_info.cc
 tensorflow/core/lib/wav/wav_io.cc
@@ -33,6 +35,7 @@ tensorflow/core/lib/random/random.cc
 tensorflow/core/lib/random/distribution_sampler.cc
 tensorflow/core/lib/io/zlib_outputbuffer.cc
 tensorflow/core/lib/io/zlib_inputstream.cc
+tensorflow/core/lib/io/zlib_compression_options.cc
 tensorflow/core/lib/io/two_level_iterator.cc
 tensorflow/core/lib/io/table_builder.cc
 tensorflow/core/lib/io/table.cc

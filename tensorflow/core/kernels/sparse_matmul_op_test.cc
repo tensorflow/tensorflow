@@ -284,11 +284,11 @@ class SparseMatmulOpTest : public ::testing::Test {
       uint16_t* data3_bfloat16_p =
           reinterpret_cast<uint16_t*>(data3_bfloat16) + i;
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-            data3_p[1] = 0;
-            data3_bfloat16_p[0] = data3_p[0];
+      data3_p[1] = 0;
+      data3_bfloat16_p[0] = data3_p[0];
 #else
-            data3_p[0] = 0;
-            data3_bfloat16_p[0] = data3_p[1];
+      data3_p[0] = 0;
+      data3_bfloat16_p[0] = data3_p[1];
 #endif
     }
   }

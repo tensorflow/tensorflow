@@ -24,45 +24,37 @@ limitations under the License.
 namespace xla {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
-    perftools::gputools::Platform* platform,
-    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-        stream_executors)
+    const se::Platform* platform,
+    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors)
     : DeviceMemoryAllocator(platform),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
-StatusOr<perftools::gputools::DeviceMemoryBase>
-StreamExecutorMemoryAllocator::Allocate(int device_ordinal, uint64 size,
-                                        bool retry_on_failure) {
-  TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * stream_executor,
+StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
+    int device_ordinal, uint64 size, bool retry_on_failure) {
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                       GetStreamExecutor(device_ordinal));
-  perftools::gputools::DeviceMemoryBase result =
-      stream_executor->AllocateArray<uint8>(size);
+  se::DeviceMemoryBase result = stream_executor->AllocateArray<uint8>(size);
   if (size > 0 && result == nullptr) {
     return ResourceExhausted(
         "Failed to allocate request for %s (%lluB) on device ordinal %d",
         tensorflow::strings::HumanReadableNumBytes(size).c_str(), size,
         device_ordinal);
   }
-  return result;
+  return OwningDeviceMemory(result, device_ordinal, this);
 }
 
-tensorflow::Status StreamExecutorMemoryAllocator::Deallocate(
-    int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) {
-  if (!mem->is_null()) {
-    TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * stream_executor,
+Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
+                                                 se::DeviceMemoryBase mem) {
+  if (!mem.is_null()) {
+    TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                         GetStreamExecutor(device_ordinal));
-    // We make a local copy of 'mem' so the original is not zeroed out by the
-    // Deallocate() call below. This gives us a better chance of
-    // catching double-free bugs, since Deallocate silently succeeds for null
-    // values.
-    perftools::gputools::DeviceMemoryBase mem_copy(*mem);
-    stream_executor->Deallocate(&mem_copy);
+    stream_executor->Deallocate(&mem);
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-StatusOr<perftools::gputools::StreamExecutor*>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
+StatusOr<se::StreamExecutor*> StreamExecutorMemoryAllocator::GetStreamExecutor(
+    int device_ordinal) {
   if (device_ordinal < 0) {
     return InvalidArgument("device ordinal value (%d) must be non-negative",
                            device_ordinal);

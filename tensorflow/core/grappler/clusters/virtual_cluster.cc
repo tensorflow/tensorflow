@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
@@ -37,6 +38,17 @@ VirtualCluster::VirtualCluster(
     : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
   devices_ = devices;
 }
+
+VirtualCluster::VirtualCluster(const DeviceSet* device_set)
+    : VirtualCluster(std::unordered_map<string, DeviceProperties>()) {
+  device_set_ = device_set;
+  for (const auto& device : device_set_->devices()) {
+    DeviceProperties props = GetDeviceInfo(device->parsed_name());
+    if (props.type() == "UNKNOWN") continue;
+    devices_[device->name()] = props;
+  }
+}
+
 VirtualCluster::~VirtualCluster() {}
 
 Status VirtualCluster::Provision() { return Status::OK(); }
@@ -66,6 +78,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   }
 
   Costs node_costs;
+  int node_id = 0;
   do {
     OpContext op_context = scheduler.GetCurrNode();
     node_costs = node_estimator_->PredictCosts(op_context);
@@ -73,6 +86,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
       CostGraphDef::Node* cost_node =
           metadata->mutable_cost_graph()->add_node();
       const string& op_name = op_context.name;
+      cost_node->set_id(node_id++);
       cost_node->set_name(op_name);
       cost_node->set_device(op_context.device_name);
       cost_node->set_compute_cost(

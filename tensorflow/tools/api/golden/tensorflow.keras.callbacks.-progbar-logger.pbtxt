@@ -1,11 +1,11 @@
 path: "tensorflow.keras.callbacks.ProgbarLogger"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.callbacks.ProgbarLogger\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.callbacks.Callback\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.ProgbarLogger\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.Callback\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'count_mode\'], varargs=None, keywords=None, defaults=[\'samples\'], "
+    argspec: "args=[\'self\', \'count_mode\', \'stateful_metrics\'], varargs=None, keywords=None, defaults=[\'samples\', \'None\'], "
   }
   member_method {
     name: "on_batch_begin"

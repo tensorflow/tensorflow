@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Dataset utilities and synthetic/reference datasets (deprecated).
 
-"""Dataset utilities and synthetic/reference datasets."""
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,6 +32,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.datasets import mnist
 from tensorflow.contrib.learn.python.learn.datasets import synthetic
 from tensorflow.contrib.learn.python.learn.datasets import text_datasets
+from tensorflow.python.util.deprecation import deprecated
 
 # Export load_iris and load_boston.
 load_iris = base.load_iris
@@ -46,11 +51,13 @@ DATASETS = {
 
 # List of all synthetic datasets
 SYNTHETIC = {
-  # All of these will return ['data', 'target'] -> base.Dataset
-  'circles': synthetic.circles,
-  'spirals': synthetic.spirals
+    # All of these will return ['data', 'target'] -> base.Dataset
+    'circles': synthetic.circles,
+    'spirals': synthetic.spirals
 }
 
+
+@deprecated(None, 'Please use tf.data.')
 def load_dataset(name, size='small', test_with_fake_data=False):
   """Loads dataset by name.
 
@@ -73,8 +80,9 @@ def load_dataset(name, size='small', test_with_fake_data=False):
     return DATASETS[name]()
 
 
+@deprecated(None, 'Please use tf.data.')
 def make_dataset(name, n_samples=100, noise=None, seed=42, *args, **kwargs):
-  """Creates binary synthetic datasets
+  """Creates binary synthetic datasets.
 
   Args:
     name: str, name of the dataset to generate
@@ -83,23 +91,28 @@ def make_dataset(name, n_samples=100, noise=None, seed=42, *args, **kwargs):
     seed: int or None, seed for noise
 
   Returns:
-    Shuffled features and labels for given synthetic dataset of type `base.Dataset`
+    Shuffled features and labels for given synthetic dataset of type
+    `base.Dataset`
 
   Raises:
     ValueError: Raised if `name` not found
 
   Note:
-    - This is a generic synthetic data generator - individual generators might have more parameters!
+    - This is a generic synthetic data generator - individual generators might
+    have more parameters!
       See documentation for individual parameters
-    - Note that the `noise` parameter uses `numpy.random.normal` and depends on `numpy`'s seed
+    - Note that the `noise` parameter uses `numpy.random.normal` and depends on
+    `numpy`'s seed
 
   TODO:
     - Support multiclass datasets
-    - Need shuffling routine. Currently synthetic datasets are reshuffled to avoid train/test correlation,
+    - Need shuffling routine. Currently synthetic datasets are reshuffled to
+    avoid train/test correlation,
       but that hurts reprodusability
   """
   # seed = kwargs.pop('seed', None)
   if name not in SYNTHETIC:
     raise ValueError('Synthetic dataset not found or not implemeted: %s' % name)
   else:
-    return SYNTHETIC[name](n_samples=n_samples, noise=noise, seed=seed, *args, **kwargs)
+    return SYNTHETIC[name](
+        n_samples=n_samples, noise=noise, seed=seed, *args, **kwargs)

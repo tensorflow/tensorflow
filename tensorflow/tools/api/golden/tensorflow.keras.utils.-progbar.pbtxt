@@ -1,10 +1,10 @@
 path: "tensorflow.keras.utils.Progbar"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.generic_utils.Progbar\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.generic_utils.Progbar\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'target\', \'width\', \'verbose\', \'interval\'], varargs=None, keywords=None, defaults=[\'30\', \'1\', \'0.05\'], "
+    argspec: "args=[\'self\', \'target\', \'width\', \'verbose\', \'interval\', \'stateful_metrics\'], varargs=None, keywords=None, defaults=[\'30\', \'1\', \'0.05\', \'None\'], "
   }
   member_method {
     name: "add"
@@ -12,6 +12,6 @@ tf_class {
   }
   member_method {
     name: "update"
-    argspec: "args=[\'self\', \'current\', \'values\', \'force\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'current\', \'values\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }
