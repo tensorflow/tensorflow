@@ -378,5 +378,12 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
   RunTest(x, x_shape, y, {1, 2, 2, 2});
 }
 
+TEST_F(ArrayGradTest, SliceGrad) {
+  TensorShape x_shape({3, 5, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Slice(scope_, x, {1, 2, 1}, {1, 3, 2});
+  RunTest(x, x_shape, y, {1, 3, 2});
+}
+
 }  // namespace
 }  // namespace tensorflow

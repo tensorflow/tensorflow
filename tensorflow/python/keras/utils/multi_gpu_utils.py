@@ -196,7 +196,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
     batch_size = shape[:1]
     input_shape = shape[1:]
     step = batch_size // parts
-    if i == num_gpus - 1:
+    if i == parts - 1:
       size = batch_size - step * i
     else:
       size = step

@@ -37,11 +37,11 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
-from tensorflow.python.platform import tf_logging as logging
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -370,7 +370,7 @@ def erf(x, name=None):
   """Computes the Gauss error function of `x` element-wise.
 
   Args:
-    x: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
     name: A name for the operation (optional).
 
@@ -628,16 +628,17 @@ def cast(x, dtype, name=None):
   ```
 
   The operation supports data types (for `x` and `dtype`) of
-  `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `float16`, `float32`,
-  `float64`, `complex64`, `complex128`, `bfloat16`. In case of casting from
-  complex types (`complex64`, `complex128`) to real types, only the real part
-  of `x` is returned. In case of casting from real types to complex types
-  (`complex64`, `complex128`), the imaginary part of the returned value is set
-  to `0`. The handling of complex types here matches the behavior of numpy.
+  `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
+  `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
+  In case of casting from complex types (`complex64`, `complex128`) to real
+  types, only the real part of `x` is returned. In case of casting from real
+  types to complex types (`complex64`, `complex128`), the imaginary part of the
+  returned value is set to `0`. The handling of complex types here matches the
+  behavior of numpy.
 
   Args:
     x: A `Tensor` or `SparseTensor` of numeric type. It could be
-      `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`,
+      `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
       `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
     dtype: The destination type. The list of supported dtypes is the same
       as `x`.
@@ -651,6 +652,9 @@ def cast(x, dtype, name=None):
     TypeError: If `x` cannot be cast to the `dtype`.
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
+  if isinstance(x,
+                (ops.Tensor, _resource_variable_type)) and base_type == x.dtype:
+    return x
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
@@ -1247,8 +1251,9 @@ def _ReductionDims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x._rank() is not None:  # pylint: disable=protected-access
-      return constant_op.constant(np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
+    rank = common_shapes.rank(x)
+    if rank is not None:
+      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.dense_shape.get_shape().is_fully_defined()):
       rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
@@ -1259,8 +1264,8 @@ def _ReductionDims(x, axis, reduction_indices):
 
 
 def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
-  """Set a reduction's output's shape to be a scalar if we are certain."""
-  if (not output.shape.is_fully_defined()) and (not keepdims) and (
+  """Set a reduction's output shape to be a scalar if we are certain."""
+  if not common_shapes.has_fully_defined_shape(output) and (not keepdims) and (
       axis is None) and (reduction_indices is None):
     output.set_shape(())
   return output
@@ -1642,7 +1647,7 @@ def reduce_all(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1700,7 +1705,7 @@ def reduce_any(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -2015,7 +2020,7 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if (a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16 and
+    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
         a.dtype != b.dtype):
       # matmul currently doesn't handle mixed-precision inputs.
       use_sparse_matmul = True
@@ -2250,8 +2255,8 @@ def sigmoid(x, name=None):
   Returns:
     A Tensor with the same type as `x`.
 
-  @compatibility(numpy)
-  Equivalent to np.scipy.special.expit
+  @compatibility(scipy)
+  Equivalent to scipy.special.expit
   @end_compatibility
   """
   with ops.name_scope(name, "Sigmoid", [x]) as name:
@@ -2978,6 +2983,67 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+@tf_export("math.bessel_i0e")
+def bessel_i0e(x, name=None):
+  """Computes the Bessel i0e function of `x` element-wise.
+
+  Exponentially scaled modified Bessel function of order 0 defined as
+  `bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+  This function is faster and numerically stabler than `bessel_i0(x)`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, "bessel_i0e", [x]) as name:
+    if isinstance(x, sparse_tensor.SparseTensor):
+      x_i0e = gen_math_ops.bessel_i0e(x.values, name=name)
+      return sparse_tensor.SparseTensor(
+          indices=x.indices, values=x_i0e, dense_shape=x.dense_shape)
+    else:
+      return gen_math_ops.bessel_i0e(x, name=name)
+
+
+@tf_export("math.bessel_i1e")
+def bessel_i1e(x, name=None):
+  """Computes the Bessel i1e function of `x` element-wise.
+
+  Exponentially scaled modified Bessel function of order 1 defined as
+  `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+  This function is faster and numerically stabler than `bessel_i1(x)`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, "bessel_i1e", [x]) as name:
+    if isinstance(x, sparse_tensor.SparseTensor):
+      x_i1e = gen_math_ops.bessel_i1e(x.values, name=name)
+      return sparse_tensor.SparseTensor(
+          indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
+    else:
+      return gen_math_ops.bessel_i1e(x, name=name)
+
 
 # FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
 # 1.0 API so we leave these here for backwards compatibility.

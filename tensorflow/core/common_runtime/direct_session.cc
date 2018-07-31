@@ -19,15 +19,20 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/collective_executor_mgr.h"
+#include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -142,18 +147,15 @@ class DirectSessionFactory : public SessionFactory {
     return options.target.empty();
   }
 
-  Session* NewSession(const SessionOptions& options) override {
+  Status NewSession(const SessionOptions& options,
+                    Session** out_session) override {
     // Must do this before the CPU allocator is created.
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
     }
     std::vector<Device*> devices;
-    const Status s = DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices);
-    if (!s.ok()) {
-      LOG(ERROR) << s;
-      return nullptr;
-    }
+    TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     DirectSession* session =
         new DirectSession(options, new DeviceMgr(devices), this);
@@ -161,7 +163,8 @@ class DirectSessionFactory : public SessionFactory {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
     }
-    return session;
+    *out_session = session;
+    return Status::OK();
   }
 
   Status Reset(const SessionOptions& options,
@@ -233,7 +236,11 @@ void DirectSession::SchedClosure(thread::ThreadPool* pool,
   // safe given the reasoning above.
   c();
 #else
-  pool->Schedule(std::move(c));
+  if (pool != nullptr) {
+    pool->Schedule(std::move(c));
+  } else {
+    c();
+  }
 #endif  // __ANDROID__
 }
 
@@ -443,6 +450,22 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   // Create a run state and start execution.
   RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
+#ifndef __ANDROID__
+  // Set up for collectives if the RunOption declares a key.
+  if (run_options.experimental().collective_graph_key() > 0) {
+    if (!collective_executor_mgr_) {
+      std::unique_ptr<DeviceResolverInterface> drl(
+          new DeviceResolverLocal(device_mgr_.get()));
+      std::unique_ptr<ParamResolverInterface> cprl(
+          new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+                                           "/job:localhost/replica:0/task:0"));
+      collective_executor_mgr_.reset(new CollectiveExecutorMgr(
+          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl)));
+    }
+    run_state.collective_executor.reset(new CollectiveExecutor::Handle(
+        collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
+  }
+#endif
 
   // Start parallel Executors.
   const size_t num_executors = executors_and_keys->items.size();
@@ -459,6 +482,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   args.step_id = step_id;
   args.call_frame = call_frame;
   args.rendezvous = run_state.rendez;
+  args.collective_executor =
+      (run_state.collective_executor ? run_state.collective_executor->get()
+                                     : nullptr);
   CancellationManager step_cancellation_manager;
   args.cancellation_manager = &step_cancellation_manager;
   args.session_state = &session_state_;
@@ -501,8 +527,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
   }
 
-  if (run_options.inter_op_thread_pool() < 0 ||
-      run_options.inter_op_thread_pool() >= thread_pools_.size()) {
+  if (run_options.inter_op_thread_pool() < -1 ||
+      run_options.inter_op_thread_pool() >=
+          static_cast<int32>(thread_pools_.size())) {
     run_state.executors_done.Notify();
     delete barrier;
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
@@ -527,7 +554,19 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   }
 
   thread::ThreadPool* pool =
-      thread_pools_[run_options.inter_op_thread_pool()].first;
+      run_options.inter_op_thread_pool() >= 0
+          ? thread_pools_[run_options.inter_op_thread_pool()].first
+          : nullptr;
+
+  if (pool == nullptr) {
+    // We allow using the caller thread only when having a single executor
+    // specified.
+    if (executors_and_keys->items.size() > 1) {
+      pool = thread_pools_[0].first;
+    } else {
+      VLOG(1) << "Executing Session::Run() synchronously!";
+    }
+  }
 
   Executor::Args::Runner default_runner = [this,
                                            pool](Executor::Args::Closure c) {
@@ -679,7 +718,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   if (outputs) {
     std::vector<Tensor> sorted_outputs;
-    const Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    const Status s = call_frame.ConsumeRetvals(
+        &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
       return errors::InvalidArgument(s.error_message());
     } else if (!s.ok()) {
@@ -768,6 +808,10 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
 
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
+  // Note that Collectives are not supported in partial runs
+  // because RunOptions is not passed in so we can't know whether
+  // their use is intended.
+  args.collective_executor = nullptr;
   args.runner = [this, pool](Executor::Args::Closure c) {
     SchedClosure(pool, std::move(c));
   };
@@ -1161,12 +1205,11 @@ Status DirectSession::CreateExecutors(
         delete kernel;
       }
     };
-    params.node_outputs_cb = node_outputs_callback_;
 
     optimizer.Optimize(lib, options_.env, device, &iter->second,
                        /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
+    // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =
         options.callable_options.run_options().debug_options();
     if (!debug_options.debug_tensor_watch_opts().empty()) {
@@ -1181,10 +1224,9 @@ Status DirectSession::CreateExecutors(
     item->graph = partition_graph.get();
     item->executor = nullptr;
     item->device = device;
-    Executor* executor;
-    TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, std::move(partition_graph), &executor));
-    item->executor.reset(executor);
+    auto executor_type = options_.config.experimental().executor_type();
+    TF_RETURN_IF_ERROR(NewExecutor(
+        executor_type, params, std::move(partition_graph), &item->executor));
   }
 
   // Cache the mapping from input/output names to graph elements to
@@ -1518,11 +1560,13 @@ DirectSession::RunState::RunState(
     const std::vector<string>& pending_input_names,
     const std::vector<string>& pending_output_names, int64 step_id,
     const std::vector<Device*>* devices)
-    : step_container(step_id, [devices](const string& name) {
+    : step_container(step_id, [devices, step_id](const string& name) {
         for (auto d : *devices) {
           if (!d->resource_manager()->Cleanup(name).ok()) {
             // Do nothing...
           }
+          ScopedAllocatorMgr* sam = d->GetScopedAllocatorMgr();
+          if (sam) sam->Cleanup(step_id);
         }
       }) {
   // Initially all the feeds and fetches are pending.
@@ -1596,15 +1640,6 @@ Status DirectSession::MakeCallable(const CallableOptions& callable_options,
                                    CallableHandle* out_handle) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("MakeCallable()"));
-
-  if (!callable_options.run_options()
-           .debug_options()
-           .debug_tensor_watch_opts()
-           .empty()) {
-    return errors::Unimplemented(
-        "Debug options are not currently supported via the C++ MakeCallable "
-        "interface.");
-  }
 
   std::unique_ptr<ExecutorsAndKeys> ek;
   std::unique_ptr<FunctionInfo> func_info;

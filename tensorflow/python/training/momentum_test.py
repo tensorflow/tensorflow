@@ -134,7 +134,6 @@ class MomentumOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_resource=True, use_callable_params=True)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testVariablesAcrossGraphs(self):
     optimizer = momentum_lib.MomentumOptimizer(0.01, 0.5)
     with ops.Graph().as_default():
@@ -142,10 +141,7 @@ class MomentumOptimizerTest(test.TestCase):
           [1.0, 2.0], dtype=dtypes.float32, name="var0")
       var1 = resource_variable_ops.ResourceVariable(
           [3.0, 4.0], dtype=dtypes.float32, name="var1")
-      if context.executing_eagerly():
-        loss = lambda: math_ops.reduce_sum(var0 + var1)
-      else:
-        loss = math_ops.reduce_sum(var0 + var1)
+      loss = math_ops.reduce_sum(var0 + var1)
       optimizer.minimize(loss)
       optimizer_variables = optimizer.variables()
       self.assertStartsWith(optimizer_variables[0].name, "var0")
@@ -157,10 +153,7 @@ class MomentumOptimizerTest(test.TestCase):
           [1.0, 2.0], dtype=dtypes.float32, name="var2")
       var3 = resource_variable_ops.ResourceVariable(
           [3.0, 4.0], dtype=dtypes.float32, name="var3")
-      if context.executing_eagerly():
-        loss = lambda: math_ops.reduce_sum(var2 + var3)
-      else:
-        loss = math_ops.reduce_sum(var2 + var3)
+      loss = math_ops.reduce_sum(var2 + var3)
       optimizer.minimize(loss)
       optimizer_variables = optimizer.variables()
       self.assertStartsWith(optimizer_variables[0].name, "var2")

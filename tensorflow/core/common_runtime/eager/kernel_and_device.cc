@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -40,17 +41,22 @@ Status KernelAndDevice::InitOp(Device* device, const NodeDef& ndef,
   out->device_ = device;
   out->kernel_.reset(k);
   out->flib_ = nullptr;
+  out->runner_ = nullptr;
+  out->default_runner_ = [](std::function<void()> f) { f(); };
   return s;
 }
 
 // static
 Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+                             std::function<void(std::function<void()>)>* runner,
                              KernelAndDevice* out) {
   OpKernel* k = nullptr;
   Status s = flib->CreateKernel(ndef, &k);
   out->device_ = flib->device();
   out->kernel_.reset(k);
   out->flib_ = flib;
+  out->runner_ = runner;
+  out->default_runner_ = [](std::function<void()> f) { f(); };
   return s;
 }
 
@@ -78,13 +84,20 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.function_library = flib_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
+  params.cancellation_manager = &cm_;
   if (stats != nullptr) {
     params.track_allocations = true;
   }
-  // TODO(apassos): use a thread pool.
-  std::function<void(std::function<void()>)> runner =
-      [](std::function<void()> f) { f(); };
-  params.runner = &runner;
+  if (runner_ == nullptr) {
+    params.runner = &default_runner_;
+  } else {
+    params.runner = runner_;
+  }
+
+  ScopedStepContainer step_container(0, [this](const string& name) {
+    device_->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  params.step_container = &step_container;
 
   OpKernelContext context(&params);
 

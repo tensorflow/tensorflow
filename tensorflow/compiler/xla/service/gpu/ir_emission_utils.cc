@@ -56,8 +56,8 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   return type_is_allowed && IsRank2WithNoPadding(lhs_shape) &&
          IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape) &&
-         !ShapeUtil::HasZeroElements(lhs_shape) &&
-         !ShapeUtil::HasZeroElements(rhs_shape);
+         !ShapeUtil::IsZeroElementArray(lhs_shape) &&
+         !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
 
 bool DotImplementedAsGemm(const HloInstruction& dot) {
@@ -81,11 +81,6 @@ bool DotImplementedAsGemm(const HloInstruction& dot) {
 }  // namespace
 
 bool ImplementedAsGemm(const HloInstruction& hlo) {
-  // We can only do this if the HLO is unnested.
-  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
-    return false;
-  }
-
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
     return DotImplementedAsGemm(hlo);
@@ -162,19 +157,8 @@ static HloInstruction* CreateCudnnConv(
   Shape call_shape =
       ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
 
-  // Our CustomCall takes four arguments: The conv lhs and rhs, the cudnn
-  // algorithm to use, and a boolean indicating whether to use tensor cores.
-  //
-  // It's up to a later pass to choose the algorithm and decide whether to use
-  // tensor cores, so to indicate that we haven't yet made a choice, we speicfy
-  // -1 and false for those args.
-  HloInstruction* negative_one = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int64>(-1)));
-  HloInstruction* false_constant = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
-  HloInstruction* custom_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          call_shape, {lhs, rhs, negative_one, false_constant}, call_target));
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
   return custom_call;
@@ -253,15 +237,17 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder) {
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
+  llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
     return llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::nvvm_shfl_down_f32,
-        {value, offset, builder->getInt32(kWarpSize - 1)}, {}, builder);
+        llvm::Intrinsic::nvvm_shfl_sync_down_f32,
+        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
+        builder);
   }
 
   // We must split values wider than 32 bits as the "shfl" instruction operates
@@ -275,10 +261,11 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_shfl_down_i32,
-                                     {builder->CreateExtractElement(x, i),
-                                      offset, builder->getInt32(kWarpSize - 1)},
-                                     {}, builder),
+        llvm_ir::EmitCallToIntrinsic(
+            llvm::Intrinsic::nvvm_shfl_sync_down_i32,
+            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
+             builder->getInt32(kWarpSize - 1)},
+            {}, builder),
         i);
   }
   return builder->CreateBitCast(

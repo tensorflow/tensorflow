@@ -19,6 +19,7 @@ py_library(
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
+        "python/training/ggt.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/model_average_optimizer.py",
         "python/training/moving_average_optimizer.py",
@@ -28,15 +29,19 @@ py_library(
         "python/training/reg_adagrad_optimizer.py",
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
+        "python/training/weight_decay_optimizers.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/optimizer_v2:optimizer_v2_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
@@ -194,6 +199,25 @@ py_test(
     ],
 )
 
+py_test(
+    name = "weight_decay_optimizers_test",
+    srcs = ["python/training/weight_decay_optimizers_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_test(
     name = "drop_stale_gradient_optimizer_test",
     srcs = ["python/training/drop_stale_gradient_optimizer_test.py"],
@@ -298,6 +322,24 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "ggt_test",
+    srcs = ["python/training/ggt_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

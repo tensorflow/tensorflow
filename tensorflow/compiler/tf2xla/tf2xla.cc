@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -263,8 +264,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  DeviceType device_type(DEVICE_CPU_XLA_JIT);
-  compiler_options.device_type = &device_type;
+  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;

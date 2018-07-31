@@ -23,8 +23,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -62,6 +62,16 @@ class LocallyConnected1D(Layer):
           any `dilation_rate` value != 1.
       padding: Currently only supports `"valid"` (case-insensitive).
           `"same"` may be supported in the future.
+      data_format: A string,
+          one of `channels_last` (default) or `channels_first`.
+          The ordering of the dimensions in the inputs.
+          `channels_last` corresponds to inputs with shape
+          `(batch, length, channels)` while `channels_first`
+          corresponds to inputs with shape
+          `(batch, channels, length)`.
+          It defaults to the `image_data_format` value found in your
+          Keras config file at `~/.keras/keras.json`.
+          If you never set it, then it will be "channels_last".
       activation: Activation function to use.
           If you don't specify anything, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
@@ -122,13 +132,17 @@ class LocallyConnected1D(Layer):
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
-    input_dim = input_shape[2]
+    if self.data_format == 'channels_first':
+      input_dim, input_length = input_shape[1], input_shape[2]
+    else:
+      input_dim, input_length = input_shape[2], input_shape[1]
+
     if input_dim is None:
       raise ValueError('Axis 2 of input should be fully-defined. '
                        'Found shape:', input_shape)
-    output_length = conv_utils.conv_output_length(
-        input_shape[1], self.kernel_size[0], self.padding, self.strides[0])
-    self.kernel_shape = (output_length, self.kernel_size[0] * input_dim,
+    self.output_length = conv_utils.conv_output_length(
+        input_length, self.kernel_size[0], self.padding, self.strides[0])
+    self.kernel_shape = (self.output_length, self.kernel_size[0] * input_dim,
                          self.filters)
     self.kernel = self.add_weight(
         shape=self.kernel_shape,
@@ -138,28 +152,43 @@ class LocallyConnected1D(Layer):
         constraint=self.kernel_constraint)
     if self.use_bias:
       self.bias = self.add_weight(
-          shape=(output_length, self.filters),
+          shape=(self.output_length, self.filters),
           initializer=self.bias_initializer,
           name='bias',
           regularizer=self.bias_regularizer,
           constraint=self.bias_constraint)
     else:
       self.bias = None
-    self.input_spec = InputSpec(ndim=3, axes={2: input_dim})
+
+    if self.data_format == 'channels_first':
+      self.input_spec = InputSpec(ndim=3, axes={1: input_dim})
+    else:
+      self.input_spec = InputSpec(ndim=3, axes={-1: input_dim})
     self.built = True
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    length = conv_utils.conv_output_length(input_shape[1], self.kernel_size[0],
+    if self.data_format == 'channels_first':
+      input_length = input_shape[2]
+    else:
+      input_length = input_shape[1]
+
+    length = conv_utils.conv_output_length(input_length, self.kernel_size[0],
                                            self.padding, self.strides[0])
-    return (input_shape[0], length, self.filters)
+
+    if self.data_format == 'channels_first':
+      return (input_shape[0], self.filters, length)
+    elif self.data_format == 'channels_last':
+      return (input_shape[0], length, self.filters)
 
   def call(self, inputs):
-    output = K.local_conv1d(inputs, self.kernel, self.kernel_size, self.strides)
+    output = K.local_conv(inputs, self.kernel, self.kernel_size, self.strides,
+                          (self.output_length,), self.data_format)
+
     if self.use_bias:
-      output = K.bias_add(output, self.bias)
-    if self.activation is not None:
-      output = self.activation(output)
+      output = K.bias_add(output, self.bias, data_format=self.data_format)
+
+    output = self.activation(output)
     return output
 
   def get_config(self):
@@ -172,6 +201,8 @@ class LocallyConnected1D(Layer):
             self.strides,
         'padding':
             self.padding,
+        'data_format':
+            self.data_format,
         'activation':
             activations.serialize(self.activation),
         'use_bias':
@@ -370,9 +401,8 @@ class LocallyConnected2D(Layer):
       return (input_shape[0], rows, cols, self.filters)
 
   def call(self, inputs):
-    output = K.local_conv2d(inputs, self.kernel, self.kernel_size, self.strides,
-                            (self.output_row, self.output_col),
-                            self.data_format)
+    output = K.local_conv(inputs, self.kernel, self.kernel_size, self.strides,
+                          (self.output_row, self.output_col), self.data_format)
 
     if self.use_bias:
       output = K.bias_add(output, self.bias, data_format=self.data_format)

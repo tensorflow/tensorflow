@@ -89,6 +89,7 @@ class Executor {
     SessionState* session_state = nullptr;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -102,7 +103,6 @@ class Executor {
                                  const Tensor* tensor, const bool is_ref,
                                  OpKernelContext* ctx)>
         NodeOutputsCallback;
-    NodeOutputsCallback node_outputs_cb = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -138,8 +138,6 @@ struct LocalExecutorParams {
   // when the executor is deleted.
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
-
-  Executor::Args::NodeOutputsCallback node_outputs_cb;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
                                       std::unique_ptr<const Graph> graph,

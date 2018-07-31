@@ -125,8 +125,8 @@ class Saver(object):
 
     Args:
       var_list: The list of variables that will be saved and restored. Either a
-        list of `tfe.Variable` objects, or a dictionary mapping names to
-        `tfe.Variable` objects.
+        list of `tf.Variable` objects, or a dictionary mapping names to
+        `tf.Variable` objects.
 
     Raises:
       RuntimeError: if invoked when eager execution has not been enabled.

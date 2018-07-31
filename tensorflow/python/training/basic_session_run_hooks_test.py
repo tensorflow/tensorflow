@@ -29,8 +29,10 @@ from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.testing.python.framework import fake_summary_writer
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -58,6 +60,7 @@ class MockCheckpointSaverListener(
     self.before_save_count = 0
     self.after_save_count = 0
     self.end_count = 0
+    self.ask_for_stop = False
 
   def begin(self):
     self.begin_count += 1
@@ -67,6 +70,8 @@ class MockCheckpointSaverListener(
 
   def after_save(self, session, global_step):
     self.after_save_count += 1
+    if self.ask_for_stop:
+      return True
 
   def end(self, session, global_step):
     self.end_count += 1
@@ -470,6 +475,25 @@ class CheckpointSaverHookTest(test.TestCase):
         'after_save': 3,
         'end': 1
     }, listener_counts)
+
+  def test_listener_stops_training_in_after_save(self):
+    with ops.Graph().as_default():
+      scaffold = monitored_session.Scaffold()
+      variables.get_or_create_global_step()
+      train_op = training_util._increment_global_step(1)
+      listener = MockCheckpointSaverListener()
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir, save_steps=1, scaffold=scaffold, listeners=[listener])
+      with monitored_session.SingularMonitoredSession(
+          hooks=[hook], scaffold=scaffold,
+          checkpoint_dir=self.model_dir) as sess:
+        sess.run(train_op)
+        self.assertFalse(sess.should_stop())
+        sess.run(train_op)
+        self.assertFalse(sess.should_stop())
+        listener.ask_for_stop = True
+        sess.run(train_op)
+        self.assertTrue(sess.should_stop())
 
   def test_listener_with_default_saver(self):
     with ops.Graph().as_default():
@@ -1305,6 +1329,26 @@ class FinalOpsHookTest(test.TestCase):
         hook.end(session)
         self.assertListEqual(expected_values,
                              hook.final_ops_values.tolist())
+
+  def test_final_ops_triggers_out_of_range_error(self):
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.range(1)
+      iterator = dataset.make_one_shot_iterator()
+      read_ops = iterator.get_next()
+      final_ops = read_ops
+
+      hook = basic_session_run_hooks.FinalOpsHook(final_ops)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        session.run(read_ops)
+        with test.mock.patch.object(tf_logging, 'warning') as mock_log:
+          with self.assertRaisesRegexp(errors.OutOfRangeError,
+                                       'End of sequence'):
+            hook.end(session)
+          self.assertRegexpMatches(
+              str(mock_log.call_args),
+              'dependency back to some input source')
 
   def test_final_ops_with_dictionary(self):
     with ops.Graph().as_default():

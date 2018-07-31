@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -75,9 +75,9 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   // consumes.
   std::vector<std::unique_ptr<Literal>> arg_literals;
   for (int64 p = 0; p < computation->num_parameters(); ++p) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Literal> arg_literal,
-        transfer_manager->TransferLiteralFromDevice(executor, *arguments[p]));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> arg_literal,
+                        transfer_manager->TransferLiteralFromDevice(
+                            run_options->stream(), *arguments[p]));
     arg_literals.push_back(std::move(arg_literal));
   }
 
@@ -96,7 +96,7 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
                           result_literal->shape(), run_options->allocator(),
                           executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
-      executor, *result_literal, result));
+      run_options->stream(), *result_literal, result));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 

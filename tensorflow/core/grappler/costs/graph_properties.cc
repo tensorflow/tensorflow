@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -352,12 +354,12 @@ void VerboseLogUnknownDimensionSources(
 class TopoQueue {
  public:
   explicit TopoQueue(const std::unordered_map<const NodeDef*, int>& topo_order)
-      : queue_(CompareNodes(topo_order)) {}
-  void push(const NodeDef* n) { queue_.insert(n); }
+      : topo_order_(topo_order) {}
+  void push(const NodeDef* n) { queue_.emplace(n, topo_order_.at(n)); }
   const NodeDef* pop() {
     CHECK(!empty());
     auto it = queue_.begin();
-    const NodeDef* n = *it;
+    const NodeDef* n = it->first;
     queue_.erase(it);
     return n;
   }
@@ -366,20 +368,16 @@ class TopoQueue {
   std::size_t size() const { return queue_.size(); }
 
  private:
+  using NodeAndId = std::pair<const NodeDef*, int>;
   // Graph nodes are created in (roughly) topological order. Therefore we can
   // use their id to ensure they're sorted topologically.
-  struct CompareNodes {
-    explicit CompareNodes(
-        const std::unordered_map<const NodeDef*, int>& topo_ordering)
-        : topo_order(topo_ordering) {}
-    bool operator()(const NodeDef* lhs, const NodeDef* rhs) const {
-      return topo_order.at(lhs) < topo_order.at(rhs);
+  struct OrderByIdAscending {
+    bool operator()(const NodeAndId& lhs, const NodeAndId& rhs) const {
+      return lhs.second < rhs.second;
     }
-
-   private:
-    const std::unordered_map<const NodeDef*, int>& topo_order;
   };
-  std::set<const NodeDef*, CompareNodes> queue_;
+  const std::unordered_map<const NodeDef*, int>& topo_order_;
+  std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
 // Processes symbolic shapes.
@@ -425,6 +423,108 @@ class SymbolicShapeRefiner {
     return it->second.inference_context.get();
   }
 
+  // Forward the shapes from the function input nodes to
+  // the argument nodes (which are Placeholder nodes), then
+  // perform shape inference on the function body.
+  //
+  // Propagate shape information of final function body node
+  // to function node `node`.
+  //
+  // In the event of an error, UpdateNode will simply set `node`'s
+  // output shape to be Unknown.
+  Status UpdateFunction(const NodeDef* node) {
+    auto it = fun_to_grappler_function_item_.find(node->op());
+    if (it == fun_to_grappler_function_item_.end()) {
+      return errors::InvalidArgument(
+          node->op(), " was not previously added to SymbolicShapeRefiner.");
+    }
+
+    GrapplerFunctionItem& grappler_function_item = it->second;
+    GraphView gv(&grappler_function_item.graph);
+
+    // Forward shapes from function input nodes to argument nodes.
+    for (int i = 0; i < grappler_function_item.inputs().size(); ++i) {
+      auto& fun_input = grappler_function_item.input(i);
+      if (fun_input.placeholders.size() > 1) {
+        // TODO(jmdecker): Handle case with multiple input placeholders
+        return errors::Unimplemented(
+            "Input arguments with multiple placeholders are not yet "
+            "supported.");
+      }
+      NodeDef* fun_node = gv.GetNode(fun_input.input_name);
+      const string& input = node->input(i);
+      const string& node_name = NodeName(input);
+
+      if (IsControlInput(input)) {
+        return errors::FailedPrecondition(
+            "Function inputs should not contain control nodes.");
+      }
+
+      NodeDef* input_node = graph_.GetNode(node_name);
+      if (input_node == nullptr) {
+        return errors::FailedPrecondition(node_name,
+                                          " was not found in the graph.");
+      }
+
+      InferenceContext* input_inference_context = GetContext(input_node);
+      if (input_inference_context == nullptr) {
+        return errors::FailedPrecondition(
+            "Inference context has not been created for ", node_name);
+      }
+
+      int output_port_num = NodePosition(input);
+      AttrValue attr_output_shape;
+      TensorShapeProto proto;
+      const auto& handle = input_inference_context->output(output_port_num);
+      input_inference_context->ShapeHandleToProto(handle, &proto);
+      *attr_output_shape.mutable_shape() = proto;
+      (*fun_node->mutable_attr())["shape"] = attr_output_shape;
+    }
+
+    // Perform inference on function body.
+    GraphProperties gp(grappler_function_item);
+    TF_RETURN_IF_ERROR(gp.InferStatically(true));
+
+    // Add return nodes for output shapes.
+    auto ic = GetContext(node);
+    int output = 0;
+    for (auto const& out_arg : grappler_function_item.outputs()) {
+      if (out_arg.output_tensors.size() > 1) {
+        // TODO(jmdecker): Handle case of multiple output tensors
+        return errors::Unimplemented(
+            "Output arguments with multiple output tensors are not yet "
+            "supported.");
+      }
+
+      // It is guaranteed that output_tensors does not contain any control
+      // inputs, so port_id >= 0.
+      string out_tensor = out_arg.output_tensors[0];
+      int port_id;
+      string node_name = ParseNodeName(out_tensor, &port_id);
+
+      const NodeDef* retnode = gv.GetNode(node_name);
+      if (retnode == nullptr) {
+        return errors::FailedPrecondition("Unable to find return node ",
+                                          node_name, " for ", node->name());
+      }
+
+      auto output_properties = gp.GetOutputProperties(retnode->name());
+      if (port_id >= output_properties.size()) {
+        return errors::InvalidArgument(
+            out_tensor, " has invalid position ", port_id,
+            " (output_properties.size() = ", output_properties.size(), ").");
+      }
+      auto const& outprop = output_properties[port_id];
+      const TensorShapeProto& shape = outprop.shape();
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &out));
+      ic->set_output(output, out);
+      output++;
+    }
+
+    return Status::OK();
+  }
+
   Status UpdateNode(const NodeDef* node, bool* refined) {
     NodeContext* node_context = GetNodeContext(node);
     if (node_context == nullptr) {
@@ -432,6 +532,7 @@ class SymbolicShapeRefiner {
       node_context = CHECK_NOTNULL(GetNodeContext(node));
       *refined = true;
     }
+
     // Check if the shapes of the nodes in the fan-in of this node have changed,
     // and if they have, update the node input shapes.
     InferenceContext* inference_context = node_context->inference_context.get();
@@ -451,7 +552,8 @@ class SymbolicShapeRefiner {
         if (c == nullptr) {
           return errors::FailedPrecondition(
               "Input ", dst_input, " ('", input->name(), "') for '",
-              node->name(), "' was not previously added to ShapeRefiner.");
+              node->name(),
+              "' was not previously added to SymbolicShapeRefiner.");
         }
 
         if (IsConstant(*input)) {
@@ -560,6 +662,21 @@ class SymbolicShapeRefiner {
     node_context->inference_context->set_input_tensors(input_tensors);
     node_context->inference_context->set_input_tensors_as_shapes(
         input_tensors_as_shapes);
+
+    // Properly handle function nodes.
+    if (node_context->op_data && node_context->op_data->is_function_op) {
+      // TODO(jmdecker): Detect if the input shapes have changed for this
+      // function. Note that when we hit a function call node, refined will be
+      // true, as the updates to the call node will have changed, even if it's
+      // the same function being called twice with the same input shapes.
+      // Example: simple_function.pbtxt
+      if (UpdateFunction(node).ok()) {
+        return Status::OK();
+      } else {
+        VLOG(1) << "UpdateFunction failed for " << node->op()
+                << ". Defaulting to ShapeUnknown.";
+      }
+    }
 
     // Update the shapes of the outputs.
     return InferShapes(*node, node_context);
@@ -677,9 +794,47 @@ class SymbolicShapeRefiner {
     return true;
   }
 
+  Status AddFunction(const NodeDef* function_node) {
+    auto it = fun_to_grappler_function_item_.find(function_node->op());
+    if (it != fun_to_grappler_function_item_.end()) {
+      return Status::OK();
+    }
+
+    const FunctionDef* function_def =
+        CHECK_NOTNULL(function_library_.Find(function_node->op()));
+
+    GrapplerFunctionItem grappler_function_item;
+    TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+        *function_def, function_library_, &grappler_function_item));
+
+    if (grappler_function_item.inputs().size() > function_node->input_size()) {
+      return errors::FailedPrecondition(
+          "Function input size should be smaller than node input size.");
+    }
+
+    for (int i = grappler_function_item.inputs().size();
+         i < function_node->input_size(); ++i) {
+      const string& input = function_node->input(i);
+      if (!IsControlInput(input)) {
+        return errors::FailedPrecondition(
+            "Found regular input (", input,
+            ") instead of control nodes for node ", function_node->name());
+      }
+    }
+
+    fun_to_grappler_function_item_[function_def->signature().name()] =
+        grappler_function_item;
+
+    return Status::OK();
+  }
+
   Status AddNode(const NodeDef* node) {
     NodeContext& node_ctx = node_to_context_[node];
     TF_RETURN_IF_ERROR(function_library_.LookUp(node->op(), &node_ctx.op_data));
+
+    if (node_ctx.op_data->is_function_op) {
+      TF_RETURN_IF_ERROR(AddFunction(node));
+    }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,
                                          &node_ctx.input_types,
@@ -901,6 +1056,8 @@ class SymbolicShapeRefiner {
   std::unordered_map<const NodeDef*, NodeContext> node_to_context_;
   std::unordered_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
   std::unordered_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
+  std::unordered_map<string, GrapplerFunctionItem>
+      fun_to_grappler_function_item_;
   FunctionLibraryDefinition function_library_;
   const std::unordered_map<string, std::unordered_set<int>>& fed_ports_;
 };
@@ -1068,8 +1225,12 @@ Status GraphProperties::UpdateShapes(
     // itself.
     TF_RETURN_IF_ERROR(
         UpdateEnqueue(n, resource_handles, shape_refiner, new_shapes));
+  } else if (IsQueue(*n)) {
+    // Set shapes and types of Queue ops, if needed.
+    TF_RETURN_IF_ERROR(UpdateQueue(n, shape_refiner, new_shapes));
   } else {
     // Rely on regular TF shape refinement for all the other nodes.
+    // UpdateNode calls UpdateFunction if a function node is detected.
     TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
   }
   return Status::OK();
@@ -1126,6 +1287,53 @@ Status GraphProperties::PropagateShapes(
   }
 
   return Status::OK();
+}
+
+Status GraphProperties::UpdateQueue(const NodeDef* queue_node,
+                                    SymbolicShapeRefiner* shape_refiner,
+                                    bool* new_shapes) {
+  auto ctx = shape_refiner->GetNodeContext(queue_node);
+  if (!ctx) {
+    TF_RETURN_IF_ERROR(shape_refiner->AddNode(queue_node));
+    ctx = CHECK_NOTNULL(shape_refiner->GetNodeContext(queue_node));
+  }
+  auto* ic = ctx->inference_context.get();
+
+  auto* outputs = ic->output_handle_shapes_and_types(0);
+  if (outputs) {
+    // Shapes and types are already set, presumably by Enqueue ops.
+    return shape_refiner->UpdateNode(queue_node, new_shapes);
+  }
+
+  if (queue_node->attr().count("shapes") <= 0 ||
+      queue_node->attr().count("component_types") <= 0 ||
+      queue_node->attr().at("shapes").list().shape_size() !=
+          queue_node->attr().at("component_types").list().type_size()) {
+    // Errors in shapes and component_types attr.
+    return shape_refiner->UpdateNode(queue_node, new_shapes);
+  }
+
+  // Extract types and shapes from Queue attr.
+  const auto& shapes = queue_node->attr().at("shapes").list().shape();
+  const auto& types = queue_node->attr().at("component_types").list().type();
+  std::vector<ShapeAndType> shapes_and_types;
+  for (int i = 0; i < types.size(); i++) {
+    const auto& shape = shapes[i];
+    ShapeHandle shape_handle;
+    TF_RETURN_IF_ERROR(
+        ic->MakeShapeFromPartialTensorShape(shape, &shape_handle));
+    DataType data_type =
+        queue_node->attr().at("component_types").list().type(i);
+    ShapeAndType shape_and_type(shape_handle, data_type);
+    shapes_and_types.push_back(shape_and_type);
+  }
+  ic->set_output_handle_shapes_and_types(0, shapes_and_types);
+
+  // Queue node is updated with output_handle_shapes_and_types, so set
+  // new_shapes and ignore it from UpdateNoe().
+  *new_shapes = true;
+  bool dummy_new_shapes = false;
+  return shape_refiner->UpdateNode(queue_node, &dummy_new_shapes);
 }
 
 Status GraphProperties::UpdateEnqueue(

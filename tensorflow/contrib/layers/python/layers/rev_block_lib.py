@@ -46,6 +46,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 __all__ = ["rev_block", "RevBlock", "recompute_grad"]
 
@@ -449,6 +450,15 @@ def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   `variable_scope(name, use_resource=True), which are the default in Eager mode
   and when running on TPU.
 
+  Warning: Because the function will be called again on the backwards pass, the
+  user should be careful to not use ops in their function that mutate state or
+  have randomness (for example, batch normalization or dropout). If the function
+  does have such operations, it is recommended that the function take the
+  `is_recomputing` keyword argument which will be `False` on the forward pass
+  and `True` on the backwards pass so that it can disable state changes when
+  `is_recomputing=True` (for example, not updating the moving averages in batch
+  normalization).
+
   Args:
     fn: a function that takes Tensors (all as positional arguments) and returns
       a tuple of Tensors.
@@ -482,6 +492,7 @@ def _is_on_tpu():
 
 def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """See recompute_grad."""
+  has_is_recompute_kwarg = "is_recomputing" in tf_inspect.getargspec(fn).args
   for arg in args:
     if not isinstance(arg, framework_ops.Tensor):
       raise ValueError("All inputs to function must be Tensors")
@@ -496,19 +507,22 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
     vs = variable_scope.get_variable_scope()
     arg_scope = contrib_framework_ops.current_arg_scope()
     with backprop.GradientTape() as tape:
-      outputs = fn(*args)
+      fn_kwargs = {}
+      if has_is_recompute_kwarg:
+        fn_kwargs["is_recomputing"] = False
+      outputs = fn(*args, **fn_kwargs)
     original_vars = set(tape.watched_variables())
 
     # Backward pass
-    def grad_fn(*output_grads, **kwargs):
+    def _grad_fn(output_grads, variables=None):
       """Recompute outputs for gradient computation."""
-      variables = []
+      variables = variables or []
       if original_vars:
-        variables = kwargs["variables"]
-      if set(variables) != original_vars:
-        raise ValueError(_WRONG_VARS_ERR)
-      del kwargs
-      inputs = list(args)
+        assert variables, ("Fn created variables but the variables were not "
+                           "passed to the gradient fn.")
+        if set(variables) != original_vars:
+          raise ValueError(_WRONG_VARS_ERR)
+      inputs = [array_ops.identity(x) for x in list(args)]
       # Recompute outputs
       with framework_ops.control_dependencies(output_grads):
         if use_data_dep_:
@@ -516,12 +530,15 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
         with contrib_framework_ops.arg_scope(arg_scope):
           with variable_scope.variable_scope(vs, reuse=True):
             with backprop.GradientTape() as tape:
-              outputs = fn(*inputs)
+              fn_kwargs = {}
+              if has_is_recompute_kwarg:
+                fn_kwargs["is_recomputing"] = True
+              outputs = fn(*inputs, **fn_kwargs)
             recompute_vars = set(tape.watched_variables())
             if original_vars != recompute_vars:
               raise ValueError(_WRONG_VARS_ERR)
 
-      if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
+      if not isinstance(outputs, (list, tuple)):
         outputs = [outputs]
       outputs = list(outputs)
       grads = gradients_impl.gradients(outputs, inputs + variables,
@@ -536,6 +553,16 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
       grad_inputs = grads[:len(inputs)]
       grad_vars = grads[len(inputs):]
       return grad_inputs, grad_vars
+
+    # custom_gradient inspects the signature of the function to determine
+    # whether the user expects variables passed in the grad_fn. If the function
+    # created variables, the grad_fn should accept the "variables" kwarg.
+    if original_vars:
+      def grad_fn(*output_grads, **kwargs):
+        return _grad_fn(output_grads, kwargs["variables"])
+    else:
+      def grad_fn(*output_grads):
+        return _grad_fn(output_grads)
 
     return outputs, grad_fn
 

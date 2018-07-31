@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -29,7 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class StatsDatasetTest(test.TestCase):
+class StatsDatasetTestBase(test.TestCase):
 
   def _assertSummaryHasCount(self, summary_str, tag, expected_value):
     summary_proto = summary_pb2.Summary()
@@ -48,6 +48,9 @@ class StatsDatasetTest(test.TestCase):
         self.assertEqual(expected_value, value.histo.sum)
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
+
+
+class StatsDatasetTest(StatsDatasetTestBase):
 
   def testBytesProduced(self):
     stats_aggregator = stats_ops.StatsAggregator()
@@ -193,68 +196,44 @@ class StatsDatasetTest(test.TestCase):
       self._assertSummaryHasCount(sess.run(summary_t), "record_latency", 200.0)
 
 
-class StatsDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+class FeatureStatsDatasetTest(
+    StatsDatasetTestBase,
+    reader_dataset_ops_test_base.ReadBatchFeaturesTestBase):
 
-  def _build_dataset_bytes_stats(self, num_elements):
-    return dataset_ops.Dataset.range(num_elements).map(
-        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
-            stats_ops.bytes_produced_stats("bytes_produced"))
+  def testFeaturesStats(self):
+    num_epochs = 5
+    total_records = num_epochs * self._num_records
+    batch_size = 2
+    stats_aggregator = stats_ops.StatsAggregator()
+    dataset = self.make_batch_feature(
+        filenames=self.test_filenames[0],
+        num_epochs=num_epochs,
+        batch_size=batch_size,
+        shuffle=True,
+        shuffle_seed=5,
+        drop_final_batch=True).apply(
+            stats_ops.set_stats_aggregator(stats_aggregator))
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+    summary_t = stats_aggregator.get_summary()
 
-  def test_bytes_produced_stats_invalid_tag_shape(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(
-          lambda: dataset_ops.Dataset.range(100).apply(
-              stats_ops.bytes_produced_stats(["bytes_produced"])),
-          None, 100)
+    with self.test_session() as sess:
+      sess.run(iterator.initializer)
+      for _ in range(total_records // batch_size):
+        sess.run(next_element)
 
-  def testBytesStatsDatasetSaveableCore(self):
-    num_outputs = 100
-    self.run_core_tests(
-        lambda: self._build_dataset_bytes_stats(num_outputs),
-        lambda: self._build_dataset_bytes_stats(num_outputs // 10), num_outputs)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+      self._assertSummaryHasCount(
+          sess.run(summary_t), "record_stats:features", total_records)
+      self._assertSummaryHasCount(
+          sess.run(summary_t), "record_stats:feature-values", total_records)
+      self._assertSummaryHasSum(
+          sess.run(summary_t), "record_stats:features", total_records * 3)
+      self._assertSummaryHasSum(
+          sess.run(summary_t), "record_stats:feature-values",
+          self._sum_keywords(1) * num_epochs + 2 * total_records)
 
-  def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
-    return dataset_ops.Dataset.range(num_elements).apply(
-        stats_ops.latency_stats(tag))
-
-  def _build_dataset_multiple_tags(self,
-                                   num_elements,
-                                   tag1="record_latency",
-                                   tag2="record_latency_2"):
-    return dataset_ops.Dataset.range(num_elements).apply(
-        stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
-
-  def test_latency_stats_invalid_tag_shape(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(
-          lambda: dataset_ops.Dataset.range(100).apply(
-              stats_ops.latency_stats(["record_latency", "record_latency_2"])),
-          None, 100)
-
-  def testLatencyStatsDatasetSaveableCore(self):
-    num_outputs = 100
-
-    self.run_core_tests(
-        lambda: self._build_dataset_latency_stats(num_outputs),
-        lambda: self._build_dataset_latency_stats(num_outputs // 10),
-        num_outputs)
-
-    self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
-                        None, num_outputs)
-
-    tag1 = "record_latency"
-    tag2 = "record_latency"
-    self.run_core_tests(
-        lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
-        None, num_outputs)
-
-
-# TODO(shivaniagrawal): Can not checkpoint input_pipeline with the
-# transformation `stats_ops.set_stats_aggregator`, since we don't support
-# serializing StatsAggregator yet.
 
 if __name__ == "__main__":
   test.main()

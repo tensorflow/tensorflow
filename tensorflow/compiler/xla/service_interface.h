@@ -47,24 +47,11 @@ class ServiceInterface {
   virtual Status ResetDevice(const ResetDeviceRequest* arg,
                              ResetDeviceResponse* result) = 0;
 
-  virtual Status LoadComputationSnapshot(
-      const LoadComputationSnapshotRequest* request,
-      LoadComputationSnapshotResponse* result) = 0;
-
-  virtual Status Execute(const ExecuteRequest* arg,
-                         ExecuteResponse* result) = 0;
-
   virtual Status ExecuteGraph(const ExecuteGraphRequest* arg,
                               ExecuteResponse* result) = 0;
 
-  virtual Status ExecuteParallel(const ExecuteParallelRequest* arg,
-                                 ExecuteParallelResponse* result) = 0;
-
   virtual Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                                       ExecuteParallelResponse* result) = 0;
-
-  virtual Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                              ExecuteAsyncResponse* result) = 0;
 
   virtual Status WaitForExecution(const WaitForExecutionRequest* arg,
                                   WaitForExecutionResponse* result) = 0;
@@ -72,15 +59,9 @@ class ServiceInterface {
   virtual Status DeconstructTuple(const DeconstructTupleRequest* arg,
                                   DeconstructTupleResponse* result) = 0;
 
-  virtual Status GetComputationStats(const ComputationStatsRequest* arg,
-                                     ComputationStatsResponse* result) = 0;
-
   virtual Status GetComputationGraphStats(
       const ComputationGraphStatsRequest* arg,
       ComputationStatsResponse* result) = 0;
-
-  virtual Status GetComputationShape(const GetComputationShapeRequest* arg,
-                                     GetComputationShapeResponse* result) = 0;
 
   virtual Status GetShape(const GetShapeRequest* arg,
                           GetShapeResponse* result) = 0;
@@ -91,30 +72,8 @@ class ServiceInterface {
   virtual Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                   GetDeviceHandlesResponse* result) = 0;
 
-  // Methods used by ComputationBuilder.
-  virtual Status Computation(const ComputationRequest* arg,
-                             ComputationResponse* result) = 0;
-
-  virtual Status Op(const OpRequest* arg, OpResponse* result) = 0;
-
-  virtual Status GetLocalShape(const GetLocalShapeRequest* arg,
-                               GetLocalShapeResponse* result) = 0;
-
-  virtual Status SetReturnValue(const SetReturnValueRequest* arg,
-                                SetReturnValueResponse* results) = 0;
-
-  virtual Status IsConstant(const IsConstantRequest* arg,
-                            IsConstantResponse* result) = 0;
-
-  virtual Status ComputeConstant(const ComputeConstantRequest* arg,
-                                 ComputeConstantResponse* result) = 0;
-
   virtual Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                                       ComputeConstantResponse* result) = 0;
-
-  // Methods used by Computation.
-  virtual Status SnapshotComputation(const SnapshotComputationRequest* ag,
-                                     SnapshotComputationResponse* result) = 0;
 
   // Methods used by GlobalData.
   virtual Status Unregister(const UnregisterRequest* arg,

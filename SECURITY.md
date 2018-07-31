@@ -168,7 +168,7 @@ below).
 
 Please use a descriptive subject line for your report email. After the initial
 reply to your report, the security team will endeavor to keep you informed of
-the progress being made towards a fix and announcement. 
+the progress being made towards a fix and announcement.
 
 In addition, please include the following information along with your report:
 
@@ -242,9 +242,7 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 -----END PGP PUBLIC KEY BLOCK-----
 ```
 
-### Known vulnerabilities
+### Known Vulnerabilities
 
-| Type               | Versions affected | Reported by           | Additional Information      |
-|--------------------|:-----------------:|-----------------------|-----------------------------|
-| Out Of Bounds Read |             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
-
+For a list of known vulnerabilities and security advisories for TensorFlow,
+[click here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md).

@@ -19,15 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import logistic
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
 # Bijectors must be directly imported because `remove_undocumented` prevents
 # individual file imports.
-from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops.distributions import transformed_distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
@@ -131,6 +132,14 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   Gumbel-Softmax. 2016.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                temperature,
                logits=None,
@@ -165,7 +174,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
     Raises:
       ValueError: If both `probs` and `logits` are passed, or if neither.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[logits, probs, temperature]) as name:
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):

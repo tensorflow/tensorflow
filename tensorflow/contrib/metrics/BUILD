@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:histogram_ops",
         "//tensorflow/python:init_ops",
@@ -77,7 +78,31 @@ py_test(
 py_test(
     name = "metric_ops_test",
     srcs = ["python/ops/metric_ops_test.py"],
-    shard_count = 16,
+    shard_count = 30,
+    srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
+    deps = [
+        ":metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "metric_ops_large_test",
+    size = "large",
+    srcs = ["python/ops/metric_ops_large_test.py"],
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
     deps = [

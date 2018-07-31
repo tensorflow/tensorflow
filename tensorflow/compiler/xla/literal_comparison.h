@@ -20,7 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LITERAL_COMPARISON_H_
 
 #include "tensorflow/compiler/xla/error_spec.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace xla {

@@ -117,6 +117,8 @@ string FilterLayoutString(FilterLayout layout) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
       return "OutputInputYX";
+    case FilterLayout::kOutputYXInput:
+      return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
     case FilterLayout::kInputYXOutput:
@@ -139,6 +141,10 @@ string PadAlignmentString(PadAlignment alignment) {
       return "TensorFlow padding";
   }
   return "unknown pad alignment";
+}
+
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
+  return str << PadAlignmentString(alignment);
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
@@ -407,6 +413,8 @@ string FilterDescriptor::ToShortString() const {
   switch (layout_) {
     case FilterLayout::kOutputInputYX:
       return port::StrCat(od, id, spatial);
+    case FilterLayout::kOutputYXInput:
+      return port::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
       return port::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:

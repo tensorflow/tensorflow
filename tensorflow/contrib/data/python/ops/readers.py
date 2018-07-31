@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import csv
 
 import numpy as np
@@ -25,6 +26,7 @@ from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import shuffle_ops
+from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -324,6 +326,7 @@ def make_csv_dataset(
     num_parallel_parser_calls=2,
     sloppy=False,
     num_rows_for_inference=100,
+    compression_type=None,
 ):
   """Reads CSV files into a dataset.
 
@@ -397,6 +400,8 @@ def make_csv_dataset(
     num_rows_for_inference: Number of rows of a file to use for type inference
       if record_defaults is not provided. If None, reads all the rows of all
       the files. Defaults to 100.
+    compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+      `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no compression.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -459,7 +464,9 @@ def make_csv_dataset(
         use_quote_delim=use_quote_delim,
         na_value=na_value,
         select_cols=select_columns,
-        header=header)
+        header=header,
+        compression_type=compression_type,
+    )
 
   def map_fn(*columns):
     """Organizes columns into a features dictionary.
@@ -467,11 +474,11 @@ def make_csv_dataset(
     Args:
       *columns: list of `Tensor`s corresponding to one csv record.
     Returns:
-      A dictionary of feature names to values for that particular record. If
+      An OrderedDict of feature names to values for that particular record. If
       label_name is provided, extracts the label feature to be returned as the
       second element of the tuple.
     """
-    features = dict(zip(column_names, columns))
+    features = collections.OrderedDict(zip(column_names, columns))
     if label_name is not None:
       label = features.pop(label_name)
       return features, label
@@ -503,6 +510,7 @@ class CsvDataset(dataset_ops.Dataset):
   def __init__(self,
                filenames,
                record_defaults,
+               compression_type=None,
                buffer_size=None,
                header=False,
                field_delim=",",
@@ -538,11 +546,11 @@ class CsvDataset(dataset_ops.Dataset):
 
     The expected output of its iterations is:
     ```python
-    next = dataset.make_one_shot_iterator().get_next()
+    next_element = dataset.make_one_shot_iterator().get_next()
     with tf.Session() as sess:
       while True:
         try:
-          print(sess.run(nxt))
+          print(sess.run(next_element))
         except tf.errors.OutOfRangeError:
           break
 
@@ -560,6 +568,9 @@ class CsvDataset(dataset_ops.Dataset):
         both this and `select_columns` are specified, these must have the same
         lengths, and `column_defaults` is assumed to be sorted in order of
         increasing column index.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
+        compression.
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
         to buffer while reading files. Defaults to 4MB.
       header: (Optional.) A `tf.bool` scalar indicating whether the CSV file(s)
@@ -579,6 +590,11 @@ class CsvDataset(dataset_ops.Dataset):
     super(CsvDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
+    self._compression_type = convert.optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
     record_defaults = [
         constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
         for x in record_defaults
@@ -619,6 +635,7 @@ class CsvDataset(dataset_ops.Dataset):
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
         select_cols=self._select_cols,
+        compression_type=self._compression_type,
     )
 
   @property
@@ -752,6 +769,8 @@ def make_batched_features_dataset(file_pattern,
   # Apply dataset repeat and shuffle transformations.
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
+
+  dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
 
   if drop_final_batch:
     dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))

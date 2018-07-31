@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace {
@@ -35,7 +35,7 @@ ENTRY Conv {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloComputation* entry_computation = module->entry_computation();
 

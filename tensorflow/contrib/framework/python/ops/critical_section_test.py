@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 
 class CriticalSectionTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCreateCriticalSection(self):
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
@@ -53,7 +53,7 @@ class CriticalSectionTest(test.TestCase):
     self.assertAllClose([2.0 * i for i in range(num_concurrent)],
                         sorted(r_value))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCriticalSectionWithControlFlow(self):
     for outer_cond in [False, True]:
       for inner_cond in [False, True]:
@@ -109,7 +109,7 @@ class CriticalSectionTest(test.TestCase):
       with self.assertRaisesOpError("Error"):
         self.evaluate(r)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCreateCriticalSectionFnReturnsOp(self):
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
@@ -332,7 +332,7 @@ class CriticalSectionTest(test.TestCase):
     self.evaluate(v.initializer)
     self.assertEqual(10, self.evaluate(out))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInsideFunction(self):
     cs = critical_section_ops.CriticalSection()
     v = resource_variable_ops.ResourceVariable(1)

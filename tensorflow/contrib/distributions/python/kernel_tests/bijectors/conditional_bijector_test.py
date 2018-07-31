@@ -59,7 +59,7 @@ class ConditionalBijectorTest(test.TestCase):
     for name in ["inverse_log_det_jacobian", "forward_log_det_jacobian"]:
       method = getattr(b, name)
       with self.assertRaisesRegexp(ValueError, name + ".*b1.*b2"):
-        method(1., event_ndims=0., arg1="b1", arg2="b2")
+        method(1., event_ndims=0, arg1="b1", arg2="b2")
 
 
 if __name__ == "__main__":

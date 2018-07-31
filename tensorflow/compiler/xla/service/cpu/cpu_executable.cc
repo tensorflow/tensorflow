@@ -88,6 +88,11 @@ Status CpuExecutable::AllocateBuffers(
       continue;
     }
 
+    if (allocation.is_constant()) {
+      VLOG(3) << "allocation #" << i << " is a constant";
+      continue;
+    }
+
     if (allocation.is_thread_local()) {
       VLOG(3) << "buffer #" << i << " is thread-local";
       continue;
@@ -206,8 +211,8 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers) {
   se::Stream* stream = run_options->stream();
   ScopedShapedBuffer result_buffer(
-      /*on_host_shape=*/host_result_shape(),
-      /*on_device_shape=*/host_result_shape(), run_options->allocator(),
+      /*on_host_shape=*/result_shape(),
+      /*on_device_shape=*/result_shape(), run_options->allocator(),
       stream->parent()->device_ordinal());
 
   // Move OwningDeviceMemory values which contain the array(s) of the result

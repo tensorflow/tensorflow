@@ -381,6 +381,8 @@ class InferenceContext {
 
   string DebugString(ShapeHandle s);
   string DebugString(DimensionHandle d);
+  string DebugString(const ShapeAndType& shape_and_type);
+  string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
   string DebugString() const;

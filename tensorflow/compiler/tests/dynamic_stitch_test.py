@@ -20,14 +20,14 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import googletest
 
 
-class DynamicStitchTest(XLATestCase):
+class DynamicStitchTest(xla_test.XLATestCase):
 
   def _AssertDynamicStitchResultIs(self, indices, data, expected):
     with self.test_session() as session:

@@ -28,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import linalg_ops
 
 
 def conjugate_gradient(operator,

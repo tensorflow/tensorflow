@@ -59,6 +59,16 @@ class NNAPIDelegate {
   ANeuralNetworksModel* nn_model_ = nullptr;
   // The NN API compilation handle
   ANeuralNetworksCompilation* nn_compiled_model_ = nullptr;
+  // Model status
+  TfLiteStatus model_status_ = kTfLiteOk;
+
+  // List of state tensors for LSTM, RNN, SVDF.
+  // NN API does not allow ops to maintain states across multiple
+  // invocations. We need to manually create state input tensors from
+  // corresponding state output tensors of TFLite operations, and map them
+  // correctly.
+  std::vector<int> model_states_inputs_;   // holds NNAPI operand ids
+  std::vector<int> model_states_outputs_;  // holds TFLite tensor ids
 };
 
 }  // namespace tflite

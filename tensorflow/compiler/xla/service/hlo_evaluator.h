@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -109,6 +110,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const std::unordered_map<const HloInstruction*, const Literal*>&
           substitutions);
 
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseBinaryOp(
+      HloOpcode opcode, const Literal& lhs, const Literal& rhs);
+
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseUnaryOp(
+      HloOpcode opcode, const Literal& operand);
+
+  StatusOr<std::unique_ptr<Literal>> EvaluateDotOp(
+      const DotDimensionNumbers& dim_numbers, const Literal& lhs,
+      const Literal& rhs);
+
  protected:
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
@@ -165,6 +176,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
+
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
+
+  Status HandleBroadcast(HloInstruction* broadcast) override;
+
+  Status HandleAfterAll(HloInstruction* token) override;
+
+  Status HandleSort(HloInstruction* sort) override;
 
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be

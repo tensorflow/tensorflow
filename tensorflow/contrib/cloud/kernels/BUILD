@@ -73,3 +73,18 @@ tf_proto_library(
     srcs = ["bigquery_table_partition.proto"],
     cc_api_version = 2,
 )
+
+tf_kernel_library(
+    name = "gcs_config_ops",
+    srcs = ["gcs_config_ops.cc"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform/cloud:curl_http_request",
+        "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/core/platform/cloud:oauth_client",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)

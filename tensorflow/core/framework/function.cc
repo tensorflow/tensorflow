@@ -815,6 +815,10 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(
         strings::StrCat("_state_handle", "=", options.state_handle));
   }
+  if (!options.executor_type.empty()) {
+    entries.push_back(
+        strings::StrCat("_executor_type", "=", options.executor_type));
+  }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }
@@ -861,12 +865,15 @@ Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
   return Status::OK();
 }
 
-Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets) {
+Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
+                                         bool allow_dead_tensors) {
   rets->clear();
   rets->reserve(rets_.size());
   for (size_t i = 0; i < rets_.size(); ++i) {
     if (rets_[i].has_val) {
       rets->emplace_back(std::move(rets_[i].val));
+    } else if (allow_dead_tensors) {
+      rets->emplace_back();
     } else {
       return errors::Internal("Retval[", i, "] does not have value");
     }

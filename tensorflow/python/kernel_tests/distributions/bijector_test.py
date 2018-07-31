@@ -90,9 +90,10 @@ class IntentionallyMissingError(Exception):
 class BrokenBijector(bijector.Bijector):
   """Forward and inverse are not inverses of each other."""
 
-  def __init__(self, forward_missing=False, inverse_missing=False):
+  def __init__(
+      self, forward_missing=False, inverse_missing=False, validate_args=False):
     super(BrokenBijector, self).__init__(
-        validate_args=False, forward_min_event_ndims=0, name="broken")
+        validate_args=validate_args, forward_min_event_ndims=0, name="broken")
     self._forward_missing = forward_missing
     self._inverse_missing = inverse_missing
 
@@ -115,6 +116,33 @@ class BrokenBijector(bijector.Bijector):
     if self._forward_missing:
       raise IntentionallyMissingError
     return math_ops.log(2.)
+
+class BijectorTestEventNdims(test.TestCase):
+
+  def testBijectorNonIntegerEventNdims(self):
+    bij = BrokenBijector()
+    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+      bij.forward_log_det_jacobian(1., event_ndims=1.5)
+    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+      bij.inverse_log_det_jacobian(1., event_ndims=1.5)
+
+  def testBijectorArrayEventNdims(self):
+    bij = BrokenBijector()
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      bij.forward_log_det_jacobian(1., event_ndims=(1, 2))
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      bij.inverse_log_det_jacobian(1., event_ndims=(1, 2))
+
+  def testBijectorDynamicEventNdims(self):
+    bij = BrokenBijector(validate_args=True)
+    event_ndims = array_ops.placeholder(dtype=np.int32, shape=None)
+    with self.test_session():
+      with self.assertRaisesOpError("Expected scalar"):
+        bij.forward_log_det_jacobian(1., event_ndims=event_ndims).eval({
+            event_ndims: (1, 2)})
+      with self.assertRaisesOpError("Expected scalar"):
+        bij.inverse_log_det_jacobian(1., event_ndims=event_ndims).eval({
+            event_ndims: (1, 2)})
 
 
 @six.add_metaclass(abc.ABCMeta)

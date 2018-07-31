@@ -5,7 +5,7 @@
 #
 # ":debug_py": Public Python methods and classes of tfdbg.
 #   For API documentation, see https://www.tensorflow.org/api_docs/python/tfdbg
-#   For a user interface walkthrough, see https://www.tensorflow.org/programmers_guide/debugger
+#   For a user interface walkthrough, see https://www.tensorflow.org/guide/debugger
 # ":grpc_debug_server": Server interface for grpc:// debug URLs.
 
 package(
@@ -167,6 +167,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -403,6 +404,7 @@ py_library(
     deps = [
         ":debug_errors",
         ":debug_fibonacci",
+        ":debug_keras",
         ":debug_mnist",
         ":debug_tflearn_iris",
     ],
@@ -450,6 +452,17 @@ py_binary(
         ":debug_py",
         "//tensorflow:tensorflow_py",
         "@six_archive//:six",
+    ],
+)
+
+py_binary(
+    name = "debug_keras",
+    srcs = ["examples/debug_keras.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_py",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -572,6 +585,7 @@ py_test(
         ":source_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
@@ -789,6 +803,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(
@@ -801,6 +816,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1003,6 +1019,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
         "noasan",  # Times out due to size of test (b/73731462).
+        "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
 )
@@ -1082,6 +1099,7 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1092,6 +1110,7 @@ sh_test(
     data = [
         ":debug_errors",
         ":debug_fibonacci",
+        ":debug_keras",
         ":debug_mnist",
         ":debug_tflearn_iris",
         ":offline_analyzer",

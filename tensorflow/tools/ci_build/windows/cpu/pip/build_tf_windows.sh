@@ -53,32 +53,55 @@ function cleanup {
 }
 trap cleanup EXIT
 
-skip_test=0
+PY_TEST_DIR="py_test_dir"
 
+SKIP_TEST=0
+RELEASE_BUILD=0
+TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/... \
+    //${PY_TEST_DIR}/tensorflow/contrib/... "
+
+# --skip_test            Skip running tests
+# --enable_remote_cache  Add options to enable remote cache for build and test
+# --release_build        Build for release, compilation time will be longer to
+#                        ensure performance
+# --test_core_only       Use tensorflow/python/... as test target
+# --test_contrib_only    Use tensorflow/contrib/... as test target
 for ARG in "$@"; do
-  if [[ "$ARG" == --skip_test ]]; then
-    skip_test=1
-  elif [[ "$ARG" == --enable_gcs_remote_cache ]]; then
-    set_gcs_remote_cache_options
-  fi
+  case "$ARG" in
+    --skip_test) SKIP_TEST=1 ;;
+    --enable_remote_cache) set_remote_cache_options ;;
+    --release_build) RELEASE_BUILD=1 ;;
+    --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
+    --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
+    *)
+  esac
 done
 
-# --define=override_eigen_strong_inline=true speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
-# by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
-echo "build --define=override_eigen_strong_inline=true" >> "${TMP_BAZELRC}"
+if [[ "$RELEASE_BUILD" == 1 ]]; then
+  # Overriding eigen strong inline speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
+  # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
+  # Because this hurts the performance of TF, we don't override it in release build.
+  export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
+else
+  export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
+fi
 
-echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+# Enable short object file path to avoid long path issue on Windows.
+echo "startup --output_user_root=${TMPDIR}" >> "${TMP_BAZELRC}"
+
+if ! grep -q "import %workspace%/${TMP_BAZELRC}" .bazelrc; then
+  echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+fi
 
 run_configure_for_cpu_build
 
-bazel build --announce_rc -c opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
-if [[ "$skip_test" == 1 ]]; then
+if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
 fi
 
 # Create a python test directory to avoid package name conflict
-PY_TEST_DIR="py_test_dir"
 create_python_test_dir "${PY_TEST_DIR}"
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}"
@@ -92,11 +115,11 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-bazel test -c opt -k --test_output=errors \
+bazel test --announce_rc --config=opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
+  --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
-  //${PY_TEST_DIR}/tensorflow/python/... \
-  //${PY_TEST_DIR}/tensorflow/contrib/...
+  ${TEST_TARGET}

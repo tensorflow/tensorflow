@@ -60,6 +60,8 @@ class ValidateExportTest(test.TestCase):
     for symbol in [_test_function, _test_function, TestClassA, TestClassB]:
       if hasattr(symbol, '_tf_api_names'):
         del symbol._tf_api_names
+      if hasattr(symbol, '_tf_api_names_v1'):
+        del symbol._tf_api_names_v1
 
   def _CreateMockModule(self, name):
     mock_module = self.MockModule(name)
@@ -127,13 +129,6 @@ class ValidateExportTest(test.TestCase):
     export_decorator = tf_export.tf_export('nameA', 'nameB')
     with self.assertRaises(tf_export.SymbolAlreadyExposedError):
       export_decorator(_test_function)
-
-  def testEAllowMultipleExports(self):
-    _test_function._tf_api_names = ['name1', 'name2']
-    tf_export.tf_export('nameRed', 'nameBlue', allow_multiple_exports=True)(
-        _test_function)
-    self.assertEquals(['name1', 'name2', 'nameRed', 'nameBlue'],
-                      _test_function._tf_api_names)
 
   def testOverridesFunction(self):
     _test_function2._tf_api_names = ['abc']

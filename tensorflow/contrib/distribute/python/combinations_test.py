@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import OrderedDict
+from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.python.eager import test
@@ -118,6 +119,29 @@ class TestingCombinationsTest(test.TestCase):
     c2 = combinations.combine(mode=["eager"], loss=["callable"])
     with self.assertRaisesRegexp(ValueError, ".*Keys.+overlap.+"):
       _ = combinations.times(c1, c2)
+
+
+@combinations.generate(combinations.combine(a=[1, 0], b=[2, 3], c=[1]))
+class CombineTheTestSuite(parameterized.TestCase):
+
+  def test_add_things(self, a, b, c):
+    self.assertLessEqual(3, a + b + c)
+    self.assertLessEqual(a + b + c, 5)
+
+  def test_add_things_one_more(self, a, b, c):
+    self.assertLessEqual(3, a + b + c)
+    self.assertLessEqual(a + b + c, 5)
+
+  def not_a_test(self, a=0, b=0, c=0):
+    del a, b, c
+    self.fail()
+
+  def _test_but_private(self, a=0, b=0, c=0):
+    del a, b, c
+    self.fail()
+
+  # Check that nothing funny happens to a non-callable that starts with "_test".
+  test_member = 0
 
 
 if __name__ == "__main__":

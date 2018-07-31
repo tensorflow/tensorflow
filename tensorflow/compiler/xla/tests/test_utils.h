@@ -21,7 +21,7 @@ limitations under the License.
 #include <random>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -55,16 +55,28 @@ class PseudorandomGenerator {
 };
 
 // Generates fake data in a literal of the given shape, or returns an error
-// status if the element type is currently unhandled for fake data generation.
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape);
+// status if the element type is currently unhandled for fake data
+// generation. See below for documentation of pseudo_random.
+StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape,
+                                                   bool pseudo_random = true);
 
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
 //
 // Will handle special cases such as making sure that indices used for dynamic
 // slices are bounded, reduces that call adds use 0 as an init value, etc.
+//
+// If pseudo_random is true, the generated numbers will be generated
+// deterministically in a pseudo random way unless the values are constrated to
+// be e.g. init values as above. If pseudo_random is false, the returned values
+// will be generated in a faster way that yields less interesting data, e.g. the
+// values may all be just the same value.
+//
+// TODO(b/79942829): Make interesting argument generation fast enough that using
+// pseudo_random does not save any noticeable amount of time so that the
+// parameter can be removed.
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
-    HloModule* const module);
+    HloModule* const module, bool pseudo_random = true);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.

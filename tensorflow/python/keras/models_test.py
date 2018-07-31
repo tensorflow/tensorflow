@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 
 
 class TestModelCloning(test.TestCase):
@@ -33,6 +37,7 @@ class TestModelCloning(test.TestCase):
 
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(4, input_shape=(4,)))
+      model.add(keras.layers.BatchNormalization())
       model.add(keras.layers.Dropout(0.5))
       model.add(keras.layers.Dense(4))
 
@@ -42,6 +47,8 @@ class TestModelCloning(test.TestCase):
     with self.test_session():
       # With placeholder creation
       new_model = keras.models.clone_model(model)
+      # update ops from batch norm needs to be included
+      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(val_a, val_out)
 
@@ -49,6 +56,7 @@ class TestModelCloning(test.TestCase):
       input_a = keras.Input(shape=(4,))
       new_model = keras.models.clone_model(
           model, input_tensors=input_a)
+      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(val_a, val_out)
 
@@ -56,6 +64,7 @@ class TestModelCloning(test.TestCase):
       input_a = keras.backend.variable(val_a)
       new_model = keras.models.clone_model(
           model, input_tensors=input_a)
+      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
@@ -72,6 +81,7 @@ class TestModelCloning(test.TestCase):
 
       x_a = dense_1(input_a)
       x_a = keras.layers.Dropout(0.5)(x_a)
+      x_a = keras.layers.BatchNormalization()(x_a)
       x_b = dense_1(input_b)
       x_a = dense_2(x_a)
       outputs = keras.layers.add([x_a, x_b])
@@ -83,6 +93,7 @@ class TestModelCloning(test.TestCase):
     with self.test_session():
       # With placeholder creation
       new_model = keras.models.clone_model(model)
+      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch([val_a, val_b], val_out)
 
@@ -91,6 +102,7 @@ class TestModelCloning(test.TestCase):
       input_b = keras.Input(shape=(4,), name='b')
       new_model = keras.models.clone_model(
           model, input_tensors=[input_a, input_b])
+      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch([val_a, val_b], val_out)
 
@@ -99,6 +111,7 @@ class TestModelCloning(test.TestCase):
       input_b = keras.backend.variable(val_b)
       new_model = keras.models.clone_model(
           model, input_tensors=[input_a, input_b])
+      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
@@ -122,6 +135,37 @@ class TestModelCloning(test.TestCase):
     with self.assertRaises(ValueError):
       keras.models._clone_sequential_model(seq_model, input_tensors=y)
 
+
+class CheckpointingTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_optimizer_dependency(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=(4,)))
+    opt = adam.AdamOptimizer(0.01)
+    model.compile(optimizer=opt, loss='mse')
+    model.fit(x=np.array([[1., 2., 3., 4.]]), y=[1.], epochs=2)
+    save_prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    beta1_power, _ = opt._get_beta_accumulators()
+    self.evaluate(beta1_power.assign(12.))
+    model.save_weights(save_prefix)
+    self.evaluate(beta1_power.assign(13.))
+    model.load_weights(save_prefix)
+    self.assertEqual(12., self.evaluate(beta1_power))
+
+class TestModelBackend(test.TestCase):
+
+  def test_model_backend_float64_use_cases(self):
+    # Test case for GitHub issue 19318
+    floatx = keras.backend.floatx()
+    keras.backend.set_floatx('float64')
+
+    x = keras.Input((5,))
+    y = keras.layers.Dense(1)(x)
+    model = keras.models.Model(x, y)
+    model.compile('rmsprop', 'mse')
+
+    keras.backend.set_floatx(floatx)
 
 if __name__ == '__main__':
   test.main()

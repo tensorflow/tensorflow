@@ -29,6 +29,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -36,11 +37,14 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
-from tensorflow.python.keras.utils.layer_utils import print_summary as print_layer_summary
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -77,6 +81,20 @@ class Network(base_layer.Layer):
       # Subclassed network
       self._init_subclassed_network(**kwargs)
 
+  # Several Network methods have "no_automatic_dependency_tracking"
+  # annotations. Since Network does automatic dependency tracking on attribute
+  # assignment, including for common data structures such as lists, by default
+  # we'd have quite a few empty dependencies which users don't care about (or
+  # would need some way to ignore dependencies automatically, which is confusing
+  # when applied to user code). Some attributes, such as _layers, would cause
+  # structural issues (_layers being the place where Layers assigned to tracked
+  # attributes are stored).
+  #
+  # Aside from these aesthetic and structural issues, useless dependencies on
+  # empty lists shouldn't cause issues; adding or removing them will not break
+  # checkpoints, but may cause "all Python objects matched" assertions to fail
+  # (in which case less strict assertions may be substituted if necessary).
+  @checkpointable.no_automatic_dependency_tracking
   def _base_init(self, name=None):
     # The following are implemented as property functions:
     # self.trainable_weights
@@ -93,6 +111,11 @@ class Network(base_layer.Layer):
     self.trainable = True
     self._is_compiled = False
     self._expects_training_arg = False
+    # A list of "extra" variables assigned to attributes of this class, included
+    # in self.weights and self.variables. Always empty for graph networks (but
+    # included in base_init to avoid excessive special casing when retrieving
+    # the value).
+    self._extra_variables = []
 
     self.supports_masking = False
     if not hasattr(self, 'optimizer'):
@@ -121,13 +144,10 @@ class Network(base_layer.Layer):
 
     self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
         weakref.ref(self))
-    # A zero-argument function which should be called and set back to None as
-    # soon as the network is built (only applicable to subclassed Models). Runs
-    # restore operations when graph building.
-    self._in_progress_restore_finalizer = None
 
+  @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
-    self._uses_inputs_arg = True
+    self._call_convention = base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -284,21 +304,58 @@ class Network(base_layer.Layer):
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
+  @checkpointable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    call_args = tf_inspect.getargspec(self.call).args
-    if 'training' in call_args:
+    call_argspec = tf_inspect.getargspec(self.call)
+    if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
-    if 'inputs' in call_args:
-      self._uses_inputs_arg = True
-    else:
-      self._uses_inputs_arg = False
-    self.outputs = None
-    self.inputs = None
+    self._call_convention = self._determine_call_convention(call_argspec)
+    self.outputs = []
+    self.inputs = []
     self.built = False
+
+  def _determine_call_convention(self, call_argspec):
+    """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
+    if call_argspec.varargs:
+      may_take_single_argument = False
+    else:
+      try:
+        # Note: tf_inspect doesn't raise a TypeError when regular inspect would,
+        # so we need to keep in mind that "getcallargs" may have returned
+        # something even though we under-specified positional arguments.
+        all_args = tf_inspect.getcallargs(self.call, None)
+        self_args = set()
+        for arg_name, obj in all_args.items():
+          if obj is self:
+            self_args.add(arg_name)
+        may_take_single_argument = True
+      except TypeError:
+        may_take_single_argument = False
+    if may_take_single_argument:
+      # A single positional argument (plus "self") is considered equivalent to
+      # an "inputs" argument.
+      all_positional_args = len(call_argspec.args)
+      if call_argspec.defaults is not None:
+        all_positional_args -= len(call_argspec.defaults)
+      non_self_positional_args = all_positional_args
+      for positional_arg_name in call_argspec.args[:all_positional_args]:
+        if positional_arg_name in self_args:
+          non_self_positional_args -= 1
+      if non_self_positional_args == 1:
+        if 'inputs' in call_argspec.args[all_positional_args:]:
+          raise TypeError(
+              "Model.call() takes a single positional argument (to which "
+              "inputs are passed by convention) and a separate 'inputs' "
+              "argument. Unable to determine which arguments are inputs.")
+        return base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT
+    if 'inputs' in call_argspec.args:
+      return base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
+    else:
+      return base_layer.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
     """Add Checkpointable dependencies on a list of Layers."""
@@ -317,11 +374,35 @@ class Network(base_layer.Layer):
       self._track_checkpointable(
           layer, name='layer-%d' % layer_index, overwrite=True)
 
+  def _no_dependency(self, value):
+    """Override to allow `Layer` to disable dependency tracking.
+
+    `CheckpointableBase` defines this method, whose semantics are "if a subclass
+    does dependency tracking, this method exempts `value`." Layer uses
+    `_no_dependency` to exempt some of its attribute assignments (conditional on
+    attribute assignment causing tracking in the subclass).
+
+    Args:
+      value: An object which will be assigned to an object attribute, whose
+        value should not be tracked.
+
+    Returns:
+      A wrapped object which, when assigned to an attribute, will not be
+      tracked (`value` will be stored in the attribute).
+    """
+    return data_structures.NoDependency(value)
+
   def __setattr__(self, name, value):
-    no_dependency = isinstance(value, checkpointable.NoDependency)
-    if no_dependency:
-      value = value.value
-    if isinstance(value, (base_layer.Layer, Network)):
+    if not getattr(self, '_setattr_tracking', True):
+      super(Network, self).__setattr__(name, value)
+      return
+    no_dependency = isinstance(value, data_structures.NoDependency)
+    value = data_structures.sticky_attribute_assignment(
+        checkpointable=self, value=value, name=name)
+    if isinstance(value, (
+        base_layer.Layer,
+        Network,
+        data_structures.CheckpointableDataStructure)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -329,7 +410,9 @@ class Network(base_layer.Layer):
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
       if not is_graph_network:
-        if value not in self._layers:
+        # We need to check object identity to avoid de-duplicating empty
+        # container types which compare equal.
+        if not any((layer is value for layer in self._layers)):
           self._layers.append(value)
           if hasattr(value, '_use_resource_variables'):
             # In subclassed models, legacy layers (tf.layers) must always use
@@ -337,17 +420,22 @@ class Network(base_layer.Layer):
             value._use_resource_variables = True
     if (not no_dependency
         and isinstance(value, checkpointable.CheckpointableBase)):
-      # Layer (and therefore Network/Model) inherit from CheckpointableBase
-      # rather than Checkpointable, which means there is no Checkpointable
-      # __setattr__ override (it would be a performance issue for functional
-      # layers). Therefore Model tracks Checkpointable objects itself.
-      self._track_checkpointable(
-          checkpointable=value, name=name, overwrite=True)
+      if (  # For subclassed models only, users may add extra weights/variables
+            # simply by assigning them to attributes.
+          not self._is_graph_network
+          and isinstance(value, variables.Variable)):
+        self._extra_variables.append(value)
     super(Network, self).__setattr__(name, value)
 
   def add_variable(self, name, shape, dtype=None, initializer=None,
                    regularizer=None, trainable=True, constraint=None):
-    raise NotImplementedError('`add_variable` is not supported on Networks.')
+    if self._is_graph_network:
+      raise NotImplementedError('`add_variable` is not supported on Networks.')
+    else:
+      raise NotImplementedError(
+          '`add_variable` is not supported on Networks. However, you may '
+          'assign variables to attributes and they will show up in the weights '
+          'and variables properties.')
 
   def add_loss(self, *args, **kwargs):
     if context.executing_eagerly():
@@ -434,7 +522,8 @@ class Network(base_layer.Layer):
 
   @property
   def layers(self):
-    return self._layers
+    return checkpointable_layer_utils.filter_empty_layer_containers(
+        self._layers)
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
@@ -470,6 +559,28 @@ class Network(base_layer.Layer):
     raise ValueError('No such layer: ' + name)
 
   @property
+  def _unfiltered_updates(self):
+    if context.executing_eagerly():
+      return []
+    updates = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        updates += layer._unfiltered_updates
+      else:
+        updates += layer.updates
+    return updates
+
+  @property
+  def _unfiltered_losses(self):
+    losses = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        losses += layer._unfiltered_losses
+      else:
+        losses += layer.losses
+    return losses
+
+  @property
   def updates(self):
     """Retrieves the network's updates.
 
@@ -477,6 +588,8 @@ class Network(base_layer.Layer):
     unconditional, or conditional on inputs to this model
     (e.g. will not include updates that were created by layers of this model
     outside of the model).
+
+    When the network has no registered inputs, all updates are returned.
 
     Effectively, `network.updates` behaves like `layer.updates`.
 
@@ -523,22 +636,20 @@ class Network(base_layer.Layer):
     if not self.trainable and not self.stateful:
       return []
 
-    updates = []
-    for layer in self.layers:
-      updates += layer.updates
+    updates = self._unfiltered_updates
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
-    if self.inputs:
-      relevant_inputs = self.inputs[:]
-    else:
-      relevant_inputs = []
-    for i in range(1, len(self._inbound_nodes)):
+    relevant_inputs = []
+    for i in range(0, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
+    if not relevant_inputs:
+      return updates
+
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
     unconditional_updates = [
@@ -557,25 +668,25 @@ class Network(base_layer.Layer):
     (e.g. will not include losses that depend on tensors
     that aren't inputs to this model).
 
+    When the network has no registered inputs, all losses are returned.
+
     Returns:
         A list of loss tensors.
     """
-    losses = []
-    for layer in self.layers:
-      losses += layer.losses
+    losses = self._unfiltered_losses
     if context.executing_eagerly():
       return losses
 
-    if self.inputs:
-      relevant_inputs = self.inputs[:]
-    else:
-      relevant_inputs = []
-    for i in range(1, len(self._inbound_nodes)):
+    relevant_inputs = []
+    for i in range(0, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
+    if not relevant_inputs:
+      return losses
+
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, losses)
     relevant_conditional_losses = [x for x in losses if x in reachable]
     unconditional_losses = [
@@ -585,24 +696,17 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    if not self.trainable:
-      return []
-    weights = []
-    for layer in self.layers:
-      weights += layer.trainable_weights
-    return weights
+    return checkpointable_layer_utils.gather_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
-    weights = []
-    for layer in self.layers:
-      weights += layer.non_trainable_weights
-    if not self.trainable:
-      trainable_weights = []
-      for layer in self.layers:
-        trainable_weights += layer.trainable_weights
-      return trainable_weights + weights
-    return weights
+    return checkpointable_layer_utils.gather_non_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def input_spec(self):
@@ -630,6 +734,86 @@ class Network(base_layer.Layer):
     if len(specs) == 1:
       return specs[0]
     return specs
+
+  def build(self, input_shape):
+    """Builds the model based on input shapes received.
+
+    This is to be used for subclassed models, which do not know at instantiation
+    time what their inputs look like.
+
+    Args:
+     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
+         are tuples, integers, or TensorShapes.
+
+    Raises:
+      ValueError:
+        1. In case of invalid user-provided data (not of type tuple,
+           list, or TensorShape).
+        2. If the model requires call arguments that are agnostic
+           to the input shapes (positional or kwarg in call signature).
+        3. If not all layers were properly built.
+        4. If float type inputs are not supported within the layers.
+
+      In each of these cases, the user should build their model by calling it
+      on real tensor data.
+    """
+    if self._is_graph_network:
+      self.built = True
+      return
+
+    # If subclass network
+    if input_shape is None:
+      raise ValueError('Input shape must be defined when calling build on a '
+                       'model subclass network.')
+    valid_types = (tuple, list, tensor_shape.TensorShape)
+    if not isinstance(input_shape, valid_types):
+      raise ValueError('Specified input shape is not one of the valid types. '
+                       'Please specify a batch input shape of type tuple or '
+                       'list of input shapes. User provided '
+                       'input type: {}'.format(type(input_shape)))
+
+    if input_shape and not self.inputs:
+      if isinstance(input_shape, list):
+        # List of input shapes
+        x = [base_layer.generate_dummy_data_from_shape(shape)
+             for shape in input_shape]
+      else:
+        x = base_layer.generate_dummy_data_from_shape(input_shape)
+
+      kwargs = {}
+      num_call_args = len(tf_inspect.getargspec(self.call).args)
+      if self._expects_training_arg and num_call_args == 3:
+        # Has call signature of call(self, input, training)
+        kwargs['training'] = False
+      elif num_call_args > 2:
+        # Has invalid call signature of call(self, input, *args, **kwargs)
+        raise ValueError('Currently, you cannot build your model if it has '
+                         'positional or keyword arguments that are not '
+                         'inputs to the model, but are required for its '
+                         '`call` method. Instead, in order to instantiate '
+                         'and build your model, `call` your model on real '
+                         'tensor data with all expected call arguments.')
+
+      try:
+        self.call(x, **kwargs)
+      except (errors.InvalidArgumentError, TypeError):
+        raise ValueError('You cannot build your model by calling `build` '
+                         'if your layers do not support float type inputs. '
+                         'Instead, in order to instantiate and build your '
+                         'model, `call` your model on real tensor data (of '
+                         'the correct dtype).')
+
+    if self._layers:
+      self._track_layers(self._layers)
+    if self.layers:
+      for layer in self.layers:
+        if not layer.built:
+          raise ValueError('Layer: {} was not built in your model. Calling '
+                           '`build` manually on a subclassed model is only '
+                           'allowed for models with a static topology. '
+                           'In this case, you can build your model by '
+                           'calling it on real tensor data.'.format(layer))
+    self.built = True
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
@@ -671,6 +855,8 @@ class Network(base_layer.Layer):
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
+      if context.executing_eagerly():
+        return super(Network, self).compute_output_shape(input_shape)
       raise NotImplementedError
 
     if isinstance(input_shape, list):
@@ -781,7 +967,7 @@ class Network(base_layer.Layer):
         mask: List of masks (tensors or None).
 
     Returns:
-        Three lists: output_tensors, output_masks, output_shapes
+        Two lists: output_tensors, output_masks
     """
     # Note: masking support is relevant mainly for Keras.
     # It cannot be factored out without having the fully reimplement the network
@@ -848,7 +1034,6 @@ class Network(base_layer.Layer):
               else:
                 output_masks = [None for _ in output_tensors]
               computed_tensors = [computed_tensor]
-              computed_masks = [computed_mask]
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
@@ -1250,7 +1435,11 @@ class Network(base_layer.Layer):
       with h5py.File(filepath, 'w') as f:
         saving.save_weights_to_hdf5_group(f, self.layers)
     else:
-      self._checkpointable_saver.save(filepath)
+      if context.executing_eagerly():
+        session = None
+      else:
+        session = backend.get_session()
+      self._checkpointable_saver.save(filepath, session=session)
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -1310,13 +1499,10 @@ class Network(base_layer.Layer):
             'loading TensorFlow-formatted weights (got by_name=True to '
             'load_weights).')
       if not context.executing_eagerly():
-        finalizer = status.run_restore_ops
-        if self.built:
-          finalizer()
-        else:
-          # Hold on to this status object until the network is built (for
-          # subclassed Models). Then we'll run restore ops if necessary.
-          self._in_progress_restore_finalizer = finalizer
+        session = backend.get_session()
+        # Restore existing variables (if any) immediately, and set up a
+        # streaming restore for any variables created in the future.
+        checkpointable_utils.streaming_restore(status=status, session=session)
       return status
     if h5py is None:
       raise ImportError(
@@ -1333,14 +1519,6 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
-
-  def _post_build_cleanup(self):
-    super(Network, self)._post_build_cleanup()
-    if self._in_progress_restore_finalizer is not None:
-      # Runs queued restore operations left over from load_weights when graph
-      # building.
-      self._in_progress_restore_finalizer()
-      self._in_progress_restore_finalizer = None
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -1407,7 +1585,8 @@ class Network(base_layer.Layer):
         ImportError: if yaml module is not found.
     """
     if yaml is None:
-      raise ImportError('Requires yaml module installed.')
+      raise ImportError(
+          'Requires yaml module installed (`pip install pyyaml`).')
     return yaml.dump(self._updated_config(), **kwargs)
 
   def summary(self, line_length=None, positions=None, print_fn=None):
@@ -1424,52 +1603,19 @@ class Network(base_layer.Layer):
             It will be called on each line of the summary.
             You can set it to a custom function
             in order to capture the string summary.
+
+    Raises:
+        ValueError: if `summary()` is called before the model is built.
     """
-    print_layer_summary(self,
-                        line_length=line_length,
-                        positions=positions,
-                        print_fn=print_fn)
-
-
-def get_source_inputs(tensor, layer=None, node_index=None):
-  """Returns the list of input tensors necessary to compute `tensor`.
-
-  Output will always be a list of tensors
-  (potentially with 1 element).
-
-  Arguments:
-      tensor: The tensor to start from.
-      layer: Origin layer of the tensor. Will be
-          determined via tensor._keras_history if not provided.
-      node_index: Origin node index of the tensor.
-
-  Returns:
-      List of input tensors.
-  """
-  if not hasattr(tensor, '_keras_history'):
-    return tensor
-
-  if layer is None or node_index:
-    layer, node_index, _ = tensor._keras_history
-  if not layer._inbound_nodes:
-    return [tensor]
-  else:
-    node = layer._inbound_nodes[node_index]
-    if not node.inbound_layers:
-      # Reached an Input layer, stop recursion.
-      return node.input_tensors
-    else:
-      source_tensors = []
-      for i in range(len(node.inbound_layers)):
-        x = node.input_tensors[i]
-        layer = node.inbound_layers[i]
-        node_index = node.node_indices[i]
-        previous_sources = get_source_inputs(x, layer, node_index)
-        # Avoid input redundancy.
-        for x in previous_sources:
-          if x not in source_tensors:
-            source_tensors.append(x)
-      return source_tensors
+    if not self.built:
+      raise ValueError('This model has never been called, thus its weights '
+                       'have not yet been created, so no summary can be '
+                       'displayed. Build the model first '
+                       '(e.g. by calling it on some data).')
+    layer_utils.print_summary(self,
+                              line_length=line_length,
+                              positions=positions,
+                              print_fn=print_fn)
 
 
 def _is_hdf5_filepath(filepath):

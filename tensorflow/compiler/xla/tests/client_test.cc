@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -43,8 +43,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
   std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
   for (const std::vector<int64>& execute_layout : layouts) {
     for (const std::vector<int64>& transfer_layout : layouts) {
-      b.Add(b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-            b.ConstantR2<int32>({{10, 20}, {30, 40}}));
+      Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+          ConstantR2<int32>(&b, {{10, 20}, {30, 40}}));
       TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
       ExecutionOptions execution_options = execution_options_;
@@ -56,7 +56,7 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
           client_->Execute(computation, {}, &execution_options));
 
       std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>(
+          LiteralUtil::CreateR2WithLayout<int32>(
               {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
       TF_ASSERT_OK_AND_ASSIGN(
@@ -72,8 +72,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
 XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   XlaBuilder b(TestName());
 
-  b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-           b.ConstantR2<int32>({{10, 20}, {30, 40}})});
+  Tuple(&b, {ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+             ConstantR2<int32>(&b, {{10, 20}, {30, 40}})});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
@@ -112,13 +112,13 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> const_arg,
-      client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> const_arg,
+                          client_->TransferToServer(
+                              *LiteralUtil::CreateR2<int32>({{5, 6}, {7, 8}})));
 
   XlaBuilder b(TestName() + ".add");
-  b.Add(b.Parameter(0, shape, "param_0"),
-        b.ConstantR2<int32>({{1, 2}, {3, 4}}));
+  Add(Parameter(&b, 0, shape, "param_0"),
+      ConstantR2<int32>(&b, {{1, 2}, {3, 4}}));
   TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
 
   // We can't really test parallel execution on CPU since all of the cores in a
@@ -136,7 +136,7 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           client_->ExecuteParallel(computation_instances));
-  auto expected_result = Literal::CreateR2<int32>({{6, 8}, {10, 12}});
+  auto expected_result = LiteralUtil::CreateR2<int32>({{6, 8}, {10, 12}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_literal,

@@ -88,7 +88,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     // permit mutex locks to be taken in more than one order.
     //
     // out_mu guards access to most of the fields.
-    // in_mu guards access to a queue of comsumer callbacks wanting to
+    // in_mu guards access to a queue of consumer callbacks wanting to
     // read the fields guarded by out_mu.
     //
     // The in_mu should be locked only while holding instance_mu_; the
@@ -109,8 +109,12 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     bool is_init GUARDED_BY(in_mu);
     std::vector<IRConsumer> init_waiters GUARDED_BY(in_mu);
 
-    // Values to be shared by all instances, constant after initialization.
+    // A thread that wishes to acquire out_mu must ensure that it is available
+    // by invoking WaitForOutMu().
     mutex out_mu;
+    condition_variable out_cv;
+    bool out_mu_available GUARDED_BY(out_mu);
+    // Values to be shared by all instances, constant after initialization.
     CollectiveParams shared GUARDED_BY(out_mu);
     // If an error occurs during initialization this structure stays in
     // the table with a non-OK status.  Purging the table and restarting
@@ -124,7 +128,15 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     std::vector<bool> known GUARDED_BY(out_mu);
     std::vector<IRConsumer> known_waiters GUARDED_BY(out_mu);
 
-    InstanceRec() : is_init(false), source_rank(-1), known_count(0) {}
+    InstanceRec()
+        : is_init(false),
+          out_mu_available(true),
+          source_rank(-1),
+          known_count(0) {}
+
+    // If out_mu is unavailable during distributed device locality
+    // initialization, wait on out_cv until it is available again.
+    void WaitForOutMu(mutex_lock& lock) EXCLUSIVE_LOCKS_REQUIRED(out_mu);
   };
 
   // Find the InstanceRec with the same instance_key as cp.  If it doesn't
@@ -147,7 +159,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   //  cp is populated with all DeviceLocalities
   void InitInstanceSharedParams(const GroupRec* gr, const CollectiveParams* cp,
                                 InstanceRec* ir, const StatusCallback& done)
-      EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu) LOCKS_EXCLUDED(gr->mu);
+      UNLOCK_FUNCTION(ir->out_mu) LOCKS_EXCLUDED(gr->mu);
 
   void CallInitInstanceSharedParams(const GroupRec* gr,
                                     const CollectiveParams* cp, InstanceRec* ir,
@@ -200,8 +212,12 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void CallbackWithStatus(const InstanceRecCallback& done, InstanceRec* irec)
       LOCKS_EXCLUDED(irec->out_mu);
 
+  friend class CollectiveParamResolverLocalTest;
+  static void GenerateSubdivPerms(const string& device, int source_rank,
+                                  CollectiveParams* cp);
+
   const DeviceMgr* dev_mgr_;
-  DeviceResolverInterface* dev_resolver_;
+  DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_

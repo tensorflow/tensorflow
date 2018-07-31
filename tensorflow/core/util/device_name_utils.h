@@ -88,10 +88,14 @@ class DeviceNameUtils {
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
   static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
 
-  // Canonicalizes "fullname". Accepts both legacy, newer and local versions of
-  // the device spec. Returns the newer version of the device spec. If we were
-  // unable to interpret / parse "fullname" returns "".
-  static string CanonicalizeDeviceName(StringPiece fullname);
+  // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
+  // basename to fill in fields that are missing. Accepts both legacy, newer
+  // and local versions of the device spec. Returns the newer version of the
+  // device spec. If we were unable to interpret / parse "fullname" returns
+  // an error and *canonical_name is set to "".
+  static Status CanonicalizeDeviceName(StringPiece fullname,
+                                       StringPiece basename,
+                                       string* canonical_name);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
   static bool HasSomeDetails(const ParsedName& name) {

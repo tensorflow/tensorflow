@@ -23,13 +23,14 @@ import abc
 import six
 
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 
-@tf_export('estimator.export.ExportOutput')
+@estimator_export('estimator.export.ExportOutput')
 class ExportOutput(object):
   """Represents an output of a model that can be served.
 
@@ -100,7 +101,7 @@ class ExportOutput(object):
     return output_dict
 
 
-@tf_export('estimator.export.ClassificationOutput')
+@estimator_export('estimator.export.ClassificationOutput')
 class ClassificationOutput(ExportOutput):
   """Represents the output of a classification head.
 
@@ -169,7 +170,7 @@ class ClassificationOutput(ExportOutput):
         examples, self.classes, self.scores)
 
 
-@tf_export('estimator.export.RegressionOutput')
+@estimator_export('estimator.export.RegressionOutput')
 class RegressionOutput(ExportOutput):
   """Represents the output of a regression head."""
 
@@ -202,7 +203,7 @@ class RegressionOutput(ExportOutput):
     return signature_def_utils.regression_signature_def(examples, self.value)
 
 
-@tf_export('estimator.export.PredictOutput')
+@estimator_export('estimator.export.PredictOutput')
 class PredictOutput(ExportOutput):
   """Represents the output of a generic prediction head.
 
@@ -338,8 +339,16 @@ class _SupervisedOutput(ExportOutput):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(
                 key, metric_op))
+
+      # We must wrap any ops in a Tensor before export, as the SignatureDef
+      # proto expects tensors only. See b/109740581
+      metric_op_tensor = metric_op
+      if isinstance(metric_op, ops.Operation):
+        with ops.control_dependencies([metric_op]):
+          metric_op_tensor = constant_op.constant([], name='metric_op_wrapper')
+
       outputs[val_name] = metric_val
-      outputs[op_name] = metric_op
+      outputs[op_name] = metric_op_tensor
 
     return outputs
 

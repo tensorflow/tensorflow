@@ -22,6 +22,7 @@ from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import mvn_linear_operator as mvn_linop
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import nn
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -134,6 +135,14 @@ class MultivariateNormalDiag(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_diag=None,
@@ -193,7 +202,7 @@ class MultivariateNormalDiag(
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
@@ -218,13 +227,21 @@ class MultivariateNormalDiag(
 class MultivariateNormalDiagWithSoftplusScale(MultivariateNormalDiag):
   """MultivariateNormalDiag with `diag_stddev = softplus(diag_stddev)`."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale_diag,
                validate_args=False,
                allow_nan_stats=True,
                name="MultivariateNormalDiagWithSoftplusScale"):
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[scale_diag]) as name:
       super(MultivariateNormalDiagWithSoftplusScale, self).__init__(
           loc=loc,

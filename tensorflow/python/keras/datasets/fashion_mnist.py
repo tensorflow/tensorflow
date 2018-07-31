@@ -33,9 +33,15 @@ def load_data():
 
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+
+  License:
+      The copyright for Fashion-MNIST is held by Zalando SE.
+      Fashion-MNIST is licensed under the [MIT license](
+      https://github.com/zalandoresearch/fashion-mnist/blob/master/LICENSE).
+
   """
   dirname = os.path.join('datasets', 'fashion-mnist')
-  base = 'http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/'
+  base = 'https://storage.googleapis.com/tensorflow/tf-keras-datasets/'
   files = [
       'train-labels-idx1-ubyte.gz', 'train-images-idx3-ubyte.gz',
       't10k-labels-idx1-ubyte.gz', 't10k-images-idx3-ubyte.gz'

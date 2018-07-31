@@ -24,8 +24,10 @@ import six
 
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.contrib.autograph.utils import type_check
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 
@@ -38,18 +40,45 @@ def dynamic_builtin(f, *args, **kwargs):
     return dynamic_range(*args, **kwargs)
   if f is range:
     return dynamic_range(*args, **kwargs)
-  raise ValueError('%s is not supported' % f)
+  if f is int:
+    return dynamic_int(*args, **kwargs)
+  if f is float:
+    return dynamic_float(*args, **kwargs)
+
+  raise NotImplementedError(
+      'The "%s" builtin is not yet supported.' % f.__name__)
 
 
 def dynamic_len(list_or_tensor):
   """Implementation of len using dynamic dispatch."""
-  if tensor_util.is_tensor(list_or_tensor):
+  if _is_tensor_list(list_or_tensor):
+    return list_ops.tensor_list_length(list_or_tensor)
+  elif tensor_util.is_tensor(list_or_tensor):
     shape = list_or_tensor.shape
-    if not shape:
+    if not shape.ndims:
       raise ValueError(
           'len requires non-zero rank for tensor "%s"' % list_or_tensor)
     return array_ops.shape(list_or_tensor)[0]
   return len(list_or_tensor)
+
+
+def _is_tensor_list(list_or_tensor):
+  return (tensor_util.is_tensor(list_or_tensor)
+          and list_or_tensor.dtype == dtypes.variant)
+
+
+def dynamic_int(num_or_tensor, **kwargs):
+  """Implementation of int() using dynamic dispatch."""
+  if tensor_util.is_tensor(num_or_tensor):
+    return math_ops.cast(num_or_tensor, dtype=dtypes.int32, **kwargs)
+  return int(num_or_tensor)
+
+
+def dynamic_float(num_or_tensor, **kwargs):
+  """Implementation of float() using dynamic dispatch."""
+  if tensor_util.is_tensor(num_or_tensor):
+    return math_ops.cast(num_or_tensor, dtype=dtypes.float32, **kwargs)
+  return float(num_or_tensor)
 
 
 def dynamic_range(start_or_stop, stop=None, step=None):

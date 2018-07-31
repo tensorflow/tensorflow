@@ -530,7 +530,7 @@ cc_library_with_android_deps(
         "//tensorflow/core/api_def:base_api_def",
     ],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",

@@ -29,7 +29,7 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 class GRULayerTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_return_sequences_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -41,7 +41,7 @@ class GRULayerTest(test.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dynamic_behavior_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -55,7 +55,7 @@ class GRULayerTest(test.TestCase):
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dropout_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -68,7 +68,7 @@ class GRULayerTest(test.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_implementation_mode_GRU(self):
     num_samples = 2
     timesteps = 3

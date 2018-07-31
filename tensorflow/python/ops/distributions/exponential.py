@@ -27,7 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import gamma
-from tensorflow.python.ops.distributions import util as distribution_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -91,7 +90,7 @@ class Exponential(gamma.Gamma):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
@@ -104,9 +103,6 @@ class Exponential(gamma.Gamma):
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
         name=name)
-    # While the Gamma distribution is not reparameterizable, the exponential
-    # distribution is.
-    self._reparameterization_type = True
     self._parameters = parameters
     self._graph_parents += [self._rate]
 
@@ -144,7 +140,7 @@ class ExponentialWithSoftplusRate(Exponential):
                validate_args=False,
                allow_nan_stats=True,
                name="ExponentialWithSoftplusRate"):
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[rate]) as name:
       super(ExponentialWithSoftplusRate, self).__init__(
           rate=nn.softplus(rate, name="softplus_rate"),

@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/api_def.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 
 namespace tensorflow {
@@ -37,14 +37,15 @@ namespace java {
 class OpGenerator {
  public:
   explicit OpGenerator(const std::vector<string>& api_dirs,
-      Env* env = Env::Default()) : api_dirs_(api_dirs), env_(env) {}
+                       Env* env = Env::Default())
+      : api_dirs_(api_dirs), env_(env) {}
 
   // Generates wrappers for the given list of 'ops'.
   //
   // Output files are generated in <output_dir>/<base_package>/<op_package>,
   // where 'op_package' is derived from ops endpoints.
   Status Run(const OpList& op_list, const string& base_package,
-      const string& output_dir);
+             const string& output_dir);
 
  private:
   const std::vector<string> api_dirs_;

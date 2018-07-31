@@ -193,6 +193,20 @@ class IteratorTest(test.TestCase):
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
 
+  def testGpuTensor(self):
+    ds = Dataset.from_tensors([0., 1.])
+    with ops.device(test.gpu_device_name()):
+      for x in ds:
+        y = math_ops.add(x, x)
+    self.assertAllEqual([0., 2.], y.numpy())
+
+  def testGpuDefinedDataset(self):
+    with ops.device(test.gpu_device_name()):
+      ds = Dataset.from_tensors([0., 1.])
+      for x in ds:
+        y = math_ops.add(x, x)
+    self.assertAllEqual([0., 2.], y.numpy())
+
   def testTensorsExplicitPrefetchToDevice(self):
     ds = Dataset.from_tensor_slices([0., 1.])
     ds = ds.apply(prefetching_ops.prefetch_to_device(test.gpu_device_name()))

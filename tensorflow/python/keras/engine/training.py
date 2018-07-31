@@ -29,19 +29,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.base_layer import DeferredTensor
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -112,7 +110,10 @@ class Model(Network):
     super(Model, self).__init__(*args, **kwargs)
     # Create a cache for iterator get_next op.
     self._iterator_get_next = weakref.WeakKeyDictionary()
+    # Create a cache for dataset - uninitialized iterators
+    self._dataset_iterator_cache = weakref.WeakKeyDictionary()
 
+  @checkpointable.no_automatic_dependency_tracking
   def compile(self,
               optimizer,
               loss=None,
@@ -176,6 +177,11 @@ class Model(Network):
       raise ValueError('Only TF native optimizers are supported in Eager mode.')
 
     self.optimizer = optimizers.get(optimizer)
+    # We've disabled automatic dependency tracking for this method, but do want
+    # to add a checkpoint dependency on the optimizer if it's checkpointable.
+    if isinstance(self.optimizer, checkpointable.CheckpointableBase):
+      self._track_checkpointable(
+          self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
     self.metrics = metrics or []
     self.loss_weights = loss_weights
@@ -208,10 +214,9 @@ class Model(Network):
       for name in self.output_names:
         if name not in loss:
           logging.warning(
-              'Output "' + name + '" missing from loss dictionary. '
-              'We assume this was done on purpose, '
-              'and we will not be expecting '
-              'any data to be passed to "' + name + '" during training.')
+              'Output "' + name + '" missing from loss dictionary. We assume '
+              'this was done on purpose. The fit and evaluate APIs will not be '
+              'expecting any data to be passed to "' + name + '".')
         loss_functions.append(losses.get(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
@@ -364,21 +369,14 @@ class Model(Network):
               'sample_weight_mode dictionary: "' + name + '". '
               'Only expected the following keys: ' + str(self.output_names))
       for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          if name not in sample_weight_mode:
-            raise ValueError(
-                'Output "' + name + '" missing from sample_weight_modes '
-                'dictionary')
-          if sample_weight_mode.get(name) == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + 'sample_weights')
-            sample_weight_modes.append(None)
+        if (i not in skip_target_weighing_indices and
+            name not in sample_weight_mode):
+          raise ValueError('Output "' + name +
+                           '" missing from sample_weight_modes dictionary')
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
         sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     elif isinstance(sample_weight_mode, list):
       if len(sample_weight_mode) != len(self.outputs):
         raise ValueError('When passing a list as sample_weight_mode, '
@@ -386,34 +384,17 @@ class Model(Network):
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed '
                          'sample_weight_mode=' + str(sample_weight_mode))
-      for i in range(len(self.output_names)):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          mode = sample_weight_mode[i]
-          name = self.output_names[i]
-          if mode == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + '_sample_weights')
-            sample_weight_modes.append(None)
+      for i, name in enumerate(self.output_names):
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode[i], name, i)
         sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     else:
       for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          sample_weight_modes.append(None)
-          sample_weights.append(None)
-        else:
-          if sample_weight_mode == 'temporal':
-            sample_weights.append(array_ops.placeholder_with_default(
-                [[1.]], shape=[None, None], name=name + '_sample_weights'))
-            sample_weight_modes.append('temporal')
-          else:
-            sample_weights.append(array_ops.placeholder_with_default(
-                [1.], shape=[None], name=name + '_sample_weights'))
-            sample_weight_modes.append(None)
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode, name, i)
+        sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = []
     for i in range(len(self.outputs)):
@@ -476,43 +457,21 @@ class Model(Network):
         weights = sample_weights[i]
         output_metrics = nested_metrics[i]
         output_weighted_metrics = nested_weighted_metrics[i]
+        output_shape = self.outputs[i].get_shape().as_list()
+        loss_fn = self.loss_functions[i]
 
-        def handle_metrics(metrics, weights=None):
+        def handle_metrics(metrics, output_shape, loss_fn, weights=None):
+          """Invokes metric functions for the output."""
 
           for metric in metrics:
-            if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-              # custom handling of accuracy/crossentropy
-              # (because of class mode duality)
-              output_shape = self.outputs[i].get_shape().as_list()
-              if (output_shape[-1] == 1 or
-                  self.loss_functions[i] == losses.binary_crossentropy):
-                # case: binary accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.binary_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.binary_crossentropy
-              elif self.loss_functions[
-                  i] == losses.sparse_categorical_crossentropy:
-                # case: categorical accuracy/crossentropy with sparse targets
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.sparse_categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.sparse_categorical_crossentropy
-              else:
-                # case: categorical accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.categorical_crossentropy
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            else:
-              metric_fn = metrics_module.get(metric)
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            metric_name = training_utils.get_base_metric_name(
+            metric_fn = training_utils.get_metric_function(
+                metric, output_shape=output_shape, loss_fn=loss_fn)
+            metric_name = training_utils.get_metric_name(
                 metric, weighted=weights is not None)
+
             with K.name_scope(metric_name):
+              weighted_metric_fn = training_utils.weighted_masked_objective(
+                  metric_fn)
               metric_result = weighted_metric_fn(
                   y_true, y_pred, weights=weights, mask=masks[i])
 
@@ -521,13 +480,14 @@ class Model(Network):
 
             # Keep track of state updates created by
             # stateful metrics (i.e. metrics layers).
-            if isinstance(metric_fn, Layer) and metric_fn.stateful:
+            if isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful:
               self.stateful_metric_names.append(metric_name)
               self.stateful_metric_functions.append(metric_fn)
               self.metrics_updates += metric_fn.updates
 
-        handle_metrics(output_metrics)
-        handle_metrics(output_weighted_metrics, weights=weights)
+        handle_metrics(output_metrics, output_shape, loss_fn)
+        handle_metrics(
+            output_weighted_metrics, output_shape, loss_fn, weights=weights)
 
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
@@ -588,7 +548,7 @@ class Model(Network):
         # Unconditional updates
         updates += self.get_updates_for(None)
         # Conditional updates relevant to this model
-        updates += self.get_updates_for(self._feed_inputs)
+        updates += self.get_updates_for(self.inputs)
         # Stateful metrics updates
         updates += self.metrics_updates
         # Gets loss and metrics. Updates weights at each call.
@@ -597,7 +557,6 @@ class Model(Network):
             updates=updates,
             name='train_function',
             **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_test_function(self):
     if not hasattr(self, 'test_function'):
@@ -615,7 +574,6 @@ class Model(Network):
           updates=self.state_updates + self.metrics_updates,
           name='test_function',
           **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -634,7 +592,6 @@ class Model(Network):
           updates=self.state_updates,
           name='predict_function',
           **kwargs)
-    self._post_build_cleanup()
 
   def _get_iterator_get_next_tensors(self, iterator):
     get_next_op = self._iterator_get_next.get(iterator, None)
@@ -670,12 +627,12 @@ class Model(Network):
           (in case the model has multiple inputs).
         - A dict mapping input names to the corresponding array/tensors,
           if the model has named inputs.
-        - A `tf.data` dataset iterator.
+        - A `tf.data` dataset or a dataset iterator.
       y: Target data. Like the input data `x`,
         it could be either Numpy array(s) or TensorFlow tensor(s).
         It should be consistent with `x` (you cannot have Numpy inputs and
-        tensor targets, or inversely). If `x` is a dataset iterator,
-        `y` should not be specified
+        tensor targets, or inversely). If `x` is a dataset or a
+        dataset iterator, `y` should not be specified
         (since targets will be obtained from the iterator).
       sample_weight: An optional sample-weight array passed by the user to
         weight the importance of each sample in `x`.
@@ -706,11 +663,16 @@ class Model(Network):
       RuntimeError: If the model was never compiled.
     """
     if isinstance(x, dataset_ops.Dataset):
-      raise ValueError('You passed a `Dataset` instance to your model (%s), '
-                       'which is not supported. Instead, pass an `Iterator`, '
-                       'which you can obtain e.g. via '
-                       '`dataset.make_one_shot_iterator()` (the exact method '
-                       'to use will depend on your specific dataset).' % x)
+      if context.executing_eagerly():
+        x = x.make_one_shot_iterator()
+      else:
+        if x in self._dataset_iterator_cache:
+          x = self._dataset_iterator_cache[x]
+        else:
+          iterator = x.make_initializable_iterator()
+          self._dataset_iterator_cache[x] = iterator
+          x = iterator
+        K.get_session().run(x.initializer)
 
     # Validates `steps` argument based on x's type.
     if check_steps:
@@ -719,7 +681,7 @@ class Model(Network):
     is_x_eager_iterator = isinstance(x, iterator_ops.EagerIterator)
     is_x_iterator = isinstance(x, iterator_ops.Iterator)
 
-    # Validate user inputs when data is given as a dataset iterator.
+    # Validate user inputs when data is given as a dataset or dataset iterator.
     if is_x_iterator or is_x_eager_iterator:
       training_utils.validate_iterator_input(x, y, sample_weight,
                                              validation_split)
@@ -839,7 +801,8 @@ class Model(Network):
     # in the case where all inputs are value arrays.
 
     if context.executing_eagerly():
-      # In eager mode, do not do shape validation.
+      # In eager mode, do not do shape validation
+      # since the network has no input nodes (placeholders) to be fed.
       feed_input_names = self.input_names
       feed_input_shapes = None
     elif not self._is_graph_network:
@@ -880,7 +843,11 @@ class Model(Network):
         for output_shape, loss_fn in zip(self._feed_output_shapes,
                                          self._feed_loss_fns):
           if loss_fn is losses.sparse_categorical_crossentropy:
-            feed_output_shapes.append(output_shape[:-1] + (1,))
+            if K.image_data_format() == 'channels_first':
+              feed_output_shapes.append(
+                  (output_shape[0], 1) + output_shape[2:])
+            else:
+              feed_output_shapes.append(output_shape[:-1] + (1,))
           elif (not hasattr(loss_fn, '__name__') or
                 getattr(losses, loss_fn.__name__, None) is None):
             # If `loss_fn` is not a function (e.g. callable class)
@@ -931,6 +898,7 @@ class Model(Network):
                          str(x[0].shape[0]) + ' samples')
     return x, y, sample_weights
 
+  @checkpointable.no_automatic_dependency_tracking
   def _set_inputs(self, inputs, training=None):
     """Set model's input and output specs based on the input data received.
 
@@ -951,11 +919,17 @@ class Model(Network):
         whether to build the model's graph in inference mode (False), training
         mode (True), or using the Keras learning phase (None).
     """
-    if not getattr(self, '_uses_inputs_arg', True):
+    call_convention = getattr(
+        self,
+        '_call_convention',
+        base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT)
+    if call_convention not in (
+        base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT,
+        base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT):
       raise NotImplementedError(
-          'Subclassed Models without "inputs" in their call() signatures do '
-          'not yet support shape inference. File a feature request if this '
-          'limitation bothers you.')
+          'Subclassed Models without "inputs" (or single positional arguments) '
+          'in their call() signatures do not yet support shape inference. File '
+          'a feature request if this limitation bothers you.')
     if self.__class__.__name__ == 'Sequential':
       # Note: we can't test whether the model is `Sequential` via `isinstance`
       # since `Sequential` depends on `Model`.
@@ -964,15 +938,20 @@ class Model(Network):
         inputs = inputs[0]
 
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+        if context.executing_eagerly():
+          input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+          self.build(input_shape=input_shape)
+        else:
+          self.symbolic_set_inputs(inputs)
       else:
         input_shape = (None,) + inputs.shape[1:]
-      self.build(input_shape=input_shape)
+        self.build(input_shape=input_shape)
     elif context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
       self._symbolic_set_inputs(inputs, training=training)
 
+  @checkpointable.no_automatic_dependency_tracking
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
 
@@ -995,14 +974,16 @@ class Model(Network):
     # to keep track of number of inputs and outputs and their ndim.
     if isinstance(inputs, (list, tuple)):
       if tensor_util.is_tensor(inputs[0]):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             [ops.convert_to_tensor(v, dtype=K.floatx()) for v in inputs])
       dummy_input_values = list(inputs)
     else:
       if tensor_util.is_tensor(inputs):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             ops.convert_to_tensor(inputs, dtype=K.floatx()))
@@ -1012,17 +993,18 @@ class Model(Network):
     else:
       dummy_output_values = [dummy_output_values]
     self.outputs = [
-        DeferredTensor(shape=(None for _ in v.shape),
-                       dtype=v.dtype) for v in dummy_output_values]
+        base_layer.DeferredTensor(shape=(None for _ in v.shape),
+                                  dtype=v.dtype) for v in dummy_output_values]
     self.inputs = [
-        DeferredTensor(shape=(None for _ in v.shape),
-                       dtype=v.dtype) for v in dummy_input_values]
+        base_layer.DeferredTensor(shape=(None for _ in v.shape),
+                                  dtype=v.dtype) for v in dummy_input_values]
     self.input_names = [
         'input_%d' % (i + 1) for i in range(len(dummy_input_values))]
     self.output_names = [
         'output_%d' % (i + 1) for i in range(len(dummy_output_values))]
     self.built = True
 
+  @checkpointable.no_automatic_dependency_tracking
   def _symbolic_set_inputs(self, inputs, outputs=None, training=None):
     """Set model's inputs and output specs based.
 
@@ -1130,19 +1112,19 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset iterator.
+          - A `tf.data` dataset or a dataset iterator.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset iterator,
-          `y` should not be specified
+          tensor targets, or inversely). If `x` is a dataset or dataset
+          iterator, `y` should not be specified
           (since targets will be obtained from the iterator).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
-            form of symbolic tensors or dataset iterators (since they generate
-            batches).
+            form of symbolic tensors, datasets, or dataset iterators
+            (since they generate batches).
         epochs: Integer. Number of epochs to train the model.
             An epoch is an iteration over the entire `x` and `y`
             data provided.
@@ -1164,7 +1146,7 @@ class Model(Network):
             on this data at the end of each epoch.
             The validation data is selected from the last samples
             in the `x` and `y` data provided, before shuffling. This argument is
-            not supported when `x` is a dataset iterator.
+            not supported when `x` is a dataset or a dataset iterator.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
             The model will not be trained on this data.
@@ -1172,7 +1154,7 @@ class Model(Network):
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
-              - dataset iterator
+              - dataset or a dataset iterator
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -1195,7 +1177,7 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset iterator.
+            supported when `x` is a dataset or a dataset iterator.
         initial_epoch: Integer.
             Epoch at which to start training
             (useful for resuming a previous training run).
@@ -1252,7 +1234,8 @@ class Model(Network):
     # Prepare validation data.
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
-          isinstance(validation_data, iterator_ops.EagerIterator)):
+          isinstance(validation_data, iterator_ops.EagerIterator) or
+          isinstance(validation_data, dataset_ops.Dataset)):
         val_x = validation_data
         val_y = None
         val_sample_weight = None
@@ -1266,8 +1249,9 @@ class Model(Network):
             'When passing a `validation_data` argument, '
             'it must contain either 2 items (x_val, y_val), '
             'or 3 items (x_val, y_val, val_sample_weights), '
-            'or alternatively it could be a dataset iterator. However we '
-            'received `validation_data=%s`' % validation_data)
+            'or alternatively it could be a dataset or a '
+            'dataset or a dataset iterator. '
+            'However we received `validation_data=%s`' % validation_data)
 
       # Validate and standardize validation data.
       val_x, val_y, val_sample_weights = self._standardize_user_data(
@@ -1351,19 +1335,19 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset iterator.
+          - A `tf.data` dataset or a dataset iterator.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset iterator,
-          `y` should not be specified
-          (since targets will be obtained from the iterator).
+          tensor targets, or inversely).
+          If `x` is a dataset or a dataset iterator, `y` should not be specified
+          (since targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` is your data is in the
-            form of symbolic tensors or dataset iterators (since they generate
-            batches).
+            form of symbolic tensors, datasets, or dataset iterators
+            (since they generate batches).
         verbose: 0 or 1. Verbosity mode.
             0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for
@@ -1377,7 +1361,7 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset iterator.
+            supported when `x` is a dataset or a dataset iterator.
         steps: Integer or `None`.
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
@@ -1426,13 +1410,13 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
             (in case the model has multiple inputs).
-          - A `tf.data` dataset iterator.
+          - A `tf.data` dataset or a dataset iterator.
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` is your data is in the
-            form of symbolic tensors or dataset iterators (since they generate
-            batches).
+            form of symbolic tensors, dataset, or dataset iterators
+            (since they generate batches).
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
@@ -1473,12 +1457,12 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset iterator.
+          - A `tf.data` dataset or a dataset iterator.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset iterator,
-          `y` should not be specified
+          tensor targets, or inversely). If `x` is a dataset or a
+          dataset iterator, `y` should not be specified
           (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
@@ -1487,8 +1471,7 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             sample_weight_mode="temporal" in compile(). This argument is not
-            supported when `x` is a dataset iterator.
-
+            supported when `x` is a dataset or a dataset iterator.
         class_weight: Optional dictionary mapping
             class indices (integers) to
             a weight (float) to apply to the model's loss for the samples
@@ -1537,12 +1520,12 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-          - A `tf.data` dataset iterator.
+          - A `tf.data` dataset or a dataset iterator.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset iterator,
-          `y` should not be specified
+          tensor targets, or inversely). If `x` is a dataset or a
+          dataset iterator, `y` should not be specified
           (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
@@ -1551,7 +1534,7 @@ class Model(Network):
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
             sample_weight_mode="temporal" in compile(). This argument is not
-            supported when `x` is a dataset iterator.
+            supported when `x` is a dataset or a dataset iterator.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1590,7 +1573,7 @@ class Model(Network):
             (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
             (in case the model has multiple inputs).
-          - A `tf.data` dataset iterator.
+          - A `tf.data` dataset or a dataset iterator.
 
     Returns:
         Numpy array(s) of predictions.
@@ -1602,7 +1585,10 @@ class Model(Network):
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
     if context.executing_eagerly():
-      if not isinstance(inputs, iterator_ops.EagerIterator):
+      if (isinstance(x, iterator_ops.EagerIterator) or
+          (isinstance(x, dataset_ops.Dataset) and context.executing_eagerly())):
+        inputs = training_utils.cast_if_floating_dtype(inputs)
+      else:
         inputs = [
             ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs
         ]

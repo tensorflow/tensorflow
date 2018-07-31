@@ -95,7 +95,8 @@ class SessionManager(object):
                ready_op=None,
                ready_for_local_init_op=None,
                graph=None,
-               recovery_wait_secs=30):
+               recovery_wait_secs=30,
+               local_init_run_options=None):
     """Creates a SessionManager.
 
     The `local_init_op` is an `Operation` that is run always after a new session
@@ -127,6 +128,8 @@ class SessionManager(object):
          to run local_init_op.
       graph: The `Graph` that the model will use.
       recovery_wait_secs: Seconds between checks for the model to be ready.
+      local_init_run_options: RunOptions to be passed to session.run when
+        executing the local_init_op.
 
     Raises:
       ValueError: If ready_for_local_init_op is not None but local_init_op is
@@ -141,6 +144,7 @@ class SessionManager(object):
     self._graph = graph
     self._recovery_wait_secs = recovery_wait_secs
     self._target = None
+    self._local_init_run_options = local_init_run_options
     if ready_for_local_init_op is not None and local_init_op is None:
       raise ValueError("If you pass a ready_for_local_init_op "
                        "you must also pass a local_init_op "
@@ -485,7 +489,7 @@ class SessionManager(object):
       is_ready_for_local_init, msg = self._model_ready_for_local_init(sess)
       if is_ready_for_local_init:
         logging.info("Running local_init_op.")
-        sess.run(self._local_init_op)
+        sess.run(self._local_init_op, options=self._local_init_run_options)
         logging.info("Done running local_init_op.")
         return True, None
       else:

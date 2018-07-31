@@ -169,8 +169,8 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
     del old_inactive  # Needed by the condition, but not the body.
     iteration += 1
     scale = (1.0 - standard_ops.reduce_sum(
-        matrix, axis=0, keep_dims=True)) / standard_ops.maximum(
-            1.0, standard_ops.reduce_sum(inactive, axis=0, keep_dims=True))
+        matrix, axis=0, keepdims=True)) / standard_ops.maximum(
+            1.0, standard_ops.reduce_sum(inactive, axis=0, keepdims=True))
     matrix += scale * inactive
     new_inactive = standard_ops.to_float(matrix > 0)
     matrix *= new_inactive
@@ -206,10 +206,10 @@ def _project_log_stochastic_matrix_wrt_kl_divergence(log_matrix):
 
   # For numerical reasons, make sure that the largest matrix element is zero
   # before exponentiating.
-  log_matrix -= standard_ops.reduce_max(log_matrix, axis=0, keep_dims=True)
+  log_matrix -= standard_ops.reduce_max(log_matrix, axis=0, keepdims=True)
   log_matrix -= standard_ops.log(
       standard_ops.reduce_sum(
-          standard_ops.exp(log_matrix), axis=0, keep_dims=True))
+          standard_ops.exp(log_matrix), axis=0, keepdims=True))
   return log_matrix
 
 

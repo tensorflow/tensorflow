@@ -19,20 +19,17 @@ from __future__ import division
 from __future__ import print_function
 
 from google.protobuf import text_format
-
 from tensorflow.contrib import layers
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
 from tensorflow.contrib.boosted_trees.python.utils import losses
-
-from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
-
-
+from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -97,8 +94,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           array_ops.zeros([2], dtypes.int64))
       features["sparse_int"] = sparse_tensor.SparseTensor(
           array_ops.zeros([2, 2], dtypes.int64),
-          array_ops.zeros([2], dtypes.int64),
-          array_ops.zeros([2], dtypes.int64))
+          array_ops.zeros([2], dtypes.int64), array_ops.zeros([2],
+                                                              dtypes.int64))
       (fc_names, dense_floats, sparse_float_indices, sparse_float_values,
        sparse_float_shapes, sparse_int_indices, sparse_int_values,
        sparse_int_shapes) = (
@@ -139,8 +136,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           array_ops.zeros([2], dtypes.int64))
       features["sparse_categorical"] = sparse_tensor.SparseTensor(
           array_ops.zeros([2, 2], dtypes.int64),
-          array_ops.zeros(
-              [2], dtypes.string), array_ops.zeros([2], dtypes.int64))
+          array_ops.zeros([2], dtypes.string), array_ops.zeros([2],
+                                                               dtypes.int64))
       feature_columns = set()
       feature_columns.add(layers.real_valued_column("dense_float"))
       feature_columns.add(
@@ -235,7 +232,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=1, features=features)
+          logits_dimension=1,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -316,6 +314,113 @@ class GbdtTest(test_util.TensorFlowTestCase):
           }"""
       self.assertProtoEquals(expected_tree, output.trees[0])
 
+  def testTrainFnChiefSparseAndDense(self):
+    """Tests the train function with sparse and dense features."""
+    with self.test_session() as sess:
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      features["dense_float"] = array_ops.ones([4, 1], dtypes.float32)
+      features["sparse_float"] = sparse_tensor.SparseTensor(
+          array_ops.zeros([2, 2], dtypes.int64),
+          array_ops.zeros([2], dtypes.float32),
+          array_ops.constant([4, 1], dtypes.int64))
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = variables.Variable(
+          initial_value=0,
+          name="ensemble_stamp",
+          trainable=False,
+          dtype=dtypes.int64)
+
+      predictions_dict = {
+          "predictions": predictions,
+          "predictions_no_dropout": predictions,
+          "partition_ids": partition_ids,
+          "ensemble_stamp": ensemble_stamp,
+          "num_trees": 12,
+      }
+
+      labels = array_ops.ones([4, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      # Create train op.
+      train_op = gbdt_model.train(
+          loss=math_ops.reduce_mean(
+              _squared_loss(labels, weights, predictions)),
+          predictions_dict=predictions_dict,
+          labels=labels)
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # On first run, expect no splits to be chosen because the quantile
+      # buckets will not be ready.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 0)
+      self.assertEquals(len(output.tree_weights), 0)
+      self.assertEquals(stamp_token.eval(), 1)
+
+      # Update the stamp to be able to run a second time.
+      sess.run([ensemble_stamp.assign_add(1)])
+
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 1)
+      self.assertAllClose(output.tree_weights, [0.1])
+      self.assertEquals(stamp_token.eval(), 2)
+      expected_tree = """
+          nodes {
+            sparse_float_binary_split_default_right {
+              split{
+                left_id: 1
+                right_id: 2
+              }
+            }
+            node_metadata {
+              gain: 1.125
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: 1.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: -0.5
+              }
+            }
+          }"""
+      self.assertProtoEquals(expected_tree, output.trees[0])
+
   def testTrainFnChiefScalingNumberOfExamples(self):
     """Tests the train function running on chief without bias centering."""
     with self.test_session() as sess:
@@ -339,7 +444,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=num_examples_fn,
           learner_config=learner_config,
-          logits_dimension=1, features=features)
+          logits_dimension=1,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -442,7 +548,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=1, features=features)
+          logits_dimension=1,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -513,7 +620,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=1, features=features)
+          logits_dimension=1,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -576,7 +684,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=1, features=features)
+          logits_dimension=1,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
@@ -622,7 +731,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       # Create ensemble with one bias node.
       ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
-      text_format.Merge("""
+      text_format.Merge(
+          """
           trees {
             nodes {
               leaf {
@@ -659,15 +769,128 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=1, features=features)
+          logits_dimension=1,
+          features=features)
 
       # Create predict op.
       mode = model_fn.ModeKeys.EVAL
       predictions_dict = sess.run(gbdt_model.predict(mode))
       self.assertEquals(predictions_dict["ensemble_stamp"], 3)
-      self.assertAllClose(predictions_dict["predictions"], [[0.25], [0.25],
-                                                            [0.25], [0.25]])
+      self.assertAllClose(predictions_dict["predictions"],
+                          [[0.25], [0.25], [0.25], [0.25]])
       self.assertAllClose(predictions_dict["partition_ids"], [0, 0, 0, 0])
+
+  def testPredictFnWithLeafIndexAdvancedLeft(self):
+    """Tests the predict function with output leaf ids."""
+    with self.test_session() as sess:
+      # Create ensemble with one bias node.
+      ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      text_format.Merge(
+          """
+          trees {
+            nodes {
+                dense_float_binary_split {
+                  threshold: 1.0
+                  left_id: 1
+                  right_id: 2
+                }
+                node_metadata {
+                  gain: 0
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.25
+                  }
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.15
+                  }
+                }
+              }
+          }
+          trees {
+            nodes {
+                dense_float_binary_split {
+                  threshold: 0.99
+                  left_id: 1
+                  right_id: 2
+                }
+                node_metadata {
+                  gain: 00
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.25
+                  }
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.23
+                  }
+                }
+              }
+          }
+          tree_weights: 1.0
+          tree_weights: 1.0
+          tree_metadata {
+            num_tree_weight_updates: 1
+            num_layers_grown: 1
+            is_finalized: true
+          }
+          tree_metadata {
+            num_tree_weight_updates: 1
+            num_layers_grown: 1
+            is_finalized: true
+          }""", ensemble_config)
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=3,
+          tree_ensemble_config=ensemble_config.SerializeToString(),
+          name="tree_ensemble")
+      resources.initialize_resources(resources.shared_resources()).run()
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      features["dense_float"] = array_ops.constant(
+          [[0.0], [1.0], [1.1], [2.0]], dtype=dtypes.float32)
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=False,
+          num_ps_replicas=0,
+          center_bias=True,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features,
+          output_leaf_index=True)
+
+      # Create predict op.
+      mode = model_fn.ModeKeys.INFER
+      predictions_dict = sess.run(gbdt_model.predict(mode))
+      self.assertEquals(predictions_dict["ensemble_stamp"], 3)
+      # here are how the numbers in expected results are calculated,
+      # 0.5 = 0.25 + 0.25
+      # 0.48 = 0.25 + 0.23
+      # 0.38 = 0.15 + 0.23
+      # 0.38 = 0.15 + 0.23
+      self.assertAllClose(predictions_dict["predictions"],
+                          [[0.5], [0.48], [0.38], [0.38]])
+      self.assertAllClose(predictions_dict["partition_ids"], [0, 0, 0, 0])
+      self.assertAllClose(predictions_dict["leaf_index"],
+                          [[1, 1], [1, 2], [2, 2], [2, 2]])
 
   def testTrainFnMulticlassFullHessian(self):
     """Tests the GBDT train for multiclass full hessian."""
@@ -698,7 +921,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=5, features=features)
+          logits_dimension=5,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0, -1.0, 0.5, 1.2, 3.1], [1.0, 0.0, 0.8, 0.3, 1.0],
@@ -801,7 +1025,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=5, features=features)
+          logits_dimension=5,
+          features=features)
 
       predictions = array_ops.constant(
           [[0.0, -1.0, 0.5, 1.2, 3.1], [1.0, 0.0, 0.8, 0.3, 1.0],
@@ -893,8 +1118,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
       learner_config.constraints.max_tree_depth = 1
       learner_config.constraints.min_node_weight = 0
       features = {
-          "dense_float": array_ops.constant(
-              [[1.0], [1.5], [2.0]], dtypes.float32),
+          "dense_float":
+              array_ops.constant([[1.0], [1.5], [2.0]], dtypes.float32),
       }
 
       gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
@@ -904,7 +1129,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
           ensemble_handle=ensemble_handle,
           examples_per_layer=1,
           learner_config=learner_config,
-          logits_dimension=5, features=features)
+          logits_dimension=5,
+          features=features)
 
       batch_size = 3
       predictions = array_ops.constant(
@@ -986,7 +1212,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           0.893284678459,
           output.trees[0].nodes[2].leaf.sparse_vector.value[0],
-          atol=1e-4, rtol=1e-4)
+          atol=1e-4,
+          rtol=1e-4)
 
   def testTrainFnChiefFeatureSelectionReachedLimitNoGoodSplit(self):
     """Tests the train function running on chief with feature selection."""
@@ -1230,9 +1457,9 @@ class GbdtTest(test_util.TensorFlowTestCase):
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree = tree_ensemble_config.trees.add()
 
-      _set_float_split(tree.nodes.add()
-                       .sparse_float_binary_split_default_right.split, 2, 4.0,
-                       1, 2)
+      _set_float_split(
+          tree.nodes.add().sparse_float_binary_split_default_right.split, 2,
+          4.0, 1, 2)
       _append_to_leaf(tree.nodes.add().leaf, 0, 0.5)
       _append_to_leaf(tree.nodes.add().leaf, 1, 1.2)
       tree_ensemble_config.tree_weights.append(1.0)
@@ -1241,7 +1468,8 @@ class GbdtTest(test_util.TensorFlowTestCase):
       metadata.num_layers_grown = 1
       tree_ensemble_config = tree_ensemble_config.SerializeToString()
       ensemble_handle = model_ops.tree_ensemble_variable(
-          stamp_token=0, tree_ensemble_config=tree_ensemble_config,
+          stamp_token=0,
+          tree_ensemble_config=tree_ensemble_config,
           name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
       learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
@@ -1332,6 +1560,302 @@ class GbdtTest(test_util.TensorFlowTestCase):
       self.assertEquals(len(output.trees[0].nodes), 3)
 
       self.assertEquals(output.growing_metadata.num_layers_attempted, 2)
+
+  def testResetModelBeforeAndAfterSplit(self):
+    """Tests whether resetting works."""
+    with self.test_session():
+      # First build a small tree and train it to verify training works.
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.constraints.max_tree_depth = 1
+      features = {}
+      features["dense_float"] = array_ops.ones([4, 1], dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = model_ops.tree_ensemble_stamp_token(ensemble_handle)
+
+      predictions_dict = {
+          "predictions": predictions,
+          "predictions_no_dropout": predictions,
+          "partition_ids": partition_ids,
+          "ensemble_stamp": ensemble_stamp,
+          "num_trees": 12,
+          "max_tree_depth": 4,
+      }
+
+      labels = array_ops.ones([4, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      loss = math_ops.reduce_mean(_squared_loss(labels, weights, predictions))
+
+      # Create train op.
+      update_op, reset_op, training_state = gbdt_model.update_stats(
+          loss, predictions_dict)
+      with ops.control_dependencies(update_op):
+        train_op = gbdt_model.increment_step_counter_and_maybe_update_ensemble(
+            predictions_dict, training_state)
+
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      original_stamp = ensemble_stamp.eval()
+      expected_tree = """
+            nodes {
+              dense_float_binary_split {
+                threshold: 1.0
+                left_id: 1
+                right_id: 2
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.25
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }"""
+
+      def _train_once_and_check(expect_split):
+        stamp = ensemble_stamp.eval()
+        train_op.run()
+        stamp_token, serialized = model_ops.tree_ensemble_serialize(
+            ensemble_handle)
+        output = tree_config_pb2.DecisionTreeEnsembleConfig()
+        output.ParseFromString(serialized.eval())
+        self.assertEquals(stamp_token.eval(), stamp + 1)
+        if expect_split:
+          # State of the ensemble after a split occurs.
+          self.assertEquals(len(output.trees), 1)
+          self.assertProtoEquals(expected_tree, output.trees[0])
+        else:
+          # State of the ensemble after a single accumulation but before any
+          # splitting occurs
+          self.assertEquals(len(output.trees), 0)
+          self.assertProtoEquals("""
+              growing_metadata {
+              num_trees_attempted: 1
+              num_layers_attempted: 1
+              }""", output)
+
+      def _run_reset():
+        stamp_before_reset = ensemble_stamp.eval()
+        reset_op.run()
+        stamp_after_reset = ensemble_stamp.eval()
+        self.assertNotEquals(stamp_after_reset, stamp_before_reset)
+
+        _, serialized = model_ops.tree_ensemble_serialize(
+            ensemble_handle)
+        output = tree_config_pb2.DecisionTreeEnsembleConfig()
+        output.ParseFromString(serialized.eval())
+        self.assertProtoEquals("", output)
+
+        return stamp_after_reset
+
+      # Exit after one train_op, so no new layer are created but the handlers
+      # contain enough information to split on the next call to train.
+      _train_once_and_check(expect_split=False)
+      self.assertEquals(ensemble_stamp.eval(), original_stamp + 1)
+
+      # Reset the handlers so it still requires two training calls to split.
+      stamp_after_reset = _run_reset()
+
+      _train_once_and_check(expect_split=False)
+      _train_once_and_check(expect_split=True)
+      self.assertEquals(ensemble_stamp.eval(), stamp_after_reset + 2)
+
+      # This time, test that the reset_op works right after splitting.
+      stamp_after_reset = _run_reset()
+
+      # Test that after resetting, the tree can be trained as normal.
+      _train_once_and_check(expect_split=False)
+      _train_once_and_check(expect_split=True)
+      self.assertEquals(ensemble_stamp.eval(), stamp_after_reset + 2)
+
+  def testResetModelNonChief(self):
+    """Tests the reset function on a non-chief worker."""
+    with self.test_session():
+      # Create ensemble with one bias node.
+      ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      text_format.Merge(
+          """
+          trees {
+            nodes {
+              leaf {
+                vector {
+                  value: 0.25
+                }
+              }
+            }
+          }
+          tree_weights: 1.0
+          tree_metadata {
+            num_tree_weight_updates: 1
+            num_layers_grown: 1
+            is_finalized: false
+          }""", ensemble_config)
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0,
+          tree_ensemble_config=ensemble_config.SerializeToString(),
+          name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.constraints.max_tree_depth = 1
+      features = {}
+      features["dense_float"] = array_ops.ones([4, 1], dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=False,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = model_ops.tree_ensemble_stamp_token(ensemble_handle)
+
+      predictions_dict = {
+          "predictions": predictions,
+          "predictions_no_dropout": predictions,
+          "partition_ids": partition_ids,
+          "ensemble_stamp": ensemble_stamp
+      }
+
+      labels = array_ops.ones([4, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      loss = math_ops.reduce_mean(_squared_loss(labels, weights, predictions))
+
+      # Create reset op.
+      _, reset_op, _ = gbdt_model.update_stats(
+          loss, predictions_dict)
+
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Reset op doesn't do anything because this is a non-chief worker.
+      reset_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 1)
+      self.assertEquals(len(output.tree_weights), 1)
+      self.assertEquals(stamp_token.eval(), 0)
+
+  def testResetModelWithCenterBias(self):
+    """Tests the reset function running on chief with bias centering."""
+    with self.test_session():
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      features["dense_float"] = array_ops.ones([4, 1], dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=True,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = model_ops.tree_ensemble_stamp_token(ensemble_handle)
+
+      predictions_dict = {
+          "predictions": predictions,
+          "predictions_no_dropout": predictions,
+          "partition_ids": partition_ids,
+          "ensemble_stamp": ensemble_stamp,
+          "num_trees": 12,
+      }
+
+      labels = array_ops.ones([4, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      loss = math_ops.reduce_mean(_squared_loss(labels, weights, predictions))
+
+      # Create train op.
+      update_op, reset_op, training_state = gbdt_model.update_stats(
+          loss, predictions_dict)
+      with ops.control_dependencies(update_op):
+        train_op = gbdt_model.increment_step_counter_and_maybe_update_ensemble(
+            predictions_dict, training_state)
+
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # On first run, expect bias to be centered.
+      def train_and_check():
+        train_op.run()
+        _, serialized = model_ops.tree_ensemble_serialize(ensemble_handle)
+        output = tree_config_pb2.DecisionTreeEnsembleConfig()
+        output.ParseFromString(serialized.eval())
+        expected_tree = """
+            nodes {
+              leaf {
+                vector {
+                  value: 0.25
+                }
+              }
+            }"""
+        self.assertEquals(len(output.trees), 1)
+        self.assertAllEqual(output.tree_weights, [1.0])
+        self.assertProtoEquals(expected_tree, output.trees[0])
+
+      train_and_check()
+      self.assertEquals(ensemble_stamp.eval(), 1)
+
+      reset_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 0)
+      self.assertEquals(len(output.tree_weights), 0)
+      self.assertEquals(stamp_token.eval(), 2)
+
+      train_and_check()
+      self.assertEquals(ensemble_stamp.eval(), 3)
+
 
 if __name__ == "__main__":
   googletest.main()

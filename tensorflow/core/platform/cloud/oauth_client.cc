@@ -137,8 +137,8 @@ Status EncodeJwtClaim(StringPiece client_email, StringPiece scope,
   const auto expiration_timestamp_sec =
       request_timestamp_sec + kRequestedTokenLifetimeSec;
 
-  root["iat"] = request_timestamp_sec;
-  root["exp"] = expiration_timestamp_sec;
+  root["iat"] = Json::Value::UInt64(request_timestamp_sec);
+  root["exp"] = Json::Value::UInt64(expiration_timestamp_sec);
 
   // Step 2: represent the JSON as a string.
   string claim = root.toStyledString();

@@ -32,4 +32,4 @@ class BuiltinOpResolver : public MutableOpResolver {
 }  // namespace ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_BUILTIN_KERNELS_H
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_

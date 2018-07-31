@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -31,16 +32,16 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
   // Make the reduction lambda.
   Shape single_float = ShapeUtil::MakeShape(F32, {});
-  builder.Parameter(0, single_float, "unused");
-  builder.Parameter(1, single_float, "used");
+  Parameter(&builder, 0, single_float, "unused");
+  Parameter(&builder, 1, single_float, "used");
   auto computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
   // Make the reduction.
   Shape pair_float = ShapeUtil::MakeShape(F32, {2});
-  builder.Reduce(builder.Parameter(0, pair_float, "operand"),
-                 builder.Parameter(1, single_float, "init"),
-                 computation_status.ValueOrDie(), {0});
+  Reduce(Parameter(&builder, 0, pair_float, "operand"),
+         Parameter(&builder, 1, single_float, "init"),
+         computation_status.ValueOrDie(), {0});
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
@@ -51,6 +52,24 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   HloModule& module = const_cast<HloModule&>(
       executable_status.ValueOrDie()->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
+}
+
+XLA_TEST_F(TestUtilsTest, Token) {
+  auto module = ParseHloString(
+                    R"(HloModule outfeed_module
+
+    ENTRY InfeedToOutfeed {
+      token = token[] parameter(0)
+      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+      infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
+      outfeed = token[] outfeed(infeed.data, token)
+      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+      infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
+      infeed.1.token = token[] get-tuple-element(infeed.1), index=1
+      outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
+    })")
+                    .ValueOrDie();
+  TF_ASSERT_OK(MakeFakeArguments(module.get()).status());
 }
 
 }  // namespace

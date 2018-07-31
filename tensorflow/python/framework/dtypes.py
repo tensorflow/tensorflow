@@ -120,11 +120,7 @@ class DType(object):
 
   @property
   def is_numpy_compatible(self):
-    numpy_incompatible = [
-        types_pb2.DT_VARIANT, types_pb2.DT_VARIANT_REF, types_pb2.DT_RESOURCE,
-        types_pb2.DT_RESOURCE_REF
-    ]
-    return self._type_enum not in numpy_incompatible
+    return self._type_enum not in _NUMPY_INCOMPATIBLE
 
   @property
   def as_numpy_dtype(self):
@@ -162,7 +158,7 @@ class DType(object):
   @property
   def is_quantized(self):
     """Returns whether this is a quantized data type."""
-    return self.base_dtype in [qint8, quint8, qint16, quint16, qint32]
+    return self.base_dtype in _QUANTIZED_DTYPES_NO_REF
 
   @property
   def is_unsigned(self):
@@ -400,6 +396,11 @@ qint16_ref = DType(types_pb2.DT_QINT16_REF)
 quint16_ref = DType(types_pb2.DT_QUINT16_REF)
 qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
+
+_NUMPY_INCOMPATIBLE = frozenset([
+    types_pb2.DT_VARIANT, types_pb2.DT_VARIANT_REF, types_pb2.DT_RESOURCE,
+    types_pb2.DT_RESOURCE_REF
+])
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -645,10 +646,10 @@ _TF_TO_NP = {
         _np_bfloat16,
 }
 
-QUANTIZED_DTYPES = frozenset([
-    qint8, quint8, qint16, quint16, qint32, qint8_ref, quint8_ref, qint16_ref,
-    quint16_ref, qint32_ref
-])
+_QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])
+_QUANTIZED_DTYPES_REF = frozenset(
+    [qint8_ref, quint8_ref, qint16_ref, quint16_ref, qint32_ref])
+QUANTIZED_DTYPES = _QUANTIZED_DTYPES_REF.union(_QUANTIZED_DTYPES_NO_REF)
 tf_export("QUANTIZED_DTYPES").export_constant(__name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
@@ -662,10 +663,9 @@ def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
 
   Args:
-    type_value: A value that can be converted to a `tf.DType`
-      object. This may currently be a `tf.DType` object, a
-      [`DataType`
-        enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
+    type_value: A value that can be converted to a `tf.DType` object. This may
+      currently be a `tf.DType` object, a [`DataType`
+      enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
       a string type name, or a `numpy.dtype`.
 
   Returns:

@@ -155,6 +155,10 @@ Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleIota(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.
@@ -164,7 +168,11 @@ Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSelect(const HloInstruction*) {
+Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
+}
+
+Status HloCostAnalysis::HandleTupleSelect(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -172,15 +180,22 @@ Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
+  current_properties_[kBytesAccessedKey] = shape_size_(slice->shape()) * 2;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleDynamicSlice(
+    const HloInstruction* dynamic_slice) {
+  current_properties_[kBytesAccessedKey] =
+      shape_size_(dynamic_slice->shape()) * 2;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicUpdateSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleDynamicUpdateSlice(
+    const HloInstruction* dynamic_update_slice) {
+  current_properties_[kBytesAccessedKey] =
+      shape_size_(dynamic_update_slice->operand(1)->shape()) * 2;
   return Status::OK();
 }
 
@@ -383,6 +398,10 @@ Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAfterAll(const HloInstruction*) {
   return Status::OK();
 }
 
