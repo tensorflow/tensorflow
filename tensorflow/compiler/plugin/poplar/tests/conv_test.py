@@ -76,9 +76,11 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['convolution/convolution.*clone/Conv_3x3',
+      ok = ['host-exchange-local-copy-',
+            'convolution/convolution.*.clone/Conv_3x3',
             'Copy_{<const>,XLA_Args/arg0.*_input}',
             'BiasAdd/call/addToChannel']
+
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testConv8x8_WithBias(self):
@@ -108,7 +110,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Conv2D/convolution.*clone/Conv_8x8_stride4x4',
+      ok = ['host-exchange-local-copy-',
+            'Conv2D/convolution.*.clone/Conv_8x8_stride4x4',
             'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -139,7 +142,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Conv2D/convolution.*clone/Conv_1x1',
+      ok = ['host-exchange-local-copy-',
+            'Conv2D/convolution.*.clone/Conv_1x1',
             'add/add.*/Op/Add']
 # TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -171,7 +175,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_XLA_Args/arg0.*_to_bwdWeights',
+      ok = ['host-exchange-local-copy-',
+            'Copy_XLA_Args/arg0.*_to_bwdWeights',
             'Copy_bwdWeights_to_weightsRearranged',
             'Conv2DBackpropInput/convolution.*clone/Conv_2x2']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -204,7 +209,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_XLA_Args/arg1.*_weights_to',
+      ok = ['host-exchange-local-copy-',
+            'Copy_XLA_Args/arg1.*_weights_to',
             'Conv2DBackpropFilter/convolution.*clone/Conv_8x8']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -243,7 +249,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['depthwise/call.*clone/Conv_1x1',
+      ok = ['host-exchange-local-copy-',
+            'depthwise/call.*clone/Conv_1x1',
             'add/call.*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -282,7 +289,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['depthwise/call.*clone/Conv_1x1',
+      ok = ['host-exchange-local-copy-',
+            'depthwise/call.*clone/Conv_1x1',
             'Copy_partials_to_depthwise/call',
             'add/call.*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -315,9 +323,11 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_XLA_Args/arg0.*_to_bwdWeights',
-            'Copy_bwdWeights_to_weightsRearranged/OnTileCopy',
-            'DepthwiseConv2dNativeBackpropInput/convolution.*clone/Conv_3x3']
+      ok = ['host-exchange-local-copy-',
+            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/WeightTranspose',
+            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_3x3',
+            'Copy_partialTranspose_to_bwdWeights/',
+            'Copy_bwdWeights_to_weightsRearranged/']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -349,8 +359,10 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_XLA_Args/arg0.*_to_bwdWeights/',
-            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_1x1']
+      ok = ['host-exchange-local-copy-*',
+            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/WeightTranspose',
+            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_1x1',
+            'Copy_partialTranspose_to_bwdWeights/']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -380,7 +392,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_{<const>,XLA_Args/arg0.*,XLA_Args/arg1.*}_to',
+      ok = ['host-exchange-local-copy-',
+            'Copy_{<const>,XLA_Args/arg0.*,XLA_Args/arg1.*}_to',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -411,7 +424,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_XLA_Args/arg0.*_to',
+      ok = ['host-exchange-local-copy-',
+            'Copy_XLA_Args/arg0.*_to',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -443,7 +457,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_XLA_Args/arg0.*_to',
+      ok = ['host-exchange-local-copy-',
+            'Copy_XLA_Args/arg0.*_to',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6',
             'Relu/call.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))

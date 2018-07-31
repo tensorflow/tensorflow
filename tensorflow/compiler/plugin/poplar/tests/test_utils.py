@@ -40,13 +40,18 @@ def get_compute_sets_from_report(report):
   return cs
 
 def check_all_compute_sets_in_list(cs_list, whitelist):
+  result = True
   wl = [x+'*' for x in whitelist]
   if len(cs_list) < len(wl):
-    return False
-  for cs in cs_list:
-    if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
-      return False
-  return True
+    result = False
+  else:
+    for cs in cs_list:
+      if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
+        result = False
+  if not result:
+    print(cs_list)
+    print(whitelist)
+  return result
 
 def extract_all_strings_from_event_trace(events):
   result = ""

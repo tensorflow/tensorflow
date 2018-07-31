@@ -265,7 +265,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
             print(cs_list)
 
-            ok = ['my_ops/my_add_op/add']
+            ok = ['host-exchange-local-copy-',
+                  'my_ops/my_add_op/add']
 
             self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 

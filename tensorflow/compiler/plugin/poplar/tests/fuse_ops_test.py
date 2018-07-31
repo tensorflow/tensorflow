@@ -42,7 +42,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Sigmoid/call/Nonlinearity']
+      ok = ['host-exchange-local-copy-',
+            'Sigmoid/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testSigmoidGrad(self):
@@ -68,7 +69,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['SigmoidGrad/call/NonLinearityGrad']
+      ok = ['host-exchange-local-copy-',
+            'SigmoidGrad/call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testRelu(self):
@@ -92,7 +94,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Relu/call/Nonlinearity']
+      ok = ['host-exchange-local-copy-',
+            'Relu/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testReluGrad(self):
@@ -118,7 +121,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['ReluGrad/call/NonLinearityGrad']
+      ok = ['host-exchange-local-copy-',
+            'ReluGrad/call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testMaxPool(self):
@@ -143,7 +147,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['max/call/maxPool']
+      ok = ['host-exchange-local-copy-',
+            'max/call/maxPool']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testFwdAndBwdMaxPool(self):
@@ -172,7 +177,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['MaxPool/call/maxPool',
+      ok = ['host-exchange-local-copy-',
+            'MaxPool/call/maxPool',
             '/maxPoolBwd']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
