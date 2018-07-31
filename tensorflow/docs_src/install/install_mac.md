@@ -350,11 +350,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
-<<<<<<< HEAD
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.9.0-py2-none-any.whl</b></pre>
-=======
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.10.0rc1-py2-none-any.whl</b></pre>
->>>>>>> google/r1.10
 
 
 <a name="ValidateYourInstallation"></a>
