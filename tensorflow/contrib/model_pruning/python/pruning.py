@@ -518,11 +518,11 @@ class Pruning(object):
       summary.scalar('last_mask_update_step', self._last_update_step)
       masks = get_masks()
       thresholds = get_thresholds()
-      for index, mask in enumerate(masks):
+      for mask, threshold in zip(masks, thresholds):
         if not self._exists_in_do_not_prune_list(mask.name):
-          summary.scalar(mask.name + '/sparsity', nn_impl.zero_fraction(mask))
-          summary.scalar(thresholds[index].op.name + '/threshold',
-                         thresholds[index])
+          summary.scalar(mask.op.name + '/sparsity', 
+                         nn_impl.zero_fraction(mask))
+          summary.scalar(threshold.op.name + '/threshold', threshold)
 
   def print_hparams(self):
     logging.info(self._spec.to_json())

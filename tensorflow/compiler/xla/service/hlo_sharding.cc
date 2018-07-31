@@ -60,11 +60,32 @@ HloSharding HloSharding::Tuple(
     const Shape& tuple_shape,
     tensorflow::gtl::ArraySlice<HloSharding> shardings) {
   CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  for (auto& sharding : shardings) {
+    CHECK(!sharding.IsTuple()) << sharding.ToString();
+  }
   std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
   CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))
       << "Flat list has " << flattened_list.size() << ", required "
       << RequiredLeaves(tuple_shape);
   return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
+                                     const HloSharding& sharding) {
+  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  CHECK(!sharding.IsTuple()) << sharding.ToString();
+  int64 leaf_count = ShapeUtil::GetLeafCount(tuple_shape);
+  std::vector<HloSharding> flattened_list;
+  flattened_list.reserve(leaf_count);
+  for (int64 i = 0; i < leaf_count; ++i) {
+    flattened_list.push_back(sharding);
+  }
+  return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::Single(const Shape& shape,
+                                const HloSharding& sharding) {
+  return ShapeUtil::IsTuple(shape) ? SingleTuple(shape, sharding) : sharding;
 }
 
 string HloSharding::ToString() const {

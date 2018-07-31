@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -418,6 +417,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         filter_data = GetTensorData<float>(filter);
       }
       multithreaded_ops::Conv(
+          *eigen_support::GetThreadPoolDevice(context),
           GetTensorData<float>(input), GetTensorDims(input), filter_data,
           GetTensorDims(filter), GetTensorData<float>(bias),
           GetTensorDims(bias), params->stride_width, params->stride_height,

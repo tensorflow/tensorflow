@@ -404,6 +404,7 @@ py_library(
     deps = [
         ":debug_errors",
         ":debug_fibonacci",
+        ":debug_keras",
         ":debug_mnist",
         ":debug_tflearn_iris",
     ],
@@ -802,6 +803,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(

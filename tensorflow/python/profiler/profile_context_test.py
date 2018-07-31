@@ -61,6 +61,8 @@ class ProfilerContextTest(test.TestCase):
               profile_str = f.read()
             gfile.Remove(outfile)
 
+      self.assertEqual(set([15, 50, 100]), set(pctx.get_profiles("op").keys()))
+
     with lib.ProfilerFromFile(
         os.path.join(test.get_temp_dir(), "profile_100")) as profiler:
       profiler.profile_operations(options=opts)

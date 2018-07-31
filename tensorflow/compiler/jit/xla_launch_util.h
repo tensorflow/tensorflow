@@ -76,9 +76,15 @@ class XlaComputationLaunchContext {
   // Create a new launch context. 'allocate_xla_tensors' is true if allocated
   // output tensors and variables are always XlaTensors. If false they are
   // assumed to be "normal" device pointers.
+  // If 'use_multiple_streams' is true, tensors may be defined and used on
+  // multiple streams and so se::Events must be defined and waited for. If
+  // 'use_multiple_streams' is true, 'allocate_xla_tensors' must also be true
+  // because we track inter-stream dependencies through events inside XlaTensor
+  // objects.
   XlaComputationLaunchContext(xla::LocalClient* client,
                               xla::DeviceMemoryAllocator* xla_allocator,
-                              bool allocate_xla_tensors);
+                              bool allocate_xla_tensors,
+                              bool use_multiple_streams);
 
   // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
   // `variables` is a map from TensorFlow argument number to resource variable.
@@ -99,6 +105,7 @@ class XlaComputationLaunchContext {
   xla::LocalClient* client_;
   xla::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
+  bool use_multiple_streams_;
   std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers_;
   std::vector<xla::ShapedBuffer*> arg_ptrs_;
 };
@@ -115,7 +122,11 @@ class XlaTensorBuffer : public TensorBuffer {
     data_ = const_cast<void*>(ptr);
   }
 
-  ~XlaTensorBuffer() override { allocator_->DeallocateRaw(data_); }
+  ~XlaTensorBuffer() override {
+    if (data_) {
+      allocator_->DeallocateRaw(data_);
+    }
+  }
 
   void* data() const override { return data_; }
   size_t size() const override { return expected_size_; }

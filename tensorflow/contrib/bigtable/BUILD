@@ -31,6 +31,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":bigtable_ops",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -39,18 +40,24 @@ tf_custom_op_py_library(
     ],
 )
 
+KERNEL_FILES = [
+    "kernels/bigtable_kernels.cc",
+    "kernels/bigtable_lookup_dataset_op.cc",
+    "kernels/bigtable_prefix_key_dataset_op.cc",
+    "kernels/bigtable_range_key_dataset_op.cc",
+    "kernels/bigtable_sample_keys_dataset_op.cc",
+    "kernels/bigtable_sample_key_pairs_dataset_op.cc",
+    "kernels/bigtable_scan_dataset_op.cc",
+]
+
 tf_custom_op_library(
     name = "python/ops/_bigtable.so",
-    srcs = [
-        "kernels/bigtable_kernels.cc",
-        "kernels/bigtable_lookup_dataset_op.cc",
-        "kernels/bigtable_prefix_key_dataset_op.cc",
-        "kernels/bigtable_range_key_dataset_op.cc",
-        "kernels/bigtable_scan_dataset_op.cc",
+    srcs = KERNEL_FILES + [
         "ops/bigtable_ops.cc",
     ],
     deps = [
         ":bigtable_lib_cc",
+        ":bigtable_range_helpers",
         "@com_github_googlecloudplatform_google_cloud_cpp//google/cloud/bigtable:bigtable_client",
     ],
 )
@@ -69,15 +76,10 @@ tf_gen_op_libs(
 
 tf_kernel_library(
     name = "bigtable_kernels",
-    srcs = [
-        "kernels/bigtable_kernels.cc",
-        "kernels/bigtable_lookup_dataset_op.cc",
-        "kernels/bigtable_prefix_key_dataset_op.cc",
-        "kernels/bigtable_range_key_dataset_op.cc",
-        "kernels/bigtable_scan_dataset_op.cc",
-    ],
+    srcs = KERNEL_FILES,
     deps = [
         ":bigtable_lib_cc",
+        ":bigtable_range_helpers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@com_github_googlecloudplatform_google_cloud_cpp//google/cloud/bigtable:bigtable_client",
@@ -93,6 +95,15 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@com_github_googlecloudplatform_google_cloud_cpp//google/cloud/bigtable:bigtable_client",
+    ],
+)
+
+cc_library(
+    name = "bigtable_range_helpers",
+    srcs = ["kernels/bigtable_range_helpers.cc"],
+    hdrs = ["kernels/bigtable_range_helpers.h"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
     ],
 )
 
@@ -117,6 +128,17 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_github_googlecloudplatform_google_cloud_cpp//google/cloud/bigtable:bigtable_client",
+    ],
+)
+
+tf_cc_test(
+    name = "bigtable_range_helpers_test",
+    size = "small",
+    srcs = ["kernels/bigtable_range_helpers_test.cc"],
+    deps = [
+        ":bigtable_range_helpers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -168,11 +190,6 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":bigtable_test_ops",
-        # "//tensorflow/contrib/util:util_py",
-        # "//tensorflow/python:framework_for_generated_wrappers",
-        # "//tensorflow/python:platform",
-        # "//tensorflow/python:util",
-        # "//tensorflow/python/data",
     ],
 )
 

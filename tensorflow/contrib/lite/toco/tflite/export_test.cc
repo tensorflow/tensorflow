@@ -262,7 +262,7 @@ TEST_F(VersionedOpExportTest, Export) {
   EXPECT_EQ(1, (*operators)[1]->opcode_index());
 }
 
-// TODO(ahentz): tests for tensors, inputs, outpus, opcodes and operators.
+// TODO(ahentz): tests for tensors, inputs, outputs, opcodes and operators.
 
 }  // namespace
 }  // namespace tflite

@@ -357,7 +357,12 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("PrefetchDataset").Device(DEVICE_CPU),
                         PrefetchDatasetOp);
-
+REGISTER_KERNEL_BUILDER(Name("PrefetchDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("buffer_size")
+                            .HostMemory("input_dataset")
+                            .HostMemory("handle"),
+                        PrefetchDatasetOp);
 }  // namespace
 
 }  // namespace tensorflow

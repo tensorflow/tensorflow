@@ -221,7 +221,9 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "DataType (2) of input data does not match with the DataType (1) of model inputs.");
+              "Cannot convert between a TensorFlowLite tensor with type "
+                  + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
+                  + " TensorFlowLite type INT32)");
     }
     interpreter.close();
   }
@@ -241,8 +243,8 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "Cannot convert an TensorFlowLite tensor with type "
-                  + "FLOAT32 to a Java object of type [[[[I (which is compatible with the"
+              "Cannot convert between a TensorFlowLite tensor with type "
+                  + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
                   + " TensorFlowLite type INT32)");
     }
     interpreter.close();
@@ -328,5 +330,12 @@ public final class InterpreterTest {
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
     fileChannel.close();
+  }
+
+  @Test
+  public void testRedundantClose() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    interpreter.close();
+    interpreter.close();
   }
 }

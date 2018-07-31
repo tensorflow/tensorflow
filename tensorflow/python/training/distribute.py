@@ -614,48 +614,6 @@ class DistributionStrategy(object):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
 
-  def tower_local_var_scope(self, aggregation):
-    """Inside this scope, new variables will not be mirrored.
-
-    There will still be one component variable per tower, but there is
-    no requirement that they stay in sync. Instead, when saving them
-    or calling `read_var()`, we use the value that results when
-    calling `reduce()` on all the towers' variables.
-
-    Note: tower-local implies not trainable. Instead, it is expected
-    that each tower will directly update (using `assign_add()` or
-    whatever) its local variable instance but only the aggregated
-    value (accessible using `read_var()`) will be exported from the
-    model. When it is acceptable to only aggregate on export, we
-    greatly reduce communication overhead by using tower-local
-    variables.
-
-    Note: All component variables will be initialized to the same
-    value, using the initialization expression from the first tower.
-    The values will match even if the initialization expression uses
-    random numbers.
-
-    Args:
-      aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
-
-    Returns:
-      A context manager.
-    """
-    # TODO(psv): Remove this after adding support for synchronization and
-    # aggregation parameters in get_variable() and mirrored strategy.
-    def create_tower_local_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      kwargs["use_resource"] = True
-
-      # Set synchronization to be ON_READ for tower local variables.
-      kwargs["synchronization"] = variable_scope.VariableSynchronization.ON_READ
-      kwargs["aggregation"] = aggregation
-      return next_creator(*args, **kwargs)
-
-    _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_tower_local_variable)
-
   def read_var(self, v):
     """Reads the value of a variable.
 
@@ -1103,10 +1061,6 @@ class TowerContext(object):
     finally:
       _pop_per_thread_mode()
 
-  def tower_local_var_scope(self, aggregation):
-    """Alias for distribution_strategy.tower_local_var_scope()."""
-    return self._distribution_strategy.tower_local_var_scope(aggregation)
-
   @property
   def is_single_tower(self):
     """Returns whether there is a single tower or multiple."""
@@ -1157,16 +1111,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator))
-
-  def tower_local_var_scope(self, aggregation):
-    """Does not set to resource variables."""
-    def create_tower_local_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      kwargs["trainable"] = False
-      return next_creator(*args, **kwargs)
-
-    _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_tower_local_variable)
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""

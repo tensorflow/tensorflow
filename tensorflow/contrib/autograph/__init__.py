@@ -22,17 +22,21 @@ from __future__ import division
 from __future__ import print_function
 
 # TODO(mdan): Bring only the relevant symbols to the top level.
-from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph import operators
+from tensorflow.contrib.autograph import utils
+from tensorflow.contrib.autograph.core.errors import GraphConstructionError
+from tensorflow.contrib.autograph.core.errors import TfRuntimeError
+from tensorflow.contrib.autograph.core.errors import improved_errors
+from tensorflow.contrib.autograph.impl.api import RunMode
 from tensorflow.contrib.autograph.impl.api import convert
 from tensorflow.contrib.autograph.impl.api import converted_call
 from tensorflow.contrib.autograph.impl.api import do_not_convert
-from tensorflow.contrib.autograph.impl.api import RunMode
 from tensorflow.contrib.autograph.impl.api import to_code
 from tensorflow.contrib.autograph.impl.api import to_graph
 from tensorflow.contrib.autograph.lang.directives import set_element_type
 from tensorflow.contrib.autograph.lang.directives import set_loop_options
 from tensorflow.contrib.autograph.lang.special_functions import stack
+from tensorflow.contrib.autograph.lang.special_functions import tensor_list
 from tensorflow.contrib.autograph.pyct.transformer import AutographParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
@@ -46,10 +50,15 @@ _allowed_symbols = [
     'to_graph',
     # Overloaded operators
     'operators',
+    # Errors
+    'improved_errors',
+    'GraphConstructionError',
+    'TfRuntimeError',
     # Python language "extensions"
     'set_element_type',
     'set_loop_options',
     'stack',
+    'tensor_list',
     # Exceptions
     'AutographParseError',
     # Utilities: to be removed

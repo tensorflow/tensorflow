@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -84,7 +84,7 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       dimensions.push_back(y_shape.dimensions(y_outer_dim));
       return xla::Broadcast(
           xla::ConstantLiteral(builder,
-                               xla::Literal::Zero(x_shape.element_type())),
+                               xla::LiteralUtil::Zero(x_shape.element_type())),
           dimensions);
     }
 

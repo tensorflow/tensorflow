@@ -449,7 +449,7 @@ covering them.
 
 To find out more about implementing convolutional neural networks, you can jump
 to the TensorFlow @{$deep_cnn$deep convolutional networks tutorial},
-or start a bit more gently with our @{$layers$MNIST starter tutorial}.
+or start a bit more gently with our [Estimator MNIST tutorial](../estimators/cnn.md).
 Finally, if you want to get up to speed on research in this area, you can
 read the recent work of all the papers referenced in this tutorial.
 

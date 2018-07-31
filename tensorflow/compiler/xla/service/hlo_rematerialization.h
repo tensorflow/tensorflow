@@ -58,8 +58,12 @@ class HloRematerialization {
   //   sizes: Optional outparam that indicates the peak memory usage of the HLO
   //     module before/after rematerialization.
   //
-  //   copy_insertion: If non-null, run the provided copy insertion pass
-  //   before HLO scheduling.
+  //   copy_insertion: If non-null, run copy elision after scheduling. This
+  //     pass is used to eliminate copies that were inserted by copy insertion
+  //     before HLO scheduling.
+  //
+  // TODO(b/80249101): Remove the 'run_copy_elision' parameter when copy
+  // insertion is integrated with HLO scheduling.
   //
   // Returns whether any instructions were rematerialized. If memory use is
   // already below the given limit then no instructions are rematerialized and
@@ -76,11 +80,9 @@ class HloRematerialization {
 
  protected:
   HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
-                       const ShapeSizeFunction& size_function,
-                       CopyInsertion* copy_insertion)
+                       const ShapeSizeFunction& size_function)
       : scheduler_algorithm_(scheduler_algorithm),
-        size_function_(size_function),
-        copy_insertion_(copy_insertion) {}
+        size_function_(size_function) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -89,7 +91,8 @@ class HloRematerialization {
   // contains the memory-minimizing order in which to emit the HLO instructions.
   StatusOr<bool> Run(HloModule* module,
                      SequentialHloOrdering::HloModuleSequence* sequence,
-                     int64 memory_limit, RematerializationSizes* sizes);
+                     int64 memory_limit, RematerializationSizes* sizes,
+                     CopyInsertion* copy_insertion);
 
   // Rematerializes instructions within the given computation. 'order' is the
   // order in which the computation's instructions will be emitted in the
@@ -145,9 +148,6 @@ class HloRematerialization {
   // uses of the original instruction and the original instruction is
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
-
-  // Copy insertion pass that runs before HLO scheduling.
-  CopyInsertion* copy_insertion_;
 };
 
 }  // namespace xla

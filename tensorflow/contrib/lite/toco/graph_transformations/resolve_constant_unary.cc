@@ -57,8 +57,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
     case OperatorType::kSum:
-    case OperatorType::kMin:  //  Reduction Min
-    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kReduceMin:  //  Reduction Min
+    case OperatorType::kReduceMax:  //  Reduction Max
     case OperatorType::kReshape:
     case OperatorType::kRelu6:
     case OperatorType::kRelu1:
@@ -196,7 +196,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = sum;
     }
-  } else if (unary_op->type == OperatorType::kMin) {
+  } else if (unary_op->type == OperatorType::kReduceMin) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
     for (int i = 0; i < output_dims_count; i++) {
@@ -207,7 +207,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       min = std::min(min, (*input_float_data)[i]);
     }
     output_float_data[0] = min;
-  } else if (unary_op->type == OperatorType::kMax) {
+  } else if (unary_op->type == OperatorType::kReduceMax) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
     for (int i = 0; i < output_dims_count; i++) {

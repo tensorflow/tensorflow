@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import unittest
 
@@ -25,6 +26,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -44,6 +46,7 @@ except ImportError:
 
 class TrainingTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_fit_on_arrays(self):
     with self.test_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
@@ -56,7 +59,7 @@ class TrainingTest(test.TestCase):
 
       model = keras.models.Model([a, b], [d, e])
 
-      optimizer = 'rmsprop'
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       loss_weights = [1., 0.5]
       metrics = ['mae']
@@ -223,7 +226,7 @@ class TrainingTest(test.TestCase):
       x = keras.layers.Input(shape=(3,), name='input_a')
       y = keras.layers.Dense(4)(x)
       model = keras.models.Model(x, y)
-      model.compile(optimizer='rmsprop', loss='mse')
+      model.compile(optimizer, loss='mse')
       # This will work
       model.fit([input_a_np], output_d_np, epochs=1)
       with self.assertRaises(ValueError):
@@ -239,6 +242,7 @@ class TrainingTest(test.TestCase):
                 batch_size=5,
                 verbose=2)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_evaluate_predict_on_arrays(self):
     with self.test_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
@@ -251,7 +255,7 @@ class TrainingTest(test.TestCase):
 
       model = keras.models.Model([a, b], [d, e])
 
-      optimizer = 'rmsprop'
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       loss_weights = [1., 0.5]
       metrics = ['mae']
@@ -321,6 +325,7 @@ class TrainingTest(test.TestCase):
       })
       self.assertEqual(len(out), 2)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_invalid_loss_or_metrics(self):
     num_classes = 5
     train_samples = 1000
@@ -333,27 +338,29 @@ class TrainingTest(test.TestCase):
       model.add(keras.layers.Activation('relu'))
       model.add(keras.layers.Dense(num_classes))
       model.add(keras.layers.Activation('softmax'))
-      model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      model.compile(optimizer, loss='categorical_crossentropy')
       np.random.seed(1337)
       (x_train, y_train), (_, _) = testing_utils.get_test_data(
           train_samples=train_samples,
           test_samples=test_samples,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      with self.assertRaises(ValueError):
-        model.fit(x_train, y_train)
 
       with self.assertRaises(ValueError):
         model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
 
       with self.assertRaises(TypeError):
-        model.compile(loss='categorical_crossentropy',
-                      optimizer='rmsprop',
-                      metrics=set(0))
+        model.compile(
+            optimizer, loss='categorical_crossentropy', metrics=set(0))
 
-      with self.assertRaises(ValueError):
-        model.compile(loss=None,
-                      optimizer='rmsprop')
+      if not context.executing_eagerly():
+        # TODO(psv): Investigate these use cases in eager mode.
+        with self.assertRaises(ValueError):
+          model.fit(x_train, y_train)
+
+        with self.assertRaises(ValueError):
+          model.compile(optimizer, loss=None)
 
   def test_training_on_sparse_data_with_dense_placeholders(self):
     if scipy_sparse is None:
@@ -414,6 +421,28 @@ class TrainingTest(test.TestCase):
       model.train_on_batch(val_a, val_out)
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
+
+  def test_compile_warning_for_loss_missing_output(self):
+    with self.test_session():
+      inp = keras.layers.Input(shape=(16,), name='input_a')
+      out_1 = keras.layers.Dense(8, name='dense_1')(inp)
+      out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
+      model = keras.models.Model(inputs=[inp], outputs=[out_1, out_2])
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.compile(
+            loss={
+                'dense_2': 'categorical_crossentropy',
+            },
+            optimizer='rmsprop',
+            metrics={
+                'dense_2': 'categorical_accuracy',
+                'dense_1': 'categorical_accuracy',
+            })
+        msg = ('Output "dense_1" missing from loss dictionary. We assume this '
+               'was done on purpose. The fit and evaluate APIs will not be '
+               'expecting any data to be passed to "dense_1".')
+        self.assertRegexpMatches(str(mock_log.call_args), msg)
 
 
 class LossWeightingTest(test.TestCase):
@@ -708,6 +737,54 @@ class LossWeightingTest(test.TestCase):
         model.fit(x_np, [y_np, y_np], epochs=1,
                   sample_weight={'1': bad_w_np})
 
+  def test_default_sample_weight(self):
+    """Verifies that fit works without having to set sample_weight."""
+
+    num_classes = 5
+    input_dim = 5
+    timesteps = 3
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(num_classes),
+              input_shape=(timesteps, input_dim)))
+
+      x = np.random.random((10, timesteps, input_dim))
+      y = np.random.random((10, timesteps, num_classes))
+
+      # sample_weight_mode is a list and mode value is None
+      model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode=[None])
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a list and mode value is `temporal`
+      model.compile(
+          loss='mse', optimizer='rmsprop', sample_weight_mode=['temporal'])
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a dict and mode value is None
+      model.compile(
+          loss='mse',
+          optimizer='rmsprop',
+          sample_weight_mode={'time_distributed': None})
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a dict and mode value is `temporal`
+      model.compile(
+          loss='mse',
+          optimizer='rmsprop',
+          sample_weight_mode={'time_distributed': 'temporal'})
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a not a list/dict and mode value is None
+      model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode=None)
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a not a list/dict and mode value is `temporal`
+      model.compile(
+          loss='mse', optimizer='rmsprop', sample_weight_mode='temporal')
+      model.fit(x, y, epochs=1, batch_size=10)
+
 
 class LossMaskingTest(test.TestCase):
 
@@ -742,6 +819,22 @@ class LossMaskingTest(test.TestCase):
               keras.backend.variable(x),
               keras.backend.variable(y),
               keras.backend.variable(weights), keras.backend.variable(mask)))
+
+
+class LearningPhaseTest(test.TestCase):
+
+  def test_empty_model_no_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      self.assertFalse(model.uses_learning_phase)
+
+  def test_dropout_has_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.add(keras.layers.Dropout(0.5))
+      model.add(keras.layers.Dense(2))
+      self.assertTrue(model.uses_learning_phase)
 
 
 class TestDynamicTrainability(test.TestCase):
