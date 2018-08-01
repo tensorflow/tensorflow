@@ -566,6 +566,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
     ],
+    shard_count = 16,
 )
 
 tf_py_test(
