@@ -793,19 +793,48 @@ class LossWeightingTest(test.TestCase):
 
 class LossMaskingTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_masking(self):
     with self.test_session():
-      np.random.seed(1337)
       x = np.array([[[1], [1]], [[0], [0]]])
       model = keras.models.Sequential()
       model.add(keras.layers.Masking(mask_value=0, input_shape=(2, 1)))
       model.add(
           keras.layers.TimeDistributed(
               keras.layers.Dense(1, kernel_initializer='one')))
-      model.compile(loss='mse', optimizer='sgd')
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
       y = np.array([[[1], [1]], [[1], [1]]])
       loss = model.train_on_batch(x, y)
-      self.assertEqual(loss, 0)
+      self.assertEqual(float(loss), 0.)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_mask_argument_in_layer(self):
+    # Test that the mask argument gets correctly passed to a layer in the
+    # functional API.
+
+    class CustomMaskedLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(CustomMaskedLayer, self).__init__()
+        self.supports_masking = True
+
+      def call(self, inputs, mask=None):
+        assert mask is not None
+        return inputs
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    with self.test_session():
+      x = np.random.random((5, 3))
+      inputs = keras.layers.Input((3,))
+      masked = keras.layers.Masking(mask_value=0)(inputs)
+      outputs = CustomMaskedLayer()(masked)
+
+      model = keras.Model(inputs, outputs)
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      y = np.random.random((5, 3))
+      model.train_on_batch(x, y)
 
   def test_loss_masking(self):
     with self.test_session():

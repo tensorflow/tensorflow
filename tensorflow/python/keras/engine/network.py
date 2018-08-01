@@ -840,11 +840,11 @@ class Network(base_layer.Layer):
         A tensor if there is a single output, or
         a list of tensors if there are more than one outputs.
     """
-    inputs = nest.flatten(inputs)
+    inputs = generic_utils.to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
-      masks = nest.flatten(mask)
+      masks = generic_utils.to_list(mask)
 
     if not context.executing_eagerly():
       # Try to retrieve cached outputs if the layer has already been called
@@ -859,6 +859,17 @@ class Network(base_layer.Layer):
                                           training=training,
                                           mask=masks)
     return outputs
+
+  def _call_and_compute_mask(self, inputs, training=None, mask=None):
+    assert context.executing_eagerly()
+    inputs = generic_utils.to_list(inputs)
+    if mask is None:
+      masks = [None for _ in range(len(inputs))]
+    else:
+      masks = generic_utils.to_list(mask)
+    return self._run_internal_graph(inputs,
+                                    training=training,
+                                    mask=masks)
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:

@@ -92,21 +92,23 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
      applies masking and sample weighting to the loss value.
   """
   total_loss = 0
+  kwargs = {}
+  if model._expects_training_arg:
+    kwargs['training'] = training
   if len(inputs) == 1:
-    if model._expects_training_arg:
-      outs = model.call(inputs[0], training=training)
-    else:
-      outs = model.call(inputs[0])
-  else:
-    if model._expects_training_arg:
-      outs = model.call(inputs, training=training)
-    else:
-      outs = model.call(inputs)
-  if not isinstance(outs, list):
-    outs = [outs]
+    inputs = inputs[0]
 
-  if not isinstance(targets, list):
-    targets = [targets]
+  if model._is_graph_network:
+    outs, masks = model._call_and_compute_mask(inputs, **kwargs)
+    masks = generic_utils.to_list(masks)
+  else:
+    outs = model.call(inputs, **kwargs)
+    masks = None
+
+  outs = generic_utils.to_list(outs)
+  if masks is None:
+    masks = [None for _ in outs]
+  targets = generic_utils.to_list(targets)
 
   loss_metrics = []
   with backend.name_scope('loss'):
@@ -115,10 +117,7 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
         weights = sample_weights[i]
       else:
         weights = None
-
-      # TODO(fchollet): support masking; in practice `_keras_mask` is never
-      # set in this context currently.
-      mask = outs[i]._keras_mask
+      mask = masks[i]
 
       weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
       with backend.name_scope(model.output_names[i] + '_loss'):
