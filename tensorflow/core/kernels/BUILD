@@ -39,6 +39,7 @@ load(
     "cc_header_only_library",
     "if_not_windows",
     "if_override_eigen_strong_inline",
+    "tf_cc_test_mkl",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -1128,6 +1129,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
 
 tf_cc_test(
     name = "decode_wav_op_test",
@@ -6124,6 +6126,7 @@ tf_mkl_kernel_library(
     ] + if_mkl(["@mkl_dnn"]),
 )
 
+
 tf_mkl_kernel_library(
     name = "mkl_tfconv_op",
     prefix = "mkl_tfconv",
@@ -6267,6 +6270,31 @@ tf_mkl_kernel_library(
         "cwise_op",
         "//third_party/mkl:intel_binary_blob",
     ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_fused_ops_test",
+    size = "small",
+    srcs = ["mkl_fused_ops_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":mkl_conv_op",
+        ":mkl_tfconv_op",
+        ":conv_ops",
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ]
 )
 
 # NOTE(lespeholt): This rule is deprecated, please use:

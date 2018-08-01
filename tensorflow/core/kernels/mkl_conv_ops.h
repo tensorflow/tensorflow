@@ -232,7 +232,7 @@ class MklDnnConvUtil {
       const memory::dims& strides, const memory::dims& dilations,
       memory::dims* output_dims_tf_order,
       memory::dims* output_dims_mkl_order, memory::dims* pad_l,
-      memory::dims* pad_r) {
+      memory::dims* pad_r, bool padEnabled=false) {
     CHECK_NOTNULL(output_dims_tf_order);
     CHECK_NOTNULL(output_dims_mkl_order);
     CHECK_NOTNULL(pad_l);
@@ -268,7 +268,19 @@ class MklDnnConvUtil {
             GetWindowedOutputSizeVerboseV2(input_cols, filter_cols,
                                  dilation_cols, stride_cols, padding_,
                                  &out_cols, &pad_left, &pad_right));
-
+    // If padEnabled, i.e., pad and conv op are fused, then
+    // all pads are already passed from pad op through 
+    // *pad_l and *pad_r 
+    if(padEnabled) { 
+       pad_top = static_cast<int64>((*pad_l)[0]);
+       pad_left = static_cast<int64>((*pad_l)[1]);
+       pad_bottom = static_cast<int64>((*pad_r)[0]);
+       pad_right = static_cast<int64>((*pad_r)[1]);
+       // update the out_rows and out_cols based on all 
+       // sides of the pads coming from pad op. 
+       out_rows = out_rows + (pad_top + pad_bottom ) / stride_rows;  
+       out_cols = out_cols + (pad_left + pad_right ) / stride_cols; 
+    }
     // Tensorflow output is in data_format order. (NHWC or NCHW)
     TensorShape out_shape =
         ShapeFromFormat(data_format_, out_batch, out_rows, out_cols, out_depth);
@@ -283,8 +295,12 @@ class MklDnnConvUtil {
     *output_dims_mkl_order = mkldnn_sizes;
 
     // Now handle padding. MKL-DNN uses asymetric padding.
-    *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
-    *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+    // But, if padEnabled, i.e., pad and conv op are fused,
+    // then, *pad_l and *pad_r are already set from pad op
+    if(!padEnabled) {
+      *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
+      *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+    }
   }
 
   // Calculate output and pad size of forward Convolution operator.
@@ -325,7 +341,7 @@ class MklDnnConvUtil {
       memory::dims* strides, memory::dims *dilations,
       memory::dims* output_dims_tf_order,
       memory::dims* output_dims_mkl_order, memory::dims* pad_l,
-      memory::dims* pad_r) {
+      memory::dims* pad_r, bool padEnabled=false) {
     CHECK_NOTNULL(input_dims);
     CHECK_NOTNULL(filter_dims);
     CHECK_NOTNULL(strides);
@@ -344,7 +360,7 @@ class MklDnnConvUtil {
     GetOutputAndPadSizeInMklOrder(input_shape, filter_shape,
                                   *strides, *dilations,
                                   output_dims_tf_order, output_dims_mkl_order,
-                                  pad_l, pad_r);
+                                  pad_l, pad_r, padEnabled);
     if (!context_->status().ok()) return;
   }
 };
