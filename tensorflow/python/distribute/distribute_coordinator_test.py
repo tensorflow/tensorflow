@@ -67,7 +67,7 @@ class DistributeCoordinatorTest(test.TestCase):
   def setUp(self):
     self._result_correct = 0
     self._lock = threading.Lock()
-    self._task_context = {}
+    self._worker_context = {}
 
   @contextlib.contextmanager
   def _test_session(self, target):
@@ -77,7 +77,7 @@ class DistributeCoordinatorTest(test.TestCase):
       yield sess
 
   def _in_graph_worker_fn(self):
-    context = distribute_coordinator.get_current_coordinator_context()
+    context = distribute_coordinator.get_current_worker_context()
     self.assertTrue(context is not None)
     with self._test_session(target=context.master_target) as sess:
       xs = []
@@ -107,7 +107,7 @@ class DistributeCoordinatorTest(test.TestCase):
     self.assertEqual(self._result_correct, 1)
 
   def _between_graph_worker_fn(self):
-    context = distribute_coordinator.get_current_coordinator_context()
+    context = distribute_coordinator.get_current_worker_context()
     self.assertTrue(context is not None)
     with self._test_session(target=context.master_target) as sess:
       with ops.device("/job:ps/task:0"):
@@ -153,113 +153,113 @@ class DistributeCoordinatorTest(test.TestCase):
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
-  def _dump_task_context(self):
-    """Dumps the propoerties of each coordinator context.
+  def _dump_worker_context(self):
+    """Dumps the propoerties of each worker context.
 
     It dumps the context properties to a dict mapping from task_type to a list
     of tuples of master_target, num_workers, is_chief and distribute_mode, where
     the list is indexed by the task_id.
     """
-    context = distribute_coordinator.get_current_coordinator_context()
+    context = distribute_coordinator.get_current_worker_context()
     self.assertTrue(context is not None)
     task_type = str(context.task_type)
     task_id = context.task_id or 0
     with self._lock:
-      if task_type not in self._task_context:
-        self._task_context[task_type] = []
-      while len(self._task_context[task_type]) <= task_id:
-        self._task_context[task_type].append(None)
-      self._task_context[task_type][task_id] = (context.master_target,
-                                                context.num_workers,
-                                                context.is_chief,
-                                                context.distributed_mode)
+      if task_type not in self._worker_context:
+        self._worker_context[task_type] = []
+      while len(self._worker_context[task_type]) <= task_id:
+        self._worker_context[task_type].append(None)
+      self._worker_context[task_type][task_id] = (context.master_target,
+                                                  context.num_workers,
+                                                  context.is_chief,
+                                                  context.distributed_mode)
 
   def testBetweenGraphContext(self):
-    # Dumps the task contexts to the self._task_context dict.
+    # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
-        self._dump_task_context,
+        self._dump_worker_context,
         cluster_spec=self._cluster_spec,
         between_graph=True)
 
     # There is only one type of task and there three such tasks.
-    self.assertEqual(len(self._task_context), 1)
-    self.assertTrue(WORKER in self._task_context)
-    self.assertEqual(len(self._task_context[WORKER]), NUM_WORKERS)
+    self.assertEqual(len(self._worker_context), 1)
+    self.assertTrue(WORKER in self._worker_context)
+    self.assertEqual(len(self._worker_context[WORKER]), NUM_WORKERS)
 
     # Check whether each task has the right master_target, num_workers, is_chief
     # and distributed_mode.
     self.assertEqual(
-        self._task_context[WORKER][0],
+        self._worker_context[WORKER][0],
         (_bytes_to_str(self._workers[0].target), NUM_WORKERS, True, True))
     self.assertEqual(
-        self._task_context[WORKER][1],
+        self._worker_context[WORKER][1],
         (_bytes_to_str(self._workers[1].target), NUM_WORKERS, False, True))
     self.assertEqual(
-        self._task_context[WORKER][2],
+        self._worker_context[WORKER][2],
         (_bytes_to_str(self._workers[2].target), NUM_WORKERS, False, True))
 
   def testInGraphContext(self):
-    # Dumps the task contexts to the self._task_context dict.
+    # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
-        self._dump_task_context,
+        self._dump_worker_context,
         cluster_spec=self._cluster_spec,
         between_graph=False)
 
     # There is only a "None" task in the dumped task context.
-    self.assertEqual(len(self._task_context), 1)
-    self.assertTrue("None" in self._task_context)
-    self.assertEqual(len(self._task_context["None"]), 1)
+    self.assertEqual(len(self._worker_context), 1)
+    self.assertTrue("None" in self._worker_context)
+    self.assertEqual(len(self._worker_context["None"]), 1)
 
     # Check whether each task has the right master_target, num_workers, is_chief
     # and distributed_mode.
     self.assertEqual(
-        self._task_context["None"][0],
+        self._worker_context["None"][0],
         (_bytes_to_str(self._workers[0].target), NUM_WORKERS, True, True))
 
   def testLocalContext(self):
-    # Dumps the task contexts to the self._task_context dict.
+    # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
-        self._dump_task_context, cluster_spec=None, between_graph=True)
+        self._dump_worker_context, cluster_spec=None, between_graph=True)
 
     # There is only a "None" task.
-    self.assertEqual(len(self._task_context), 1)
-    self.assertTrue("None" in self._task_context)
-    self.assertEqual(len(self._task_context["None"]), 1)
+    self.assertEqual(len(self._worker_context), 1)
+    self.assertTrue("None" in self._worker_context)
+    self.assertEqual(len(self._worker_context["None"]), 1)
 
     # Check whether each task has the right master_target, num_workers, is_chief
     # and distributed_mode.
-    self.assertEqual(self._task_context["None"][0], ("local", 0, True, False))
+    self.assertEqual(self._worker_context["None"][0], ("local", 0, True, False))
 
   def testBetweenGraphContextWithChief(self):
     # Adds a chief node, so there are NUM_WORKERS + 1 workers in total.
     cluster_spec = copy.deepcopy(self._cluster_spec)
     cluster_spec[CHIEF] = ["fake_chief"]
 
-    # Dumps the task contexts to the self._task_context dict.
+    # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
-        self._dump_task_context,
+        self._dump_worker_context,
         cluster_spec=cluster_spec,
         between_graph=True,
         rpc_layer="grpc")
 
     # There are one CHIEF and three workers.
-    self.assertEqual(len(self._task_context), 2)
-    self.assertTrue(CHIEF in self._task_context)
-    self.assertTrue(WORKER in self._task_context)
-    self.assertEqual(len(self._task_context[CHIEF]), 1)
-    self.assertEqual(len(self._task_context[WORKER]), NUM_WORKERS)
+    self.assertEqual(len(self._worker_context), 2)
+    self.assertTrue(CHIEF in self._worker_context)
+    self.assertTrue(WORKER in self._worker_context)
+    self.assertEqual(len(self._worker_context[CHIEF]), 1)
+    self.assertEqual(len(self._worker_context[WORKER]), NUM_WORKERS)
 
     # Check whether each task has the right master_target, num_workers, is_chief
     # and distributed_mode.
-    self.assertEqual(self._task_context[CHIEF][0],
+    self.assertEqual(self._worker_context[CHIEF][0],
                      ("grpc://fake_chief", 4, True, True))
-    self.assertEqual(self._task_context[WORKER][0],
+    self.assertEqual(self._worker_context[WORKER][0],
                      ("grpc://" + _bytes_to_str(self._workers[0].target),
                       NUM_WORKERS + 1, False, True))
-    self.assertEqual(self._task_context[WORKER][1],
+    self.assertEqual(self._worker_context[WORKER][1],
                      ("grpc://" + _bytes_to_str(self._workers[1].target),
                       NUM_WORKERS + 1, False, True))
-    self.assertEqual(self._task_context[WORKER][2],
+    self.assertEqual(self._worker_context[WORKER][2],
                      ("grpc://" + _bytes_to_str(self._workers[2].target),
                       NUM_WORKERS + 1, False, True))
 
@@ -268,22 +268,24 @@ class DistributeCoordinatorTest(test.TestCase):
     cluster_spec = copy.deepcopy(self._cluster_spec)
     cluster_spec[EVALUATOR] = ["fake_evaluator"]
 
-    # Dumps the task contexts to the self._task_context dict.
+    # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
-        self._dump_task_context, cluster_spec=cluster_spec, between_graph=False)
+        self._dump_worker_context,
+        cluster_spec=cluster_spec,
+        between_graph=False)
 
     # There are one "None" task and one EVALUATOR task.
-    self.assertEqual(len(self._task_context), 2)
-    self.assertTrue("None" in self._task_context)
-    self.assertTrue(EVALUATOR in self._task_context)
-    self.assertEqual(len(self._task_context["None"]), 1)
-    self.assertEqual(len(self._task_context[EVALUATOR]), 1)
+    self.assertEqual(len(self._worker_context), 2)
+    self.assertTrue("None" in self._worker_context)
+    self.assertTrue(EVALUATOR in self._worker_context)
+    self.assertEqual(len(self._worker_context["None"]), 1)
+    self.assertEqual(len(self._worker_context[EVALUATOR]), 1)
 
     # Check whether each task has the right master_target, num_workers, is_chief
     # and distributed_mode.
-    self.assertEqual(self._task_context["None"][0],
+    self.assertEqual(self._worker_context["None"][0],
                      (_bytes_to_str(self._workers[0].target), 3, True, True))
-    self.assertEqual(self._task_context[EVALUATOR][0],
+    self.assertEqual(self._worker_context[EVALUATOR][0],
                      ("fake_evaluator", 3, False, True))
 
 
