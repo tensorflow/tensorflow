@@ -450,9 +450,9 @@ class Model(Network):
               weighted_metric_fn = training_utils.weighted_masked_objective(
                   metric_fn)
               metric_result = weighted_metric_fn(
-                  y_true, y_pred, weights=weights, mask=masks[i])
+                  y_true, y_pred, weights=weights, mask=masks[i])  # pylint: disable=undefined-loop-variable
 
-            training_utils.add_metric_name(self, metric_name, i)
+            metric_name = training_utils.add_metric_name(self, metric_name, i)  # pylint: disable=undefined-loop-variable
             self.metrics_tensors.append(metric_result)
 
             # Keep track of state updates created by
