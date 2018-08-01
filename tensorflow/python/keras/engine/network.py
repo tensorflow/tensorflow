@@ -29,6 +29,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -773,35 +774,41 @@ class Network(base_layer.Layer):
                        'input type: {}'.format(type(input_shape)))
 
     if input_shape and not self.inputs:
-      if isinstance(input_shape, list):
-        # List of input shapes
-        x = [base_layer.generate_dummy_data_from_shape(shape)
-             for shape in input_shape]
-      else:
-        x = base_layer.generate_dummy_data_from_shape(input_shape)
+      # We create placeholders for the `None`s in the shape and build the model
+      # in a Graph. Since tf.Variable is compatible with both eager execution
+      # and graph building, the variables created after building the model in
+      # a Graph are still valid when executing eagerly.
+      with context.graph_mode():
+        graph = eager_function.CapturingGraph()
+        with graph.as_default():
+          if isinstance(input_shape, list):
+            x = [base_layer.generate_placeholders_from_shape(shape)
+                 for shape in input_shape]
+          else:
+            x = base_layer.generate_placeholders_from_shape(input_shape)
 
-      kwargs = {}
-      num_call_args = len(tf_inspect.getargspec(self.call).args)
-      if self._expects_training_arg and num_call_args == 3:
-        # Has call signature of call(self, input, training)
-        kwargs['training'] = False
-      elif num_call_args > 2:
-        # Has invalid call signature of call(self, input, *args, **kwargs)
-        raise ValueError('Currently, you cannot build your model if it has '
-                         'positional or keyword arguments that are not '
-                         'inputs to the model, but are required for its '
-                         '`call` method. Instead, in order to instantiate '
-                         'and build your model, `call` your model on real '
-                         'tensor data with all expected call arguments.')
+          kwargs = {}
+          num_call_args = len(tf_inspect.getargspec(self.call).args)
+          if self._expects_training_arg and num_call_args == 3:
+            # Has call signature of call(self, input, training)
+            kwargs['training'] = False
+          elif num_call_args > 2:
+            # Has invalid call signature of call(self, input, *args, **kwargs)
+            raise ValueError('Currently, you cannot build your model if it has '
+                             'positional or keyword arguments that are not '
+                             'inputs to the model, but are required for its '
+                             '`call` method. Instead, in order to instantiate '
+                             'and build your model, `call` your model on real '
+                             'tensor data with all expected call arguments.')
 
-      try:
-        self.call(x, **kwargs)
-      except (errors.InvalidArgumentError, TypeError):
-        raise ValueError('You cannot build your model by calling `build` '
-                         'if your layers do not support float type inputs. '
-                         'Instead, in order to instantiate and build your '
-                         'model, `call` your model on real tensor data (of '
-                         'the correct dtype).')
+          try:
+            self.call(x, **kwargs)
+          except (errors.InvalidArgumentError, TypeError):
+            raise ValueError('You cannot build your model by calling `build` '
+                             'if your layers do not support float type inputs. '
+                             'Instead, in order to instantiate and build your '
+                             'model, `call` your model on real tensor data (of '
+                             'the correct dtype).')
 
     if self._layers:
       self._track_layers(self._layers)
