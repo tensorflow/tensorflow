@@ -322,8 +322,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
           if (bias_data) {
             acc += bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
           }
-          acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-              acc, output_multiplier, kReverseShift * output_shift);
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              kReverseShift * output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
