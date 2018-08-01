@@ -66,6 +66,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   VLOG(2) << "ParallelForkJoin ENTRY"
           << " num_partitions: " << num_partitions
           << " num_partitioned_dims: " << num_partitioned_dims;
+  CHECK_EQ(params, nullptr);
   CHECK_GT(num_partitions, 1);
   CHECK_GT(num_partitioned_dims, 0);
   const xla::ExecutableRunOptions* run_options =
@@ -80,9 +81,9 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   for (int32 i = 1; i < num_partitions; ++i) {
     const int64 offset = i * stride;
     run_options->intra_op_thread_pool()->enqueueNoNotification(
-        [i, function, result_ptr, run_options_ptr, params, temps, prof_counters,
+        [i, function, result_ptr, run_options_ptr, temps, prof_counters,
          partitions, offset, &bc]() {
-          function(result_ptr, run_options_ptr, params, temps,
+          function(result_ptr, run_options_ptr, nullptr, temps,
                    &partitions[offset], prof_counters);
           bc.DecrementCount();
           VLOG(3) << "ParallelForkJoin partition " << i << " done.";
