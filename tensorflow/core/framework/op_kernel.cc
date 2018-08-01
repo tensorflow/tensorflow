@@ -1000,8 +1000,11 @@ Status FindKernelRegistration(const DeviceType& device_type,
             ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
+      *was_attr_mismatch = false;
     } else {
-      *was_attr_mismatch = true;
+      if (*reg == nullptr) {
+        *was_attr_mismatch = true;
+      }
     }
   }
   return Status::OK();
