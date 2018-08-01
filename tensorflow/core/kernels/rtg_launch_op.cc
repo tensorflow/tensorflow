@@ -81,7 +81,8 @@ RTGLaunchOp::RTGLaunchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   const NameAttrList* func;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("function", &func));
   program = nullptr;
-  rtglib::convert::GetProgram(*func, &program, required_bytes);
+  name = func->name();
+  rtglib::convert::GetProgram(*func, &program, required_bytes, name);
 }
 
 void RTGLaunchOp::Compute(OpKernelContext* ctx) {
@@ -102,7 +103,7 @@ void RTGLaunchOp::Compute(OpKernelContext* ctx) {
         const Tensor& input = ctx->input(i);
         input_ptrs.push_back(&input);
     }
-    rtglib::convert::AdjustShape(program, input_ptrs);
+    rtglib::convert::AdjustShape(program, input_ptrs, name);
     OP_REQUIRES(ctx, ctx->num_outputs() == 1,
                 errors::InvalidArgument("expect single output"));
     
@@ -126,7 +127,7 @@ void RTGLaunchOp::Compute(OpKernelContext* ctx) {
             LOG(WARNING) << allocated.status().error_message();
         }
     }
-    rtglib::convert::EvalProgram(program, output, input_ptrs, use_gpu, scratch_mem_ptr, scratch_mem_size);
+    rtglib::convert::EvalProgram(program, output, input_ptrs, use_gpu, scratch_mem_ptr, scratch_mem_size, name);
     ctx->set_output(0, *output);
     
 #if 0    

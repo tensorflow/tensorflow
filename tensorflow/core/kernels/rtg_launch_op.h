@@ -41,6 +41,7 @@ class RTGLaunchOp : public OpKernel {
  private:
   void * program;
   int required_bytes;
+  string name;
   TF_DISALLOW_COPY_AND_ASSIGN(RTGLaunchOp);
 };
 

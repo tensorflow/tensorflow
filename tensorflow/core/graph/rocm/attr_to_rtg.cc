@@ -20,7 +20,7 @@ namespace tensorflow {
 namespace rtglib {
 namespace convert {
 
-void GetProgram(const NameAttrList& function, void ** p_program, int &bytes) {
+void GetProgram(const NameAttrList& function, void ** p_program, int &bytes, string name) {
     auto attr_map = function.attr();
     AttrValue value = attr_map.at("func");
     int size = value.list().func_size();
@@ -33,12 +33,13 @@ void GetProgram(const NameAttrList& function, void ** p_program, int &bytes) {
         convert.decodeAttr(func);
     }
     std::cout << "---After decode---" << std::endl;
+    std::cout << name << std::endl;
     std::cout << *program << std::endl;
     bytes = convert.next_offset;
     *p_program = program;
 }
 
-void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& input_ptrs, bool use_gpu, void* scratch_mem_ptr, int size)
+void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& input_ptrs, bool use_gpu, void* scratch_mem_ptr, int size, string name)
 {
     migraph::program* program = reinterpret_cast<migraph::program*>(p_program);
     Converter convert(program, nullptr);
@@ -76,6 +77,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
     if (!use_gpu) {
         program->compile(migraph::cpu::cpu_target{});
         std::cout << "---After compile---" << std::endl;
+        std::cout << name << std::endl;
         std::cout << *program << std::endl;
         arg = program->eval(params);
     } else  {
@@ -86,6 +88,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
         // params["handle"] = {migraph::shape::any_type, handle.get()};
         program->compile(migraph::gpu::target{});
         std::cout << "---After compile---" << std::endl;
+        std::cout << name << std::endl;
         std::cout << *program << std::endl;
         arg = program->eval(params);
     }
@@ -117,7 +120,7 @@ void GetOutputShape(void * p_program, TensorShape& ret_shape)
     convert.getTensorShape(shape, ret_shape);
 }
 
-void AdjustShape(void * p_program, std::vector<const Tensor*>& input_ptrs)
+void AdjustShape(void * p_program, std::vector<const Tensor*>& input_ptrs, string name)
 {
     migraph::program* program = reinterpret_cast<migraph::program*>(p_program);
     int param_cnt = 0;
@@ -143,6 +146,7 @@ void AdjustShape(void * p_program, std::vector<const Tensor*>& input_ptrs)
     }
     if (recompute) {
         std::cout << "---After adjustment to dynamic shape--" << std::endl;
+        std::cout << name << std::endl;
         std::cout << *program << std::endl;
     }
 }
