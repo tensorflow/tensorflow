@@ -186,6 +186,15 @@ class ConstantTest(test.TestCase):
           shape=[2, 3, 5])
     self.assertEqual(c.get_shape(), [2, 3, 5])
 
+  def testExplicitShapeTensor(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant(
+          np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float32),
+          shape=constant_op.constant([2, 3, 5]))
+      d = constant_op.constant(3, shape=(2, 3, constant_op.constant(5)))
+    self.assertEqual(c.get_shape(), [2, 3, 5])
+    self.assertEqual(d.get_shape(), [2, 3, 5])
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testEagerMemory(self):
     """Tests PyObject refs are managed correctly when executing eagerly."""
