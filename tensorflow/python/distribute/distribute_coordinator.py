@@ -34,13 +34,13 @@ class _TaskType(object):
   EVALUATOR = "evaluator"
 
 
-_coordinator_context = threading.local()
+_worker_context = threading.local()
 
 
-def get_current_coordinator_context():
-  """Returns the current coordinator context."""
+def get_current_worker_context():
+  """Returns the current task context."""
   try:
-    return _coordinator_context.current
+    return _worker_context.current
   except AttributeError:
     return None
 
@@ -86,13 +86,13 @@ def _get_num_workers(cluster_spec):
       cluster_spec.as_dict().get(_TaskType.CHIEF, []))
 
 
-class _CoordinatorContext(object):
-  """The coordinator context class.
+class _WorkerContext(object):
+  """The worker context class.
 
   This context object provides configuration information for each task. One
-  context manager with a coordinator context object will be created per
-  invocation to the `worker_fn` where `get_current_coordinator_context` can be
-  called to access the coordinator context object.
+  context manager with a worker context object will be created per
+  invocation to the `worker_fn` where `get_current_worker_context` can be called
+  to access the worker context object.
   """
 
   def __init__(self,
@@ -102,7 +102,7 @@ class _CoordinatorContext(object):
                between_graph=False,
                rpc_layer="grpc",
                worker_barrier=None):
-    """Initialize the coordinator context object.
+    """Initialize the worker context object.
 
     Args:
       cluster_spec: a ClusterSpec object. It can be empty or None in the local
@@ -139,15 +139,15 @@ class _CoordinatorContext(object):
     self._is_chief_node = self._is_chief()
 
   def __enter__(self):
-    old_context = get_current_coordinator_context()
+    old_context = get_current_worker_context()
     if old_context:
       raise ValueError(
           "You cannot run distribute coordinator in a `worker_fn`.")
-    _coordinator_context.current = self
+    _worker_context.current = self
 
   def __exit__(self, unused_exception_type, unused_exception_value,
                unused_traceback):
-    _coordinator_context.current = None
+    _worker_context.current = None
 
   def _get_master_target(self):
     """Return the master target for a task."""
@@ -195,7 +195,7 @@ class _CoordinatorContext(object):
     """
     if not self._worker_barrier:
       raise ValueError(
-          "`worker_barrier is not set in the coordinator context.`")
+          "`worker_barrier is not set in the worker context.`")
     self._worker_barrier.wait()
 
   @property
@@ -236,7 +236,7 @@ class _CoordinatorContext(object):
 
 def _run(worker_fn, cluster_spec, task_type, task_id, between_graph, rpc_layer,
          worker_barrier):
-  with _CoordinatorContext(cluster_spec, task_type, task_id, between_graph,
+  with _WorkerContext(cluster_spec, task_type, task_id, between_graph,
                            rpc_layer, worker_barrier):
     worker_fn()
 
@@ -266,13 +266,13 @@ def run_distribute_coordinator(worker_fn,
   this `worker_fn`.
 
   The `worker_fn` defines the training logic and is called under a its own
-  coordinator context which can be accessed to via
-  `get_current_coordinator_context`. A coordinator context provides access to
-  configurations for each task, e.g. the task_type, task_id, master target and
-  so on. Since `worker_fn` will be called in a thread and possibly multiple
-  times, caller should be careful when it accesses global data. For example, it
-  is unsafe to define flags in a `worker_fn` or to define different environment
-  variables for different `worker_fn`s.
+  worker context which can be accessed to via `get_current_worker_context`. A
+  worker context provides access to configurations for each task, e.g. the
+  task_type, task_id, master target and so on. Since `worker_fn` will be called
+  in a thread and possibly multiple times, caller should be careful when it
+  accesses global data. For example, it is unsafe to define flags in a
+  `worker_fn` or to define different environment variables for different
+  `worker_fn`s.
 
   The `worker_fn` for the between-graph replication is defined as if there are
   only one worker corresponding to the `worker_fn` and possibly ps jobs. It
@@ -287,7 +287,7 @@ def run_distribute_coordinator(worker_fn,
   high-level APIs, to change a program to use this coordinator, wrap everything
   in a the program after global data definitions such as commandline flag
   definition into the `worker_fn` and get task-specific configurations from
-  the coordinator context.
+  the worker context.
 
   The `cluster_spec` can be either passed by the argument or parsed from the
   "TF_CONFIG" envrionment variable. Example of a TF_CONFIG:
