@@ -1068,18 +1068,23 @@ template struct functor::PadInput<GPUDevice, float, int, 4>;
 template struct functor::PadInput<GPUDevice, Eigen::half, int, 4>;
 
 // For 3d ops.
+template struct functor::TransformFilter<GPUDevice, double, int, 5>;
 template struct functor::TransformFilter<GPUDevice, float, int, 5>;
 template struct functor::TransformFilter<GPUDevice, Eigen::half, int, 5>;
 
+template struct functor::ReverseTransformFilter<GPUDevice, double, 5>;
 template struct functor::ReverseTransformFilter<GPUDevice, float, 5>;
 template struct functor::ReverseTransformFilter<GPUDevice, Eigen::half, 5>;
 
+template struct functor::NHWCToNCHW<GPUDevice, double, 5>;
 template struct functor::NHWCToNCHW<GPUDevice, float, 5>;
 template struct functor::NHWCToNCHW<GPUDevice, Eigen::half, 5>;
 
+template struct functor::NCHWToNHWC<GPUDevice, double, 5>;
 template struct functor::NCHWToNHWC<GPUDevice, float, 5>;
 template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 5>;
 
+template struct functor::PadInput<GPUDevice, double, int, 5>;
 template struct functor::PadInput<GPUDevice, float, int, 5>;
 template struct functor::PadInput<GPUDevice, Eigen::half, int, 5>;
 
