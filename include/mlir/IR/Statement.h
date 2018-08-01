@@ -30,6 +30,7 @@ namespace mlir {
 class MLFunction;
 class StmtBlock;
 class ForStmt;
+class MLIRContext;
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively

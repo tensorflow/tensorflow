@@ -18,10 +18,13 @@
 #ifndef MLIR_IR_MLIRCONTEXT_H
 #define MLIR_IR_MLIRCONTEXT_H
 
+#include "mlir/Support/LLVM.h"
+#include <functional>
 #include <memory>
 
 namespace mlir {
-  class MLIRContextImpl;
+class MLIRContextImpl;
+class Attribute;
 
 /// MLIRContext is the top-level object for a collection of MLIR modules.  It
 /// holds immortal uniqued objects like types, and the tables used to unique
@@ -42,6 +45,29 @@ public:
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
   MLIRContextImpl &getImpl() const { return *impl.get(); }
+
+  // Diagnostic handler registration and use.  MLIR supports the ability for the
+  // IR to carry arbitrary metadata about operation location information.  If an
+  // error or warning is detected in the compiler, the pass in question can
+  // invoke the emitError/emitWarning method on an operation and have it
+  // reported through this interface.
+  //
+  // Tools using MLIR are encouraged to register error handlers and define a
+  // schema for their location information.  If they don't, then warnings will
+  // be dropped and errors will terminate the process with exit(1).
+
+  /// Register a diagnostic handler with this LLVM context.  The handler is
+  /// passed location information if present (nullptr if not) along with a
+  /// message and a boolean that indicates whether this is an error or warning.
+  void registerDiagnosticHandler(
+      const std::function<void(Attribute *location, StringRef message,
+                               bool isError)> &handler);
+
+  /// This emits an diagnostic using the registered issue handle if present, or
+  /// with the default behavior if not.  The MLIR compiler should not generally
+  /// interact with this, it should use methods on Operation instead.
+  void emitDiagnostic(Attribute *location, const Twine &message,
+                      bool isError) const;
 };
 } // end namespace mlir
 

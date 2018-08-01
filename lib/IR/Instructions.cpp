@@ -16,7 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Instructions.h"
-#include "mlir/IR/BasicBlock.h"
+#include "mlir/IR/CFGFunction.h"
 using namespace mlir;
 
 /// Replace all uses of 'this' value with the new value, updating anything in
@@ -67,6 +67,11 @@ void Instruction::destroy() {
 void OperationInst::destroy() {
   this->~OperationInst();
   free(this);
+}
+
+/// Return the context this operation is associated with.
+MLIRContext *Instruction::getContext() const {
+  return getFunction()->getContext();
 }
 
 CFGFunction *Instruction::getFunction() const {

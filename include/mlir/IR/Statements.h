@@ -44,6 +44,9 @@ public:
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const;
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//

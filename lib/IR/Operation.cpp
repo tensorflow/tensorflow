@@ -18,6 +18,7 @@
 #include "mlir/IR/Operation.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
@@ -33,6 +34,13 @@ Operation::Operation(Identifier name, bool isInstruction,
 }
 
 Operation::~Operation() {}
+
+/// Return the context this operation is associated with.
+MLIRContext *Operation::getContext() const {
+  if (auto *inst = dyn_cast<OperationInst>(this))
+    return inst->getContext();
+  return cast<OperationStmt>(this)->getContext();
+}
 
 /// Return the number of operands this operation has.
 unsigned Operation::getNumOperands() const {
@@ -125,4 +133,36 @@ auto Operation::removeAttr(Identifier name, MLIRContext *context)
     }
   }
   return RemoveResult::NotFound;
+}
+
+/// Emit a warning about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void Operation::emitWarning(const Twine &message) const {
+  // Get the location information for this operation.
+  auto *loc = getAttr("location");
+
+  // If that fails, fall back to the internal location which is used in
+  // testcases.
+  if (!loc)
+    loc = getAttr(":location");
+
+  auto *context = getContext();
+  context->emitDiagnostic(loc, message, /*isError=*/false);
+}
+
+/// Emit an error about fatal conditions with this operation, reporting up to
+/// any diagnostic handlers that may be listening.  NOTE: This may terminate
+/// the containing application, only use when the IR is in an inconsistent
+/// state.
+void Operation::emitError(const Twine &message) const {
+  // Get the location information for this operation.
+  auto *loc = getAttr("location");
+
+  // If that fails, fall back to the internal location which is used in
+  // testcases.
+  if (!loc)
+    loc = getAttr(":location");
+
+  auto *context = getContext();
+  context->emitDiagnostic(loc, message, /*isError=*/true);
 }

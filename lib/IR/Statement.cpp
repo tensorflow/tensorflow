@@ -177,6 +177,20 @@ void OperationStmt::destroy() {
   free(this);
 }
 
+/// Return the context this operation is associated with.
+MLIRContext *OperationStmt::getContext() const {
+  // If we have a result or operand type, that is a constant time way to get
+  // to the context.
+  if (getNumResults())
+    return getResult(0)->getType()->getContext();
+  if (getNumOperands())
+    return getOperand(0)->getType()->getContext();
+
+  // In the very odd case where we have no operands or results, fall back to
+  // doing a find.
+  return findFunction()->getContext();
+}
+
 /// This drops all operand uses from this statement, which is an essential
 /// step in breaking cyclic dependences between references when they are to
 /// be deleted.

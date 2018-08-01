@@ -28,7 +28,9 @@
 #include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 using namespace llvm;
 
@@ -184,6 +186,10 @@ public:
   /// This is the set of all operations that are registered with the system.
   OperationSet operationSet;
 
+  /// This is the handler to use to report issues, or null if not registered.
+  std::function<void(Attribute *location, StringRef message, bool isError)>
+      issueHandler;
+
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
 
@@ -266,6 +272,36 @@ MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {}
 
 MLIRContext::~MLIRContext() {}
 
+/// Register an issue handler with this LLVM context.  The issue handler is
+/// passed location information if present (nullptr if not) along with a
+/// message and a boolean that indicates whether this is an error or warning.
+void MLIRContext::registerDiagnosticHandler(
+    const std::function<void(Attribute *location, StringRef message,
+                             bool isError)> &handler) {
+  getImpl().issueHandler = handler;
+}
+
+/// This emits a diagnostic using the registered issue handle if present, or
+/// with the default behavior if not.  The MLIR compiler should not generally
+/// interact with this, it should use methods on Operation instead.
+void MLIRContext::emitDiagnostic(Attribute *location,
+                                 const llvm::Twine &message,
+                                 bool isError) const {
+  // If we had a handler registered, emit the diagnostic using it.
+  auto handler = getImpl().issueHandler;
+  if (handler)
+    return handler(location, message.str(), isError);
+
+  // The default behavior for warnings is to ignore them.
+  if (!isError)
+    return;
+
+  // The default behavior for errors is to emit them to stderr and exit.
+  llvm::errs() << message.str() << "\n";
+  llvm::errs().flush();
+  exit(1);
+}
+
 /// Return the operation set associated with the specified MLIRContext object.
 OperationSet &OperationSet::get(MLIRContext *context) {
   return context->getImpl().operationSet;
@@ -273,10 +309,8 @@ OperationSet &OperationSet::get(MLIRContext *context) {
 
 /// If this operation has a registered operation description in the
 /// OperationSet, return it.  Otherwise return null.
-/// TODO: Shouldn't have to pass a Context here.
-const AbstractOperation *
-Operation::getAbstractOperation(MLIRContext *context) const {
-  return OperationSet::get(context).lookup(getName().str());
+const AbstractOperation *Operation::getAbstractOperation() const {
+  return OperationSet::get(getContext()).lookup(getName().str());
 }
 
 //===----------------------------------------------------------------------===//

@@ -44,6 +44,9 @@ typedef std::pair<Identifier, Attribute*> NamedAttribute;
 ///
 class Operation {
 public:
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const;
+
   /// The name of an operation is the key identifier for it.
   Identifier getName() const { return nameAndIsInstruction.getPointer(); }
 
@@ -137,11 +140,21 @@ public:
   /// value indicates whether the attribute was present or not.
   RemoveResult removeAttr(Identifier name, MLIRContext *context);
 
+  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitWarning(const Twine &message) const;
+
+  /// Emit an error about fatal conditions with this operation, reporting up to
+  /// any diagnostic handlers that may be listening.  NOTE: This may terminate
+  /// the containing application, only use when the IR is in an inconsistent
+  /// state.
+  void emitError(const Twine &message) const;
+
   /// If this operation has a registered operation description in the
   /// OperationSet, return it.  Otherwise return null.
   /// TODO: Shouldn't have to pass a Context here, Operation should eventually
   /// be able to get to its own parent.
-  const AbstractOperation *getAbstractOperation(MLIRContext *context) const;
+  const AbstractOperation *getAbstractOperation() const;
 
   /// The getAs methods perform a dynamic cast from an Operation (like
   /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns

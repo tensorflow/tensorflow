@@ -73,6 +73,11 @@ public:
     return true;
   }
 
+  bool opFailure(const Twine &message, const Operation &value) {
+    value.emitError(message);
+    return true;
+  }
+
 protected:
   explicit Verifier(std::string *errorResult) : errorResult(errorResult) {}
 
@@ -272,15 +277,15 @@ bool CFGFuncVerifier::verifyCondBranch(const CondBranchInst &inst) {
 
 bool CFGFuncVerifier::verifyOperation(const OperationInst &inst) {
   if (inst.getFunction() != &fn)
-    return failure("operation in the wrong function", inst);
+    return opFailure("operation in the wrong function", inst);
 
   // TODO: Check that operands are structurally ok.
 
   // See if we can get operation info for this.
-  if (auto *opInfo = inst.getAbstractOperation(fn.getContext())) {
+  if (auto *opInfo = inst.getAbstractOperation()) {
     if (auto errorMessage = opInfo->verifyInvariants(&inst))
-      return failure(Twine("'") + inst.getName().str() + "' op " + errorMessage,
-                     inst);
+      return opFailure(
+          Twine("'") + inst.getName().str() + "' op " + errorMessage, inst);
   }
 
   return false;

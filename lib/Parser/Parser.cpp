@@ -1548,7 +1548,7 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   // We just parsed an operation.  If it is a recognized one, verify that it
   // is structurally as we expect.  If not, produce an error with a reasonable
   // source location.
-  if (auto *opInfo = op->getAbstractOperation(builder.getContext())) {
+  if (auto *opInfo = op->getAbstractOperation()) {
     if (auto error = opInfo->verifyInvariants(op))
       return emitError(loc, Twine("'") + op->getName().str() + "' op " + error);
   }

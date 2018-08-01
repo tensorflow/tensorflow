@@ -46,6 +46,9 @@ public:
 
   Kind getKind() const { return kind; }
 
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const;
+
   /// Return the BasicBlock containing this instruction.
   BasicBlock *getBlock() const { return block; }
 
@@ -151,6 +154,9 @@ public:
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
+
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const { return Instruction::getContext(); }
 
   //===--------------------------------------------------------------------===//
   // Operands
