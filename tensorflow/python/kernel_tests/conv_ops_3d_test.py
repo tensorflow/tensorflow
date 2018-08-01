@@ -52,11 +52,11 @@ class Conv3DTest(test.TestCase):
   def _DtypesToTest(self, use_gpu):
     if use_gpu:
       if not test_util.CudaSupportsHalfMatMulAndConv():
-        return [dtypes.float32]
+        return [dtypes.float64, dtypes.float32]
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-        return [dtypes.float32, dtypes.float16]
+        return [dtypes.float64, dtypes.float32, dtypes.float16]
     else:
       return [dtypes.float64, dtypes.float32, dtypes.float16]
 
