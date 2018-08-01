@@ -404,6 +404,14 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
+  if shape is not None:
+    if isinstance(shape, ops.Tensor):
+      shape_value = constant_value(shape)
+      shape = shape_value if shape_value is not None else shape
+    shape = [
+        int(dim if not isinstance(dim, ops.Tensor) else constant_value(dim))
+        for dim in shape]
+
   is_quantized = (
       dtype in [
           dtypes.qint8, dtypes.quint8, dtypes.qint16, dtypes.quint16,
@@ -482,7 +490,6 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     is_same_size = True
     shape_size = nparray.size
   else:
-    shape = [int(dim) for dim in shape]
     shape_size = np.prod(shape, dtype=np.int64)
     is_same_size = shape_size == nparray.size
 
