@@ -643,7 +643,7 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   }
 #endif
   cublasStatus_t ret = cublas_func(parent_, blas_, args...);
-  if (err_on_failure && ret != CUBLAS_STATUS_SUCCESS) {
+  if ((err_on_failure || VLOG_IS_ON(3)) && ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to run cuBLAS routine " << cublas_func.kName << ": "
                << ToString(ret);
   }
@@ -2139,6 +2139,10 @@ static bool UsesTensorOps(blas::AlgorithmType algo) {
 template <typename InType>
 static bool TensorOpsAvailable(int cc_major) {
 #if CUDA_VERSION >= 9000
+  // cublas *does* allow tensor ops on inputs that are not fp16, so this is not
+  // strictly correct.  We can't simply enable it, though, as that would change
+  // clients' behavior significantly: Using tensor ops on fp32 inputs cause them
+  // to be rounded to fp16.
   if (cc_major >= 7 && TensorOpMathEnabled() &&
       std::is_same<InType, Eigen::half>::value) {
     return true;
@@ -2160,16 +2164,30 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor) &&
       cc_major < 5) {
+    VLOG(2) << "DoBlasGemmWithAlgorithm returning false because sm" << cc_major
+            << cc_minor << " devices don't support explicit gemm algorithms.";
     return false;
   }
 
   if (UsesTensorOps(algorithm) && !TensorOpsAvailable<InT>(cc_major)) {
+    if (std::is_same<InT, Eigen::half>::value) {
+      VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
+              << algorithm
+              << " uses tensor ops, but tensor ops are not available in sm"
+              << cc_major << "X devices.";
+    } else {
+      VLOG(2) << "DoBlasGemmWithAlgorithm returning false because algorithm "
+              << algorithm
+              << " uses tensor ops, but the input data type is not fp16.";
+    }
     return false;
   }
 
   // Either both 'alpha' and 'beta' need to be pointers to device memory, or
   // they need to be both host scalars.
   if (alpha.is_pointer() != beta.is_pointer()) {
+    VLOG(2) << "DoBlasGemmWithAlgorithm returning false because one of `alpha` "
+               "and `beta` is a pointer, but the other is not.";
     return false;
   }
 
@@ -2177,6 +2195,9 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
   if (output_profile_result != nullptr) {
     timer.reset(new CUDATimer(parent_));
     if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+      VLOG(2) << "DoBlasGemmWithAlgorithm returning false because "
+                 "output_profile_result was given, but we were unable to "
+                 "create a CUDATimer.";
       return false;
     }
   }
@@ -2186,6 +2207,8 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
 #if CUDA_VERSION >= 9000 && CUDA_VERSION < 9020
   if ((algorithm == CUBLAS_GEMM_DEFAULT || algorithm >= CUBLAS_GEMM_ALGO13) &&
       std::max({m, n, k}) >= 2097153 && cc_major < 7) {
+    VLOG(2) << "DoBlasGemmWithAlgorithm returning false to work around cudnn "
+               "<9.2 bug with m, n, or k >= 2097153.  See b/79126339.";
     return false;
   }
 #endif
@@ -2211,6 +2234,8 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     // CUDATimer will CHECK-fail if we Stop() it while the stream is in an error
     // state.
     if (!timer->Stop(AsCUDAStream(stream))) {
+      VLOG(2) << "DoBlasGemmWithAlgorithm returning false; unable to stop "
+                 "CUDATimer.";
       return false;
     }
     output_profile_result->set_is_valid(true);
