@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import json
 import threading
 from absl.testing import parameterized
@@ -26,8 +25,6 @@ from absl.testing import parameterized
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
