@@ -23,6 +23,7 @@ import os
 
 import six
 
+import tensorflow as tf
 from tensorflow.python.estimator import util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -265,7 +266,8 @@ class SupervisedInputReceiver(
 
 @estimator_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
-                                            default_batch_size=None):
+                                            default_batch_size=None,
+                                            base64_encode_example=False):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
 
   Creates a serving_input_receiver_fn that expects a serialized tf.Example fed
@@ -276,6 +278,7 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.
     default_batch_size: the number of query examples expected per batch.
         Leave unset for variable batch size (recommended).
+    base64_encode_example: use base64 to encode serialized examples or not.
 
   Returns:
     A serving_input_receiver_fn suitable for use in serving.
@@ -283,11 +286,19 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
 
   def serving_input_receiver_fn():
     """An input_fn that expects a serialized tf.Example."""
-    serialized_tf_example = array_ops.placeholder(
-        dtype=dtypes.string,
-        shape=[default_batch_size],
-        name='input_example_tensor')
-    receiver_tensors = {'examples': serialized_tf_example}
+    if base64_encode_example:
+      new_base64_placeholder = tf.placeholder(dtype=tf.string,
+                                              shape=[default_batch_size],
+                                              name='input_example_tensor')
+      serialized_tf_example = tf.map_fn(tf.decode_base64,
+                                        new_base64_placeholder)
+      receiver_tensors = {'examples': new_base64_placeholder}
+    else:
+      serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
+                                                    shape=[default_batch_size],
+                                                    name='input_example_tensor')
+      receiver_tensors = {'examples': serialized_tf_example}
+
     features = parsing_ops.parse_example(serialized_tf_example, feature_spec)
     return ServingInputReceiver(features, receiver_tensors)
 
