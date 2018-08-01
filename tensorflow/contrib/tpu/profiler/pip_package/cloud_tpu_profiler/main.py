@@ -50,8 +50,8 @@ flags.DEFINE_string(
 flags.DEFINE_string(
     'logdir', None, 'Path of TensorBoard log directory e.g. /tmp/tb_log, '
     'gs://tb_bucket')
-flags.DEFINE_integer('duration_ms', 0, 'Duration of tracing or monitoring in
-    ms.')
+flags.DEFINE_integer('duration_ms', 0,
+                     'Duration of tracing or monitoring in ms.')
 flags.DEFINE_integer(
     'num_tracing_attempts', 3, 'Automatically retry N times when no trace '
     'event is collected.')
@@ -60,10 +60,12 @@ flags.DEFINE_boolean('include_dataset_ops', True,
                      'device traces.')
 
 # Monitoring parameters
-flags.DEFINE_integer('monitoring_level', 0, 'Choose a monitoring level between 1
-    and 2 to monitor your TPU job continuously.')
-flags.DEFINE_integer('num_queries', 100, 'This script will run monitoring for
-    num_queries before it stops.')
+flags.DEFINE_integer(
+    'monitoring_level', 0, 'Choose a monitoring level between '
+    '1 and 2 to monitor your TPU job continuously.')
+flags.DEFINE_integer(
+    'num_queries', 100,
+    'This script will run monitoring for num_queries before it stops.')
 
 FLAGS = flags.FLAGS
 EXECUTABLE = 'data/capture_tpu_profile'
