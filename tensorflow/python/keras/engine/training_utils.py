@@ -777,6 +777,9 @@ def add_metric_name(model, metric_name, index):
         user. For example: 'acc'
     index: The index of the model output for which the metric name is being
         added.
+
+  Returns:
+    string, name of the model's unique metric name
   """
   if len(model.output_names) > 1:
     metric_name = '%s_%s' % (model.output_names[index], metric_name)
@@ -786,6 +789,7 @@ def add_metric_name(model, metric_name, index):
     metric_name = '%s_%d' % (base_metric_name, j)
     j += 1
   model.metrics_names.append(metric_name)
+  return metric_name
 
 
 def validate_iterator_input(x, y, sample_weight, validation_split=None):
