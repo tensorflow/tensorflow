@@ -40,6 +40,7 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} --config=opt \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
+    -//tensorflow/python/distribute:distribute_coordinator_test \
     -//tensorflow/python/eager:pywrap_tfe_test \
     -//tensorflow/python/estimator:estimator_test \
     -//tensorflow/python/keras:activations_test \
@@ -47,6 +48,7 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/keras:normalization_test \
     -//tensorflow/python/keras:pooling_test \
     -//tensorflow/python/keras:training_gpu_test \
+    -//tensorflow/python/keras:model_subclassing_test \
     -//tensorflow/python/kernel_tests:atrous_conv2d_test \
     -//tensorflow/python/kernel_tests:bincount_op_test \
     -//tensorflow/python/kernel_tests:concat_op_test \
