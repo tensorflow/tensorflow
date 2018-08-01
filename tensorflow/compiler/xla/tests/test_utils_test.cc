@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"

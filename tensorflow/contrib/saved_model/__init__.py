@@ -24,11 +24,12 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.saved_model.python.saved_model.keras_saved_model import *
 from tensorflow.contrib.saved_model.python.saved_model.signature_def_utils import *
 # pylint: enable=unused-import,widcard-import,line-too-long
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ["get_signature_def_by_key"]
+_allowed_symbols = ["get_signature_def_by_key", "load_model", "save_model"]
 
 remove_undocumented(__name__, _allowed_symbols)

@@ -3,7 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -37,7 +37,9 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
+        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
@@ -120,7 +122,6 @@ tf_cuda_library(
 
 tf_gen_op_wrapper_py(
     name = "trt_engine_op",
-    gen_locally = True,
     deps = [
         ":trt_engine_op_op_lib",
         ":trt_logging",
@@ -384,14 +385,15 @@ cuda_py_tests(
         "test/base_test.py",
         # "test/batch_matmul_test.py",
         # "test/biasadd_matmul_test.py",
-        "test/binary_tensor_weight_broadcast_test.py",
-        "test/concatenation_test.py",
+        # "test/binary_tensor_weight_broadcast_test.py",  # Blocked by trt4 installation
+        # "test/concatenation_test.py",  # Blocked by trt4 installation
         "test/const_broadcast_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
-        "test/unary_test.py",
+        # "test/unary_test.py",  # Blocked by trt4 installation
         # "test/vgg_block_nchw_test.py",
         # "test/vgg_block_test.py",
+        "test/memory_alignment_test.py",
     ],
     additional_deps = [
         ":tf_trt_integration_test_base",

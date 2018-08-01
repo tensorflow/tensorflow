@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
@@ -1223,10 +1224,9 @@ Status DirectSession::CreateExecutors(
     item->graph = partition_graph.get();
     item->executor = nullptr;
     item->device = device;
-    Executor* executor;
-    TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, std::move(partition_graph), &executor));
-    item->executor.reset(executor);
+    auto executor_type = options_.config.experimental().executor_type();
+    TF_RETURN_IF_ERROR(NewExecutor(
+        executor_type, params, std::move(partition_graph), &item->executor));
   }
 
   // Cache the mapping from input/output names to graph elements to

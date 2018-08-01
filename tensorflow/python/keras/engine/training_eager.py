@@ -30,33 +30,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging as logging
-
-
-def _get_metrics_info(metric, internal_output_shapes=None, loss_func=None):
-  if metric == 'accuracy' or metric == 'acc':
-    # custom handling of accuracy
-    # (because of class mode duality)
-    output_shape = internal_output_shapes
-    if output_shape[-1] == 1 or loss_func == losses.binary_crossentropy:
-      # case: binary accuracy
-      acc_fn = metrics_module.binary_accuracy
-    elif loss_func == losses.sparse_categorical_crossentropy:
-      # case: categorical accuracy with sparse targets
-      acc_fn = metrics_module.sparse_categorical_accuracy
-    else:
-      acc_fn = metrics_module.categorical_accuracy
-
-    metric_name = 'acc'
-    return metric_name, acc_fn
-  else:
-    metric_fn = metrics_module.get(metric)
-    metric_name = metric_fn.__name__
-    return metric_name, metric_fn
 
 
 def _eager_loss_fn(outputs, targets, loss_fn, output_name):
@@ -74,9 +50,8 @@ def _eager_metrics_fn(model, outputs, targets):
       targets: The predictions or targets of the given model.
 
   Returns:
-      Returns the metric names and metric results for each output of the model.
+      Returns the metric results for each output of the model.
   """
-  metric_names = []
   metric_results = []
   if not isinstance(outputs, list):
     outputs = [outputs]
@@ -87,18 +62,15 @@ def _eager_metrics_fn(model, outputs, targets):
   for i in range(len(model.outputs)):
     output_metrics = model.nested_metrics[i]
     for nested_output_metric in output_metrics:
-      metric_name, metric_fn = _get_metrics_info(
+      metric_fn = training_utils.get_metric_function(
           nested_output_metric, backend.int_shape(model.outputs[i]),
           model.loss_functions[i])
-
-      if len(model.output_names) > 1:
-        metric_name = model.output_names[i] + '_' + metric_name
-        if metric_name not in model.metrics_names:
-          model.metrics_names.append(metric_name)
+      # weighted metrics are not supported in eager mode
+      metric_name = training_utils.get_metric_name(
+          nested_output_metric, weighted=False)
 
       with backend.name_scope(metric_name):
         metric_result = metric_fn(targets[i], outputs[i])
-        metric_names.append(metric_name)
         metric_results.append(backend.mean(metric_result))
 
   return metric_results
@@ -373,9 +345,16 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       x, y, sample_weights = next_element
 
     # Validate and standardize data.
-    x, y, sample_weights = model._standardize_user_data(x, y)
+    x, y, sample_weights = model._standardize_user_data(
+        x, y, sample_weight=sample_weights)
     x = training_utils.cast_if_floating_dtype(x)
     y = training_utils.cast_if_floating_dtype(y)
+    if sample_weights:
+      sample_weights = [
+          training_utils.cast_if_floating_dtype(
+              ops.convert_to_tensor(val, dtype=backend.floatx()))
+          if val is not None else None for val in sample_weights
+      ]
 
     # Calculate model output, loss values.
     loss_outs, loss, loss_metrics = _model_loss(
@@ -617,7 +596,6 @@ def fit_loop(model,
              verbose=1,
              callbacks=None,
              shuffle=True,
-             callback_metrics=None,
              initial_epoch=0,
              steps_per_epoch=None,
              validation_steps=None):
@@ -639,10 +617,6 @@ def fit_loop(model,
       verbose: Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
       shuffle: Whether to shuffle the data at the beginning of each epoch
-      callback_metrics: List of strings, the display names of the metrics
-          passed to the callbacks. They should be the
-          concatenation of list the display names of the outputs of
-           `f` and the list of display names of the outputs of `f_val`.
       initial_epoch: Epoch at which to start training
           (useful for resuming a previous training run)
       steps_per_epoch: Total number of steps (batches of samples)
@@ -674,6 +648,7 @@ def fit_loop(model,
 
     num_train_samples = None
     out_labels = None
+    callback_metrics = None
     if model._is_compiled:
       out_labels = model.metrics_names
       if do_validation:

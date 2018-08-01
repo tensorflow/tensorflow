@@ -93,3 +93,32 @@ py_test(
         "//tensorflow/python/saved_model:utils",
     ],
 )
+
+py_library(
+    name = "keras_saved_model",
+    srcs = ["python/saved_model/keras_saved_model.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python:lib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/saved_model:constants",
+    ],
+)
+
+py_test(
+    name = "keras_saved_model_test",
+    size = "small",
+    srcs = ["python/saved_model/keras_saved_model_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":saved_model_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+    ],
+)

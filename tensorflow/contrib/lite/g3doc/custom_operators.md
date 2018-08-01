@@ -136,3 +136,39 @@ operations instead of a single operator.
 6.  Use TF_LITE_ENSURE(context, condition) to check for a specific condition.
     Your code must not leave memory hanging when TF_LITE_ENSURE is done, i.e.,
     these should be done before any resources are allocated that will leak.
+
+## Special TF Graph Attributes
+
+When Toco convertes a TF graph into TFLite format, it makes some assumption
+about custom operations that might be not correct. In this case, the generated
+graph can be not executable.
+
+It is possible to add aditional information about your custom op output to TF
+graph before it is converted. The following attributes are supported:
+
+-   **_output_quantized** a boolean attribute, true if the operation outputs are
+    quantized
+-   **_output_types** a list of types for output tensors
+-   **_output_shapes** a list of shapes for output tensors
+
+### Setting the Attributes
+
+This is an example how the attributes can be set:
+
+```python
+frozen_graph_def = tf.graph_util.convert_variables_to_constants(...)
+for node in frozen_graph_def.node:
+    if node.op == 'sin':
+      node.attr['_output_types'].list.type.extend([
+          types_pb2.DT_FLOAT,
+      ])
+      node.attr['_output_shapes'].list.shape.extend([
+          tf.TensorShape([10]),
+      ])
+      node.attr['_output_quantized'].b = False
+tflite_model = tf.contrib.lite.toco_convert(
+        frozen_graph_def,...)
+```
+
+**Note:** After the attributes are set, the graph can not be executed by
+Tensorflow, therefore it should be done just before the conversion.

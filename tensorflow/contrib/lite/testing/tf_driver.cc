@@ -179,7 +179,7 @@ void TfDriver::Invoke() {
   auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
                               output_names_, {}, &output_tensors_);
   if (!status.ok()) {
-    Invalidate("Failed to invoke interpreter");
+    Invalidate("Failed to run input data on graph");
   }
 }
 

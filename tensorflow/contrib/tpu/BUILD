@@ -15,6 +15,7 @@ package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
 )
@@ -47,6 +48,8 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

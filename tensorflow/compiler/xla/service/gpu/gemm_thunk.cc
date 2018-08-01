@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -141,9 +142,15 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
                                        alpha, computation_type, algorithm,
                                        stream, &profile_result));
 
-    if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
-                                         best_result.elapsed_time_in_ms()) {
-      best_result = profile_result;
+    if (profile_result.is_valid()) {
+      VLOG(3) << "cublas gemm algorithm " << algorithm << " took "
+              << profile_result.elapsed_time_in_ms() << "ms";
+      if (profile_result.elapsed_time_in_ms() <
+          best_result.elapsed_time_in_ms()) {
+        best_result = profile_result;
+      }
+    } else {
+      VLOG(4) << "cublas gemm algorithm " << algorithm << " failed.";
     }
   }
 
@@ -316,9 +323,15 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     se::blas::ComputationType computation_type =
         GetBlasComputationType(element_type);
 
+    auto thunk_name = [&] {
+      return hlo_instruction() != nullptr ? hlo_instruction()->ToString()
+                                          : "<null>";
+    };
+
     const string& device_name = stream->parent()->GetDeviceDescription().name();
     auto autotune_it = autotune_results_.find(device_name);
     if (autotune_it == autotune_results_.end()) {
+      VLOG(3) << "Starting autotune of GemmThunk " << thunk_name();
       StatusOr<se::blas::AlgorithmType> best_algorithm =
           GetGemmAutotuneFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
                                           alpha_, computation_type, stream);
@@ -326,11 +339,11 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
           autotune_results_.insert({device_name, best_algorithm}).first;
 
       if (autotune_it->second.ok()) {
-        VLOG(2) << "Autotune on GemmThunk " << this
+        VLOG(2) << "Autotune on GemmThunk " << thunk_name()
                 << " successful; best algorithm is "
                 << best_algorithm.ValueOrDie();
       } else {
-        VLOG(2) << "Autotune on GemmThunk " << this
+        VLOG(2) << "Autotune on GemmThunk " << thunk_name()
                 << " unsuccessful.  Will use generic gemm.";
       }
     }
@@ -340,7 +353,7 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     if (best_algorithm.ok()) {
       auto algorithm = best_algorithm.ValueOrDie();
       VLOG(2) << "Using algorithm " << algorithm
-              << " chosen by autotuning on GemmThunk " << this;
+              << " chosen by autotuning on GemmThunk " << thunk_name();
       return GetGemmWithAlgorithmFn(element_type)(
           lhs_matrix, rhs_matrix, output_matrix, alpha_, computation_type,
           algorithm, stream,

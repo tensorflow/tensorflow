@@ -43,6 +43,7 @@ class MultiModuleLoaderSpec {
   }
 
   void AddCudaCubinInMemory(port::ArraySlice<const uint8> cubin_bytes) {
+    CHECK(!cubin_bytes.empty());
     has_cuda_cubin_in_memory_ = true;
     cuda_cubin_in_memory_ = cubin_bytes;
   }

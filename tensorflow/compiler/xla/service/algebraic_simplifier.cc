@@ -150,6 +150,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
 
+  Status HandleSort(HloInstruction* sort) override;
+
   Status HandleTranspose(HloInstruction* transpose) override;
 
   Status HandleSubtract(HloInstruction* sub) override;
@@ -1769,13 +1771,12 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
 Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     HloInstruction* dynamic_slice) {
   auto operand = dynamic_slice->mutable_operand(0);
-  auto start_indices = dynamic_slice->operand(1);
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
   }
-  // DynamicSlice where operand has the same size as the output and
-  // start_indices are all zero is simply equal to operand.
-  if (IsAll(start_indices, 0) && SameShape(operand, dynamic_slice)) {
+  // DynamicSlice where operand has the same size as the output is simply equal
+  // to operand.
+  if (SameShape(operand, dynamic_slice)) {
     return ReplaceInstruction(dynamic_slice, operand);
   }
   return Status::OK();
@@ -1784,20 +1785,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
   auto update = dynamic_update_slice->mutable_operand(1);
-  auto start_indices = dynamic_update_slice->operand(2);
-  // DynamicUpdateSlice on a scalar just passes through the update argument.
-  if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
-    return ReplaceInstruction(dynamic_update_slice, update);
-  }
 
-  // DynamicUpdateSlice where operand and update have the same size and
-  // start_indices are all zero is simply equal to update.
-  //
-  // (We require start_indices to be all zero because we want this optimization
-  // not to affect the visible behavior of this op even when the indices are out
-  // of range.  Currently dynamic-update-slice wraps out-of-range indices, so
-  // we can only remove the op if its indices never wrap.)
-  if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
+  // DynamicUpdateSlice where operand and update have the same size is simply
+  // equal to update.
+  if (SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
   }
 
@@ -2114,6 +2105,21 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                          /*init_value=*/reduce_window->mutable_operand(1),
                          /*window=*/new_window,
                          /*reduce_computation=*/function));
+}
+
+Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
+  auto operand = sort->mutable_operand(0);
+  int64 dimension_to_sort = sort->dimensions(0);
+  if (ShapeUtil::IsZeroElementArray(operand->shape()) ||
+      operand->shape().dimensions(dimension_to_sort) <= 1) {
+    if (sort->operand_count() == 1) {
+      return ReplaceInstruction(sort, operand);
+    }
+    // If it is key/value sort, the output of sort is a tuple.
+    return ReplaceWithNewInstruction(
+        sort, HloInstruction::CreateTuple({operand, sort->mutable_operand(1)}));
+  }
+  return Status::OK();
 }
 
 Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {

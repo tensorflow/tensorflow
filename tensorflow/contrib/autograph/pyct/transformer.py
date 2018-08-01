@@ -421,10 +421,13 @@ class Base(gast.NodeTransformer):
     source_file = self.entity_info.source_file
     did_enter_function = False
     local_scope_size_at_entry = len(self._local_scope_state)
+    processing_expr_node = False
 
     try:
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
         did_enter_function = True
+      elif isinstance(node, gast.Expr):
+        processing_expr_node = True
 
       if did_enter_function:
         self._enclosing_entities.append(node)
@@ -433,8 +436,22 @@ class Base(gast.NodeTransformer):
         self._lineno = node.lineno
         self._col_offset = node.col_offset
 
+      if processing_expr_node:
+        entry_expr_value = node.value
+
       if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         result = super(Base, self).visit(node)
+
+      # Adjust for consistency: replacing the value of an Expr with
+      # an Assign node removes the need for the Expr node.
+      if processing_expr_node:
+        if isinstance(result, gast.Expr) and result.value != entry_expr_value:
+          # When the replacement is a list, it is assumed that the list came
+          # from a template that contained a number of statements, which
+          # themselves are standalone and don't require an enclosing Expr.
+          if isinstance(result.value,
+                        (list, tuple, gast.Assign, gast.AugAssign)):
+            result = result.value
 
       # On exception, the local scope integrity is not guaranteed.
       if did_enter_function:

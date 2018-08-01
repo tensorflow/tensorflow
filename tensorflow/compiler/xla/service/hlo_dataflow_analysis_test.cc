@@ -2232,6 +2232,48 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
       dataflow_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto sort =
+      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto values = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, values_shape, "values"));
+  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The buffer for the keys can be shared with the first tuple entry.
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {0}));
+  // The buffer for the values can be shared with the second tuple entry.
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(values, {}, sort, {1}));
+  // Verify that the buffers are not shared with the "wrong" tuple entry.
+  EXPECT_FALSE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {1}));
+  EXPECT_FALSE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(values, {}, sort, {0}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   auto builder = HloComputation::Builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});

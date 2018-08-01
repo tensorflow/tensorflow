@@ -280,6 +280,20 @@ class ApiTest(test.TestCase):
       x = tc.test_method()
       self.assertEqual(1, sess.run(x))
 
+  def test_converted_call_already_converted(self):
+
+    def f(x):
+      return x == 0
+
+    with self.test_session() as sess:
+      x = api.converted_call(f, False, False, {}, constant_op.constant(0))
+      self.assertTrue(sess.run(x))
+
+      converted_f = api.to_graph(f)
+      x = api.converted_call(converted_f, False, False, {},
+                             constant_op.constant(0))
+      self.assertTrue(sess.run(x))
+
   def test_to_graph_basic(self):
 
     def test_fn(x, s):

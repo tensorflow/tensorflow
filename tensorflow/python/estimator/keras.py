@@ -21,14 +21,11 @@ from __future__ import print_function
 
 import os
 import re
-import tempfile
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import run_config as run_config_lib
-from tensorflow.python.estimator.run_config import RunConfig
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -473,43 +470,6 @@ def _save_first_checkpoint(keras_model, custom_objects, config):
   return latest_path
 
 
-def _maybe_overwrite_model_dir_and_session_config(config, model_dir):
-  """Overwrite estimator config by `model_dir` and `session_config` if needed.
-
-  Args:
-    config: Original estimator config.
-    model_dir: Estimator model checkpoint directory.
-
-  Returns:
-    Overwritten estimator config.
-
-  Raises:
-    ValueError: Model directory inconsistent between `model_dir` and `config`.
-  """
-
-  default_session_config = run_config_lib.get_default_session_config()
-  if isinstance(config, dict):
-    config = RunConfig(**config)
-  elif config is None:
-    config = RunConfig(session_config=default_session_config)
-  if config.session_config is None:
-    config = RunConfig.replace(config, session_config=default_session_config)
-
-  if model_dir is not None:
-    if (getattr(config, 'model_dir', None) is not None and
-        config.model_dir != model_dir):
-      raise ValueError(
-          "`model_dir` are set both in constructor and `RunConfig`, but with "
-          "different values. In constructor: '{}', in `RunConfig`: "
-          "'{}' ".format(model_dir, config.model_dir))
-    config = RunConfig.replace(config, model_dir=model_dir)
-  elif getattr(config, 'model_dir', None) is None:
-    model_dir = tempfile.mkdtemp()
-    config = RunConfig.replace(config, model_dir=model_dir)
-
-  return config
-
-
 def model_to_estimator(keras_model=None,
                        keras_model_path=None,
                        custom_objects=None,
@@ -527,9 +487,9 @@ def model_to_estimator(keras_model=None,
       format, which can be generated with the `save()` method of a Keras model.
       This argument is mutually exclusive with `keras_model`.
     custom_objects: Dictionary for custom objects.
-    model_dir: Directory to save Estimator model parameters, graph, summary
+    model_dir: Directory to save `Estimator` model parameters, graph, summary
       files for TensorBoard, etc.
-    config: Configuration object.
+    config: `RunConfig` to config `Estimator`.
 
   Returns:
     An Estimator from given keras model.
@@ -566,7 +526,8 @@ def model_to_estimator(keras_model=None,
         'Please compile the model with `model.compile()` '
         'before calling `model_to_estimator()`.')
 
-  config = _maybe_overwrite_model_dir_and_session_config(config, model_dir)
+  config = estimator_lib.maybe_overwrite_model_dir_and_session_config(config,
+                                                                      model_dir)
 
   keras_model_fn = _create_keras_model_fn(keras_model, custom_objects)
   if _any_weight_initialized(keras_model):

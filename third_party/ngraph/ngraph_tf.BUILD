@@ -26,8 +26,7 @@ cc_library(
 
 cc_library(
     name = "ngraph_tf",
-    srcs = 
-    [
+    srcs = [
         "src/ngraph_builder.h",
         "src/ngraph_builder.cc",
         "src/ngraph_cluster.h",

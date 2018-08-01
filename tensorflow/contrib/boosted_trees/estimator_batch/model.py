@@ -59,6 +59,8 @@ def model_builder(features,
       * center_bias: Whether a separate tree should be created for first fitting
           the bias.
     config: `RunConfig` of the estimator.
+    output_type: Whether to return ModelFnOps (old interface) or EstimatorSpec
+      (new interface).
 
   Returns:
     A `ModelFnOps` object.
@@ -126,14 +128,15 @@ def model_builder(features,
 
   create_estimator_spec_op = getattr(head, "create_estimator_spec", None)
 
+  training_hooks = []
   if num_trees:
     if center_bias:
       num_trees += 1
+
     finalized_trees, attempted_trees = gbdt_model.get_number_of_trees_tensor()
-    training_hooks = [
+    training_hooks.append(
         trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees)
-    ]
+                                      finalized_trees))
 
   if output_type == ModelBuilderOutputType.MODEL_FN_OPS:
     if use_core_libs and callable(create_estimator_spec_op):
@@ -175,7 +178,12 @@ def model_builder(features,
   return model_fn_ops
 
 
-def ranking_model_builder(features, labels, mode, params, config):
+def ranking_model_builder(features,
+                          labels,
+                          mode,
+                          params,
+                          config,
+                          output_type=ModelBuilderOutputType.MODEL_FN_OPS):
   """Multi-machine batch gradient descent tree model for ranking.
 
   Args:
@@ -199,6 +207,9 @@ def ranking_model_builder(features, labels, mode, params, config):
         for an Example with features "a.f1" and "b.f1", the keys would be
         ("a", "b").
     config: `RunConfig` of the estimator.
+    output_type: Whether to return ModelFnOps (old interface) or EstimatorSpec
+      (new interface).
+
 
   Returns:
     A `ModelFnOps` object.
@@ -326,31 +337,54 @@ def ranking_model_builder(features, labels, mode, params, config):
         return update_op
 
   create_estimator_spec_op = getattr(head, "create_estimator_spec", None)
-  if use_core_libs and callable(create_estimator_spec_op):
-    model_fn_ops = head.create_estimator_spec(
-        features=features,
-        mode=mode,
-        labels=labels,
-        train_op_fn=_train_op_fn,
-        logits=logits)
-    model_fn_ops = estimator_utils.estimator_spec_to_model_fn_ops(model_fn_ops)
-  else:
-    model_fn_ops = head.create_model_fn_ops(
+
+  training_hooks = []
+  if num_trees:
+    if center_bias:
+      num_trees += 1
+
+    finalized_trees, attempted_trees = (
+        gbdt_model_main.get_number_of_trees_tensor())
+    training_hooks.append(
+        trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
+                                      finalized_trees))
+
+  if output_type == ModelBuilderOutputType.MODEL_FN_OPS:
+    if use_core_libs and callable(create_estimator_spec_op):
+      model_fn_ops = head.create_estimator_spec(
+          features=features,
+          mode=mode,
+          labels=labels,
+          train_op_fn=_train_op_fn,
+          logits=logits)
+      model_fn_ops = estimator_utils.estimator_spec_to_model_fn_ops(
+          model_fn_ops)
+    else:
+      model_fn_ops = head.create_model_fn_ops(
+          features=features,
+          mode=mode,
+          labels=labels,
+          train_op_fn=_train_op_fn,
+          logits=logits)
+
+    if output_leaf_index and gbdt_batch.LEAF_INDEX in predictions_dict:
+      model_fn_ops.predictions[gbdt_batch.LEAF_INDEX] = predictions_dict[
+          gbdt_batch.LEAF_INDEX]
+
+    model_fn_ops.training_hooks.extend(training_hooks)
+    return model_fn_ops
+
+  elif output_type == ModelBuilderOutputType.ESTIMATOR_SPEC:
+    assert callable(create_estimator_spec_op)
+    estimator_spec = head.create_estimator_spec(
         features=features,
         mode=mode,
         labels=labels,
         train_op_fn=_train_op_fn,
         logits=logits)
 
-  if output_leaf_index and gbdt_batch.LEAF_INDEX in predictions_dict:
-    model_fn_ops.predictions[gbdt_batch.LEAF_INDEX] = predictions_dict[
-        gbdt_batch.LEAF_INDEX]
-  if num_trees:
-    if center_bias:
-      num_trees += 1
-    finalized_trees, attempted_trees = (
-        gbdt_model_main.get_number_of_trees_tensor())
-    model_fn_ops.training_hooks.append(
-        trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees))
+    estimator_spec = estimator_spec._replace(
+        training_hooks=training_hooks + list(estimator_spec.training_hooks))
+    return estimator_spec
+
   return model_fn_ops

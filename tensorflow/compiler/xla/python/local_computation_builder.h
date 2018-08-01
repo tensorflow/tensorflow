@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -341,6 +341,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(ShiftRightLogical)
   _FORWARD_BINOP(Atan2)
   _FORWARD_BINOP(Pow)
+  _FORWARD_BINOP(Complex)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
@@ -375,6 +376,9 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Atanh)
   _FORWARD_UNOP(Cosh)
   _FORWARD_UNOP(Sinh)
+  _FORWARD_UNOP(Real)
+  _FORWARD_UNOP(Imag)
+  _FORWARD_UNOP(Conj)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP

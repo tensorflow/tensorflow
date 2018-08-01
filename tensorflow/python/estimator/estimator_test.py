@@ -175,7 +175,7 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
 class EstimatorConstructorTest(test.TestCase):
 
   def test_config_must_be_a_run_config(self):
-    with self.assertRaisesRegexp(ValueError, 'an instance of RunConfig'):
+    with self.assertRaisesRegexp(ValueError, 'an instance of `RunConfig`'):
       estimator.Estimator(model_fn=None, config='NotARunConfig')
 
   def test_model_fn_must_be_provided(self):
@@ -228,6 +228,15 @@ class EstimatorConstructorTest(test.TestCase):
     self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
+  def test_empty_model_dir(self):
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn, model_dir='')
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
+
   def test_model_dir_in_run_config(self):
 
     class FakeConfig(run_config.RunConfig):
@@ -272,7 +281,7 @@ class EstimatorConstructorTest(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        'model_dir are set both in constructor and RunConfig, but '
+        '`model_dir` are set both in constructor and `RunConfig`, but '
         'with different values'):
       estimator.Estimator(
           model_fn=model_fn, config=FakeConfig(), model_dir=_ANOTHER_TMP_DIR)
