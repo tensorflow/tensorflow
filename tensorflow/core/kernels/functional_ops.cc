@@ -127,31 +127,47 @@ class IfOp : public AsyncOpKernel {
   explicit IfOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     auto lib = ctx->function_library();
     OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
-    const NameAttrList* func;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &func));
-    OP_REQUIRES_OK(ctx, Instantiate(lib, *func, &then_handle_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &func));
-    OP_REQUIRES_OK(ctx, Instantiate(lib, *func, &else_handle_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &then_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &else_func_));
   }
 
   ~IfOp() override {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    auto lib = ctx->function_library();
+    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
+                      errors::Internal("No function library"), done);
+
+    // TODO(b/37549631): Because this op has `SetIsStateful()` in its op
+    // registration, this kernel may be shared by multiple subgraphs, which have
+    // different associated `FunctionLibraryRuntime` objects and hence different
+    // `FHandle` namespaces. So we must call Instantiate() to make sure we get
+    // the correct function handles with respect to `lib`. Note the underlying
+    // `lib->Instantiate()` caches the created function handles, so calling
+    // `Instantiate()` repeatedly on the same `lib` and function is cheap.
+    FHandle then_handle;
+    FHandle else_handle;
+    OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, then_func_, &then_handle), done);
+    OP_REQUIRES_OK_ASYNC(ctx, Instantiate(lib, else_func_, &else_handle), done);
+
     bool cond;
     OP_REQUIRES_OK(ctx, ToBool({ctx->input(0)}, &cond));
-    (new State(this, ctx, cond, done))->Start();
+    (new State(this, ctx, cond, then_handle, else_handle, done))->Start();
   }
 
  private:
-  FHandle then_handle_;
-  FHandle else_handle_;
+  NameAttrList then_func_;
+  NameAttrList else_func_;
 
   class State {
    public:
-    State(IfOp* kernel, OpKernelContext* ctx, bool cond, DoneCallback done)
+    State(IfOp* kernel, OpKernelContext* ctx, bool cond, FHandle then_handle,
+          FHandle else_handle, DoneCallback done)
         : kernel_(kernel),
           ctx_(ctx),
           cond_(cond),
+          then_handle_(then_handle),
+          else_handle_(else_handle),
           done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
@@ -163,7 +179,7 @@ class IfOp : public AsyncOpKernel {
     ~State() {}
 
     void Start() {
-      FHandle handle = cond_ ? kernel_->then_handle_ : kernel_->else_handle_;
+      FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
       lib_->Run(
           // Evaluate one of the branch.
@@ -184,6 +200,8 @@ class IfOp : public AsyncOpKernel {
     IfOp* const kernel_;
     OpKernelContext* const ctx_;
     const bool cond_;
+    FHandle then_handle_;
+    FHandle else_handle_;
     DoneCallback done_;
     FunctionLibraryRuntime* const lib_;
     FunctionLibraryRuntime::Options opts_;
