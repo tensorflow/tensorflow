@@ -120,6 +120,9 @@ _UNARY_OPS = [
     'Atanh',
     'Cosh',
     'Sinh',
+    'Real',
+    'Imag',
+    'Conj',
 ]
 
 _BINARY_OPS = [
@@ -144,6 +147,7 @@ _BINARY_OPS = [
     'ShiftRightArithmetic',
     'ShiftRightLogical',
     'Atan2',
+    'Complex',
 ]
 
 

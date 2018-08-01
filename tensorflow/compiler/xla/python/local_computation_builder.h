@@ -341,6 +341,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(ShiftRightLogical)
   _FORWARD_BINOP(Atan2)
   _FORWARD_BINOP(Pow)
+  _FORWARD_BINOP(Complex)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
@@ -375,6 +376,9 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Atanh)
   _FORWARD_UNOP(Cosh)
   _FORWARD_UNOP(Sinh)
+  _FORWARD_UNOP(Real)
+  _FORWARD_UNOP(Imag)
+  _FORWARD_UNOP(Conj)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP
