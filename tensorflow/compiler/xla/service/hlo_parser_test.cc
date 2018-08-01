@@ -760,6 +760,27 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], gather_indices: s64[10,9,8,7,5
 
 )"
 },
+{
+  "ConstantUnsignedNoUnderflow",
+  R"(HloModule ConstantUnsignedNoUnderflow_module
+
+ENTRY %ConstantUnsignedNoUnderflow () -> u64[] {
+  ROOT %constant = u64[] constant(1)
+}
+
+)"
+},
+
+{
+  "ConstantUnsignedNoOverflow",
+  R"(HloModule ConstantUnsignedNoOverflow_module
+
+ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
+  ROOT %constant = u64[] constant(9223372036854775807)
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -1222,6 +1243,40 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
   EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type F16");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedUnderflow_module
+      ENTRY %ConstantUnsignedUnderflow () -> u64[] {
+        ROOT %constant = u64[] constant(-1)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U64");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedOverflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u32[] {
+        ROOT %constant = u32[] constant(4294967296)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U32");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u64[] {
+        ROOT %constant = u64[] constant(9223372036854775808)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantWithExp) {
