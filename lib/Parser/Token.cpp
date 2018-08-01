@@ -58,6 +58,14 @@ Optional<uint64_t> Token::getUInt64IntegerValue() const {
   return result;
 }
 
+/// For a floatliteral, return its value as a double. Return None if the value
+/// underflows or overflows.
+Optional<double> Token::getFloatingPointValue() const {
+  double result = 0;
+  if (spelling.getAsDouble(result))
+    return None;
+  return result;
+}
 
 /// For an inttype token, return its bitwidth.
 Optional<unsigned> Token::getIntTypeBitwidth() const {
@@ -69,7 +77,6 @@ Optional<unsigned> Token::getIntTypeBitwidth() const {
     return None;
   return result;
 }
-
 
 /// Given a 'string' token, return its value, including removing the quote
 /// characters and unescaping the contents of the string.

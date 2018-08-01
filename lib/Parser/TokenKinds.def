@@ -57,6 +57,7 @@ TOK_IDENTIFIER(percent_identifier) // %foo
 // TODO: @@foo, etc.
 
 // Literals
+TOK_LITERAL(floatliteral)               // 2.0
 TOK_LITERAL(integer)                    // 42
 TOK_LITERAL(string)                     // "foo"
 TOK_LITERAL(inttype)                    // i421

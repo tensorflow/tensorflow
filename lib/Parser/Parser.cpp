@@ -21,6 +21,8 @@
 
 #include "mlir/Parser.h"
 #include "Lexer.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -31,8 +33,6 @@
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/Types.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/SourceMgr.h"
 using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
@@ -582,6 +582,14 @@ Attribute *Parser::parseAttribute() {
     consumeToken(Token::kw_false);
     return builder.getBoolAttr(false);
 
+  case Token::floatliteral: {
+    auto val = getToken().getFloatingPointValue();
+    if (!val.hasValue())
+      return (emitError("floating point value too large for attribute"),
+              nullptr);
+    consumeToken(Token::floatliteral);
+    return builder.getFloatAttr(val.getValue());
+  }
   case Token::integer: {
     auto val = getToken().getUInt64IntegerValue();
     if (!val.hasValue() || (int64_t)val.getValue() < 0)
@@ -598,6 +606,14 @@ Attribute *Parser::parseAttribute() {
         return (emitError("integer too large for attribute"), nullptr);
       consumeToken(Token::integer);
       return builder.getIntegerAttr((int64_t)-val.getValue());
+    }
+    if (getToken().is(Token::floatliteral)) {
+      auto val = getToken().getFloatingPointValue();
+      if (!val.hasValue())
+        return (emitError("floating point value too large for attribute"),
+                nullptr);
+      consumeToken(Token::floatliteral);
+      return builder.getFloatAttr(-val.getValue());
     }
 
     return (emitError("expected constant integer or floating point value"),
@@ -629,7 +645,6 @@ Attribute *Parser::parseAttribute() {
     if (affineMap != nullptr)
       return builder.getAffineMapAttr(affineMap);
 
-    // TODO: Handle floating point.
     return (emitError("expected constant attribute value"), nullptr);
   }
 }

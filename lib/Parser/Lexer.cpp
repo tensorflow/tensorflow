@@ -238,9 +238,10 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   return formToken(kind, tokStart);
 }
 
-/// Lex an integer literal.
+/// Lex a number literal.
 ///
 ///   integer-literal ::= digit+ | `0x` hex_digit+
+///   float-literal ::= [-+]?[0-9]+[.][0-9]*([eE][-+]?[0-9]+)?
 ///
 Token Lexer::lexNumber(const char *tokStart) {
   assert(isdigit(curPtr[-1]));
@@ -262,7 +263,22 @@ Token Lexer::lexNumber(const char *tokStart) {
   while (isdigit(*curPtr))
     ++curPtr;
 
-  return formToken(Token::integer, tokStart);
+  if (*curPtr != '.')
+    return formToken(Token::integer, tokStart);
+  ++curPtr;
+
+  // Skip over [0-9]*([eE][-+]?[0-9]+)?
+  while (isdigit(*curPtr)) ++curPtr;
+
+  if (*curPtr == 'e' || *curPtr == 'E') {
+    if (isdigit(static_cast<unsigned char>(curPtr[1])) ||
+        ((curPtr[1] == '-' || curPtr[1] == '+') &&
+         isdigit(static_cast<unsigned char>(curPtr[2])))) {
+      curPtr += 2;
+      while (isdigit(*curPtr)) ++curPtr;
+    }
+  }
+  return formToken(Token::floatliteral, tokStart);
 }
 
 /// Lex a string literal.

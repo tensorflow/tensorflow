@@ -80,6 +80,10 @@ public:
   /// return None.
   Optional<uint64_t> getUInt64IntegerValue() const;
 
+  /// For a floatliteral token, return its value as a double. Returns None in
+  /// the case of underflow or overflow.
+  Optional<double> getFloatingPointValue() const;
+
   /// For an inttype token, return its bitwidth.
   Optional<unsigned> getIntTypeBitwidth() const;
 
@@ -115,4 +119,3 @@ private:
 } // end namespace mlir
 
 #endif  // MLIR_LIB_PARSER_TOKEN_H
-
