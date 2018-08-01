@@ -58,17 +58,19 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
             char* data = const_cast<char*> (ptr->tensor_data().data());
             migraph::argument arg = {shape, data};
             params[name] = arg;
-        } else if (!use_gpu) {
-            break;
         } else if (convert.starts_with(name, Converter::literal_prefix)) {
-#if 0            
-            // place literal in GPU memory
-            std::string str = ins->op.name();
-            migraph::shape shape = ins->lit.get_shape();
-            char * lit_ptr = base_ptr + convert.get_offset(shape);
-            hipMemcpy(lit_ptr, ins->lit.data(), shape.bytes(), hipMemcpyHostToDevice);
-            params[str] = {shape, lit_ptr};
+#if 0             
+            if (use_gpu) {
+                // place literal in GPU memory
+                std::string str = ins->op.name();
+                migraph::shape shape = ins->lit.get_shape();
+                char * lit_ptr = base_ptr + convert.get_offset(shape);
+                hipMemcpy(lit_ptr, ins->lit.data(), shape.bytes(), hipMemcpyHostToDevice);
+                params[str] = {shape, lit_ptr};
+            }
 #endif            
+        } else {
+            break;
         }
     }
     if (!use_gpu) {
@@ -132,10 +134,11 @@ void AdjustShape(void * p_program, std::vector<const Tensor*>& input_ptrs)
                 recompute = true;
                 ins->result = convert.getShape(ptr);
             }
-        } else if (!recompute) {
-            break;
         } else if (!convert.starts_with(name, Converter::literal_prefix)) {
-            ins->result = migraph::compute_shape(ins->op, ins->arguments);
+            if (recompute)
+                ins->result = migraph::compute_shape(ins->op, ins->arguments);
+            else
+                break;
         }
     }
     if (recompute) {
