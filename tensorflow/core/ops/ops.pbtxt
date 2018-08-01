@@ -12466,6 +12466,7 @@ op {
     name: "else_branch"
     type: "func"
   }
+  is_stateful: true
 }
 op {
   name: "Igamma"
