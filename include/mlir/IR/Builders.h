@@ -64,6 +64,7 @@ public:
 
   OtherType *getAffineIntType();
   OtherType *getTFControlType();
+  OtherType *getTFStringType();
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);

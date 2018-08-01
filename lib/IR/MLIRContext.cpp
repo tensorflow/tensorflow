@@ -260,7 +260,8 @@ public:
 
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
-  template <typename T> ArrayRef<T> copyInto(ArrayRef<T> elements) {
+  template <typename T>
+  ArrayRef<T> copyInto(ArrayRef<T> elements) {
     auto result = allocator.Allocate<T>(elements.size());
     std::uninitialized_copy(elements.begin(), elements.end(), result);
     return ArrayRef<T>(result, elements.size());
@@ -445,11 +446,14 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
   return *existing.first = result;
 }
 
+static bool isValidTensorElementType(Type *type, MLIRContext *context) {
+  return isa<FloatType>(type) || isa<VectorType>(type) ||
+         isa<IntegerType>(type) || type == Type::getTFString(context);
+}
+
 TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
     : Type(kind, context), elementType(elementType) {
-  assert((isa<FloatType>(elementType) || isa<VectorType>(elementType) ||
-          isa<IntegerType>(elementType)) &&
-         "tensor elements must be primitives or vectors");
+  assert(isValidTensorElementType(elementType, context));
   assert(isa<TensorType>(this));
 }
 

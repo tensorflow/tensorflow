@@ -309,6 +309,9 @@ Type *Parser::parseType() {
   case Token::kw_tf_control:
     consumeToken(Token::kw_tf_control);
     return builder.getTFControlType();
+  case Token::kw_tf_string:
+    consumeToken(Token::kw_tf_string);
+    return builder.getTFStringType();
   }
 }
 

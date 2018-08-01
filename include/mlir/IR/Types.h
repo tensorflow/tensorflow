@@ -40,10 +40,11 @@ public:
 
     // TensorFlow types.
     TFControl,
+    TFString,
 
     /// These are marker for the first and last 'other' type.
     FIRST_OTHER_TYPE = AffineInt,
-    LAST_OTHER_TYPE = TFControl,
+    LAST_OTHER_TYPE = TFString,
 
     // Floating point.
     BF16,
@@ -87,6 +88,7 @@ public:
   static FloatType *getF64(MLIRContext *ctx);
   static OtherType *getAffineInt(MLIRContext *ctx);
   static OtherType *getTFControl(MLIRContext *ctx);
+  static OtherType *getTFString(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -200,6 +202,9 @@ inline OtherType *Type::getAffineInt(MLIRContext *ctx) {
 }
 inline OtherType *Type::getTFControl(MLIRContext *ctx) {
   return OtherType::get(Kind::TFControl, ctx);
+}
+inline OtherType *Type::getTFString(MLIRContext *ctx) {
+  return OtherType::get(Kind::TFString, ctx);
 }
 
 /// Function types map from a list of inputs to a list of results.
