@@ -43,7 +43,7 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = side_effect_guards.transform(node, ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
+    self.assertEqual(len(node.body), 1)
 
     with self.compiled(node, {}, state_ops.assign) as result:
       with self.test_session() as sess:
@@ -64,7 +64,7 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = side_effect_guards.transform(node, ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
+    self.assertEqual(len(node.body), 1)
 
     with self.compiled(node, {}, state_ops.assign) as result:
       with self.test_session() as sess:
@@ -84,7 +84,7 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = side_effect_guards.transform(node, ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
+    self.assertEqual(len(node.body), 1)
 
     with self.compiled(node, {}, control_flow_ops.Assert) as result:
       with self.test_session() as sess:
@@ -104,7 +104,7 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = side_effect_guards.transform(node, ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
+    self.assertEqual(len(node.body), 1)
 
     with self.compiled(node, {}, state_ops.assign_add) as result:
       with self.test_session() as sess:
@@ -125,7 +125,7 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = side_effect_guards.transform(node, ctx)
 
-    self.assertEqual(len(node.body[0].body[0].body), 1)
+    self.assertEqual(len(node.body[0].body), 1)
 
     with self.compiled(node, {}, state_ops.assign, ops.name_scope) as result:
       with self.test_session() as sess:
@@ -147,7 +147,7 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = side_effect_guards.transform(node, ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
+    self.assertEqual(len(node.body), 1)
 
     with self.compiled(node, {}, state_ops.assign,
                        state_ops.assign_add) as result:

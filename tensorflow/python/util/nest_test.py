@@ -746,6 +746,35 @@ class NestTest(parameterized.TestCase, test.TestCase):
       self.assertEqual(
           list(nest.flatten_with_joined_string_paths(inputs)), expected)
 
+  @parameterized.named_parameters(
+      ("tuples", (1, 2), (3, 4), True, (("0", 4), ("1", 6))),
+      ("dicts", {"a": 1, "b": 2}, {"b": 4, "a": 3}, True,
+       {"a": ("a", 4), "b": ("b", 6)}),
+      ("mixed", (1, 2), [3, 4], False, (("0", 4), ("1", 6))),
+      ("nested",
+       {"a": [2, 3], "b": [1, 2, 3]}, {"b": [5, 6, 7], "a": [8, 9]}, True,
+       {"a": [("a/0", 10), ("a/1", 12)],
+        "b": [("b/0", 6), ("b/1", 8), ("b/2", 10)]}))
+  def testMapWithPathsCompatibleStructures(self, s1, s2, check_types, expected):
+    def format_sum(path, *values):
+      return (path, sum(values))
+    result = nest.map_structure_with_paths(format_sum, s1, s2,
+                                           check_types=check_types)
+    self.assertEqual(expected, result)
+
+  @parameterized.named_parameters(
+      ("tuples", (1, 2), (3, 4, 5), ValueError),
+      ("dicts", {"a": 1}, {"b": 2}, ValueError),
+      ("mixed", (1, 2), [3, 4], TypeError),
+      ("nested",
+       {"a": [2, 3], "b": [1, 3]},
+       {"b": [5, 6, 7], "a": [8, 9]},
+       ValueError
+      ))
+  def testMapWithPathsIncompatibleStructures(self, s1, s2, error_type):
+    with self.assertRaises(error_type):
+      nest.map_structure_with_paths(lambda path, *s: 0, s1, s2)
+
 
 class NestBenchmark(test.Benchmark):
 

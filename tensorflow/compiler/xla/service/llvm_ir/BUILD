@@ -223,3 +223,22 @@ cc_library(
         "@llvm//:core",
     ],
 )
+
+cc_library(
+    name = "buffer_assignment_util",
+    srcs = ["buffer_assignment_util.cc"],
+    hdrs = ["buffer_assignment_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+    ],
+)
+
+cc_library(
+    name = "math_ops",
+    srcs = ["math_ops.cc"],
+    hdrs = ["math_ops.h"],
+    deps = [
+        ":llvm_util",
+        "@llvm//:core",
+    ],
+)

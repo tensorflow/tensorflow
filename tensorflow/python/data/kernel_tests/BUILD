@@ -318,7 +318,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "iterator_ops_test",
     size = "small",
     srcs = ["iterator_ops_test.py"],

@@ -718,6 +718,7 @@ bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
 //     root at operand 0 or 1. Or...
 // (4) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index
 //     0.
+// (5) The 'user' of 'operand' is Sort, and it is the only user.
 //
 // (2) and (3) can only be determined if points-to analysis is available.
 bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
@@ -782,6 +783,21 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && operand_indices[0] == 0;
+  }
+  if (user->opcode() == HloOpcode::kSort) {
+    // Only valid if there are no other users.
+    if (operand->users().size() != 1) {
+      return false;
+    }
+    // If we only sort keys, the output of sort is not a tuple, so we can always
+    // share the buffer.
+    if (user->operand_count() == 1) {
+      return true;
+    }
+    CHECK(!user_index.empty());
+    // Only share with the right tuple element buffer.
+    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {
     // TODO(b/62548313): Remove when buffer assignment is module scoped and

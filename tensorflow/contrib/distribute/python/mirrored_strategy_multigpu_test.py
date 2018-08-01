@@ -792,8 +792,8 @@ class MirroredVariableUpdateTest(test.TestCase):
         return mirrored_var.assign(5.0)
 
       with self.assertRaisesRegexp(
-          ValueError, "A non PerDevice value cannot be reduced with the given "
-          "aggregation."):
+          ValueError, "A non-DistributedValues value cannot be reduced with "
+          "the given aggregation."):
         self.evaluate(dist.unwrap(dist.call_for_each_tower(model_fn)))
 
   @test_util.run_in_graph_and_eager_modes(config=config)

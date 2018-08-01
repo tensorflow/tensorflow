@@ -82,7 +82,8 @@ def get_hparams_cifar_38():
                     config.num_train_images // config.tpu_batch_size)
   config.add_hparam("tpu_epochs",
                     config.max_train_iter // config.tpu_iters_per_epoch)
-
+  config.add_hparam("tpu_eval_steps",
+                    config.num_eval_images // config.tpu_eval_batch_size)
   return config
 
 
@@ -162,7 +163,8 @@ def get_hparams_imagenet_56():
                     config.num_train_images // config.tpu_batch_size)
   config.add_hparam("tpu_epochs",
                     config.max_train_iter // config.tpu_iters_per_epoch)
-
+  config.add_hparam("tpu_eval_steps",
+                    config.num_eval_images // config.tpu_eval_batch_size)
   return config
 
 

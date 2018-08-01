@@ -24,14 +24,11 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training_arrays
@@ -40,11 +37,9 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -118,6 +113,24 @@ class Model(Network):
     # Create a cache for dataset - uninitialized iterators
     self._dataset_iterator_cache = weakref.WeakKeyDictionary()
 
+  def _set_sample_weight_attributes(self, sample_weight_mode,
+                                    skip_target_weighing_indices):
+    """Sets sample weight related attributes on the model."""
+    sample_weights, sample_weight_modes = training_utils.prepare_sample_weights(
+        self.output_names, sample_weight_mode, skip_target_weighing_indices)
+    self.sample_weights = sample_weights
+    self.sample_weight_modes = sample_weight_modes
+    self._feed_sample_weight_modes = [
+        sample_weight_modes[i]
+        for i in range(len(self.outputs))
+        if i not in skip_target_weighing_indices
+    ]
+    self._feed_sample_weights = [
+        sample_weights[i]
+        for i in range(len(sample_weights))
+        if i not in skip_target_weighing_indices
+    ]
+
   @checkpointable.no_automatic_dependency_tracking
   def compile(self,
               optimizer,
@@ -190,8 +203,6 @@ class Model(Network):
     self.loss = loss
     self.metrics = metrics or []
     self.loss_weights = loss_weights
-    if context.executing_eagerly() and sample_weight_mode is not None:
-      raise ValueError('sample_weight_mode is not supported in Eager mode.')
     self.sample_weight_mode = sample_weight_mode
     if context.executing_eagerly() and weighted_metrics is not None:
       raise ValueError('weighted_metrics is not supported in Eager mode.')
@@ -282,8 +293,12 @@ class Model(Network):
                       str(loss_weights) + ' - expected a list of dicts.')
     self.loss_weights_list = loss_weights_list
 
-    # initialization for Eager mode execution
+    # Initialization for Eager mode execution.
     if context.executing_eagerly():
+      # Prepare sample weights.
+      self._set_sample_weight_attributes(sample_weight_mode,
+                                         skip_target_weighing_indices)
+
       if target_tensors is not None:
         raise ValueError('target_tensors are not currently supported in Eager '
                          'mode.')
@@ -301,10 +316,6 @@ class Model(Network):
 
       with K.name_scope('metrics'):
         training_utils.populate_metric_names(self)
-      self._feed_sample_weight_modes = []
-      for i in range(len(self.outputs)):
-        self._feed_sample_weight_modes.append(None)
-      self.sample_weights = []
       self.targets = []
       for i in range(len(self.outputs)):
         self._feed_output_names.append(self.output_names[i])
@@ -364,73 +375,8 @@ class Model(Network):
         self.targets.append(target)
 
     # Prepare sample weights.
-    sample_weights = []
-    sample_weight_modes = []
-    if isinstance(sample_weight_mode, dict):
-      for name in sample_weight_mode:
-        if name not in self.output_names:
-          raise ValueError(
-              'Unknown entry in '
-              'sample_weight_mode dictionary: "' + name + '". '
-              'Only expected the following keys: ' + str(self.output_names))
-      for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          if name not in sample_weight_mode:
-            raise ValueError(
-                'Output "' + name + '" missing from sample_weight_modes '
-                'dictionary')
-          if sample_weight_mode.get(name) == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + 'sample_weights')
-            sample_weight_modes.append(None)
-        sample_weights.append(weight)
-    elif isinstance(sample_weight_mode, list):
-      if len(sample_weight_mode) != len(self.outputs):
-        raise ValueError('When passing a list as sample_weight_mode, '
-                         'it should have one entry per model output. '
-                         'The model has ' + str(len(self.outputs)) +
-                         ' outputs, but you passed '
-                         'sample_weight_mode=' + str(sample_weight_mode))
-      for i in range(len(self.output_names)):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          mode = sample_weight_mode[i]
-          name = self.output_names[i]
-          if mode == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + '_sample_weights')
-            sample_weight_modes.append(None)
-        sample_weights.append(weight)
-    else:
-      for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          sample_weight_modes.append(None)
-          sample_weights.append(None)
-        else:
-          if sample_weight_mode == 'temporal':
-            sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([[1.]], dtype=K.floatx()),
-                shape=[None, None], name=name + '_sample_weights'))
-            sample_weight_modes.append('temporal')
-          else:
-            sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([1.], dtype=K.floatx()),
-                shape=[None], name=name + '_sample_weights'))
-            sample_weight_modes.append(None)
-    self.sample_weight_modes = sample_weight_modes
-    self._feed_sample_weight_modes = []
-    for i in range(len(self.outputs)):
-      if i not in skip_target_weighing_indices:
-        self._feed_sample_weight_modes.append(self.sample_weight_modes[i])
+    self._set_sample_weight_attributes(sample_weight_mode,
+                                       skip_target_weighing_indices)
 
     # Prepare metrics.
     self.weighted_metrics = weighted_metrics
@@ -446,7 +392,7 @@ class Model(Network):
         y_true = self.targets[i]
         y_pred = self.outputs[i]
         weighted_loss = weighted_losses[i]
-        sample_weight = sample_weights[i]
+        sample_weight = self.sample_weights[i]
         mask = masks[i]
         loss_weight = loss_weights_list[i]
         with K.name_scope(self.output_names[i] + '_loss'):
@@ -485,50 +431,28 @@ class Model(Network):
 
         y_true = self.targets[i]
         y_pred = self.outputs[i]
-        weights = sample_weights[i]
+        weights = self.sample_weights[i]
         output_metrics = nested_metrics[i]
         output_weighted_metrics = nested_weighted_metrics[i]
+        output_shape = self.outputs[i].get_shape().as_list()
+        loss_fn = self.loss_functions[i]
 
-        def handle_metrics(metrics, weights=None):
+        def handle_metrics(metrics, output_shape, loss_fn, weights=None):
+          """Invokes metric functions for the output."""
 
           for metric in metrics:
-            if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-              # custom handling of accuracy/crossentropy
-              # (because of class mode duality)
-              output_shape = self.outputs[i].get_shape().as_list()
-              if (output_shape[-1] == 1 or
-                  self.loss_functions[i] == losses.binary_crossentropy):
-                # case: binary accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.binary_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.binary_crossentropy
-              elif self.loss_functions[
-                  i] == losses.sparse_categorical_crossentropy:
-                # case: categorical accuracy/crossentropy with sparse targets
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.sparse_categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.sparse_categorical_crossentropy
-              else:
-                # case: categorical accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.categorical_crossentropy
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            else:
-              metric_fn = metrics_module.get(metric)
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            metric_name = training_utils.get_base_metric_name(
+            metric_fn = training_utils.get_metric_function(
+                metric, output_shape=output_shape, loss_fn=loss_fn)
+            metric_name = training_utils.get_metric_name(
                 metric, weighted=weights is not None)
-            with K.name_scope(metric_name):
-              metric_result = weighted_metric_fn(
-                  y_true, y_pred, weights=weights, mask=masks[i])
 
-            training_utils.add_metric_name(self, metric_name, i)
+            with K.name_scope(metric_name):
+              weighted_metric_fn = training_utils.weighted_masked_objective(
+                  metric_fn)
+              metric_result = weighted_metric_fn(
+                  y_true, y_pred, weights=weights, mask=masks[i])  # pylint: disable=undefined-loop-variable
+
+            metric_name = training_utils.add_metric_name(self, metric_name, i)  # pylint: disable=undefined-loop-variable
             self.metrics_tensors.append(metric_result)
 
             # Keep track of state updates created by
@@ -538,16 +462,12 @@ class Model(Network):
               self.stateful_metric_functions.append(metric_fn)
               self.metrics_updates += metric_fn.updates
 
-        handle_metrics(output_metrics)
-        handle_metrics(output_weighted_metrics, weights=weights)
+        handle_metrics(output_metrics, output_shape, loss_fn)
+        handle_metrics(
+            output_weighted_metrics, output_shape, loss_fn, weights=weights)
 
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
-    self.sample_weights = sample_weights
-    self._feed_sample_weights = []
-    for i in range(len(self.sample_weights)):
-      if i not in skip_target_weighing_indices:
-        self._feed_sample_weights.append(self.sample_weights[i])
 
     # Functions for train, test and predict will
     # be compiled lazily when required.
@@ -561,95 +481,6 @@ class Model(Network):
     # Collected trainable weights, sorted in topological order.
     trainable_weights = self.trainable_weights
     self._collected_trainable_weights = trainable_weights
-
-  def build(self, input_shape):
-    """Build the model based on input shapes received.
-
-    This is to be used for subclassed models, which do not know at instantiation
-    time what their inputs look like.
-
-    Args:
-     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
-         are tuples, integers, or TensorShapes.
-
-    Raises:
-      ValueError:
-        1. In case of invalid user-provided data (not of type tuple,
-           list, or TensorShape).
-        2. If the model requires call arguments that are agnostic
-           to the input shapes (positional or kwarg in call signature).
-        3. If not all layers were properly built.
-        4. If float type inputs are not supported within the layers.
-
-      In each of these cases, the user should build their model by calling it
-      on real tensor data.
-    """
-    if self._is_graph_network:
-      self.built = True
-      return
-
-    # If subclass network
-    if input_shape is None:
-      raise ValueError('Input shape must be defined when calling build on a '
-                       'model subclass network.')
-    valid_types = (tuple, list, tensor_shape.TensorShape)
-    if not isinstance(input_shape, valid_types):
-      raise ValueError('Specified input shape is not one of the valid types. '
-                       'Please specify a batch input shape of type tuple or '
-                       'list of input shapes. User provided '
-                       'input type: {}'.format(type(input_shape)))
-
-    def _generate_dummy_data_from_shape(shape):
-      if isinstance(shape, tensor_shape.TensorShape):
-        shape = shape.as_list()
-
-      # Replace Nones in input shape with dummy `1` value
-      shape = [x.value if isinstance(x, tensor_shape.Dimension) else x
-               for x in shape]
-      shape = [1 if x is None else x for x in shape]
-      return array_ops.ones(shape, dtype=K.floatx())
-
-    if input_shape and not self.inputs:
-      if isinstance(input_shape, list):
-        # List of input shapes
-        x = [_generate_dummy_data_from_shape(shape) for shape in input_shape]
-      else:
-        x = _generate_dummy_data_from_shape(input_shape)
-
-      kwargs = {}
-      num_call_args = len(tf_inspect.getargspec(self.call).args)
-      if self._expects_training_arg and num_call_args == 3:
-        # Has call signature of call(self, input, training)
-        kwargs['training'] = False
-      elif num_call_args > 2:
-        # Has invalid call signature of call(self, input, *args, **kwargs)
-        raise ValueError('Currently, you cannot build your model if it has '
-                         'positional or keyword arguments that are not '
-                         'inputs to the model, but are required for its '
-                         '`call` method. Instead, in order to instantiate '
-                         'and build your model, `call` your model on real '
-                         'tensor data with all expected call arguments.')
-
-      try:
-        self.call(x, **kwargs)
-      except (errors.InvalidArgumentError, TypeError):
-        raise ValueError('You cannot build your model by calling `build` '
-                         'if your layers do not support float type inputs. '
-                         'Instead, in order to instantiate and build your '
-                         'model, `call` your model on real tensor data (of '
-                         'the correct dtype).')
-
-    if self._layers:
-      self._track_layers(self._layers)
-    if self.layers:
-      for layer in self.layers:
-        if not layer.built:
-          raise ValueError('Layer: {} was not built in your model. Calling '
-                           '`build` manually on a subclassed model is only '
-                           'allowed for models with a static topology. '
-                           'In this case, you can build your model by '
-                           'calling it on real tensor data.'.format(layer))
-    self.built = True
 
   def _check_trainable_weights_consistency(self):
     """Check trainable weights count consistency.
@@ -698,7 +529,6 @@ class Model(Network):
             updates=updates,
             name='train_function',
             **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_test_function(self):
     if not hasattr(self, 'test_function'):
@@ -716,7 +546,6 @@ class Model(Network):
           updates=self.state_updates + self.metrics_updates,
           name='test_function',
           **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -735,7 +564,6 @@ class Model(Network):
           updates=self.state_updates,
           name='predict_function',
           **kwargs)
-    self._post_build_cleanup()
 
   def _get_iterator_get_next_tensors(self, iterator):
     get_next_op = self._iterator_get_next.get(iterator, None)
@@ -968,13 +796,7 @@ class Model(Network):
         exception_prefix='input')
 
     if y is not None:
-      if context.executing_eagerly():
-        feed_output_names = self.output_names
-        feed_output_shapes = None
-        # Sample weighting not supported in this case.
-        # TODO(fchollet): consider supporting it.
-        feed_sample_weight_modes = [None for _ in self.outputs]
-      elif not self._is_graph_network:
+      if not self._is_graph_network:
         feed_output_names = self._feed_output_names
         feed_output_shapes = None
         # Sample weighting not supported in this case.

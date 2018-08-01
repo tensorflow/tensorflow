@@ -113,6 +113,7 @@ class OpKernel {
 
   // Returns nullptr iff this op kernel is synchronous.
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
+  virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
@@ -197,6 +198,7 @@ class AsyncOpKernel : public OpKernel {
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
   AsyncOpKernel* AsAsync() final { return this; }
+  const AsyncOpKernel* AsAsync() const final { return this; }
 
   void Compute(OpKernelContext* context) final;
 
@@ -1542,21 +1544,36 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 //   ...
 // }
 
-#define OP_REQUIRES(CTX, EXP, STATUS)                  \
-  do {                                                 \
-    if (!TF_PREDICT_TRUE(EXP)) {                       \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
-      return;                                          \
-    }                                                  \
+// Generate a fatal error if OP_REQUIRES or OP_REQUIRES_OK are used in
+// AsyncOpKernel implementations. If these macros are used and the condition
+// does not hold, the `done` callback will never be called and the system will
+// deadlock, so a crash failure is preferable. Since the OP_REQUIRES[_OK] macros
+// are legal to use in AsyncOpKernel constructors, we use overload resolution
+// to distinguish between OpKernelConstruction* and OpKernelContext* context
+// types.
+class XlaOpKernelContext;
+inline void CheckNotInComputeAsync(XlaOpKernelContext*, const char*) {}
+inline void CheckNotInComputeAsync(OpKernelConstruction*, const char*) {}
+void CheckNotInComputeAsync(OpKernelContext* ctx,
+                            const char* correct_macro_name);
+
+#define OP_REQUIRES(CTX, EXP, STATUS)                     \
+  do {                                                    \
+    if (!TF_PREDICT_TRUE(EXP)) {                          \
+      CheckNotInComputeAsync((CTX), "OP_REQUIRES_ASYNC"); \
+      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS));    \
+      return;                                             \
+    }                                                     \
   } while (0)
 
-#define OP_REQUIRES_OK(CTX, ...)                            \
-  do {                                                      \
-    ::tensorflow::Status _s(__VA_ARGS__);                   \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
-      return;                                               \
-    }                                                       \
+#define OP_REQUIRES_OK(CTX, ...)                             \
+  do {                                                       \
+    ::tensorflow::Status _s(__VA_ARGS__);                    \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                         \
+      CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
+      return;                                                \
+    }                                                        \
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK)  \

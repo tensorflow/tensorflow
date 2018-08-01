@@ -24,7 +24,7 @@ bool IsGoogleTensorRTEnabled() {
   // safely write code that uses tensorrt conditionally. E.g. if it does not
   // check for for tensorrt, and user mistakenly uses tensorrt, they will just
   // crash and burn.
-#ifdef GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
   return true;
 #else
   return false;

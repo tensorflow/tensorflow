@@ -12074,6 +12074,32 @@ op {
   }
 }
 op {
+  name: "Cast"
+  input_arg {
+    name: "x"
+    type_attr: "SrcT"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "DstT"
+  }
+  attr {
+    name: "SrcT"
+    type: "type"
+  }
+  attr {
+    name: "DstT"
+    type: "type"
+  }
+  attr {
+    name: "Truncate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "Ceil"
   input_arg {
     name: "x"
@@ -35441,6 +35467,44 @@ op {
   output_arg {
     name: "selected_indices"
     type: DT_INT32
+  }
+}
+op {
+  name: "NonMaxSuppressionV4"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "valid_outputs"
+    type: DT_INT32
+  }
+  attr {
+    name: "pad_to_max_output_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

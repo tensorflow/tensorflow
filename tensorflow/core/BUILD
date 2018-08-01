@@ -2520,7 +2520,7 @@ tf_cuda_library(
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn",
         ],
-    ) , 
+    ), 
     alwayslink = 1,
 )
 
@@ -2925,6 +2925,14 @@ tf_cuda_library(
         ":lib",
         ":protos_all_cc",
     ] + tf_additional_device_tracer_deps(),
+)
+
+cc_library(
+    name = "session_ref",
+    srcs = ["common_runtime/session_ref.cc"],
+    hdrs = ["common_runtime/session_ref.h"],
+    copts = tf_copts(),
+    deps = [":core_cpu_base"],
 )
 
 cc_library(
@@ -3485,6 +3493,7 @@ tf_cc_tests(
         "framework/tensor_shape_test.cc",
         "framework/tensor_slice_test.cc",
         "framework/tensor_test.cc",
+        "framework/tensor_testutil_test.cc",
         "framework/tensor_util_test.cc",
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",

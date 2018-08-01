@@ -38,7 +38,7 @@ class DirectivesTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {'directives': directives})
     node = directives_converter.transform(node, ctx)
 
-    def_, = anno.getanno(node.body[0].body[0].targets[0],
+    def_, = anno.getanno(node.body[0].targets[0],
                          anno.Static.DEFINITIONS)
     d = def_.directives[directives.set_element_type]
     self.assertEqual(d['dtype'].s, 'a')
@@ -52,7 +52,7 @@ class DirectivesTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {'directives': directives})
     node = directives_converter.transform(node, ctx)
 
-    def_, = anno.getanno(node.body[0].args.args[0], anno.Static.DEFINITIONS)
+    def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
     d = def_.directives[directives.set_element_type]
     self.assertEqual(d['dtype'].n, 1)
     self.assertEqual(d['shape'].n, 2)
@@ -67,7 +67,7 @@ class DirectivesTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {'directives': directives})
     node = directives_converter.transform(node, ctx)
 
-    d = anno.getanno(node.body[0].body[1], AgAnno.DIRECTIVES)
+    d = anno.getanno(node.body[1], AgAnno.DIRECTIVES)
     d = d[directives.set_loop_options]
     self.assertEqual(d['parallel_iterations'].n, 10)
     self.assertEqual(d['back_prop'].id, 'a')

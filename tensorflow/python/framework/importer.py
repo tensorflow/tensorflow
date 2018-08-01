@@ -205,7 +205,7 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
     if input_src.startswith('^'):
-      src_name = compat.as_bytes(input_src[1:])
+      src_name = compat.as_str(input_src[1:])
       dst_op = input_dst._as_tf_output().oper  # pylint: disable=protected-access
       c_api.TF_ImportGraphDefOptionsRemapControlDependency(
           options, src_name, dst_op)

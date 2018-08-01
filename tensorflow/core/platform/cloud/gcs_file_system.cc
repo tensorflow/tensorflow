@@ -605,13 +605,18 @@ bool StringPieceIdentity(StringPiece str, StringPiece* value) {
 
 }  // namespace
 
-GcsFileSystem::GcsFileSystem()
-    : auth_provider_(new GoogleAuthProvider()),
-      http_request_factory_(new CurlHttpRequest::Factory()) {
+GcsFileSystem::GcsFileSystem() {
   uint64 value;
   size_t block_size = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
   uint64 max_staleness = kDefaultMaxStaleness;
+
+  http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
+  compute_engine_metadata_client_ =
+      std::make_shared<ComputeEngineMetadataClient>(http_request_factory_);
+  auth_provider_ = std::unique_ptr<AuthProvider>(
+      new GoogleAuthProvider(compute_engine_metadata_client_));
+
   // Apply the sys env override for the readahead buffer size if it's provided.
   if (GetEnvVar(kReadaheadBufferSize, strings::safe_strtou64, &value)) {
     block_size = value;

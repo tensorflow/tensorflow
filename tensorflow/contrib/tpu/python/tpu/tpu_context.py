@@ -273,6 +273,10 @@ class _InternalTPUContext(object):
     return self._model_parallelism_enabled
 
   @property
+  def input_partition_dims(self):
+    return self._config.tpu_config.input_partition_dims
+
+  @property
   def device_assignment(self):
     return (self._get_device_assignment()
             if self._model_parallelism_enabled else None)

@@ -24,7 +24,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -308,32 +307,19 @@ def _set_checkpoint_initializer(variable,
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
 
-    # TODO(priyag, allenl): Use `SaveableObject.restore` instead here.
-    if resource_variable_ops.is_resource_variable(variable):
-      init_op = variable.assign(restore_op, read_value=False)
-    else:
-      init_op = state_ops.assign(variable, restore_op)
+    names_to_saveables = saver.BaseSaverBuilder.OpListToDict([variable])
+    saveable_objects = []
+    for name, op in names_to_saveables.items():
+      for s in saver.BaseSaverBuilder.SaveableObjectsForOp(op, name):
+        saveable_objects.append(s)
+
+    assert len(saveable_objects) == 1  # Should be only one variable.
+    init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
 
     # pylint:disable=protected-access
-    # We need special handling for `DistributedVariable`s as they contain
-    # mutliple actual variables. `assign` on a `DistributedVariable` returns a
-    # combined `init_op` which contains initializers for all the contained
-    # variables. We then set each underlying variable's `_initializer_op` using
-    # the corresponding `init_op`.
-    # TODO(priyag): Use `isinstance` checks when `DistributedVariable` class
-    # moves out of contrib.
-    if any(base.__name__ == "DistributedVariable"
-           for base in  variable.__class__.__bases__):
-      assert distribute_lib.get_cross_tower_context()
-      assert hasattr(variable, "_index")
-      for (d, v) in six.iteritems(variable._index):
-        v._initializer_op = init_op._index[d]
-        restore_op.set_shape(v.shape)
-        v._initial_value = restore_op
-    else:
-      variable._initializer_op = init_op
-      restore_op.set_shape(variable.shape)
-      variable._initial_value = restore_op
+    variable._initializer_op = init_op
+    restore_op.set_shape(variable.shape)
+    variable._initial_value = restore_op
     # pylint:enable=protected-access
 
 

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -624,6 +624,7 @@ _FORWARD_BINOP(ShiftRightArithmetic)
 _FORWARD_BINOP(ShiftRightLogical)
 _FORWARD_BINOP(Atan2)
 _FORWARD_BINOP(Pow)
+_FORWARD_BINOP(Complex)
 _FORWARD_UNOP(Not)
 _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
@@ -658,6 +659,9 @@ _FORWARD_UNOP(Asinh)
 _FORWARD_UNOP(Atanh)
 _FORWARD_UNOP(Cosh)
 _FORWARD_UNOP(Sinh)
+_FORWARD_UNOP(Real)
+_FORWARD_UNOP(Imag)
+_FORWARD_UNOP(Conj)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP

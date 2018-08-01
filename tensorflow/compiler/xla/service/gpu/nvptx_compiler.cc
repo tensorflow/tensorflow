@@ -52,9 +52,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -199,6 +201,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
+    if (IsVoltaOrLater(*stream_exec)) {
+      pipeline.AddPass<PadForTensorCores>();
+      // PadForTensorCores leaves behind unnecessary tuple/get-tuple-element
+      // pairs that TupleSimplifier fixes.
+      pipeline.AddPass<TupleSimplifier>();
+    }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -540,11 +548,13 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(),
-                          /*color_alignment=*/[](LogicalBuffer::Color) {
-                            return kXlaAllocatedBufferAlignBytes;
-                          }));
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
@@ -565,6 +575,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));

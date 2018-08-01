@@ -175,7 +175,7 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
     tensorflow::TensorHandle* handle = op->Inputs()[i];
     if (handle->dtype != kernel->input_type(i)) {
       return errors::InvalidArgument(
-          "cannot compute ", op->Name(), " as input #", i,
+          "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
           " was expected to be a ", DataTypeString(kernel->input_type(i)),
           " tensor but is a ", DataTypeString(handle->dtype), " tensor");
     }
@@ -448,6 +448,14 @@ bool IsLocal(EagerContext* ctx, tensorflow::Device* d) {
   return ctx->local_device_mgr()->LookupDevice(d->name(), &tmp).ok();
 }
 
+bool OnSameTask(EagerContext* ctx, Device* first, Device* second) {
+  if (first == nullptr) first = ctx->HostCPU();
+  if (second == nullptr) second = ctx->HostCPU();
+  return first->parsed_name().job == second->parsed_name().job &&
+         first->parsed_name().replica == second->parsed_name().replica &&
+         first->parsed_name().task == second->parsed_name().task;
+}
+
 Status EagerLocalExecute(EagerOperation* op,
                          gtl::InlinedVector<TensorHandle*, 2>* retvals,
                          int* num_retvals) {
@@ -585,6 +593,7 @@ Status EagerLocalExecute(EagerOperation* op,
   return status;
 }
 
+#ifndef __ANDROID__
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
@@ -615,6 +624,7 @@ std::function<void()> GetRemoteTensorDestructor(
     return tensorflow::Status::OK();
   };
 }
+#endif
 
 // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
 // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
@@ -626,6 +636,10 @@ std::function<void()> GetRemoteTensorDestructor(
 // *on the receiver*.
 Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              Device* recv_device, TensorHandle** result) {
+#ifdef __ANDROID__
+  return errors::Unimplemented(
+      "Eager's remote execution is not available on Android devices.");
+#else
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -664,6 +678,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
 
   return Status::OK();
+#endif
 }
 
 Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
@@ -689,7 +704,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   for (int i = 0; i < op->Inputs().size(); i++) {
     tensorflow::Device* input_device;
     TF_RETURN_IF_ERROR(op->Inputs()[i]->Device(&input_device));
-    if (op->Device() != input_device) {
+    if (op->Device() != input_device &&
+        // If the expected and actual devices are on the same task, don't
+        // explicitly copy, and instead depend on the copy to happen locally
+        // when the op is executed on the device.
+        !OnSameTask(ctx, op->Device(), input_device)) {
       // TODO(b/110044833): It's possible the same tensor gets copied to the
       // remote device repeatedly.
       TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(

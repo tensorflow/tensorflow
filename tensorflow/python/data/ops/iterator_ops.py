@@ -57,6 +57,13 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
 GLOBAL_ITERATORS = "iterators"
 
 
+def _device_stack_is_empty():
+  # pylint: disable=protected-access
+  device_stack = ops.get_default_graph()._device_functions_outer_to_inner
+  # pylint: enable=protected-access
+  return not bool(device_stack)
+
+
 @tf_export("data.Iterator")
 class Iterator(object):
   """Represents the state of iterating through a `Dataset`."""
@@ -174,7 +181,7 @@ class Iterator(object):
     if shared_name is None:
       shared_name = ""
     if compat.forward_compatible(2018, 8, 3):
-      if not ops.get_default_graph()._graph_device_function_stack:  # pylint: disable=protected-access
+      if _device_stack_is_empty():
         with ops.device("/cpu:0"):
           iterator_resource = gen_dataset_ops.iterator_v2(
               container="",
@@ -263,7 +270,7 @@ class Iterator(object):
     nest.assert_same_structure(output_types, output_shapes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
     if compat.forward_compatible(2018, 8, 3):
-      if not ops.get_default_graph()._graph_device_function_stack:  # pylint: disable=protected-access
+      if _device_stack_is_empty():
         with ops.device("/cpu:0"):
           iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
               string_handle,

@@ -1278,10 +1278,10 @@ Status DotOpEmitter::Emit() {
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
   llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(&dot_), b_);
-  llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
-      &loop_nest, lhs_array_, lhs_reduction_dimension, "lhs");
-  llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
-      &loop_nest, rhs_array_, rhs_reduction_dimension, "rhs");
+  llvm_ir::IrArray::Index lhs_index = loop_nest.EmitOperandArrayLoopNest(
+      lhs_array_, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
+  llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
+      rhs_array_, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
 
   // Create the loop which does the sum of products reduction.
   //
@@ -1535,36 +1535,6 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
       /*rhs_non_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 1,
       /*target_column_major=*/
       LayoutUtil::Minor(target_array_.GetShape().layout(), 0) == 0};
-}
-
-llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
-    llvm_ir::ForLoopNest* loop_nest, const llvm_ir::IrArray& operand_array,
-    int64 reduction_dimension, tensorflow::StringPiece name_suffix) {
-  // Prepares the dimension list we will use to emit the loop nest. Outermost
-  // loops are added first. Add loops in major-to-minor order, and skip the
-  // reduction dimension.
-  std::vector<int64> dimensions;
-  const Shape& shape = operand_array.GetShape();
-  for (int i = LayoutUtil::MinorToMajor(shape).size() - 1; i >= 0; --i) {
-    int64 dimension = LayoutUtil::Minor(shape.layout(), i);
-    if (dimension != reduction_dimension) {
-      dimensions.push_back(dimension);
-    }
-  }
-
-  // Create loop nest with one for-loop for each dimension of the
-  // output.
-  llvm_ir::IrArray::Index index =
-      loop_nest->AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
-  // Verify every dimension except the reduction dimension was set in the index.
-  for (int dimension = 0; dimension < index.size(); ++dimension) {
-    if (dimension == reduction_dimension) {
-      DCHECK_EQ(nullptr, index[dimension]);
-    } else {
-      DCHECK_NE(nullptr, index[dimension]);
-    }
-  }
-  return index;
 }
 
 // Return whether the given shape is a matrix with no padding.
