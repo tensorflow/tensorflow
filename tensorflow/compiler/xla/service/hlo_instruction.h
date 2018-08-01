@@ -1014,9 +1014,7 @@ class HloInstruction {
     if (sharding_ == nullptr) {
       return tensorflow::gtl::optional<int64>();
     }
-    auto device = sharding_->UniqueDevice();
-    return device.ok() ? device.ValueOrDie()
-                       : tensorflow::gtl::optional<int64>();
+    return sharding_->UniqueDevice();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
