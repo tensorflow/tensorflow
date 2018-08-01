@@ -1,6 +1,7 @@
 """Assemble common TF Dockerfiles from many parts.
 
-TODO(angerson): DO NOT SUBMIT without a detailed description of assembler.
+This script constructs TF's Dockerfiles by aggregating partial
+Dockerfiles. See README.md for usage examples.
 """
 
 from __future__ import absolute_import

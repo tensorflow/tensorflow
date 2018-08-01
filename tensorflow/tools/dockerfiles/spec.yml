@@ -1,6 +1,7 @@
 # ======
 # HEADER
 # ======
+#
 # This is commented-out and prepended to each generated Dockerfile.
 header: |
     THIS IS A GENERATED DOCKERFILE.
@@ -12,19 +13,20 @@ header: |
 # ========
 # PARTIALS
 # ========
-# Represent and document pieces of a Dockerfile.
-# Spec:
+#
+# Represent and document pieces of a Dockerfile. Spec:
 # 
-# name: the name of the partial, referenced from other sections
+# name: the name of the partial, is referenced from the images section
 #   desc: A description, inserted later into the Dockerfile
-#   file: Alternative file prefix, e.g. file.partial.Dockerfile (default = name)
+#   file: Alternative file prefix, e.g. file.partial.Dockerfile. The default is
+#         the name of the partial.
 #   args: A dict of ARGs in the Dockerfile; each entry has the format
-#      ARG_NAME: VALUE where VALUE is
-#         - a concrete value: becomes the default
+#      ARG_NAME: VALUE where VALUE is one of:
 #         - a dict:
-#           desc: Arg description
-#           default: Default value for the arg; is written to the Dockerfile
-#           options: List of strings, part of documentation
+#             desc: Documentation for the arg
+#             default: Default value for the arg; is written to the Dockerfile
+#             options: List of strings, part of documentation
+#         - a concrete value: the same as a dictionary with default: [value].
 
 partials:
     ubuntu:
@@ -75,23 +77,24 @@ partials:
     jupyter:
         desc: Launch Jupyter on execution instead of a bash prompt.
 
-# ===========
-# DOCKERFILES
-# ===========
-# Represent dockerfiles.
-# Spec:
+# ======
+# IMAGES
+# ======
 # 
-# name: the name of the image, referenced from other sections
+# Represent Dockerfiles. Spec:
+# 
+# name: the name of the image, possibly referenced by other images
 #   desc: A description, inserted later into the Dockerfile
 #   create-dockerfile: Create a dockerfile based on this. Useful for creating
-#      base images. Default is true
+#      extensible base images that don't need a file. Default is true.
 #   partials: List of VALUEs, where a VALUE is either:
-#      - the name of a partial, which inserts that partial into this file
+#      - the name of a partial, which inserts that partial into this image
 #      - image: [name of another image], which inserts the partials from that
-#        image into this file
+#        image into this image
 #   arg-defaults: List of VALUEs, where a VALUE is either:
-#      - the name of another image, which loads the default args from that image
-#      - ARG_NAME: VALUE, which is exactly what you'd expect
+#      - ARG_NAME: VALUE, which sets the ARG_NAME to VALUE wherever it appears
+#        in this image's partials
+#      - [name of another image], which loads the default args from that image
 images:
 
     nodev:
