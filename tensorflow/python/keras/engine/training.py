@@ -113,6 +113,24 @@ class Model(Network):
     # Create a cache for dataset - uninitialized iterators
     self._dataset_iterator_cache = weakref.WeakKeyDictionary()
 
+  def _set_sample_weight_attributes(self, sample_weight_mode,
+                                    skip_target_weighing_indices):
+    """Sets sample weight related attributes on the model."""
+    sample_weights, sample_weight_modes = training_utils.prepare_sample_weights(
+        self.output_names, sample_weight_mode, skip_target_weighing_indices)
+    self.sample_weights = sample_weights
+    self.sample_weight_modes = sample_weight_modes
+    self._feed_sample_weight_modes = [
+        sample_weight_modes[i]
+        for i in range(len(self.outputs))
+        if i not in skip_target_weighing_indices
+    ]
+    self._feed_sample_weights = [
+        sample_weights[i]
+        for i in range(len(sample_weights))
+        if i not in skip_target_weighing_indices
+    ]
+
   @checkpointable.no_automatic_dependency_tracking
   def compile(self,
               optimizer,
@@ -185,8 +203,6 @@ class Model(Network):
     self.loss = loss
     self.metrics = metrics or []
     self.loss_weights = loss_weights
-    if context.executing_eagerly() and sample_weight_mode is not None:
-      raise ValueError('sample_weight_mode is not supported in Eager mode.')
     self.sample_weight_mode = sample_weight_mode
     if context.executing_eagerly() and weighted_metrics is not None:
       raise ValueError('weighted_metrics is not supported in Eager mode.')
@@ -277,8 +293,12 @@ class Model(Network):
                       str(loss_weights) + ' - expected a list of dicts.')
     self.loss_weights_list = loss_weights_list
 
-    # initialization for Eager mode execution
+    # Initialization for Eager mode execution.
     if context.executing_eagerly():
+      # Prepare sample weights.
+      self._set_sample_weight_attributes(sample_weight_mode,
+                                         skip_target_weighing_indices)
+
       if target_tensors is not None:
         raise ValueError('target_tensors are not currently supported in Eager '
                          'mode.')
@@ -296,10 +316,6 @@ class Model(Network):
 
       with K.name_scope('metrics'):
         training_utils.populate_metric_names(self)
-      self._feed_sample_weight_modes = []
-      for i in range(len(self.outputs)):
-        self._feed_sample_weight_modes.append(None)
-      self.sample_weights = []
       self.targets = []
       for i in range(len(self.outputs)):
         self._feed_output_names.append(self.output_names[i])
@@ -359,47 +375,8 @@ class Model(Network):
         self.targets.append(target)
 
     # Prepare sample weights.
-    sample_weights = []
-    sample_weight_modes = []
-    if isinstance(sample_weight_mode, dict):
-      for name in sample_weight_mode:
-        if name not in self.output_names:
-          raise ValueError(
-              'Unknown entry in '
-              'sample_weight_mode dictionary: "' + name + '". '
-              'Only expected the following keys: ' + str(self.output_names))
-      for i, name in enumerate(self.output_names):
-        if (i not in skip_target_weighing_indices and
-            name not in sample_weight_mode):
-          raise ValueError('Output "' + name +
-                           '" missing from sample_weight_modes dictionary')
-        weight, mode = training_utils.get_output_sample_weight_and_mode(
-            skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
-        sample_weights.append(weight)
-        sample_weight_modes.append(mode)
-    elif isinstance(sample_weight_mode, list):
-      if len(sample_weight_mode) != len(self.outputs):
-        raise ValueError('When passing a list as sample_weight_mode, '
-                         'it should have one entry per model output. '
-                         'The model has ' + str(len(self.outputs)) +
-                         ' outputs, but you passed '
-                         'sample_weight_mode=' + str(sample_weight_mode))
-      for i, name in enumerate(self.output_names):
-        weight, mode = training_utils.get_output_sample_weight_and_mode(
-            skip_target_weighing_indices, sample_weight_mode[i], name, i)
-        sample_weights.append(weight)
-        sample_weight_modes.append(mode)
-    else:
-      for i, name in enumerate(self.output_names):
-        weight, mode = training_utils.get_output_sample_weight_and_mode(
-            skip_target_weighing_indices, sample_weight_mode, name, i)
-        sample_weights.append(weight)
-        sample_weight_modes.append(mode)
-    self.sample_weight_modes = sample_weight_modes
-    self._feed_sample_weight_modes = []
-    for i in range(len(self.outputs)):
-      if i not in skip_target_weighing_indices:
-        self._feed_sample_weight_modes.append(self.sample_weight_modes[i])
+    self._set_sample_weight_attributes(sample_weight_mode,
+                                       skip_target_weighing_indices)
 
     # Prepare metrics.
     self.weighted_metrics = weighted_metrics
@@ -415,7 +392,7 @@ class Model(Network):
         y_true = self.targets[i]
         y_pred = self.outputs[i]
         weighted_loss = weighted_losses[i]
-        sample_weight = sample_weights[i]
+        sample_weight = self.sample_weights[i]
         mask = masks[i]
         loss_weight = loss_weights_list[i]
         with K.name_scope(self.output_names[i] + '_loss'):
@@ -454,7 +431,7 @@ class Model(Network):
 
         y_true = self.targets[i]
         y_pred = self.outputs[i]
-        weights = sample_weights[i]
+        weights = self.sample_weights[i]
         output_metrics = nested_metrics[i]
         output_weighted_metrics = nested_weighted_metrics[i]
         output_shape = self.outputs[i].get_shape().as_list()
@@ -491,11 +468,6 @@ class Model(Network):
 
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
-    self.sample_weights = sample_weights
-    self._feed_sample_weights = []
-    for i in range(len(self.sample_weights)):
-      if i not in skip_target_weighing_indices:
-        self._feed_sample_weights.append(self.sample_weights[i])
 
     # Functions for train, test and predict will
     # be compiled lazily when required.
@@ -824,13 +796,7 @@ class Model(Network):
         exception_prefix='input')
 
     if y is not None:
-      if context.executing_eagerly():
-        feed_output_names = self.output_names
-        feed_output_shapes = None
-        # Sample weighting not supported in this case.
-        # TODO(fchollet): consider supporting it.
-        feed_sample_weight_modes = [None for _ in self.outputs]
-      elif not self._is_graph_network:
+      if not self._is_graph_network:
         feed_output_names = self._feed_output_names
         feed_output_shapes = None
         # Sample weighting not supported in this case.

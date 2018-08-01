@@ -345,9 +345,16 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       x, y, sample_weights = next_element
 
     # Validate and standardize data.
-    x, y, sample_weights = model._standardize_user_data(x, y)
+    x, y, sample_weights = model._standardize_user_data(
+        x, y, sample_weight=sample_weights)
     x = training_utils.cast_if_floating_dtype(x)
     y = training_utils.cast_if_floating_dtype(y)
+    if sample_weights:
+      sample_weights = [
+          training_utils.cast_if_floating_dtype(
+              ops.convert_to_tensor(val, dtype=backend.floatx()))
+          if val is not None else None for val in sample_weights
+      ]
 
     # Calculate model output, loss values.
     loss_outs, loss, loss_metrics = _model_loss(
