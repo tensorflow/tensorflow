@@ -136,6 +136,31 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
   return Status::OK();
 }
 
+Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len) {
+  if (!PyUnicode_Check(obj)) {
+    char* buf;
+    if (PyBytes_AsStringAndSize(obj, &buf, len) != 0) {
+      return errors::Internal("Unable to get element as bytes.");
+    }
+    *ptr = buf;
+    return Status::OK();
+  }
+#if (PY_MAJOR_VERSION > 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 3))
+  *ptr = PyUnicode_AsUTF8AndSize(obj, len);
+  if (*ptr != nullptr) return Status::OK();
+#else
+  PyObject* utemp = PyUnicode_AsUTF8String(obj);
+  char* buf;
+  if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
+    *ptr = buf;
+    Py_DECREF(utemp);
+    return Status::OK();
+  }
+  Py_XDECREF(utemp);
+#endif
+  return errors::Internal("Unable to convert element to UTF-8.");
+}
+
 // Iterate over the string array 'array', extract the ptr and len of each string
 // element and call f(ptr, len).
 template <typename F>
@@ -148,33 +173,10 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     if (!item) {
       return errors::Internal("Unable to get element from the feed - no item.");
     }
-    char* ptr;
     Py_ssize_t len;
-
-    if (PyUnicode_Check(item.get())) {
-#if PY_VERSION_HEX >= 0x03030000
-      // Accept unicode by converting to UTF-8 bytes.
-      ptr = PyUnicode_AsUTF8AndSize(item.get(), &len);
-      if (!ptr) {
-        return errors::Internal("Unable to get element as UTF-8.");
-      }
-      f(ptr, len);
-#else
-      PyObject* utemp = PyUnicode_AsUTF8String(item.get());
-      if (!utemp || PyBytes_AsStringAndSize(utemp, &ptr, &len) == -1) {
-        Py_XDECREF(utemp);
-        return errors::Internal("Unable to convert element to UTF-8.");
-      }
-      f(ptr, len);
-      Py_DECREF(utemp);
-#endif
-    } else {
-      int success = PyBytes_AsStringAndSize(item.get(), &ptr, &len);
-      if (success != 0) {
-        return errors::Internal("Unable to get element as bytes.");
-      }
-      f(ptr, len);
-    }
+    const char* ptr;
+    TF_RETURN_IF_ERROR(PyObjectToString(item.get(), &ptr, &len));
+    f(ptr, len);
     PyArray_ITER_NEXT(iter.get());
   }
   return Status::OK();
@@ -186,10 +188,11 @@ Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
                           size_t* size, void** buffer) {
   // Compute bytes needed for encoding.
   *size = 0;
-  TF_RETURN_IF_ERROR(PyBytesArrayMap(array, [&size](char* ptr, Py_ssize_t len) {
-    *size +=
-        sizeof(tensorflow::uint64) + tensorflow::core::VarintLength(len) + len;
-  }));
+  TF_RETURN_IF_ERROR(
+      PyBytesArrayMap(array, [&size](const char* ptr, Py_ssize_t len) {
+        *size += sizeof(tensorflow::uint64) +
+                 tensorflow::core::VarintLength(len) + len;
+      }));
   // Encode all strings.
   std::unique_ptr<char[]> base_ptr(new char[*size]);
   char* base = base_ptr.get();
@@ -198,7 +201,7 @@ Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
   tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
 
   TF_RETURN_IF_ERROR(PyBytesArrayMap(
-      array, [&base, &data_start, &dst, &offsets](char* ptr, Py_ssize_t len) {
+      array, [&data_start, &dst, &offsets](const char* ptr, Py_ssize_t len) {
         *offsets = (dst - data_start);
         offsets++;
         dst = tensorflow::core::EncodeVarint64(dst, len);
