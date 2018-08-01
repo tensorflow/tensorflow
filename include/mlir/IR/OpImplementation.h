@@ -25,6 +25,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SMLoc.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 class AffineMap;
@@ -97,8 +98,32 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const AffineMap &map) {
   return p;
 }
 
-template <typename T>
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &other) {
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, StringRef other) {
+  p.getStream() << other;
+  return p;
+}
+
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const char *other) {
+  p.getStream() << other;
+  return p;
+}
+
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, char other) {
+  p.getStream() << other;
+  return p;
+}
+
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, unsigned other) {
+  p.getStream() << other;
+  return p;
+}
+
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, int other) {
+  p.getStream() << other;
+  return p;
+}
+
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, float other) {
   p.getStream() << other;
   return p;
 }

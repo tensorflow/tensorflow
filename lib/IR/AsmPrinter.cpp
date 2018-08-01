@@ -118,9 +118,15 @@ void ModuleState::visitAttribute(const Attribute *attr) {
 }
 
 void ModuleState::visitOperation(const Operation *op) {
-  for (auto elt : op->getAttrs()) {
+  // Visit all the types used in the operation.
+  for (auto *operand : op->getOperands())
+    visitType(operand->getType());
+  for (auto *result : op->getResults())
+    visitType(result->getType());
+
+  // Visit each of the attributes.
+  for (auto elt : op->getAttrs())
     visitAttribute(elt.second);
-  }
 }
 
 void ModuleState::visitExtFunction(const ExtFunction *fn) {
