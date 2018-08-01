@@ -500,6 +500,11 @@ class PyFuncOp : public OpKernel {
       call.ins.push_back(ctx->input(i));
     }
 
+    OP_REQUIRES(
+        ctx, Py_IsInitialized(),
+        errors::FailedPrecondition("Python interpreter state is not initialized. "
+                                   "The process may be terminated."));
+      
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();
     bool log_on_error;
