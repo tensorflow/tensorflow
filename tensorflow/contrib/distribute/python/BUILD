@@ -293,11 +293,11 @@ py_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:training",
-        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:run_config",
+        "//third_party/py/numpy",
     ],
 )
 
