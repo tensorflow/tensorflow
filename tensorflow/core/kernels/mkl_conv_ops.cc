@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/mkl_conv_ops.h"
+#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -49,6 +50,7 @@ using mkldnn::prop_kind;
 using mkldnn::stream;
 using mkldnn::convolution_forward;
 using mkldnn::convolution_direct;
+using mkldnn::eltwise_relu;
 
 #else
 #include "mkl_dnn.h"
@@ -70,10 +72,13 @@ struct MklConvFwdParams {
   memory::dims padding_left;
   memory::dims padding_right;
 
+  mkldnn::algorithm algorithm;
+
   MklConvFwdParams(memory::dims src_dims, memory::dims filter_dims,
                    memory::dims bias_dims, memory::dims dst_dims,
                    memory::dims strides, memory::dims dilations,
-                   memory::dims padding_left, memory::dims padding_right)
+                   memory::dims padding_left, memory::dims padding_right,
+                   mkldnn::algorithm algorithm = mkldnn::algorithm_undef)
       : src_dims(src_dims),
         filter_dims(filter_dims),
         bias_dims(bias_dims),
@@ -81,7 +86,8 @@ struct MklConvFwdParams {
         strides(strides),
         dilations(dilations),
         padding_left(padding_left),
-        padding_right(padding_right) {}
+        padding_right(padding_right),
+        algorithm(algorithm) {}
 };
 
 template <typename T>
@@ -227,8 +233,21 @@ class MklConv2DFwdPrimitive : public MklPrimitive {
           convFwdDims.padding_right, padding_kind::zero));
     }
 
-    context_.fwd_pd.reset(new convolution_forward::primitive_desc(
-        *context_.fwd_desc, cpu_engine_));
+    if (convFwdDims.algorithm == eltwise_relu) {
+      mkldnn::post_ops ops;
+      mkldnn::primitive_attr attr;
+      float scale = 1.0f;
+      T alpha = 0;
+      T beta = 0;
+      ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+      attr.set_post_ops(ops);
+
+      context_.fwd_pd.reset(new convolution_forward::primitive_desc(
+          *context_.fwd_desc, attr, cpu_engine_));
+    } else {
+      context_.fwd_pd.reset(new convolution_forward::primitive_desc(
+          *context_.fwd_desc, cpu_engine_));
+    }
 
     // store the expected memory format
     context_.src_fmt = static_cast<mkldnn::memory::format>(
@@ -310,6 +329,7 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(convFwdDims.dilations);
     key_creator.AddAsKey(convFwdDims.padding_left);
     key_creator.AddAsKey(convFwdDims.padding_right);
+    key_creator.AddAsKey(convFwdDims.algorithm);
     return key_creator.GetKey();
   }
 
@@ -753,9 +773,30 @@ class MklConv2DOp : public OpKernel {
   TensorFormat data_format_;
 };
 
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConv2DOp<CPUDevice, T, false>);        \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConv2DOp<CPUDevice, T, true>);         \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklDummyOp<CPUDevice, T>);
+
+TF_CALL_float(REGISTER_MKL_CPU);
+#undef REGISTER_MKL_CPU
+
 #else
 
-template <typename Device, typename T, bool biasEnabled>
+template <typename Device, typename T, bool biasEnabled,
+          mkldnn::algorithm elem_algo>
 class MklConv2DOp : public OpKernel {
  public:
   ~MklConv2DOp() {}
@@ -877,12 +918,12 @@ class MklConv2DOp : public OpKernel {
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
         MklConvFwdParams convFwdDims(src_dims, filter_dims, bias_dims,
                                      dst_dims_mkl_order, strides, dilations,
-                                     padding_left, padding_right);
+                                     padding_left, padding_right, elem_algo);
         conv2d_fwd = MklConv2DFwdPrimitiveFactory<T>::Get(convFwdDims);
       } else {
         MklConvFwdParams convFwdDims(src_dims, filter_dims, NONE_DIMS,
                                      dst_dims_mkl_order, strides, dilations,
-                                     padding_left, padding_right);
+                                     padding_left, padding_right, elem_algo);
         conv2d_fwd = MklConv2DFwdPrimitiveFactory<T>::Get(convFwdDims);
       }
 
@@ -955,6 +996,7 @@ class MklConv2DOp : public OpKernel {
       const memory::dims& output_dims_mkl_order,
       memory::format output_tf_format, Tensor** output_tensor) {
     CHECK_NOTNULL(output_tensor);
+
     auto dst_pd = conv_prim_desc.dst_primitive_desc();
 
     // Allocate shape of Mkl tensor.
@@ -979,6 +1021,7 @@ class MklConv2DOp : public OpKernel {
       const convolution_forward::primitive_desc& conv_prim_desc,
       const memory::dims& filter_dims_tf_order, Tensor** filter_tensor) {
     CHECK_NOTNULL(filter_tensor);
+
     auto filter_pd = conv_prim_desc.weights_primitive_desc();
 
     // Allocate shape of Mkl tensor.
@@ -1036,26 +1079,51 @@ class MklConv2DOp : public OpKernel {
   }
 };
 
-#endif
 
 #define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConv2DOp<CPUDevice, T, false>);        \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConv2DOp<CPUDevice, T, true>);         \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("_MklConv2D")                                            \
+          .Device(DEVICE_CPU)                                       \
+          .TypeConstraint<T>("T")                                   \
+          .Label(mkl_op_registry::kMklOpLabel),                     \
+      MklConv2DOp<CPUDevice, T, false, mkldnn::algorithm_undef>);   \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("_MklConv2DWithBias")                                    \
+          .Device(DEVICE_CPU)                                       \
+          .TypeConstraint<T>("T")                                   \
+          .Label(mkl_op_registry::kMklOpLabel),                     \
+      MklConv2DOp<CPUDevice, T, true, mkldnn::algorithm_undef>);    \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("_MklConv2DWithRelu")                                    \
+          .Device(DEVICE_CPU)                                       \
+          .TypeConstraint<T>("T")                                   \
+          .Label(mkl_op_registry::kMklOpLabel),                     \
+      MklConv2DOp<CPUDevice, T, false, mkldnn::eltwise_relu>);      \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("_MklConv2DWithBiasAndRelu")                             \
+          .Device(DEVICE_CPU)                                       \
+          .TypeConstraint<T>("T")                                   \
+          .Label(mkl_op_registry::kMklOpLabel),                     \
+      MklConv2DOp<CPUDevice, T, true, mkldnn::eltwise_relu>);       \
   REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklDummyOp<CPUDevice, T>);                \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithRelu")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklDummyOp<CPUDevice, T>);                \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBiasAndRelu")   \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
+#undef REGISTER_MKL_CPU
+#endif
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
