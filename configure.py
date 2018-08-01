@@ -1517,7 +1517,7 @@ def main():
     else:
       set_trisycl_include_dir(environ_cp)
 
-  set_action_env_var(environ_cp, 'TF_NEED_ROCM', 'ROCm', True)
+  set_action_env_var(environ_cp, 'TF_NEED_ROCM', 'ROCm', False)
   if (environ_cp.get('TF_NEED_ROCM') == '1' and
       'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
       'LD_LIBRARY_PATH') != '1'):
