@@ -329,6 +329,8 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -350,6 +352,8 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
         "//tensorflow/python/compat:compat",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
 )
