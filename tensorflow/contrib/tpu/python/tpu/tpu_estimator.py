@@ -781,16 +781,26 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         flattened_inputs = (
             inputs_structure_recorder.flatten_features_and_labels(
                 features, labels))
-
         control_deps.extend(flattened_inputs)
         per_host_sharded_inputs.append(flattened_inputs)
 
-    infeed_queue = tpu_feed.InfeedQueue(
-        number_of_tuple_elements=len(per_host_sharded_inputs[0]))
-    captured_infeed_queue.capture(infeed_queue)
+      if inputs_structure_recorder.flattened_input_dims:
+        # pylint: disable=protected-access
+        infeed_queue = tpu_feed._PartitionedInfeedQueue(
+            number_of_tuple_elements=len(per_host_sharded_inputs[0]),
+            host_id=host_id,
+            input_partition_dims=inputs_structure_recorder.flattened_input_dims,
+            device_assignment=ctx.device_assignment)
+        per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
+            per_host_sharded_inputs)
+      else:
+        infeed_queue = tpu_feed.InfeedQueue(
+            number_of_tuple_elements=len(per_host_sharded_inputs[0]))
+        per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
+            per_host_sharded_inputs,
+            tpu_ordinal_function=tpu_ordinal_function_impl)
+      captured_infeed_queue.capture(infeed_queue)
 
-    per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
-        per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
     return per_host_enqueue_ops
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
@@ -907,21 +917,68 @@ class _InputPipeline(object):
   class InputsStructureRecorder(object):
     """The recorder to record inputs structure."""
 
-    def __init__(self):
+    def __init__(self, input_partition_dims=None):
       # Holds the structure of inputs
       self._feature_names = []
       self._label_names = []
       self._has_labels = False
       self._signals_helper = None
+      self._flattened_input_dims = None
+
+      if input_partition_dims:
+        # This should have been validated in TPUConfig.
+        assert len(input_partition_dims) <= 2, 'must have 1 or 2 elements.'
+        if len(input_partition_dims) == 2:
+          self._feature_dims, self._label_dims = input_partition_dims
+        else:
+          self._feature_dims = input_partition_dims[0]
+          self._label_dims = None
+
+        assert self._feature_dims is not None, ('input_partition_dims[0] must '
+                                                'not be None')
+      else:
+        self._feature_dims = None
+        self._label_dims = None
 
       # Internal state.
       self._initialized = False
 
+    @property
+    def flattened_input_dims(self):
+      assert self._initialized, 'InputsStructureRecorder is not initialized.'
+      return self._flattened_input_dims
+
     def has_labels(self):
       return self._has_labels
 
+    def _flatten_input_dims(self, feature_dims, feature_dims_names, label_dims,
+                            label_dims_names, label_names, has_labels):
+      """Flatten input dims with the same order as flattened input tensors."""
+      flattened_input_dims = []
+      if feature_dims_names:
+        # We need a fixed ordering for matching the tensors in features.
+        flattened_input_dims.extend(
+            [feature_dims[name] for name in feature_dims_names])
+      else:
+        flattened_input_dims.append(feature_dims)
+
+      if label_dims_names:
+        # We need a fixed ordering for matching the tensors in labels.
+        flattened_input_dims.extend(
+            [label_dims[name] for name in label_dims_names])
+      else:
+        if label_names:
+          num_tensors_in_label = len(label_names)
+        else:
+          num_tensors_in_label = int(has_labels)
+        # Setting `None` in input_partition_dims[1] will apply `None` to
+        # all the tensors in labels, regardless of internal structure.
+        flattened_input_dims.extend([label_dims] * num_tensors_in_label)
+
+      return flattened_input_dims
+
     def validate_and_record_structure(self, features, labels, signals=None):
-      """Validates and records the structure of features` and `labels`."""
+      """Validates and records the structure of `features` and `labels`."""
 
       def _extract_key_names(tensor_or_dict):
         if tensor_or_dict is None:
@@ -949,6 +1006,24 @@ class _InputPipeline(object):
         self._feature_names = feature_names
         self._label_names = label_names
         self._has_labels = has_labels
+        if self._feature_dims is not None:
+          feature_dims_names = _extract_key_names(self._feature_dims)
+          if feature_dims_names != feature_names:
+            raise ValueError(
+                'TPUConfig.input_partition_dims[0] mismatched feature'
+                ' keys. Expected {}, got {}'.format(feature_names,
+                                                    feature_dims_names))
+
+          label_dims_names = _extract_key_names(self._label_dims)
+          if self._label_dims is not None and label_dims_names != label_names:
+            raise ValueError(
+                'TPUConfig.input_partition_dims[1] mismatched label'
+                ' keys. Expected {}, got {}'.format(label_names,
+                                                    label_dims_names))
+
+          self._flattened_input_dims = self._flatten_input_dims(
+              self._feature_dims, feature_dims_names, self._label_dims,
+              label_dims_names, label_names, has_labels)
 
     def flatten_features_and_labels(self, features, labels, signals=None):
       """Flattens the `features` and `labels` to a single tensor list."""
@@ -1043,7 +1118,8 @@ class _InputPipeline(object):
     Raises:
       ValueError: If both `sharded_features` and `num_cores` are `None`.
     """
-    self._inputs_structure_recorder = _InputPipeline.InputsStructureRecorder()
+    self._inputs_structure_recorder = _InputPipeline.InputsStructureRecorder(
+        ctx.input_partition_dims)
 
     self._sharded_per_core = ctx.is_input_sharded_per_core()
     self._input_fn = input_fn
