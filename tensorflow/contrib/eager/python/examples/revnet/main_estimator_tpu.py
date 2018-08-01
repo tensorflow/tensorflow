@@ -110,8 +110,6 @@ def model_fn(features, labels, mode, params):
   Returns:
     An instance of `tf.contrib.tpu.TPUEstimatorSpec`
   """
-  tf.logging.info("features: {}".format(features.dtype))
-  tf.logging.info("labels: {}".format(labels.dtype))
   revnet_config = params["revnet_config"]
   model = revnet.RevNet(config=revnet_config)
 
