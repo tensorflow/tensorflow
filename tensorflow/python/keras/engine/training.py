@@ -31,7 +31,9 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.engine import training_arrays
+from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
@@ -112,6 +114,9 @@ class Model(Network):
     self._iterator_get_next = weakref.WeakKeyDictionary()
     # Create a cache for dataset - uninitialized iterators
     self._dataset_iterator_cache = weakref.WeakKeyDictionary()
+    # initializing _distribution_strategy here since it is possible to call
+    # predict on a model without compiling it.
+    self._distribution_strategy = None
 
   def _set_sample_weight_attributes(self, sample_weight_mode,
                                     skip_target_weighing_indices):
@@ -140,6 +145,7 @@ class Model(Network):
               sample_weight_mode=None,
               weighted_metrics=None,
               target_tensors=None,
+              distribute=None,
               **kwargs):
     """Configures the model for training.
 
@@ -183,12 +189,32 @@ class Model(Network):
             can specify them via the `target_tensors` argument. It can be
             a single tensor (for a single-output model), a list of tensors,
             or a dict mapping output names to target tensors.
+        distribute: The DistributionStrategy instance that we want to use to
+            distribute the training of the model.
         **kwargs: These arguments are passed to `tf.Session.run`.
 
     Raises:
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    # Validate that arguments passed by the user to `compile` are supported by
+    # DistributionStrategy.
+    if distribute and not isinstance(
+        optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+      raise ValueError('Only TF native optimizers are supported with '
+                       'DistributionStrategy.')
+    if distribute and context.executing_eagerly():
+      raise ValueError('DistributionStrategy is not supported in Eager mode.')
+    if distribute and sample_weight_mode:
+      raise ValueError('sample_weight_mode is not supported with '
+                       'DistributionStrategy.')
+    if distribute and weighted_metrics:
+      raise ValueError('weighted_metrics is not supported with '
+                       'DistributionStrategy.')
+    if distribute and target_tensors:
+      raise ValueError('target_tensors is not supported with '
+                       'DistributionStrategy.')
+
     loss = loss or {}
     if context.executing_eagerly() and not isinstance(
         optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
@@ -211,6 +237,17 @@ class Model(Network):
       raise ValueError('target_tensors is not supported in Eager mode.')
     self.target_tensors = target_tensors
 
+    # Set DistributionStrategy specific parameters.
+    self._distribution_strategy = distribute
+    if self._distribution_strategy is not None:
+      self._grouped_model = self._compile_distributed_model(
+          self._distribution_strategy)
+      with self._distribution_strategy.scope():
+        first_replicated_model = self._distribution_strategy.unwrap(
+            self._grouped_model)[0]
+      # We initialize the callback model with the first replicated model.
+      self._replicated_model = DistributedCallbackModel(first_replicated_model)
+      self._replicated_model.set_original_model(self)
     if not self.built:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
@@ -482,6 +519,19 @@ class Model(Network):
     trainable_weights = self.trainable_weights
     self._collected_trainable_weights = trainable_weights
 
+  def _compile_distributed_model(self, distribution_strategy):
+    # TODO(anjalisridhar): Can we move the clone_and_build_model to outside the
+    # model?
+    def _clone_model_per_tower(model):
+      new_model = training_distributed.clone_and_build_model(model)
+      return new_model
+
+    with distribution_strategy.scope():
+      # Create a copy of this model on each of the devices.
+      grouped_models = distribution_strategy.call_for_each_tower(
+          _clone_model_per_tower, self)
+    return grouped_models
+
   def _check_trainable_weights_consistency(self):
     """Check trainable weights count consistency.
 
@@ -572,6 +622,103 @@ class Model(Network):
       self._iterator_get_next[iterator] = get_next_op
     return get_next_op
 
+  def _distribution_standardize_user_data(self,
+                                          x,
+                                          y=None,
+                                          sample_weight=None,
+                                          class_weight=None,
+                                          batch_size=None,
+                                          check_steps=False,
+                                          steps_name='steps',
+                                          steps=None,
+                                          validation_split=0):
+    """Runs validation checks on input and target data passed by the user.
+
+    This is called when using DistributionStrategy to train, evaluate or serve
+    the model.
+
+    Args:
+      x: Input data. A `tf.data` dataset.
+      y: Since `x` is a dataset, `y` should not be specified
+        (since targets will be obtained from the iterator).
+      sample_weight: An optional sample-weight array passed by the user to
+        weight the importance of each sample in `x`.
+      class_weight: An optional class-weight array by the user to
+        weight the importance of samples in `x` based on the class they belong
+        to, as conveyed by `y`.
+      batch_size: Integer batch size. If provided, it is used to run additional
+        validation checks on stateful models.
+      check_steps: boolean, True if we want to check for validity of `steps` and
+        False, otherwise.
+      steps_name: The public API's parameter name for `steps`.
+      steps: Integer or `None`. Total number of steps (batches of samples) to
+        execute.
+      validation_split: Float between 0 and 1.
+        Fraction of the training data to be used as validation data.
+
+    Returns:
+      A tuple of 3 lists: input arrays, target arrays, sample-weight arrays.
+      If the model's input and targets are symbolic, these lists are empty
+      (since the model takes no user-provided data, instead the data comes
+      from the symbolic inputs/targets).
+
+    Raises:
+      ValueError: In case of invalid user-provided data.
+      RuntimeError: If the model was never compiled.
+    """
+    if sample_weight is not None and sample_weight.all():
+      raise ValueError('sample_weight is currently not supported when using '
+                       'DistributionStrategy.')
+    if class_weight:
+      raise ValueError('class_weight is currently not supported when using '
+                       'DistributionStrategy.')
+
+    # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
+    # We require users to pass Datasets since we distribute the dataset across
+    # multiple devices.
+    if not isinstance(x, dataset_ops.Dataset):
+      raise ValueError('When using DistributionStrategy you must specify a '
+                       'Dataset object instead of a %s.' % type(x))
+    # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
+    # function which returns a Dataset. Currently distribute_dataset() only
+    # accepts a function that returns a Dataset. Once we add support for being
+    # able to clone a Dataset on multiple workers we can remove this lambda.
+    result = self._distribution_strategy.distribute_dataset(lambda: x)
+    iterator = result.make_initializable_iterator()
+    K.get_session().run(iterator.initializer)
+    # Validates `steps` argument based on x's type.
+    if check_steps:
+      if steps is None:
+        raise ValueError('When using a Dataset instance as input to a model, '
+                         'you should specify the `{steps_name}` argument.'
+                         .format(steps_name=steps_name))
+
+    training_utils.validate_iterator_input(x, y, sample_weight,
+                                           validation_split)
+    # x an y may be PerDevice objects with an input and output tensor
+    # corresponding to each device. For example, x could be
+    # PerDevice:{device: get_next tensor,...}.
+    next_element = iterator.get_next()
+
+    if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
+      raise ValueError('Please provide data as a list or tuple of 2 elements '
+                       ' - input and target pair. Received %s' % next_element)
+    x, y = next_element
+    # Validate that all the elements in x and y are of the same type and shape.
+    # We can then pass the first element of x and y to `_standardize_weights`
+    # below and be confident of the output. We need to reopen the scope since
+    # we unwrap values when we validate x and y.
+    with self._distribution_strategy.scope():
+      x_values, y_values = distributed_training_utils.\
+        validate_distributed_dataset_inputs(self._distribution_strategy, x, y)
+
+    _, _, sample_weights = self._standardize_weights(x_values[0],
+                                                     y_values[0],
+                                                     sample_weight,
+                                                     class_weight,
+                                                     batch_size)
+    return x, y, sample_weights
+
   def _standardize_user_data(self,
                              x,
                              y=None,
@@ -634,6 +781,18 @@ class Model(Network):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
+    if self._distribution_strategy:
+      return self._distribution_standardize_user_data(
+          x,
+          y,
+          sample_weight=sample_weight,
+          class_weight=class_weight,
+          batch_size=batch_size,
+          check_steps=check_steps,
+          steps_name=steps_name,
+          steps=steps,
+          validation_split=validation_split)
+
     if isinstance(x, dataset_ops.Dataset):
       if context.executing_eagerly():
         x = x.make_one_shot_iterator()
@@ -682,7 +841,12 @@ class Model(Network):
         raise ValueError('Please provide data as a list or tuple of 2 elements '
                          ' - input and target pair. Received %s' % next_element)
       x, y = next_element
+    x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
+                                                     class_weight, batch_size)
+    return x, y, sample_weights
 
+  def _standardize_weights(self, x, y, sample_weight=None, class_weight=None,
+                           batch_size=None,):
     # First, we build/compile the model on the fly if necessary.
     all_inputs = []
     is_build_called = False
@@ -844,11 +1008,12 @@ class Model(Network):
                                          feed_sample_weight_modes)
       ]
       # Check that all arrays have the same length.
-      training_utils.check_array_lengths(x, y, sample_weights)
-      if self._is_graph_network and not context.executing_eagerly():
-        # Additional checks to avoid users mistakenly using improper loss fns.
-        training_utils.check_loss_and_target_compatibility(
-            y, self._feed_loss_fns, feed_output_shapes)
+      if not self._distribution_strategy:
+        training_utils.check_array_lengths(x, y, sample_weights)
+        if self._is_graph_network and not context.executing_eagerly():
+          # Additional checks to avoid users mistakenly using improper loss fns.
+          training_utils.check_loss_and_target_compatibility(
+              y, self._feed_loss_fns, feed_output_shapes)
     else:
       y = []
       sample_weights = []
@@ -1186,6 +1351,9 @@ class Model(Network):
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
 
     # Validate and standardize user data.
+    if self._distribution_strategy:
+      distributed_training_utils.validate_callbacks(callbacks)
+
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
@@ -1263,6 +1431,17 @@ class Model(Network):
           val_targets=val_y,
           val_sample_weights=val_sample_weights,
           shuffle=shuffle,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps)
+    elif self._distribution_strategy:
+      return training_distributed.fit_loop(
+          self, x, y,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          val_inputs=val_x,
+          val_targets=val_y,
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
@@ -1358,12 +1537,29 @@ class Model(Network):
 
     if context.executing_eagerly():
       return training_eager.test_loop(
-          self, inputs=x, targets=y, sample_weights=sample_weights,
-          batch_size=batch_size, verbose=verbose, steps=steps)
+          self,
+          inputs=x,
+          targets=y,
+          sample_weights=sample_weights,
+          batch_size=batch_size,
+          verbose=verbose,
+          steps=steps)
+    elif self._distribution_strategy:
+      return training_distributed.test_loop(
+          self,
+          inputs=x,
+          targets=y,
+          verbose=verbose,
+          steps=steps)
     else:
       return training_arrays.test_loop(
-          self, inputs=x, targets=y, sample_weights=sample_weights,
-          batch_size=batch_size, verbose=verbose, steps=steps)
+          self,
+          inputs=x,
+          targets=y,
+          sample_weights=sample_weights,
+          batch_size=batch_size,
+          verbose=verbose,
+          steps=steps)
 
   def predict(self, x, batch_size=None, verbose=0, steps=None):
     """Generates output predictions for the input samples.
@@ -1408,6 +1604,9 @@ class Model(Network):
     if context.executing_eagerly():
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
+    elif self._distribution_strategy:
+      return training_distributed.predict_loop(
+          self, x, verbose=verbose, steps=steps)
     else:
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
@@ -1455,6 +1654,9 @@ class Model(Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    if self._distribution_strategy:
+      raise ValueError('`train_on_batch` is not supported for models '
+                       'compiled with DistributionStrategy.')
     # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight, class_weight=class_weight)
@@ -1511,6 +1713,9 @@ class Model(Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    if self._distribution_strategy:
+      raise ValueError('`test_on_batch` is not supported for models '
+                       'compiled with DistributionStrategy.')
     # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight)
@@ -1548,6 +1753,9 @@ class Model(Network):
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
+    if self._distribution_strategy:
+      raise ValueError('`predict_on_batch` is not supported for models '
+                       'compiled with DistributionStrategy.')
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
     if context.executing_eagerly():
@@ -1811,3 +2019,45 @@ class Model(Network):
         workers=workers,
         use_multiprocessing=use_multiprocessing,
         verbose=verbose)
+
+
+class DistributedCallbackModel(Model):
+  """Model that is used for callbacks with DistributionStrategy."""
+
+  def __init__(self, model):
+    super(DistributedCallbackModel, self).__init__()
+    # TODO(anjalisridhar): Right now the only attributes set are the layer and
+    # weights. We may need to set additional attributes as needed since we have
+    # not called compile on this model.
+
+  def set_original_model(self, orig_model):
+    self._original_model = orig_model
+
+  def save_weights(self, filepath, overwrite=True, save_format=None):
+    self._replicated_model.save_weights(filepath, overwrite=overwrite,
+                                        save_format=save_format)
+
+  def save(self, filepath, overwrite=True, include_optimizer=True):
+    # save weights from the distributed model to the original model
+    distributed_model_weights = self.get_weights()
+    self._original_model.set_weights(distributed_model_weights)
+    # TODO(anjalisridhar): Do we need to save the original model here?
+    # Saving the first replicated model works as well.
+    self._original_model.save(filepath, overwrite=True, include_optimizer=False)
+
+  def load_weights(self, filepath, by_name=False):
+    self._original_model.load_weights(filepath, by_name=False)
+    # Copy the weights from the original model to each of the replicated models.
+    orig_model_weights = self._original_model.get_weights()
+    distributed_training_utils.set_weights(
+        self._original_model._distribution_strategy, self,  # pylint: disable=protected-access
+        orig_model_weights)
+
+  def __getattr__(self, item):
+    # Whitelisted atttributes of the model that can be accessed by the user
+    # during a callback.
+    if item not in ['_setattr_tracking']:
+      logging.warning('You are accessing attribute ' + item + 'of the'
+                      'DistributedCallbackModel that may not have been set'
+                      'correctly.')
+
