@@ -294,6 +294,9 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
+  def read_value(self):
+    return distribute_lib.get_distribution_strategy().read_var(self)
+
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass

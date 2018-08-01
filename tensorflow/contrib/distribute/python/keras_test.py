@@ -107,7 +107,8 @@ class TestKerasDistributionStrategy(test_util.TensorFlowTestCase):
         optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
     config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
                                       model_dir=self._base_dir,
-                                      train_distribute=dist)
+                                      train_distribute=dist,
+                                      eval_distribute=dist)
     with self.test_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=config)
