@@ -1258,28 +1258,24 @@ class Estimator(object):
         training_chief_hooks = get_hooks_from_the_first_device(
             grouped_estimator_spec.training_chief_hooks)
 
-        # TODO(sourabhbajaj): Merge the two code paths once we can
-        # handle per device variables correctly in reduce and can output
-        # the loss scaler.
+        # TODO(sourabhbajaj): Merge the two code paths and clean up the code
         if is_tpu_strategy:
-          loss = self._train_distribution.unwrap(
-              self._train_distribution.reduce(
-                  distribute_lib.get_loss_reduction(), tpu_result)[0])[0]
+          distributed_loss = tpu_result
           worker_hooks.append(
               estimator_util.StrategyInitFinalizeHook(
                   self._train_distribution.get_initialization_ops,
                   self._train_distribution.get_finalize_ops))
         else:
-          loss = self._train_distribution.unwrap(
-              self._train_distribution.reduce(
-                  distribute_lib.get_loss_reduction(),
-                  grouped_estimator_spec.loss,
-                  destinations='/device:CPU:0'))[0]
+          distributed_loss = grouped_estimator_spec.loss
           distributed_train_op = grouped_estimator_spec.train_op
 
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
-            loss=loss,
+            loss=self._train_distribution.unwrap(
+                self._train_distribution.reduce(
+                    distribute_lib.get_loss_reduction(),
+                    distributed_loss,
+                    destinations='/device:CPU:0'))[0],
             train_op=self._train_distribution.group(distributed_train_op),
             training_hooks=training_hooks,
             training_chief_hooks=training_chief_hooks,
