@@ -52,6 +52,7 @@ class TPUConfig(
         'per_host_input_for_training',
         'tpu_job_name',
         'initial_infeed_sleep_secs',
+        'input_partition_dims',
     ])):
   r"""TPU related configuration required by `TPUEstimator`.
 
@@ -89,6 +90,17 @@ class TPUConfig(
     initial_infeed_sleep_secs: The number of seconds the infeed thread should
       wait before enqueueing the first batch. This helps avoid timeouts for
       models that require a long compilation time.
+    input_partition_dims: A nested list to describe the partition dims
+      for all the tensors from input_fn(). The structure of
+      input_partition_dims must match the structure of `features` and
+      `labels` from input_fn(). The total number of partitions must match
+      `num_cores_per_replica`. For example, if input_fn() returns two tensors:
+      images with shape [N, H, W, C] and labels [N].
+      input_partition_dims = [[1, 2, 2, 1], None] will split the images to 4
+      pieces and feed into 4 TPU cores. labels tensor are directly broadcasted
+      to all the TPU cores since the partition dims is `None`.
+      Current limitations: This feature is only supported with the PER_HOST_V2
+      input mode.
 
     Raises:
       ValueError: If `computation_shape` or `computation_shape` are invalid.
@@ -100,7 +112,8 @@ class TPUConfig(
               num_cores_per_replica=None,
               per_host_input_for_training=True,
               tpu_job_name=None,
-              initial_infeed_sleep_secs=None):
+              initial_infeed_sleep_secs=None,
+              input_partition_dims=None):
 
     # Check iterations_per_loop.
     util_lib.check_positive_integer(iterations_per_loop,
@@ -109,6 +122,20 @@ class TPUConfig(
     # Check num_shards.
     if num_shards is not None:
       util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
+
+    if input_partition_dims is not None:
+      if len(input_partition_dims) != 1 and len(input_partition_dims) != 2:
+        raise ValueError(
+            'input_partition_dims must be a list/tuple with one or two'
+            ' elements.')
+
+      if per_host_input_for_training is not InputPipelineConfig.PER_HOST_V2:
+        raise ValueError(
+            'input_partition_dims is only supported in PER_HOST_V2 mode.')
+
+      if num_cores_per_replica is None:
+        raise ValueError(
+            'input_partition_dims requires setting num_cores_per_replica.')
 
     # Parse computation_shape
     if num_cores_per_replica is not None:
@@ -138,7 +165,8 @@ class TPUConfig(
         num_cores_per_replica=num_cores_per_replica,
         per_host_input_for_training=per_host_input_for_training,
         tpu_job_name=tpu_job_name,
-        initial_infeed_sleep_secs=initial_infeed_sleep_secs)
+        initial_infeed_sleep_secs=initial_infeed_sleep_secs,
+        input_partition_dims=input_partition_dims)
 
 
 class RunConfig(run_config_lib.RunConfig):
