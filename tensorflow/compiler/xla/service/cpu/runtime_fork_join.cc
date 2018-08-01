@@ -20,6 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -58,7 +59,7 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 //   [partition1_dim2_start]
 //   [partition1_dim2_limit]
 //
-void __xla_cpu_runtime_ParallelForkJoin(
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
     void** temps, uint64* prof_counters, int32 num_partitions,
     int64* partitions, int32 num_partitioned_dims, void* function_ptr) {
