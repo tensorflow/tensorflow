@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "attr_to_rtg.h"
 #include "convert_graph.h"
+#include "dump_graph.h"
 namespace tensorflow {
 namespace rtglib {
 namespace convert {
@@ -32,9 +33,7 @@ void GetProgram(const NameAttrList& function, void ** p_program, int &bytes, str
         const NameAttrList& func = value.list().func(i);
         convert.decodeAttr(func);
     }
-    std::cout << "---After decode---" << std::endl;
-    std::cout << name << std::endl;
-    std::cout << *program << std::endl;
+    dump_graph::DumpMIGraph("After decode", name, program);
     bytes = convert.next_offset;
     *p_program = program;
 }
@@ -76,9 +75,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
     }
     if (!use_gpu) {
         program->compile(migraph::cpu::cpu_target{});
-        std::cout << "---After compile---" << std::endl;
-        std::cout << name << std::endl;
-        std::cout << *program << std::endl;
+        dump_graph::DumpMIGraph("After compile", name, program);
         arg = program->eval(params);
     } else  {
         
@@ -87,9 +84,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
         params["output"] = {output_shape, output_ptr};
         // params["handle"] = {migraph::shape::any_type, handle.get()};
         program->compile(migraph::gpu::target{});
-        std::cout << "---After compile---" << std::endl;
-        std::cout << name << std::endl;
-        std::cout << *program << std::endl;
+        dump_graph::DumpMIGraph("After compile", name, program);
         arg = program->eval(params);
     }
     const TensorShape dst_shape = output->shape();    
@@ -144,11 +139,8 @@ void AdjustShape(void * p_program, std::vector<const Tensor*>& input_ptrs, strin
                 break;
         }
     }
-    if (recompute) {
-        std::cout << "---After adjustment to dynamic shape--" << std::endl;
-        std::cout << name << std::endl;
-        std::cout << *program << std::endl;
-    }
+    if (recompute)
+        dump_graph::DumpMIGraph("After dynamic shape adjustment", name, program);
 }
 
 } // namspace convert

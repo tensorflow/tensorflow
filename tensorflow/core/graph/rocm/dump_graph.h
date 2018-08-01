@@ -25,7 +25,8 @@ namespace tensorflow {
 namespace rtglib {
 namespace dump_graph {
 void DumpGraphDefToFile(const string& name, const GraphDef& graph_def);
-void DumpGraphToFile(const string& name, const Graph& graph); 
+void DumpGraphToFile(const string& name, const Graph& graph);
+void DumpMIGraph(const string&, const string&, void * p_program);
                           
 } // namespace dump_graph
 } // namespace rtglib

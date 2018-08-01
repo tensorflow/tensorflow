@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "dump_graph.h"
 
+#include "rocm/include/migraph/program.hpp"
+
 namespace tensorflow {
 namespace rtglib {    
 namespace dump_graph {
@@ -63,6 +65,15 @@ void DumpGraphToFile(const string& name, const Graph& graph) {
   graph.ToGraphDef(&graph_def);
   return DumpGraphDefToFile(name, graph_def);
 }
+
+void DumpMIGraph(const string& head, const string& name, void * p_program)
+{
+    migraph::program* program = reinterpret_cast<migraph::program*>(p_program);
+    std::cout << "---" << head << "---" << std::endl;
+    std::cout << name << std::endl;
+    std::cout << *program << std::endl;
+}
+        
     
 } // namespace dump_graph
 } // namespace rtglib

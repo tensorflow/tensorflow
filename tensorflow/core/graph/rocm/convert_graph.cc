@@ -876,9 +876,7 @@ Status ConvertSubgraphToRTG(std::unique_ptr<Graph>* g, Cluster& cluster, T_INPUT
         cluster_name += "-";
         device = node->assigned_device_name();
     }
-    std::cout << "---After encode---" << std::endl;
-    std::cout << cluster_name << std::endl;
-    std::cout << *program << std::endl;
+    dump_graph::DumpMIGraph("After encode", cluster_name, program);
     // call program->optimize()
     Converter bwd_convert(program, nullptr);
     // TODO: use gpu
