@@ -11,11 +11,32 @@ The Dockerfiles in the `dockerfiles` directory must have their build context set
 to **the directory with this README.md** to copy in helper files. For example:
 
 ```bash
-$ docker build -f ./dockerfiles/cpu.Dockerfile -t tf-cpu .
+$ docker build -f ./dockerfiles/cpu.Dockerfile -t tf .
 ```
 
 Each Dockerfile has its own set of available `--build-arg`s which are documented
 in the Dockerfile itself.
+
+## Running
+
+After building the image with the tag `tf` (for example):
+
+```bash
+# A volume mount is optional but highly recommended, especially for Jupyter
+
+# CPU-based images
+$ docker run -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
+
+# GPU-based images (set up nvidia-docker2 first)
+$ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
+
+# Images with Jupyter run on port 8888, and needs a volume for notebooks
+$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(PWD):/notebooks -it tf
+
+# Development images
+$ docker run --user $(id -u):$(id -g) -it tf
+docker$ git clone https://github.com/tensorflow/tensorflow
+```
 
 ## Maintaining
 
