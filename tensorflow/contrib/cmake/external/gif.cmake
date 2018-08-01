@@ -41,6 +41,8 @@ if(WIN32)
           -DCMAKE_BUILD_TYPE:STRING=Release
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
           -DCMAKE_INSTALL_PREFIX:STRING=${gif_INSTALL}
+      GIT_SHALLOW 1
+      GIT_PROGRESS 1
   )
 
   ExternalProject_Add_Step(gif copy_unistd
@@ -69,6 +71,8 @@ else()
           --prefix=${gif_INSTALL}
           --libdir=${gif_INSTALL}/lib
          --enable-shared=yes
+     GIT_SHALLOW 1
+     GIT_PROGRESS 1
   )
 
 endif()

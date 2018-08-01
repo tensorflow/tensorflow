@@ -51,4 +51,6 @@ ExternalProject_Add(eigen
         -DCMAKE_INSTALL_PREFIX:STRING=${eigen_INSTALL}
         -DINCLUDE_INSTALL_DIR:STRING=${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive
         -DBUILD_TESTING:BOOL=OFF
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )

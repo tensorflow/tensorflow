@@ -48,7 +48,10 @@ ExternalProject_Add(highwayhash
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-        -DCMAKE_INSTALL_PREFIX:STRING=${highwayhash_INSTALL})
+        -DCMAKE_INSTALL_PREFIX:STRING=${highwayhash_INSTALL}
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
+)
 
 add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${highwayhash_INSTALL}/include/ ${highwayhash_INCLUDE_DIR}/highwayhash)

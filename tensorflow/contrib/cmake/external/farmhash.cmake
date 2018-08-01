@@ -39,7 +39,10 @@ if(WIN32)
       CMAKE_CACHE_ARGS
           -DCMAKE_BUILD_TYPE:STRING=Release
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-          -DCMAKE_INSTALL_PREFIX:STRING=${farmhash_INSTALL})
+          -DCMAKE_INSTALL_PREFIX:STRING=${farmhash_INSTALL}
+      GIT_SHALLOW 1
+      GIT_PROGRESS 1
+  )
 else()
   set(farmhash_STATIC_LIBRARIES ${farmhash_INSTALL}/lib/libfarmhash.a)
 
@@ -55,7 +58,10 @@ else()
           --prefix=${farmhash_INSTALL}
           --libdir=${farmhash_INSTALL}/lib
           --enable-shared=yes
-          CXXFLAGS=-fPIC)
+          CXXFLAGS=-fPIC
+      GIT_SHALLOW 1
+      GIT_PROGRESS 1
+  )
 
 endif()
 

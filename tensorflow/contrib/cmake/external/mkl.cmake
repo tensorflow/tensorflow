@@ -53,7 +53,10 @@ ExternalProject_Add(mkl
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
-    INSTALL_COMMAND "")
+    INSTALL_COMMAND ""
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
+)
 
 # put mkl dynamic libraries in one bin directory
 add_custom_target(mkl_create_destination_dir

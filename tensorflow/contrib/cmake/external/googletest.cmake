@@ -46,4 +46,6 @@ ExternalProject_Add(googletest
         -DBUILD_GMOCK:BOOL=OFF
         -DBUILD_GTEST:BOOL=ON
         -Dgtest_force_shared_crt:BOOL=ON
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )

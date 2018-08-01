@@ -20,7 +20,7 @@ set(PROTOBUF_TAG v3.6.0)
 
 if(WIN32)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-    set(protobuf_STATIC_LIBRARIES 
+    set(protobuf_STATIC_LIBRARIES
       debug ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/libprotobufd.lib
       optimized ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/libprotobuf.lib)
     set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/protoc.exe)
@@ -78,4 +78,6 @@ ExternalProject_Add(protobuf
         -Dprotobuf_BUILD_TESTS:BOOL=OFF
         -Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )

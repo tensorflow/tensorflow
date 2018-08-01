@@ -54,6 +54,8 @@ if (WIN32)
             -DCMAKE_BUILD_TYPE:STRING=Release
             -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
             -DCMAKE_INSTALL_PREFIX:STRING=${jpeg_INSTALL}
+        GIT_SHALLOW 1
+        GIT_PROGRESS 1
     )
 
     ExternalProject_Add_Step(jpeg copy_jconfig
@@ -79,7 +81,7 @@ else()
             --enable-shared=yes
 	    CFLAGS=-fPIC
     )
-  
+
 endif()
 
 # put jpeg includes in the directory where they are expected

@@ -22,15 +22,15 @@ set(png_INSTALL ${CMAKE_BINARY_DIR}/png/install)
 
 if(WIN32)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
-    set(png_STATIC_LIBRARIES 
+    set(png_STATIC_LIBRARIES
       debug ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_staticd.lib
       optimized ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_static.lib)
   else()
     if(CMAKE_BUILD_TYPE EQUAL Debug)
-      set(png_STATIC_LIBRARIES 
+      set(png_STATIC_LIBRARIES
         ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_staticd.lib)
     else()
-      set(png_STATIC_LIBRARIES 
+      set(png_STATIC_LIBRARIES
         ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_static.lib)
     endif()
   endif()
@@ -57,7 +57,9 @@ ExternalProject_Add(png
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${png_INSTALL}
-	-DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+	      -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )
 
 ## put png includes in the directory where they are expected

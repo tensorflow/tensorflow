@@ -51,4 +51,6 @@ ExternalProject_Add(double_conversion
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )

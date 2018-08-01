@@ -21,7 +21,7 @@ set(jemalloc_BUILD ${CMAKE_CURRENT_BINARY_DIR}/jemalloc/src/jemalloc)
 
 if (WIN32)
     set(jemalloc_INCLUDE_DIRS
-        ${jemalloc_INCLUDE_DIRS} 
+        ${jemalloc_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR}/jemalloc/src/jemalloc/include/msvc_compat
     )
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
@@ -47,4 +47,6 @@ ExternalProject_Add(jemalloc
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -Dwith-jemalloc-prefix:STRING=jemalloc_
         -Dwithout-export:BOOL=ON
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )
