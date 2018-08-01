@@ -183,7 +183,8 @@ class Estimator(object):
     self._config = config
 
     # The distribute field contains an instance of DistributionStrategy.
-    self._distribution = self._config.train_distribute
+    self._train_distribution = self._config.train_distribute
+    self._eval_distribution = self._config.eval_distribute
     # Model directory.
     self._model_dir = self._config.model_dir
     self._session_config = self._config.session_config
@@ -422,10 +423,9 @@ class Estimator(object):
                        'initialization to evaluate.'.format(self._model_dir))
         checkpoint_path = latest_path
 
-      with ops.Graph().as_default():
-        (scaffold, update_op,
-         eval_dict, all_hooks) = self._evaluate_build_graph(
-             input_fn, hooks, checkpoint_path)
+      def _evaluate():
+        (scaffold, update_op, eval_dict, all_hooks) = (
+            self._evaluate_build_graph(input_fn, hooks, checkpoint_path))
         return self._evaluate_run(
             checkpoint_path=checkpoint_path,
             scaffold=scaffold,
@@ -433,6 +433,15 @@ class Estimator(object):
             eval_dict=eval_dict,
             all_hooks=all_hooks,
             output_dir=self.eval_dir(name))
+
+      with ops.Graph().as_default():
+        # TODO(priyag): Support distributed eval on TPUs.
+        if (self._eval_distribution
+            and self._eval_distribution.__class__.__name__ != 'TPUStrategy'):
+          with self._eval_distribution.scope():
+            return _evaluate()
+        else:
+          return _evaluate()
 
   def _convert_eval_steps_to_hooks(self, steps):
     if steps is None:
@@ -973,10 +982,11 @@ class Estimator(object):
                       'QueueRunner. That means predict yields forever. '
                       'This is probably a mistake.')
 
-  def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+  def _get_features_and_labels_from_input_fn(self, input_fn, mode,
+                                             distribution=None):
     """Extracts the `features` and labels from return values of `input_fn`."""
-    if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
-      result = self._distribution.distribute_dataset(
+    if distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+      result = distribution.distribute_dataset(
           lambda: self._call_input_fn(input_fn, mode))
     else:
       result = self._call_input_fn(input_fn, mode)
@@ -1110,7 +1120,7 @@ class Estimator(object):
     return model_fn_results
 
   def _train_model(self, input_fn, hooks, saving_listeners):
-    if self._distribution:
+    if self._train_distribution:
       return self._train_model_distributed(input_fn, hooks, saving_listeners)
     else:
       return self._train_model_default(input_fn, hooks, saving_listeners)
@@ -1162,22 +1172,23 @@ class Estimator(object):
     Returns:
       Loss from training
     """
-    self._distribution.configure(self._session_config)
+    self._train_distribution.configure(self._session_config)
 
     # TODO(sourabhbajaj): Remove this hack once we migrate the other strategies
     # to use the new API
-    is_tpu_strategy = self._distribution.__class__.__name__ == 'TPUStrategy'
+    is_tpu_strategy = (
+        self._train_distribution.__class__.__name__ == 'TPUStrategy')
 
     worker_hooks = []
     with ops.Graph().as_default() as g:
-      with self._distribution.scope():
+      with self._train_distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
 
         if is_tpu_strategy:
           # Create the iterator for run_on_dataset function
           # TODO(sourabhbajaj): refactor this out to call a function on the
           # strategy
-          dataset = self._distribution.distribute_dataset(
+          dataset = self._train_distribution.distribute_dataset(
               lambda: self._call_input_fn(input_fn,  # pylint: disable=g-long-lambda
                                           model_fn_lib.ModeKeys.TRAIN))
           iterator = dataset.make_initializable_iterator()
@@ -1187,14 +1198,15 @@ class Estimator(object):
           global_step_tensor = self._create_and_assert_global_step(g)
           # we want to add to the global collection in the main thread not the
           # tower threads.
-          ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
-                                self._distribution.read_var(global_step_tensor))
+          ops.add_to_collection(
+              training_util.GLOBAL_STEP_READ_KEY,
+              self._train_distribution.read_var(global_step_tensor))
 
           # Create a step_fn from the train_op of grouped_estimator_spec
           def step_fn(ctx, inputs):
             """A single step that is passed to run_on_dataset."""
             features, labels = inputs
-            estimator_spec = self._distribution.call_for_each_tower(
+            estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
                 features,
                 labels,
@@ -1210,103 +1222,34 @@ class Estimator(object):
           # work correctly. Currently hardcoded at 2
           initial_training_loss = constant_op.constant(1e7)
           distributed_train_op, tpu_result, ctx = \
-              self._distribution._run_steps_on_dataset(  # pylint: disable=protected-access
+              self._train_distribution._run_steps_on_dataset(  # pylint: disable=protected-access
                   step_fn, iterator, iterations=2,
                   initial_loop_values=initial_training_loss)
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
           features, labels, input_hooks = (
               self._get_features_and_labels_from_input_fn(
-                  input_fn, model_fn_lib.ModeKeys.TRAIN))
+                  input_fn, model_fn_lib.ModeKeys.TRAIN,
+                  self._train_distribution))
           worker_hooks.extend(input_hooks)
           global_step_tensor = self._create_and_assert_global_step(g)
           # we want to add to the global collection in the main thread not the
           # tower threads.
-          ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
-                                self._distribution.read_var(global_step_tensor))
-          grouped_estimator_spec = self._distribution.call_for_each_tower(
+          ops.add_to_collection(
+              training_util.GLOBAL_STEP_READ_KEY,
+              self._train_distribution.read_var(global_step_tensor))
+          grouped_estimator_spec = self._train_distribution.call_for_each_tower(
               self._call_model_fn,
               features,
               labels,  # although this will be None it seems
               model_fn_lib.ModeKeys.TRAIN,
               self.config)
 
-        # TODO(anjalisridhar): Figure out how to resolve the following scaffold
-        # parameters: init_feed_dict, init_fn.
-        scaffold_list = self._distribution.unwrap(
-            grouped_estimator_spec.scaffold)
-        init_feed_dict = [
-            s.init_feed_dict
-            for s in scaffold_list
-            if s.init_feed_dict is not None
-        ]
-        if init_feed_dict:
-          init_feed_dict = self._distribution.group(init_feed_dict)
-        else:
-          init_feed_dict = None
-
-        init_fn = [s.init_fn for s in scaffold_list if s.init_fn is not None]
-        if init_fn:
-          init_fn = self._distribution.group(init_fn)
-        else:
-          init_fn = None
-
-        init_op = [s.init_op for s in scaffold_list if s.init_op is not None]
-        if init_op:
-          init_op = self._distribution.group(init_op)
-        else:
-          init_op = None
-
-        def _unwrap_and_concat(value):
-          value = nest.flatten(self._distribution.unwrap(value))
-          if len(value) != 1:
-            return array_ops.concat(value)
-          return value[0]
-
-        ready_op = self._distribution.call_for_each_tower(
-            create_per_tower_ready_op, grouped_estimator_spec.scaffold)
-        if ready_op is not None:
-          ready_op = _unwrap_and_concat(ready_op)
-        else:
-          ready_op = None
-
-        ready_for_local_init_op = self._distribution.call_for_each_tower(
-            create_per_tower_ready_for_local_init_op,
-            grouped_estimator_spec.scaffold)
-        if ready_for_local_init_op is not None:
-          ready_for_local_init_op = _unwrap_and_concat(ready_for_local_init_op)
-        else:
-          ready_for_local_init_op = None
-
-        local_init_op = [
-            s.local_init_op
-            for s in scaffold_list
-            if s.local_init_op is not None
-        ]
-        if local_init_op:
-          local_init_op = self._distribution.group(local_init_op)
-        else:
-          local_init_op = None
-
-        summary_op = [
-            s.summary_op for s in scaffold_list if s.summary_op is not None
-        ]
-        if summary_op:
-          summary_op = self._distribution.group(summary_op)
-        else:
-          summary_op = None
-
-        scaffold = monitored_session.Scaffold(
-            init_op=init_op,
-            ready_op=ready_op,
-            ready_for_local_init_op=ready_for_local_init_op,
-            local_init_op=local_init_op,
-            summary_op=summary_op,
-            init_feed_dict=init_feed_dict,
-            init_fn=init_fn)
+        scaffold = _combine_distributed_scaffold(
+            grouped_estimator_spec.scaffold, self._train_distribution)
 
         def get_hooks_from_the_first_device(per_device_hooks):
-          hooks_list = self._distribution.unwrap(per_device_hooks)
+          hooks_list = self._train_distribution.unwrap(per_device_hooks)
           assert hooks_list
           return hooks_list[0]
 
@@ -1319,24 +1262,25 @@ class Estimator(object):
         # handle per device variables correctly in reduce and can output
         # the loss scaler.
         if is_tpu_strategy:
-          loss = self._distribution.unwrap(
-              self._distribution.reduce(distribute_lib.get_loss_reduction(),
-                                        tpu_result)[0])[0]
+          loss = self._train_distribution.unwrap(
+              self._train_distribution.reduce(
+                  distribute_lib.get_loss_reduction(), tpu_result)[0])[0]
           worker_hooks.append(
               estimator_util.StrategyInitFinalizeHook(
-                  self._distribution.get_initialization_ops,
-                  self._distribution.get_finalize_ops))
+                  self._train_distribution.get_initialization_ops,
+                  self._train_distribution.get_finalize_ops))
         else:
-          loss = self._distribution.unwrap(
-              self._distribution.reduce(distribute_lib.get_loss_reduction(),
-                                        grouped_estimator_spec.loss,
-                                        destinations='/device:CPU:0'))[0]
+          loss = self._train_distribution.unwrap(
+              self._train_distribution.reduce(
+                  distribute_lib.get_loss_reduction(),
+                  grouped_estimator_spec.loss,
+                  destinations='/device:CPU:0'))[0]
           distributed_train_op = grouped_estimator_spec.train_op
 
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
             loss=loss,
-            train_op=self._distribution.group(distributed_train_op),
+            train_op=self._train_distribution.group(distributed_train_op),
             training_hooks=training_hooks,
             training_chief_hooks=training_chief_hooks,
             scaffold=scaffold)
@@ -1433,25 +1377,29 @@ class Estimator(object):
     random_seed.set_random_seed(self._config.tf_random_seed)
     self._create_and_assert_global_step(ops.get_default_graph())
     features, labels, input_hooks = (
-        self._get_features_and_labels_from_input_fn(input_fn,
-                                                    model_fn_lib.ModeKeys.EVAL))
-    estimator_spec = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
-    global_step_tensor = training_util.get_global_step(ops.get_default_graph())
+        self._get_features_and_labels_from_input_fn(
+            input_fn, model_fn_lib.ModeKeys.EVAL, self._eval_distribution))
 
+    if self._eval_distribution:
+      (loss_metric, scaffold, evaluation_hooks, eval_metric_ops) = (
+          self._call_model_fn_eval_distributed(features, labels, self.config))
+    else:
+      (loss_metric, scaffold, evaluation_hooks, eval_metric_ops) = (
+          self._call_model_fn_eval(features, labels, self.config))
+
+    global_step_tensor = training_util.get_global_step(ops.get_default_graph())
     # Call to warm_start has to be after model_fn is called.
     self._maybe_warm_start(checkpoint_path)
 
-    if model_fn_lib.LOSS_METRIC_KEY in estimator_spec.eval_metric_ops:
+    if model_fn_lib.LOSS_METRIC_KEY in eval_metric_ops:
       raise ValueError(
           'Metric with name "%s" is not allowed, because Estimator ' %
           (model_fn_lib.LOSS_METRIC_KEY) +
           'already defines a default metric with the same name.')
-    estimator_spec.eval_metric_ops[
-        model_fn_lib.LOSS_METRIC_KEY] = metrics_lib.mean(estimator_spec.loss)
+    eval_metric_ops[model_fn_lib.LOSS_METRIC_KEY] = loss_metric
 
-    update_op, eval_dict = _extract_metric_update_ops(
-        estimator_spec.eval_metric_ops)
+    update_op, eval_dict = _extract_metric_update_ops(eval_metric_ops,
+                                                      self._eval_distribution)
 
     if ops.GraphKeys.GLOBAL_STEP in eval_dict:
       raise ValueError(
@@ -1461,23 +1409,42 @@ class Estimator(object):
 
     all_hooks = list(input_hooks)
     all_hooks.extend(hooks)
-    all_hooks.extend(list(estimator_spec.evaluation_hooks or []))
-
+    all_hooks.extend(list(evaluation_hooks or []))
     # New local variables have been added, so update the estimator spec's
     # local init op if it was defined.
-    scaffold = estimator_spec.scaffold
-    if estimator_spec.scaffold and estimator_spec.scaffold.local_init_op:
+    if scaffold and scaffold.local_init_op:
       # Ensure that eval step has been created before updating local init op.
       evaluation._get_or_create_eval_step()  # pylint: disable=protected-access
 
       scaffold = monitored_session.Scaffold(
           local_init_op=control_flow_ops.group(
-              estimator_spec.scaffold.local_init_op,
+              scaffold.local_init_op,
               monitored_session.Scaffold.default_local_init_op()),
           copy_from_scaffold=scaffold
       )
 
     return scaffold, update_op, eval_dict, all_hooks
+
+  def _call_model_fn_eval(self, features, labels, config):
+    estimator_spec = self._call_model_fn(
+        features, labels, model_fn_lib.ModeKeys.EVAL, config)
+    loss_metric = metrics_lib.mean(estimator_spec.loss)
+    return (loss_metric, estimator_spec.scaffold,
+            estimator_spec.evaluation_hooks, estimator_spec.eval_metric_ops)
+
+  def _call_model_fn_eval_distributed(self, features, labels, config):
+    """Call model_fn in distribution mode and handle return values."""
+    grouped_estimator_spec = self._eval_distribution.call_for_each_tower(
+        self._call_model_fn, features, labels,
+        model_fn_lib.ModeKeys.EVAL, config)
+    scaffold = _combine_distributed_scaffold(
+        grouped_estimator_spec.scaffold, self._eval_distribution)
+    evaluation_hooks = self._eval_distribution.unwrap(
+        grouped_estimator_spec.evaluation_hooks)[0]
+    loss_metric = self._eval_distribution.call_for_each_tower(
+        metrics_lib.mean, grouped_estimator_spec.loss)
+    return (loss_metric, scaffold,
+            evaluation_hooks, grouped_estimator_spec.eval_metric_ops)
 
   def _evaluate_run(self, checkpoint_path, scaffold, update_op, eval_dict,
                     all_hooks, output_dir):
@@ -1585,6 +1552,83 @@ def create_per_tower_ready_for_local_init_op(scaffold):
       default_ready_for_local_init_op)
 
 
+def _combine_distributed_scaffold(grouped_scaffold, distribution):
+  """Combines scaffold(s) returned from `distribution.call_for_each_tower`."""
+
+  # TODO(anjalisridhar): Figure out how to resolve the following scaffold
+  # parameters: init_feed_dict, init_fn.
+  scaffold_list = distribution.unwrap(grouped_scaffold)
+  init_feed_dict = [
+      s.init_feed_dict
+      for s in scaffold_list
+      if s.init_feed_dict is not None
+  ]
+  if init_feed_dict:
+    init_feed_dict = distribution.group(init_feed_dict)
+  else:
+    init_feed_dict = None
+
+  init_fn = [s.init_fn for s in scaffold_list if s.init_fn is not None]
+  if init_fn:
+    init_fn = distribution.group(init_fn)
+  else:
+    init_fn = None
+
+  init_op = [s.init_op for s in scaffold_list if s.init_op is not None]
+  if init_op:
+    init_op = distribution.group(init_op)
+  else:
+    init_op = None
+
+  def _unwrap_and_concat(value):
+    value = nest.flatten(distribution.unwrap(value))
+    if len(value) != 1:
+      return array_ops.concat(value)
+    return value[0]
+
+  ready_op = distribution.call_for_each_tower(
+      create_per_tower_ready_op, grouped_scaffold)
+  if ready_op is not None:
+    ready_op = _unwrap_and_concat(ready_op)
+  else:
+    ready_op = None
+
+  ready_for_local_init_op = distribution.call_for_each_tower(
+      create_per_tower_ready_for_local_init_op, grouped_scaffold)
+  if ready_for_local_init_op is not None:
+    ready_for_local_init_op = _unwrap_and_concat(ready_for_local_init_op)
+  else:
+    ready_for_local_init_op = None
+
+  local_init_op = [
+      s.local_init_op
+      for s in scaffold_list
+      if s.local_init_op is not None
+  ]
+  if local_init_op:
+    local_init_op = distribution.group(local_init_op)
+  else:
+    local_init_op = None
+
+  summary_op = [
+      s.summary_op for s in scaffold_list if s.summary_op is not None
+  ]
+  if summary_op:
+    summary_op = distribution.group(summary_op)
+  else:
+    summary_op = None
+
+  scaffold = monitored_session.Scaffold(
+      init_op=init_op,
+      ready_op=ready_op,
+      ready_for_local_init_op=ready_for_local_init_op,
+      local_init_op=local_init_op,
+      summary_op=summary_op,
+      init_feed_dict=init_feed_dict,
+      init_fn=init_fn)
+  return scaffold
+
+
 def _check_checkpoint_available(model_dir):
   latest_path = saver.latest_checkpoint(model_dir)
   if not latest_path:
@@ -1669,14 +1713,18 @@ def _load_global_step_from_checkpoint_dir(checkpoint_dir):
     return 0
 
 
-def _extract_metric_update_ops(eval_dict):
+def _extract_metric_update_ops(eval_dict, distribution=None):
   """Separate update operations from metric value operations."""
   update_ops = []
   value_ops = {}
   # Sort metrics lexicographically so graph is identical every time.
   for name, metric_ops in sorted(six.iteritems(eval_dict)):
     value_ops[name] = metric_ops[0]
-    update_ops.append(metric_ops[1])
+    if distribution:
+      update_op = distribution.group(metric_ops[1])
+    else:
+      update_op = metric_ops[1]
+    update_ops.append(update_op)
 
   if update_ops:
     update_op = control_flow_ops.group(*update_ops)
