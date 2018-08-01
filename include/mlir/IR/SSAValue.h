@@ -30,6 +30,7 @@
 namespace mlir {
 class OperationInst;
 class OperationStmt;
+class Operation;
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
@@ -70,6 +71,13 @@ public:
   OperationStmt *getDefiningStmt();
   const OperationStmt *getDefiningStmt() const {
     return const_cast<SSAValue *>(this)->getDefiningStmt();
+  }
+
+  /// If this value is the result of an Operation, return the operation that
+  /// defines it.
+  Operation *getDefiningOperation();
+  const Operation *getDefiningOperation() const {
+    return const_cast<SSAValue *>(this)->getDefiningOperation();
   }
 
 protected:

@@ -98,32 +98,16 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const AffineMap &map) {
   return p;
 }
 
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, StringRef other) {
-  p.getStream() << other;
-  return p;
-}
-
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const char *other) {
-  p.getStream() << other;
-  return p;
-}
-
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, char other) {
-  p.getStream() << other;
-  return p;
-}
-
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, unsigned other) {
-  p.getStream() << other;
-  return p;
-}
-
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, int other) {
-  p.getStream() << other;
-  return p;
-}
-
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, float other) {
+// Support printing anything that isn't convertible to one of the above types,
+// even if it isn't exactly one of them.  For example, we want to print
+// FunctionType with the Type& version above, not have it match this.
+template <typename T, typename std::enable_if<
+                          !std::is_convertible<T &, SSAValue &>::value &&
+                              !std::is_convertible<T &, Type &>::value &&
+                              !std::is_convertible<T &, Attribute &>::value &&
+                              !std::is_convertible<T &, AffineMap &>::value,
+                          T>::type * = nullptr>
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &other) {
   p.getStream() << other;
   return p;
 }

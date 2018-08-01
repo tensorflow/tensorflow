@@ -68,22 +68,22 @@ extfunc @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<i8, #map1, 0>) -> ()
 
 // CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) -> i1 {
 cfgfunc @simpleCFG(i32, f32) -> i1 {
-// CHECK: bb0(%0: i32, %1: f32):
-bb42 (%0: i32, %f: f32):
-  // CHECK: %2 = "foo"() : () -> i64
+// CHECK: bb0(%arg0: i32, %arg1: f32):
+bb42 (%arg0: i32, %f: f32):
+  // CHECK: %0 = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
-  // CHECK: "bar"(%2) : (i64) -> (i1, i1, i1)
+  // CHECK: "bar"(%0) : (i64) -> (i1, i1, i1)
   %2 = "bar"(%1) : (i64) -> (i1,i1,i1)
-  // CHECK: return %3#1
+  // CHECK: return %1#1
   return %2#1 : i1
 // CHECK: }
 }
 
 // CHECK-LABEL: cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
 cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
-// CHECK: bb0(%0: i32, %1: i64):
-bb42 (%0: i32, %f: i64):
-  // CHECK: "bar"(%1) : (i64) -> (i1, i1, i1)
+// CHECK: bb0(%arg0: i32, %arg1: i64):
+bb42 (%arg0: i32, %f: i64):
+  // CHECK: "bar"(%arg1) : (i64) -> (i1, i1, i1)
   %2 = "bar"(%f) : (i64) -> (i1,i1,i1)
   // CHECK: return
   return
@@ -263,3 +263,22 @@ bb2(%x2 : i64, %y2 : i32, %z2 : i32):
   %z = "foo"() : () -> i32
   return %z : i32
 }
+
+
+// Test pretty printing of constant names.
+// CHECK-LABEL: cfgfunc @constants
+cfgfunc @constants() -> (i32, i23, i23) {
+bb0:
+  // CHECK: %c42_i32 = constant 42 : i32
+  %x = constant 42 : i32
+  // CHECK: %c17_i23 = constant 17 : i23
+  %y = constant 17 : i23
+
+  // This is a redundant definition of 17, the asmprinter gives it a unique name
+  // CHECK: %c17_i23_0 = constant 17 : i23
+  %z = constant 17 : i23
+
+  // CHECK: return %c42_i32, %c17_i23, %c17_i23_0
+  return %x, %y, %z : i32, i23, i23
+}
+

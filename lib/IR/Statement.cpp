@@ -199,14 +199,6 @@ void OperationStmt::dropAllReferences() {
     op.drop();
 }
 
-/// If this value is the result of an OperationStmt, return the statement
-/// that defines it.
-OperationStmt *SSAValue::getDefiningStmt() {
-  if (auto *result = dyn_cast<StmtResult>(this))
-    return result->getOwner();
-  return nullptr;
-}
-
 //===----------------------------------------------------------------------===//
 // ForStmt
 //===----------------------------------------------------------------------===//

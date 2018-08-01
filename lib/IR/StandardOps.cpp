@@ -190,6 +190,22 @@ const char *AllocOp::verify() const {
   return nullptr;
 }
 
+void ConstantOp::print(OpAsmPrinter *p) const {
+  *p << "constant " << *getValue() << " : " << *getType();
+}
+
+OpAsmParserResult ConstantOp::parse(OpAsmParser *parser) {
+  Attribute *valueAttr;
+  Type *type;
+  if (parser->parseAttribute(valueAttr) || parser->parseColonType(type))
+    return {};
+
+  auto &builder = parser->getBuilder();
+  return OpAsmParserResult(
+      /*operands=*/{}, type,
+      NamedAttribute(builder.getIdentifier("value"), valueAttr));
+}
+
 /// The constant op requires an attribute, and furthermore requires that it
 /// matches the return type.
 const char *ConstantOp::verify() const {

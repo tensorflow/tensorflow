@@ -28,12 +28,15 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSet.h"
+#include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 using namespace mlir;
 
 void Identifier::print(raw_ostream &os) const { os << str(); }
@@ -574,24 +577,75 @@ public:
 
   void printOperand(const SSAValue *value) { printValueID(value); }
 
+  enum { nameSentinel = ~0U };
+
 protected:
   void numberValueID(const SSAValue *value) {
     assert(!valueIDs.count(value) && "Value numbered multiple times");
-    unsigned id;
-    switch (value->getKind()) {
-    case SSAValueKind::BBArgument:
-    case SSAValueKind::InstResult:
-    case SSAValueKind::StmtResult:
-      id = nextValueID++;
-      break;
-    case SSAValueKind::FnArgument:
-      id = nextFnArgumentID++;
-      break;
-    case SSAValueKind::ForStmt:
-      id = nextLoopID++;
-      break;
+
+    SmallString<32> specialNameBuffer;
+    llvm::raw_svector_ostream specialName(specialNameBuffer);
+
+    // Give constant integers special names.
+    if (auto *op = value->getDefiningOperation()) {
+      if (auto intOp = op->getAs<ConstantIntOp>()) {
+        specialName << 'c' << intOp->getValue();
+        if (!intOp->getType()->isAffineInt())
+          specialName << '_' << *intOp->getType();
+      }
     }
-    valueIDs[value] = id;
+
+    if (specialNameBuffer.empty()) {
+      switch (value->getKind()) {
+      case SSAValueKind::BBArgument:
+        // If this is an argument to the function, give it an 'arg' name.
+        if (auto *bb = cast<BBArgument>(value)->getOwner())
+          if (auto *fn = bb->getFunction())
+            if (&fn->front() == bb) {
+              specialName << "arg" << nextArgumentID++;
+              break;
+            }
+        // Otherwise number it normally.
+        LLVM_FALLTHROUGH;
+      case SSAValueKind::InstResult:
+      case SSAValueKind::StmtResult:
+        // This is an uninteresting result, give it a boring number and be
+        // done with it.
+        valueIDs[value] = nextValueID++;
+        return;
+      case SSAValueKind::FnArgument:
+        specialName << "arg" << nextArgumentID++;
+        break;
+      case SSAValueKind::ForStmt:
+        specialName << 'i' << nextLoopID++;
+        break;
+      }
+    }
+
+    // Ok, this value had an interesting name.  Remember it with a sentinel.
+    valueIDs[value] = nameSentinel;
+
+    // Remember that we've used this name, checking to see if we had a conflict.
+    auto insertRes = usedNames.insert(specialName.str());
+    if (insertRes.second) {
+      // If this is the first use of the name, then we're successful!
+      valueNames[value] = insertRes.first->first();
+      return;
+    }
+
+    // Otherwise, we had a conflict - probe until we find a unique name.  This
+    // is guaranteed to terminate (and usually in a single iteration) because it
+    // generates new names by incrementing nextConflictID.
+    while (1) {
+      std::string probeName =
+          specialName.str().str() + "_" + llvm::utostr(nextConflictID++);
+      insertRes = usedNames.insert(probeName);
+      if (insertRes.second) {
+        // If this is the first use of the name, then we're successful!
+        valueNames[value] = insertRes.first->first();
+        return;
+      }
+    }
   }
 
   void printValueID(const SSAValue *value, bool printResultNo = true) const {
@@ -620,22 +674,37 @@ protected:
     }
 
     os << '%';
-    if (isa<ForStmt>(value))
+    if (it->second != nameSentinel) {
+      os << it->second;
+    } else {
+      auto nameIt = valueNames.find(lookupValue);
+      assert(nameIt != valueNames.end() && "Didn't have a name entry?");
+      os << nameIt->second;
+    }
 
-      os << 'i';
-    else if (isa<FnArgument>(value))
-      os << "arg";
-    os << it->getSecond();
     if (resultNo != -1 && printResultNo)
       os << '#' << resultNo;
   }
 
 private:
-  /// This is the value ID for each SSA value in the current function.
+  /// This is the value ID for each SSA value in the current function.  If this
+  /// returns ~0, then the valueID has an entry in valueNames.
   DenseMap<const SSAValue *, unsigned> valueIDs;
+  DenseMap<const SSAValue *, StringRef> valueNames;
+
+  /// This keeps track of all of the non-numeric names that are in flight,
+  /// allowing us to check for duplicates.
+  llvm::StringSet<> usedNames;
+
+  /// This is the next value ID to assign in numbering.
   unsigned nextValueID = 0;
+  /// This is the ID to assign to the next induction variable.
   unsigned nextLoopID = 0;
-  unsigned nextFnArgumentID = 0;
+  /// This is the next ID to assign to an MLFunction argument.
+  unsigned nextArgumentID = 0;
+
+  /// This is the next ID to assign when a name conflict is detected.
+  unsigned nextConflictID = 0;
 };
 } // end anonymous namespace
 

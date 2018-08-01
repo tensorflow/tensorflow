@@ -11,13 +11,13 @@
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
 cfgfunc @cfgfunc_with_ops(f32) {
 bb0(%a : f32):
-  // CHECK: %1 = "getTensor"() : () -> tensor<4x4x?xf32>
+  // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
-  // CHECK: %2 = dim %1, 2 : tensor<4x4x?xf32>
+  // CHECK: %1 = dim %0, 2 : tensor<4x4x?xf32>
   %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
-  // CHECK: %3 = addf %0, %0 : f32
+  // CHECK: %2 = addf %arg0, %arg0 : f32
   %x = "addf"(%a, %a) : (f32,f32) -> (f32)
 
   // CHECK:   return
@@ -26,22 +26,25 @@ bb0(%a : f32):
 
 // CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32) {
 cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32) {
-// CHECK: bb0(%0: tensor<4x4x?xf32>, %1: f32):
+// CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32):
 bb42(%t: tensor<4x4x?xf32>, %f: f32):
-  // CHECK: %2 = dim %0, 2 : tensor<4x4x?xf32>
+  // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
-  // CHECK: %3 = dim %0, 2 : tensor<4x4x?xf32>
+  // CHECK: %1 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a2 = dim %t, 2 : tensor<4x4x?xf32>
 
-  // CHECK: %4 = addf %1, %1 : f32
+  // CHECK: %2 = addf %arg1, %arg1 : f32
   %f2 = "addf"(%f, %f) : (f32,f32) -> f32
 
-  // CHECK: %5 = addf %4, %4 : f32
+  // CHECK: %3 = addf %2, %2 : f32
   %f3 = addf %f2, %f2 : f32
 
-  // CHECK: %6 = "constant"(){value: 42} : () -> i32
+  // CHECK: %c42_i32 = constant 42 : i32
   %x = "constant"(){value: 42} : () -> i32
+
+  // CHECK: %c42_i32_0 = constant 42 : i32
+  %7 = constant 42 : i32
   return
 }
 
@@ -51,18 +54,18 @@ bb0:
   %i = "constant"() {value: 0} : () -> affineint
   %j = "constant"() {value: 1} : () -> affineint
 
-  // CHECK: affine_apply #map0(%0)
+  // CHECK: affine_apply #map0(%c0)
   %a = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
     (affineint) -> (affineint)
 
-  // CHECK: affine_apply #map1(%0, %1)
+  // CHECK: affine_apply #map1(%c0, %c1)
   %b = "affine_apply" (%i, %j) { map: #map5 } :
     (affineint, affineint) -> (affineint, affineint)
 
-  // CHECK: affine_apply #map2(%0, %1)[%1, %0]
+  // CHECK: affine_apply #map2(%c0, %c1)[%c1, %c0]
   %c = affine_apply (i,j)[m,n] -> (i+n, j+m)(%i, %j)[%j, %i]
 
-  // CHECK: affine_apply #map3()[%0]
+  // CHECK: affine_apply #map3()[%c0]
   %d = affine_apply ()[x] -> (x+1)()[%i]
 
   return
@@ -71,10 +74,10 @@ bb0:
 // CHECK-LABEL: cfgfunc @load_store
 cfgfunc @load_store(memref<4x4xi32>, affineint) {
 bb0(%0: memref<4x4xi32>, %1: affineint):
-  // CHECK: %2 = load %0[%1, %1] : memref<4x4xi32>
+  // CHECK: %0 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
   %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, affineint, affineint)->i32
 
-  // CHECK: %3 = load %0[%1, %1] : memref<4x4xi32>
+  // CHECK: %1 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
   %3 = load %0[%1, %1] : memref<4x4xi32>
 
   return

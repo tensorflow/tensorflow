@@ -209,14 +209,6 @@ void OperationInst::eraseFromBlock() {
   getBlock()->getOperations().erase(this);
 }
 
-/// If this value is the result of an OperationInst, return the instruction
-/// that defines it.
-OperationInst *SSAValue::getDefiningInst() {
-  if (auto *result = dyn_cast<InstResult>(this))
-    return result->getOwner();
-  return nullptr;
-}
-
 //===----------------------------------------------------------------------===//
 // TerminatorInst
 //===----------------------------------------------------------------------===//

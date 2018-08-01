@@ -140,6 +140,8 @@ public:
   static StringRef getOperationName() { return "constant"; }
 
   // Hooks to customize behavior of this op.
+  static OpAsmParserResult parse(OpAsmParser *parser);
+  void print(OpAsmPrinter *p) const;
   const char *verify() const;
 
 protected:
