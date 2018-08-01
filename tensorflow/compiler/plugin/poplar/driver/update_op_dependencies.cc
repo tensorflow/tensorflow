@@ -42,7 +42,7 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
       }
 
       // If peer is a depenency of inst, remove inst from inplace list
-      if (reachability_map->IsConnected(peer, inst)) {
+      if (reachability_map->IsReachable(inst, peer)) {
         to_remove.push_back(inst);
         break;
       } else {
