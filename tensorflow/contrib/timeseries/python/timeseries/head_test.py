@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 
 from absl.testing import parameterized
@@ -26,12 +27,14 @@ import six
 
 from tensorflow.contrib.estimator.python.estimator import extenders
 from tensorflow.contrib.timeseries.examples import lstm as lstm_example
+from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import estimators as ts_estimators
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import head as ts_head_lib
 from tensorflow.contrib.timeseries.python.timeseries import input_pipeline
 from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import state_management
+from tensorflow.core.example import example_pb2
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.estimator import estimator_lib
@@ -343,15 +346,33 @@ def _structural_ensemble_regressor(
       model_dir=model_dir)
 
 
+def _ar_lstm_regressor(
+    model_dir, head_type, exogenous_feature_columns):
+  return ts_estimators.TimeSeriesRegressor(
+      model=ar_model.ARModel(
+          periodicities=10, input_window_size=10, output_window_size=6,
+          num_features=5,
+          exogenous_feature_columns=exogenous_feature_columns,
+          prediction_model_factory=functools.partial(
+              ar_model.LSTMPredictionModel,
+              num_units=10)),
+      head_type=head_type,
+      model_dir=model_dir)
+
+
 class OneShotTests(parameterized.TestCase):
 
   @parameterized.named_parameters(
+      {"testcase_name": "ar_lstm_regressor",
+       "estimator_factory": _ar_lstm_regressor},
       {"testcase_name": "custom_time_series_regressor",
        "estimator_factory": _custom_time_series_regressor},
       {"testcase_name": "structural_ensemble_regressor",
        "estimator_factory": _structural_ensemble_regressor})
   def test_one_shot_prediction_head_export(self, estimator_factory):
-    model_dir = os.path.join(test.get_temp_dir(), str(ops.uid()))
+    def _new_temp_dir():
+      return os.path.join(test.get_temp_dir(), str(ops.uid()))
+    model_dir = _new_temp_dir()
     categorical_column = feature_column.categorical_column_with_hash_bucket(
         key="categorical_exogenous_feature", hash_bucket_size=16)
     exogenous_feature_columns = [
@@ -377,7 +398,7 @@ class OneShotTests(parameterized.TestCase):
         num_threads=1, batch_size=16, window_size=16)
     estimator.train(input_fn=train_input_fn, steps=5)
     input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-    export_location = estimator.export_savedmodel(test.get_temp_dir(),
+    export_location = estimator.export_savedmodel(_new_temp_dir(),
                                                   input_receiver_fn)
     graph = ops.Graph()
     with graph.as_default():
@@ -407,6 +428,41 @@ class OneShotTests(parameterized.TestCase):
         feeds = {
             graph.as_graph_element(input_value.name): features[input_key]
             for input_key, input_value in predict_signature.inputs.items()}
+        fetches = {output_key: graph.as_graph_element(output_value.name)
+                   for output_key, output_value
+                   in predict_signature.outputs.items()}
+        output = session.run(fetches, feed_dict=feeds)
+        self.assertEqual((2, 15, 5), output["mean"].shape)
+    # Build a parsing input function, then make a tf.Example for it to parse.
+    export_location = estimator.export_savedmodel(
+        _new_temp_dir(),
+        estimator.build_one_shot_parsing_serving_input_receiver_fn(
+            filtering_length=20, prediction_length=15))
+    graph = ops.Graph()
+    with graph.as_default():
+      with session_lib.Session() as session:
+        example = example_pb2.Example()
+        times = example.features.feature[feature_keys.TrainEvalFeatures.TIMES]
+        values = example.features.feature[feature_keys.TrainEvalFeatures.VALUES]
+        times.int64_list.value.extend(range(35))
+        for i in range(20):
+          values.float_list.value.extend(
+              [float(i) * 2. + feature_number
+               for feature_number in range(5)])
+        real_feature = example.features.feature["2d_exogenous_feature"]
+        categortical_feature = example.features.feature[
+            "categorical_exogenous_feature"]
+        for i in range(35):
+          real_feature.float_list.value.extend([1, 1])
+          categortical_feature.bytes_list.value.append(b"strkey")
+        # Serialize the tf.Example for feeding to the Session
+        examples = [example.SerializeToString()] * 2
+        signatures = loader.load(
+            session, [tag_constants.SERVING], export_location)
+        predict_signature = signatures.signature_def[
+            feature_keys.SavedModelLabels.PREDICT]
+        ((_, input_value),) = predict_signature.inputs.items()
+        feeds = {graph.as_graph_element(input_value.name): examples}
         fetches = {output_key: graph.as_graph_element(output_value.name)
                    for output_key, output_value
                    in predict_signature.outputs.items()}
