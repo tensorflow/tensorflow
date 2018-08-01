@@ -57,8 +57,10 @@ void Statement::destroy() {
   }
 }
 
-MLFunction *Statement::getFunction() const {
-  return this->getBlock()->getFunction();
+Statement *Statement::getParentStmt() const { return block->getParentStmt(); }
+
+MLFunction *Statement::findFunction() const {
+  return this->getBlock()->findFunction();
 }
 
 bool Statement::isInnermost() const {

@@ -1335,14 +1335,14 @@ SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type *type) {
     return (emitError(useInfo.loc, "reference to invalid result number"),
             nullptr);
 
+  // Otherwise, this is a forward reference.  If we are in ML function return
+  // an error. In CFG function, create a placeholder and remember
+  // that we did so.
   if (getKind() == Kind::MLFunc)
     return (
         emitError(useInfo.loc, "use of undefined SSA value " + useInfo.name),
         nullptr);
 
-  // Otherwise, this is a forward reference.  If we are in ML function return
-  // an error. In CFG function, create a placeholder and remember
-  // that we did so.
   auto *result = createForwardReferencePlaceholder(useInfo.loc, type);
   entries[useInfo.number].first = result;
   entries[useInfo.number].second = useInfo.loc;
@@ -2102,7 +2102,7 @@ ParseResult MLFunctionParser::parseForStmt() {
     return emitError("expected SSA identifier for the loop variable");
 
   auto loc = getToken().getLoc();
-  StringRef inductionVariableName = getTokenSpelling().drop_front();
+  StringRef inductionVariableName = getTokenSpelling();
   consumeToken(Token::percent_identifier);
 
   if (parseToken(Token::equal, "expected ="))
@@ -2142,6 +2142,8 @@ ParseResult MLFunctionParser::parseForStmt() {
 
   // Reset insertion point to the current block.
   builder.setInsertionPoint(forStmt->getBlock());
+
+  // TODO: remove definition of the induction variable.
 
   return ParseSuccess;
 }

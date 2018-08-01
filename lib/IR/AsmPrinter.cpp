@@ -1065,9 +1065,10 @@ void BasicBlock::print(raw_ostream &os) const {
 void BasicBlock::dump() const { print(llvm::errs()); }
 
 void Statement::print(raw_ostream &os) const {
-  ModuleState state(getFunction()->getContext());
+  MLFunction *function = findFunction();
+  ModuleState state(function->getContext());
   ModulePrinter modulePrinter(os, state);
-  MLFunctionPrinter(getFunction(), modulePrinter).print(this);
+  MLFunctionPrinter(function, modulePrinter).print(this);
 }
 
 void Statement::dump() const { print(llvm::errs()); }

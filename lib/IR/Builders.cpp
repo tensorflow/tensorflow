@@ -162,6 +162,6 @@ ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
   if (!step)
     step = getConstantExpr(1);
   auto *stmt = new ForStmt(lowerBound, upperBound, step, context);
-  block->getStatements().push_back(stmt);
+  block->getStatements().insert(insertPoint, stmt);
   return stmt;
 }

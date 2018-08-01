@@ -45,7 +45,8 @@ public:
   Statement *getParentStmt() const;
 
   /// Returns the function that this statement block is part of.
-  MLFunction *getFunction() const;
+  /// The function is determined by traversing the chain of parent statements.
+  MLFunction *findFunction() const;
 
   //===--------------------------------------------------------------------===//
   // Statement list management

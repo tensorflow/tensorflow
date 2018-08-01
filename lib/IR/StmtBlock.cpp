@@ -35,7 +35,7 @@ Statement *StmtBlock::getParentStmt() const {
   }
 }
 
-MLFunction *StmtBlock::getFunction() const {
+MLFunction *StmtBlock::findFunction() const {
   StmtBlock *block = const_cast<StmtBlock *>(this);
 
   while (block->getParentStmt() != nullptr)

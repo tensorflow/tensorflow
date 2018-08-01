@@ -145,7 +145,8 @@ mlfunc @loops() {
 mlfunc @complex_loops() {
   for %i1 = 1 to 100 {      // CHECK:   for %i0 = 1 to 100 {
     for %j1 = 1 to 100 {    // CHECK:     for %i1 = 1 to 100 {
-       "foo"() : () -> ()   // CHECK:       "foo"() : () -> ()
+       // CHECK: "foo"(%i0, %i1) : (affineint, affineint) -> ()
+       "foo"(%i1, %j1) : (affineint,affineint) -> ()
     }                       // CHECK:     }
     "boo"() : () -> ()      // CHECK:     "boo"() : () -> ()
     for %j2 = 1 to 10 {     // CHECK:     for %i2 = 1 to 10 {
@@ -156,6 +157,7 @@ mlfunc @complex_loops() {
   }                         // CHECK:   }
   return                    // CHECK:   return
 }                           // CHECK: }
+
 
 // CHECK-LABEL: mlfunc @ifstmt() {
 mlfunc @ifstmt() {

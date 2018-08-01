@@ -101,9 +101,7 @@ void LoopUnroll::runOnForStmt(ForStmt *forStmt) {
   auto trip_count = (ub - lb + 1) / step;
 
   auto *block = forStmt->getBlock();
-
-  MLFuncBuilder builder(forStmt->Statement::getFunction());
-  builder.setInsertionPoint(block);
+  MLFuncBuilder builder(block);
 
   for (int i = 0; i < trip_count; i++) {
     for (auto &stmt : forStmt->getStatements()) {

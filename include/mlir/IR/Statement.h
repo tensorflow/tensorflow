@@ -51,8 +51,13 @@ public:
   /// Returns the statement block that contains this statement.
   StmtBlock *getBlock() const { return block; }
 
+  /// Returns the closest surrounding statement that contains this statement
+  /// or nullptr if this is a top-level statement.
+  Statement *getParentStmt() const;
+
   /// Returns the function that this statement is part of.
-  MLFunction *getFunction() const;
+  /// The function is determined by traversing the chain of parent statements.
+  MLFunction *findFunction() const;
 
   /// Returns true if there are no more loops nested under this stmt.
   bool isInnermost() const;

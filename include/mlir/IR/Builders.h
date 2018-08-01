@@ -195,9 +195,11 @@ private:
 /// statement block.
 class MLFuncBuilder : public Builder {
 public:
-  MLFuncBuilder(MLFunction *function) : Builder(function->getContext()) {}
-
-  MLFuncBuilder(StmtBlock *block) : MLFuncBuilder(block->getFunction()) {
+  /// Create ML function builder and set insertion point to the given
+  /// statement block, that is, given ML function, for statement or if statement
+  /// clause.
+  MLFuncBuilder(StmtBlock *block)
+      : Builder(block->findFunction()->getContext()) {
     setInsertionPoint(block);
   }
 
@@ -207,6 +209,20 @@ public:
   void clearInsertionPoint() {
     this->block = nullptr;
     insertPoint = StmtBlock::iterator();
+  }
+
+  /// Set the insertion point to the specified location.
+  /// Unlike CFGFuncBuilder, MLFuncBuilder allows to set insertion
+  /// point to a different function.
+  void setInsertionPoint(StmtBlock *block, StmtBlock::iterator insertPoint) {
+    // TODO: check that insertPoint is in this rather than some other block.
+    this->block = block;
+    this->insertPoint = insertPoint;
+  }
+
+  /// Set the insertion point to the specified operation.
+  void setInsertionPoint(OperationStmt *stmt) {
+    setInsertionPoint(stmt->getBlock(), StmtBlock::iterator(stmt));
   }
 
   /// Set the insertion point to the end of the specified block.
@@ -230,8 +246,8 @@ public:
                      AffineConstantExpr *step = nullptr);
 
   IfStmt *createIf() {
-    auto stmt = new IfStmt();
-    block->getStatements().push_back(stmt);
+    auto *stmt = new IfStmt();
+    block->getStatements().insert(insertPoint, stmt);
     return stmt;
   }
 
