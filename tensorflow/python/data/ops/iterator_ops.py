@@ -30,6 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -65,7 +67,7 @@ def _device_stack_is_empty():
 
 
 @tf_export("data.Iterator")
-class Iterator(object):
+class Iterator(checkpointable.CheckpointableBase):
   """Represents the state of iterating through a `Dataset`."""
 
   def __init__(self, iterator_resource, initializer, output_types,
@@ -464,6 +466,13 @@ class Iterator(object):
     """
     return self._output_types
 
+  def _gather_saveables_for_checkpoint(self):
+
+    def _saveable_factory(name):
+      return _IteratorSaveable(self._iterator_resource, name)
+
+    return {"ITERATOR": _saveable_factory}
+
 
 _uid_counter = 0
 _uid_lock = threading.Lock()
@@ -477,7 +486,7 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class EagerIterator(object):
+class EagerIterator(checkpointable.CheckpointableBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
   def __init__(self, dataset):
@@ -610,3 +619,28 @@ class EagerIterator(object):
     """
     del name
     return self._next_internal()
+
+  def _gather_saveables_for_checkpoint(self):
+
+    def _saveable_factory(name):
+      return _IteratorSaveable(self._resource, name)
+
+    return {"ITERATOR": _saveable_factory}
+
+
+# TODO(b/71645805): Expose checkpointable stateful objects from dataset
+# attributes(potential).
+class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
+  """SaveableObject for saving/restoring iterator state."""
+
+  def __init__(self, iterator_resource, name):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
+    specs = [
+        BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
+    ]
+    # pylint: disable=protected-access
+    super(_IteratorSaveable, self).__init__(iterator_resource, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    with ops.colocate_with(self.op):
+      return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
