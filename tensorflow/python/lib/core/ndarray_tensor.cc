@@ -136,7 +136,9 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
   return Status::OK();
 }
 
-Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len) {
+Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
+                        PyObject** ptr_owner) {
+  *ptr_owner = nullptr;
   if (!PyUnicode_Check(obj)) {
     char* buf;
     if (PyBytes_AsStringAndSize(obj, &buf, len) != 0) {
@@ -153,7 +155,7 @@ Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len) {
   char* buf;
   if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
     *ptr = buf;
-    Py_DECREF(utemp);
+    *ptr_owner = utemp;
     return Status::OK();
   }
   Py_XDECREF(utemp);
@@ -175,8 +177,10 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     }
     Py_ssize_t len;
     const char* ptr;
-    TF_RETURN_IF_ERROR(PyObjectToString(item.get(), &ptr, &len));
+    PyObject* ptr_owner;
+    TF_RETURN_IF_ERROR(PyObjectToString(item.get(), &ptr, &len, &ptr_owner));
     f(ptr, len);
+    Py_XDECREF(ptr_owner);
     PyArray_ITER_NEXT(iter.get());
   }
   return Status::OK();
