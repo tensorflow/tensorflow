@@ -219,10 +219,11 @@ def iterator_fit_loop(model,
       next_element = inputs.get_next()
     except errors.OutOfRangeError:
       logging.warning(
-          'Your dataset iterator ran out of data; '
-          'interrupting training. Make sure that your dataset'
-          ' can generate at least `steps_per_epoch * epochs` '
-          'batches (in this case, %d batches).' % steps_per_epoch * epochs)
+          'Your dataset iterator ran out of data; interrupting training. Make '
+          'sure that your dataset can generate at least '
+          '`steps_per_epoch * epochs` batches (in this case, %d batches). You '
+          'may need to use the repeat() function when building your '
+          'dataset.' % steps_per_epoch * epochs)
       break
 
     if len(inputs.output_shapes) == 2:
@@ -334,7 +335,8 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       logging.warning(
           'Your dataset iterator ran out of data interrupting testing. '
           'Make sure that your dataset can generate at least `steps` batches '
-          '(in this case, %d batches).', steps)
+          '(in this case, %d batches). You may need to use the repeat() '
+          'function when building your dataset.', steps)
       break
 
     if len(inputs.output_shapes) == 2:
@@ -425,10 +427,10 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
       next_element = inputs.get_next()
     except errors.OutOfRangeError:
       logging.warning(
-          'Your dataset iterator ran out of data; '
-          'interrupting prediction. Make sure that your '
-          'dataset can generate at least `steps` '
-          'batches (in this case, %d batches).', steps)
+          'Your dataset iterator ran out of data; interrupting prediction. '
+          'Make sure that your dataset can generate at least `steps` batches '
+          '(in this case, %d batches). You may need to use the repeat() '
+          'function when building your dataset.', steps)
       break
 
     # expects a tuple, where first element of tuple represents inputs
