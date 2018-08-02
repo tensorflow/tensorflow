@@ -735,9 +735,11 @@ class Layer(checkpointable.CheckpointableBase):
           input_shapes = nest.map_structure(lambda x: x.shape, inputs)
 
         if (not hasattr(self, '_is_graph_network') or
-            self.__class__.__name__ == 'Sequential'):
-          # Only if self is a layer or an instance of a sequential model do we
-          # need to build it.
+            self.__class__.__name__ == 'Sequential' or
+            not hasattr(self.build, '_is_default')):
+          # Only if self is a layer, an instance of a sequential model, or
+          # the user has manually overwritten the build method do we need to
+          # build it.
           self.build(input_shapes)
         # We must set self.built since user defined build functions are not
         # constrained to set self.built.
@@ -1956,6 +1958,12 @@ def make_variable(name,
       synchronization=synchronization,
       aggregation=aggregation)
   return v
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True
+  return method
 
 
 def generate_placeholders_from_shape(shape):
