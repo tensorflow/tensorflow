@@ -702,7 +702,7 @@ tf_py_test(
 
 tf_py_test(
     name = "priority_queue_test",
-    size = "small",
+    size = "medium",
     srcs = ["priority_queue_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
