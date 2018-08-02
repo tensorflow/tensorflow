@@ -21,6 +21,7 @@ import threading
 import warnings
 
 from tensorflow.python.compat import compat
+from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
@@ -644,3 +645,31 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   def restore(self, restored_tensors, restored_shapes):
     with ops.colocate_with(self.op):
       return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
+
+
+def get_next_as_optional(iterator):
+  """Returns an `Optional` that contains the next value from the iterator.
+
+  If `iterator` has reached the end of the sequence, the returned `Optional`
+  will have no value.
+
+  Args:
+    iterator: A `tf.data.Iterator` object.
+
+  Returns:
+    An `Optional` object representing the next value from the iterator (if it
+    has one) or no value.
+  """
+  # pylint: disable=protected-access
+  return optional_ops._OptionalImpl(
+      gen_dataset_ops.iterator_get_next_as_optional(
+          iterator._iterator_resource,
+          output_types=nest.flatten(
+              sparse.as_dense_types(iterator.output_types,
+                                    iterator.output_classes)),
+          output_shapes=nest.flatten(
+              sparse.as_dense_shapes(iterator.output_shapes,
+                                     iterator.output_classes))),
+      output_shapes=iterator.output_shapes,
+      output_types=iterator.output_types,
+      output_classes=iterator.output_classes)

@@ -50,6 +50,7 @@ py_library(
     srcs = ["iterator_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":optional_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -61,5 +62,21 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_library(
+    name = "optional_ops",
+    srcs = ["optional_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
 )

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -1084,6 +1085,86 @@ class IteratorGetNextSyncOp : public OpKernel {
   }
 };
 
+class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
+ public:
+  explicit IteratorGetNextAsOptionalOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx),
+        background_worker_(
+            ctx->env(), strings::StrCat("iterator_get_next_as_optional_thread_",
+                                        SanitizeThreadSuffix(name()))) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    IteratorResource* iterator;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
+    // The call to `iterator->GetNext()` may block and depend on an
+    // inter-op thread pool thread, so we issue the call from the
+    // owned thread pool.
+    background_worker_.Schedule(std::bind(
+        [this, ctx, iterator](DoneCallback done) {
+          std::vector<Tensor> components;
+          bool end_of_sequence = false;
+
+          IteratorContext::Params params;
+          params.env = ctx->env();
+          params.runner = *(ctx->runner());
+          params.function_library = iterator->function_library();
+          DeviceBase* device = ctx->function_library()->device();
+          params.allocator_getter = [device](AllocatorAttributes attrs) {
+            return device->GetAllocator(attrs);
+          };
+          IteratorContext iter_ctx(std::move(params));
+
+          Status s =
+              iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+          // NOTE(mrry): We must unref the iterator before calling `done()`, to
+          // avoid destruction races.
+          iterator->Unref();
+
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (end_of_sequence) {
+            OP_REQUIRES_OK_ASYNC(ctx, WriteOptionalNoneToOutput(ctx, 0), done);
+          } else {
+            for (int i = 0; i < components.size(); ++i) {
+              OP_REQUIRES_ASYNC(
+                  ctx, components[i].dtype() == output_types_[i],
+                  errors::InvalidArgument(
+                      "The given optional does not match the expected type for "
+                      "component ",
+                      i, ". Expected: ", DataTypeString(output_types_[i]),
+                      ". Actual: ", DataTypeString(components[i].dtype()), "."),
+                  done);
+              OP_REQUIRES_ASYNC(
+                  ctx,
+                  output_shapes_[i].IsCompatibleWith(components[i].shape()),
+                  errors::InvalidArgument(
+                      "The given optional does not match the expected shape "
+                      "for component ",
+                      i, ". Expected: ", output_shapes_[i].DebugString(),
+                      ". Actual: ", components[i].shape().DebugString(), "."),
+                  done);
+            }
+
+            OP_REQUIRES_OK_ASYNC(
+                ctx,
+                WriteOptionalWithValueToOutput(ctx, 0, std::move(components)),
+                done);
+          }
+          done();
+        },
+        std::move(done)));
+  }
+
+ private:
+  BackgroundWorker background_worker_;
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
+};
+
 class IteratorToStringHandleOp : public OpKernel {
  public:
   explicit IteratorToStringHandleOp(OpKernelConstruction* ctx)
@@ -1240,6 +1321,9 @@ REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
                         IteratorGetNextSyncOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_GPU),
                         IteratorGetNextSyncOp);
+// TODO(b/111349762): Add registration for other devices.
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE_CPU),
+                        IteratorGetNextAsOptionalOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")
