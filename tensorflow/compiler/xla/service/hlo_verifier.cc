@@ -510,6 +510,15 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
           gather->gather_dimension_numbers(), gather->gather_window_bounds()));
 }
 
+Status ShapeVerifier::HandleScatter(HloInstruction* scatter) {
+  return CheckShape(
+      scatter, ShapeInference::InferScatterShape(
+                   scatter->operand(0)->shape(), scatter->operand(1)->shape(),
+                   scatter->operand(2)->shape(),
+                   scatter->to_apply()->ComputeProgramShape(),
+                   scatter->scatter_dimension_numbers()));
+}
+
 Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : token->operands()) {

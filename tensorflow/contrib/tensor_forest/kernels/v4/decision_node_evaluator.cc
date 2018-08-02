@@ -51,7 +51,8 @@ std::unique_ptr<DecisionNodeEvaluator> CreateBinaryDecisionNodeEvaluator(
 InequalityDecisionNodeEvaluator::InequalityDecisionNodeEvaluator(
     const decision_trees::InequalityTest& test, int32 left, int32 right)
     : BinaryDecisionNodeEvaluator(left, right) {
-  safe_strto32(test.feature_id().id().value(), &feature_num_);
+  CHECK(safe_strto32(test.feature_id().id().value(), &feature_num_))
+      << "Invalid feature ID: [" << test.feature_id().id().value() << "]";
   threshold_ = test.threshold().float_value();
   include_equals_ =
       test.type() == decision_trees::InequalityTest::LESS_OR_EQUAL;
@@ -72,7 +73,9 @@ ObliqueInequalityDecisionNodeEvaluator::ObliqueInequalityDecisionNodeEvaluator(
     : BinaryDecisionNodeEvaluator(left, right) {
   for (int i = 0; i < test.oblique().features_size(); ++i) {
     int32 val;
-    safe_strto32(test.oblique().features(i).id().value(), &val);
+    CHECK(safe_strto32(test.oblique().features(i).id().value(), &val))
+        << "Invalid feature ID: [" << test.oblique().features(i).id().value()
+        << "]";
     feature_num_.push_back(val);
     feature_weights_.push_back(test.oblique().weights(i));
   }
@@ -97,7 +100,8 @@ int32 ObliqueInequalityDecisionNodeEvaluator::Decide(
 MatchingValuesDecisionNodeEvaluator::MatchingValuesDecisionNodeEvaluator(
     const decision_trees::MatchingValuesTest& test, int32 left, int32 right)
     : BinaryDecisionNodeEvaluator(left, right) {
-  safe_strto32(test.feature_id().id().value(), &feature_num_);
+  CHECK(safe_strto32(test.feature_id().id().value(), &feature_num_))
+      << "Invalid feature ID: [" << test.feature_id().id().value() << "]";
   for (const auto& val : test.value()) {
     values_.push_back(val.float_value());
   }

@@ -29,6 +29,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -773,35 +774,41 @@ class Network(base_layer.Layer):
                        'input type: {}'.format(type(input_shape)))
 
     if input_shape and not self.inputs:
-      if isinstance(input_shape, list):
-        # List of input shapes
-        x = [base_layer.generate_dummy_data_from_shape(shape)
-             for shape in input_shape]
-      else:
-        x = base_layer.generate_dummy_data_from_shape(input_shape)
+      # We create placeholders for the `None`s in the shape and build the model
+      # in a Graph. Since tf.Variable is compatible with both eager execution
+      # and graph building, the variables created after building the model in
+      # a Graph are still valid when executing eagerly.
+      with context.graph_mode():
+        graph = eager_function.CapturingGraph()
+        with graph.as_default():
+          if isinstance(input_shape, list):
+            x = [base_layer.generate_placeholders_from_shape(shape)
+                 for shape in input_shape]
+          else:
+            x = base_layer.generate_placeholders_from_shape(input_shape)
 
-      kwargs = {}
-      num_call_args = len(tf_inspect.getargspec(self.call).args)
-      if self._expects_training_arg and num_call_args == 3:
-        # Has call signature of call(self, input, training)
-        kwargs['training'] = False
-      elif num_call_args > 2:
-        # Has invalid call signature of call(self, input, *args, **kwargs)
-        raise ValueError('Currently, you cannot build your model if it has '
-                         'positional or keyword arguments that are not '
-                         'inputs to the model, but are required for its '
-                         '`call` method. Instead, in order to instantiate '
-                         'and build your model, `call` your model on real '
-                         'tensor data with all expected call arguments.')
+          kwargs = {}
+          num_call_args = len(tf_inspect.getargspec(self.call).args)
+          if self._expects_training_arg and num_call_args == 3:
+            # Has call signature of call(self, input, training)
+            kwargs['training'] = False
+          elif num_call_args > 2:
+            # Has invalid call signature of call(self, input, *args, **kwargs)
+            raise ValueError('Currently, you cannot build your model if it has '
+                             'positional or keyword arguments that are not '
+                             'inputs to the model, but are required for its '
+                             '`call` method. Instead, in order to instantiate '
+                             'and build your model, `call` your model on real '
+                             'tensor data with all expected call arguments.')
 
-      try:
-        self.call(x, **kwargs)
-      except (errors.InvalidArgumentError, TypeError):
-        raise ValueError('You cannot build your model by calling `build` '
-                         'if your layers do not support float type inputs. '
-                         'Instead, in order to instantiate and build your '
-                         'model, `call` your model on real tensor data (of '
-                         'the correct dtype).')
+          try:
+            self.call(x, **kwargs)
+          except (errors.InvalidArgumentError, TypeError):
+            raise ValueError('You cannot build your model by calling `build` '
+                             'if your layers do not support float type inputs. '
+                             'Instead, in order to instantiate and build your '
+                             'model, `call` your model on real tensor data (of '
+                             'the correct dtype).')
 
     if self._layers:
       self._track_layers(self._layers)
@@ -833,11 +840,11 @@ class Network(base_layer.Layer):
         A tensor if there is a single output, or
         a list of tensors if there are more than one outputs.
     """
-    inputs = nest.flatten(inputs)
+    inputs = generic_utils.to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
-      masks = nest.flatten(mask)
+      masks = generic_utils.to_list(mask)
 
     if not context.executing_eagerly():
       # Try to retrieve cached outputs if the layer has already been called
@@ -852,6 +859,17 @@ class Network(base_layer.Layer):
                                           training=training,
                                           mask=masks)
     return outputs
+
+  def _call_and_compute_mask(self, inputs, training=None, mask=None):
+    assert context.executing_eagerly()
+    inputs = generic_utils.to_list(inputs)
+    if mask is None:
+      masks = [None for _ in range(len(inputs))]
+    else:
+      masks = generic_utils.to_list(mask)
+    return self._run_internal_graph(inputs,
+                                    training=training,
+                                    mask=masks)
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
@@ -1439,6 +1457,16 @@ class Network(base_layer.Layer):
         session = None
       else:
         session = backend.get_session()
+      optimizer = getattr(self, 'optimizer', None)
+      if (optimizer
+          and not isinstance(optimizer, checkpointable.CheckpointableBase)):
+        logging.warning(
+            ('This model was compiled with a Keras optimizer (%s) but is being '
+             'saved in TensorFlow format with `save_weights`. The model\'s '
+             'weights will be saved, but unlike with TensorFlow optimizers in '
+             'the TensorFlow format the optimizer\'s state will not be '
+             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
+            % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
 
   def load_weights(self, filepath, by_name=False):

@@ -72,6 +72,7 @@ REGISTER_OP("_If")
     .Attr("Tout: list(type)")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 output = cond ? then_branch(input) : else_branch(input)
@@ -98,6 +99,7 @@ REGISTER_OP("If")
     .Attr("Tout: list(type) >= 0")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
 // TODO(drpng): remove this.

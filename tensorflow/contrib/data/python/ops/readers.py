@@ -286,11 +286,14 @@ def make_tf_record_dataset(
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
+  # NOTE(mrry): We set `drop_final_batch=True` when `num_epochs is None` to
+  # improve the shape inference, because it makes the batch dimension static.
+  # It is safe to do this because in that case we are repeating the input
+  # indefinitely, and all batches will be full-sized.
+  drop_final_batch = drop_final_batch or num_epochs is None
+
   if parser_fn is None:
-    if drop_final_batch:
-      dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
-    else:
-      dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(batch_size, drop_remainder=drop_final_batch)
   else:
     # TODO(josh11b): if num_parallel_parser_calls is None, use some function
     # of num cores instead of map_and_batch's default behavior of one batch.
@@ -493,8 +496,13 @@ def make_csv_dataset(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
   # Apply batch before map for perf, because map has high overhead relative
-  # to the size of the computation in each map
-  dataset = dataset.batch(batch_size=batch_size)
+  # to the size of the computation in each map.
+  # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
+  # improve the shape inference, because it makes the batch dimension static.
+  # It is safe to do this because in that case we are repeating the input
+  # indefinitely, and all batches will be full-sized.
+  dataset = dataset.batch(batch_size=batch_size,
+                          drop_remainder=num_epochs is None)
   dataset = dataset.map(map_fn, num_parallel_calls=num_parallel_parser_calls)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
@@ -772,10 +780,12 @@ def make_batched_features_dataset(file_pattern,
 
   dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
 
-  if drop_final_batch:
-    dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
-  else:
-    dataset = dataset.batch(batch_size)
+  # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
+  # improve the shape inference, because it makes the batch dimension static.
+  # It is safe to do this because in that case we are repeating the input
+  # indefinitely, and all batches will be full-sized.
+  dataset = dataset.batch(
+      batch_size, drop_remainder=drop_final_batch or num_epochs is None)
 
   # Parse `Example` tensors to a dictionary of `Feature` tensors.
   dataset = dataset.map(

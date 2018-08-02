@@ -22,20 +22,26 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
@@ -44,6 +50,8 @@ using tensorflow::strings::StrCat;
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 class LoopInvariantNodeMotionOptimizer {
  public:
@@ -504,8 +512,180 @@ Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
   return Status::OK();
 }
 
-Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
-                          GraphDef* optimized_graph) {
+bool IsSimpleBinaryOperator(const NodeDef& node) {
+  return (IsLess(node) || IsLessEqual(node) || IsGreater(node) ||
+          IsGreaterEqual(node) || IsEqual(node));
+}
+
+Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
+                                         const NodeDef& constant_operand_0,
+                                         const NodeDef& constant_operand_1,
+                                         DeviceBase* cpu_device,
+                                         ResourceMgr* resource_mgr,
+                                         bool* value) {
+  TensorVector inputs;
+
+  const TensorProto& raw_val_0 = constant_operand_0.attr().at("value").tensor();
+  Tensor value_0(raw_val_0.dtype(), raw_val_0.tensor_shape());
+  CHECK(value_0.FromProto(raw_val_0));
+  inputs.emplace_back(&value_0);
+  const TensorProto& raw_val_1 = constant_operand_1.attr().at("value").tensor();
+  Tensor value_1(raw_val_1.dtype(), raw_val_1.tensor_shape());
+  CHECK(value_1.FromProto(raw_val_1));
+  inputs.emplace_back(&value_1);
+
+  TensorVector outputs;
+  TF_RETURN_IF_ERROR(
+      EvaluateNode(op_node, inputs, cpu_device, resource_mgr, &outputs));
+
+  if (outputs.size() != 1 || outputs[0].tensor == nullptr) {
+    return Status(error::INVALID_ARGUMENT, "Expected one output.");
+  }
+  *value = outputs[0].tensor->scalar<bool>()();
+  delete outputs[0].tensor;
+
+  return Status::OK();
+}
+
+Status CheckForDeadFanout(const GraphView& view, const NodeDef& switch_node,
+                          const NodeMap& node_map,
+                          bool is_optimization_aggressive,
+                          DeviceBase* cpu_device, ResourceMgr* resource_mgr,
+                          bool* has_dead_fanout, int* dead_fanout) {
+  *has_dead_fanout = false;
+  GraphView::InputPort switch_loopcond_port(&switch_node, 1);
+  NodeDef* switch_predicate = view.GetRegularFanin(switch_loopcond_port).node;
+
+  // CASE 1: Control is a constant.
+  if (IsConstant(*switch_predicate)) {
+    Tensor selector;
+    CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
+    *has_dead_fanout = true;
+    *dead_fanout = selector.scalar<bool>()() ? 0 : 1;
+  }
+
+  GraphView::InputPort switch_input_port(&switch_node, 0);
+  NodeDef* switch_input = view.GetRegularFanin(switch_input_port).node;
+
+  // CASE 2: Zero-iteration while loop.
+  // We check if its a while loop such that the condition is a simple binary
+  // operator which returns false for the initialization value.
+  // TODO(srjoglekar): Improve to work with arbitrary predicate subgraphs.
+  if (!is_optimization_aggressive || !IsMerge(*switch_input)) {
+    return Status::OK();
+  }
+
+  // Find the boolean Op from predicate node.
+  NodeDef* switch_ctrl_node = nullptr;
+  for (int i = 0; i < switch_predicate->input().size(); ++i) {
+    NodeDef* node = node_map.GetNode(switch_predicate->input(i));
+    if (IsSimpleBinaryOperator(*node)) {
+      switch_ctrl_node = node;
+    }
+  }
+  if (switch_ctrl_node == nullptr) {
+    return Status::OK();
+  }
+  // Find the Merge node & the Constant Operand to the condition node, if
+  // available.
+  NodeDef* merge_node = nullptr;
+  NodeDef* constant_ctrl_input = nullptr;
+  int constant_index = 0;
+  for (int i = 0; i < switch_ctrl_node->input().size(); ++i) {
+    NodeDef* node = node_map.GetNode(switch_ctrl_node->input(i));
+    if (IsMerge(*node)) {
+      merge_node = node;
+    }
+    if (IsConstant(*node)) {
+      constant_ctrl_input = node;
+      constant_index = i;
+    }
+  }
+  if (merge_node == nullptr || constant_ctrl_input == nullptr) {
+    return Status::OK();
+  }
+  // Find Enter.
+  // TODO(srjoglekar): Reconcile this with the optimization in
+  // ConstantFolding::MoveConstantsPastEnter
+  NodeDef* enter_node = nullptr;
+  for (const auto& input : merge_node->input()) {
+    NodeDef* node = node_map.GetNode(input);
+    if (IsEnter(*node)) {
+      enter_node = node;
+    }
+  }
+  if (enter_node == nullptr) {
+    return Status::OK();
+  }
+  // Find the initialization constant.
+  NodeDef* constant_init_node = nullptr;
+  for (const auto& input : enter_node->input()) {
+    NodeDef* node = node_map.GetNode(input);
+    if (IsConstant(*node)) {
+      constant_init_node = node;
+    }
+  }
+  if (constant_init_node == nullptr) {
+    return Status::OK();
+  }
+
+  // Check if there will be 0 iterations. This will only happen if the condition
+  // evaluates to false with respect to the initialization value.
+  NodeDef* operand_0 =
+      constant_index ? constant_init_node : constant_ctrl_input;
+  NodeDef* operand_1 =
+      constant_index ? constant_ctrl_input : constant_init_node;
+  bool constant_switch_value;
+  TF_RETURN_IF_ERROR(EvaluateBoolOpForConstantOperands(
+      *switch_ctrl_node, *operand_0, *operand_1, cpu_device, resource_mgr,
+      &constant_switch_value));
+  if (constant_switch_value == false) {
+    *has_dead_fanout = true;
+    *dead_fanout = 1;
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+LoopOptimizer::LoopOptimizer()
+    : opt_level_(RewriterConfig::ON),
+      cpu_device_(nullptr),
+      options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
+
+LoopOptimizer::LoopOptimizer(RewriterConfig::Toggle opt_level,
+                             DeviceBase* cpu_device)
+    : opt_level_(opt_level),
+      cpu_device_(cpu_device),
+      options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {
+  resource_mgr_.reset(new ResourceMgr());
+}
+
+Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
+                               GraphDef* optimized_graph) {
+  *optimized_graph = item.graph;
+  // Set up helper data structures.
+  if (options_.enable_loop_invariant_node_motion) {
+    LoopInvariantNodeMotionOptimizer linm_optimizer(optimized_graph);
+    TF_RETURN_IF_ERROR(linm_optimizer.Optimize());
+  }
+  if (options_.enable_stack_push_removal) {
+    TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
+  }
+  if (options_.enable_dead_branch_removal) {
+    // TODO(srjoglekar): Figure out if we can optimize NodeMap creations across
+    // optimizer passes.
+    NodeMap node_map(optimized_graph);
+    TF_RETURN_IF_ERROR(
+        RemoveDeadBranches(item.NodesToPreserve(), node_map, optimized_graph));
+  }
+
+  return Status::OK();
+}
+
+Status LoopOptimizer::RemoveDeadBranches(
+    const std::unordered_set<string>& nodes_to_preserve,
+    const NodeMap& node_map, GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
   // TODO(bsteiner): also rewrite switches as identity. For now we just record
@@ -521,14 +701,15 @@ Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
-    GraphView::InputPort ctrl_port(&node, 1);
-    GraphView::OutputPort ctrl_node = view.GetRegularFanin(ctrl_port);
-    if (!IsConstant(*ctrl_node.node)) {
+
+    int dead_fanout;
+    bool has_dead_fanout;
+    TF_RETURN_IF_ERROR(CheckForDeadFanout(
+        view, node, node_map, opt_level_ == RewriterConfig::AGGRESSIVE,
+        cpu_device_, resource_mgr_.get(), &has_dead_fanout, &dead_fanout));
+    if (!has_dead_fanout) {
       continue;
     }
-    Tensor selector;
-    CHECK(selector.FromProto(ctrl_node.node->attr().at("value").tensor()));
-    const int dead_fanout = selector.scalar<bool>()() ? 0 : 1;
     GraphView::OutputPort dead(const_cast<NodeDef*>(&node), dead_fanout);
     identity_switches.insert(dead);
 
@@ -637,27 +818,6 @@ Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
     dead_node->set_op("Identity");
     dead_node->mutable_attr()->erase("N");
   }
-  return Status::OK();
-}
-
-}  // namespace
-
-Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                               GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
-  // Set up helper data structures.
-  if (options_.enable_loop_invariant_node_motion) {
-    LoopInvariantNodeMotionOptimizer linm_optimizer(optimized_graph);
-    TF_RETURN_IF_ERROR(linm_optimizer.Optimize());
-  }
-  if (options_.enable_stack_push_removal) {
-    TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
-  }
-  if (options_.enable_dead_branch_removal) {
-    TF_RETURN_IF_ERROR(
-        RemoveDeadBranches(item.NodesToPreserve(), optimized_graph));
-  }
-
   return Status::OK();
 }
 

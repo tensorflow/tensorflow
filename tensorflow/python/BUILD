@@ -3216,6 +3216,7 @@ py_library(
             # The following targets have their own build rules (same name as the
             # file):
             "training/saveable_object.py",
+            "training/saver.py",
             "training/training_util.py",
         ],
     ),
@@ -3247,6 +3248,7 @@ py_library(
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
+        "saver",
         ":saveable_object",
         ":sdca_ops",
         ":sparse_ops",
@@ -3275,6 +3277,40 @@ py_library(
     name = "saveable_object",
     srcs = ["training/saveable_object.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "saver",
+    srcs = ["training/saver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
+        ":device",
+        ":errors",
+        ":framework",
+        ":framework_ops",
+        ":io_ops",
+        ":io_ops_gen",
+        ":lib",
+        ":platform",
+        ":protos_all_py",
+        ":pywrap_tensorflow",
+        ":resource_variable_ops",
+        ":saveable_object",
+        ":session",
+        ":state_ops",
+        ":string_ops",
+        ":training_util",
+        ":util",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(

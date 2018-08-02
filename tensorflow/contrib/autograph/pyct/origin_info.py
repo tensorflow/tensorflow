@@ -162,7 +162,7 @@ def resolve(nodes, source, function=None):
 
       source_code_line = source_lines[lineno_in_body - 1]
       if function:
-        source_lineno = function_lineno + lineno_in_body
+        source_lineno = function_lineno + lineno_in_body - 1
         function_name = function.__name__
       else:
         source_lineno = lineno_in_body

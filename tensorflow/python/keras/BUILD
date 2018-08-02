@@ -114,12 +114,14 @@ py_library(
         "constraints.py",
         "engine/__init__.py",
         "engine/base_layer.py",
+        "engine/distributed_training_utils.py",
         "engine/input_layer.py",
         "engine/network.py",
         "engine/saving.py",
         "engine/sequential.py",
         "engine/training.py",
         "engine/training_arrays.py",
+        "engine/training_distributed.py",
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
@@ -778,7 +780,7 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "medium",
+    size = "large",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

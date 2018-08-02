@@ -160,6 +160,8 @@ message HloInstructionProto {
   // present for Send and Recv instructions and their SendDone and RecvDone
   // partners.
   bool is_host_transfer = 47;
+
+  xla.ScatterDimensionNumbers scatter_dimension_numbers = 48;
 }
 
 // Serialization of HloComputation.

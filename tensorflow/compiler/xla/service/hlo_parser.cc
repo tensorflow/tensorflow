@@ -1242,6 +1242,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           dim_numbers, *window_bounds));
       break;
     }
+    case HloOpcode::kScatter: {
+      // TODO(b/32945756): Implement HLO parsing for Scatter.
+      return TokenError("HLO parsing is not implemented for Scatter.");
+    }
     case HloOpcode::kDomain: {
       DomainData domain;
       attrs["domain"] = {/*required=*/true, AttrTy::kDomain, &domain};
@@ -1586,6 +1590,24 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
   } else if (literal->shape().element_type() == F16 ||
              literal->shape().element_type() == BF16) {
     if (value > kF16max || value < -kF16max) {
+      return TokenError(StrCat(
+          "value ", value, " is out of range for literal's primitive type ",
+          PrimitiveType_Name(literal->shape().element_type())));
+    }
+  } else if (std::is_unsigned<LiteralNativeT>::value) {
+    CHECK((std::is_same<ParsedElemT, tensorflow::int64>::value ||
+           std::is_same<ParsedElemT, bool>::value))
+        << "Unimplemented checking for ParsedElemT";
+
+    ParsedElemT upper_bound;
+    if (sizeof(LiteralNativeT) >= sizeof(ParsedElemT)) {
+      upper_bound = std::numeric_limits<ParsedElemT>::max();
+    } else {
+      upper_bound =
+          static_cast<ParsedElemT>(std::numeric_limits<LiteralNativeT>::max());
+    }
+    if (value > upper_bound || value < 0) {
+      // Value is out of range for LiteralNativeT.
       return TokenError(StrCat(
           "value ", value, " is out of range for literal's primitive type ",
           PrimitiveType_Name(literal->shape().element_type())));

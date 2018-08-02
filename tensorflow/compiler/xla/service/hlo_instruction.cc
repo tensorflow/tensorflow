@@ -404,6 +404,22 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                        *gather_dimension_numbers, gather_window_bounds);
       break;
     }
+    case HloOpcode::kScatter: {
+      TF_RET_CHECK(proto.operand_ids_size() == 3)
+          << "Scatter instruction should have 3 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_scatter_dimension_numbers())
+          << "Scatter instruction should have ScatterDimensionNumbers set.";
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Scatter instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      auto scatter_dimension_numbers = MakeUnique<ScatterDimensionNumbers>(
+          proto.scatter_dimension_numbers());
+      instruction =
+          CreateScatter(proto.shape(), operands(0), operands(1), operands(2),
+                        computations(0), *scatter_dimension_numbers);
+      break;
+    }
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -1062,6 +1078,16 @@ bool HloInstruction::HasSideEffect() const {
                                           gather_dim_numbers, window_bounds);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
+    const Shape& shape, HloInstruction* operand,
+    HloInstruction* scatter_indices, HloInstruction* updates,
+    HloComputation* update_computation,
+    const ScatterDimensionNumbers& scatter_dim_numbers) {
+  return MakeUnique<HloScatterInstruction>(shape, operand, scatter_indices,
+                                           updates, update_computation,
+                                           scatter_dim_numbers);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
     const Shape& shape, HloInstruction* operand,
     std::unique_ptr<DomainMetadata> operand_side_metadata,
@@ -1124,6 +1150,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
     case HloOpcode::kGather:
+    case HloOpcode::kScatter:
     case HloOpcode::kIota:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
@@ -1587,6 +1614,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
+    case HloOpcode::kScatter:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1693,6 +1721,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -1711,6 +1740,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -1977,7 +2007,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
-               opcode() == HloOpcode::kCrossReplicaSum) {
+               opcode() == HloOpcode::kCrossReplicaSum ||
+               opcode() == HloOpcode::kScatter) {
       extra.push_back(
           StrCat("to_apply=", PrintName(to_apply()->name(), options)));
     } else if (!called_computations().empty()) {
@@ -2013,6 +2044,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReduce:
       case HloOpcode::kCrossReplicaSum:
+      case HloOpcode::kScatter:
         extra.push_back(
             StrCat("to_apply=\n", to_apply()->ToString(new_options)));
         break;
@@ -2311,6 +2343,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
     case HloOpcode::kGather:
       return visitor->HandleGather(this);
+    case HloOpcode::kScatter:
+      return visitor->HandleScatter(this);
     case HloOpcode::kDomain:
       return visitor->HandleDomain(this);
     case HloOpcode::kAfterAll:
@@ -3169,6 +3203,11 @@ const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {
 tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_window_bounds()
     const {
   return Cast<HloGatherInstruction>(this)->gather_window_bounds();
+}
+
+const ScatterDimensionNumbers& HloInstruction::scatter_dimension_numbers()
+    const {
+  return Cast<HloScatterInstruction>(this)->scatter_dimension_numbers();
 }
 
 }  // namespace xla

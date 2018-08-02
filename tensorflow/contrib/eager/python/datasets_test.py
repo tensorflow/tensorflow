@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.training import saver
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
@@ -305,6 +306,18 @@ class IteratorTest(test.TestCase):
     self.assertEqual(2, iterator.get_next().numpy())
     checkpoint.restore(save_path)
     self.assertEqual(2, iterator.get_next().numpy())
+
+  def testRestoreInReconstructedIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    dataset = Dataset.range(10)
+    for i in range(5):
+      iterator = datasets.Iterator(dataset)
+      checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+      checkpoint.restore(saver.latest_checkpoint(checkpoint_directory))
+      for j in range(2):
+        self.assertEqual(i * 2 + j, iterator.get_next().numpy())
+      checkpoint.save(file_prefix=checkpoint_prefix)
 
 
 class DatasetConstructorBenchmark(test.Benchmark):

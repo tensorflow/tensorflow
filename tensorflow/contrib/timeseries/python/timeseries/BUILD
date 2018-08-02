@@ -161,6 +161,7 @@ py_test(
     srcs = [
         "head_test.py",
     ],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip_gpu"],  # b/63391119
     deps = [

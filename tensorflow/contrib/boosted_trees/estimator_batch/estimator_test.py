@@ -25,10 +25,12 @@ from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import checkpoint_utils
 
 
 def _train_input_fn():
@@ -67,6 +69,10 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self._export_dir_base = tempfile.mkdtemp() + "export/"
     gfile.MkDir(self._export_dir_base)
+
+  def _assert_checkpoint(self, model_dir, global_step):
+    reader = checkpoint_utils.load_checkpoint(model_dir)
+    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
 
   def testFitAndEvaluateDontThrowException(self):
     learner_config = learner_pb2.LearnerConfig()
@@ -201,6 +207,46 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     model.fit(input_fn=_ranking_train_input_fn, steps=1000)
     model.evaluate(input_fn=_ranking_train_input_fn, steps=1)
     model.predict(input_fn=_infer_ranking_train_input_fn)
+
+  def testDoesNotOverrideGlobalSteps(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 2
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        num_trees=1,
+        examples_per_layer=3,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[contrib_feature_column.real_valued_column("x")],
+        output_leaf_index=False)
+
+    classifier.fit(input_fn=_train_input_fn, steps=15)
+    # When no override of global steps, 5 steps were used.
+    self._assert_checkpoint(classifier.model_dir, global_step=5)
+
+  def testOverridesGlobalSteps(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 2
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        num_trees=1,
+        examples_per_layer=3,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[contrib_feature_column.real_valued_column("x")],
+        output_leaf_index=False,
+        override_global_step_value=10000000)
+
+    classifier.fit(input_fn=_train_input_fn, steps=15)
+    self._assert_checkpoint(classifier.model_dir, global_step=10000000)
 
 
 class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):

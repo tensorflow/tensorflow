@@ -1425,6 +1425,55 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
             "index_vector_dim=2, window_bounds={30,29,28,27,26}");
 }
 
+TEST_F(HloInstructionTest, StringifyScatter) {
+  Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
+  Shape scatter_indices_tensor_shape =
+      ShapeUtil::MakeShape(S64, {10, 9, 5, 7, 6});
+  Shape scatter_updates_shape =
+      ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26});
+
+  HloComputation::Builder builder("Scatter");
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
+  HloInstruction* scatter_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, scatter_indices_tensor_shape, "scatter_indices"));
+  HloInstruction* scatter_updates =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, scatter_updates_shape, "scatter_updates"));
+
+  HloComputation::Builder update_builder("Scatter.update");
+  update_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1"));
+  update_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "p2"));
+
+  auto module = CreateNewModule();
+  auto* update_computation =
+      module->AddEmbeddedComputation(update_builder.Build());
+
+  HloInstruction* scatter_instruction =
+      builder.AddInstruction(HloInstruction::CreateScatter(
+          input_tensor_shape, input, scatter_indices, scatter_updates,
+          update_computation,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4, 5, 6, 7, 8},
+              /*inserted_window_dims=*/{},
+              /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/2)));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      scatter_instruction->ToString(),
+      "%scatter = f32[50,49,48,47,46]{4,3,2,1,0} "
+      "scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
+      "s64[10,9,5,7,6]{4,3,2,1,0} %scatter_indices, "
+      "f32[10,9,7,6,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %scatter_updates), "
+      "update_window_dims={4,5,6,7,8}, inserted_window_dims={}, "
+      "scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=2, "
+      "to_apply=%Scatter.update");
+}
+
 TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {
   // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});

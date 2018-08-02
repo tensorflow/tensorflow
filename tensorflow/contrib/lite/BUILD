@@ -125,10 +125,22 @@ cc_library(
         "graph_info.cc",
         "interpreter.cc",
         "model.cc",
-        "nnapi_delegate.cc",
         "op_resolver.cc",
         "optional_debug_tools.cc",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "nnapi_delegate.cc",
+            "mmap_allocation.cc",
+        ],
+        "//tensorflow:windows": [
+            "nnapi_delegate_disabled.cc",
+            "mmap_allocation_disabled.cc",
+        ],
+        "//conditions:default": [
+            "nnapi_delegate_disabled.cc",
+            "mmap_allocation.cc",
+        ],
+    }),
     hdrs = [
         "allocation.h",
         "context.h",

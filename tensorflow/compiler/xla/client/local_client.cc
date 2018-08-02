@@ -101,11 +101,14 @@ Status LocalExecutable::ValidateExecutionOptions(
     }
   }
 
-  // Verify that the device the executable was built for is equivalent to the
-  // device it will run on.
-  int run_device_ordinal = run_options.device_ordinal() == -1
-                               ? backend_->default_device_ordinal()
-                               : run_options.device_ordinal();
+  // Verify that the device the executable was built for is equivalent
+  // to the device it will run on.
+  int run_device_ordinal = run_options.device_ordinal();
+  if (run_device_ordinal == -1) {
+    run_device_ordinal = run_options.stream() != nullptr
+                             ? run_options.stream()->parent()->device_ordinal()
+                             : backend_->default_device_ordinal();
+  }
   TF_ASSIGN_OR_RETURN(bool devices_equivalent,
                       backend_->devices_equivalent(
                           run_device_ordinal, build_options_.device_ordinal()));

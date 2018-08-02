@@ -1958,16 +1958,5 @@ def make_variable(name,
   return v
 
 
-def generate_dummy_data_from_shape(shape):
-  if isinstance(shape, tensor_shape.TensorShape):
-    shape = shape.as_list()
-
-  # Replace Nones in input shape with dummy `1` value
-  shape = [x.value if isinstance(x, tensor_shape.Dimension) else x
-           for x in shape]
-  shape = [1 if x is None else x for x in shape]
-  return array_ops.ones(shape, dtype=backend.floatx())
-
-
 def generate_placeholders_from_shape(shape):
   return array_ops.placeholder(shape=shape, dtype=backend.floatx())

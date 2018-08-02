@@ -129,7 +129,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
     }
     // We are only here if the policy is warn or silent copies, so we should
     // trigger a copy.
-    auto pre_time = Env::Default()->NowMicros();
+    auto pre_time_nanos = Env::Default()->NowNanos();
     TensorHandle* result_handle = nullptr;
     Status status = EagerCopyToDevice(
         *handle, ctx, expected_device->name().c_str(), &result_handle);
@@ -141,8 +141,13 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
       auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
       auto* node_stats = dev_stats->add_node_stats();
       node_stats->set_node_name("_Send");
-      node_stats->set_all_start_micros(pre_time);
-      node_stats->set_op_end_rel_micros(Env::Default()->NowMicros() - pre_time);
+      node_stats->set_all_start_micros(pre_time_nanos /
+                                       EnvTime::kMicrosToNanos);
+      node_stats->set_all_start_nanos(pre_time_nanos);
+      int64 now_nanos = Env::Default()->NowNanos();
+      node_stats->set_op_end_rel_micros((now_nanos - pre_time_nanos) /
+                                        EnvTime::kMicrosToNanos);
+      node_stats->set_op_end_rel_nanos(now_nanos - pre_time_nanos);
     }
     if (!status.ok()) {
       if (result_handle != nullptr) result_handle->Unref();
@@ -563,11 +568,15 @@ Status EagerLocalExecute(EagerOperation* op,
   if (!status.ok()) return status;
   std::unique_ptr<NodeExecStats> maybe_stats;
   if (ctx->ShouldStoreMetadata()) {
+    int64 now_nanos = Env::Default()->NowNanos();
     maybe_stats.reset(new NodeExecStats);
     maybe_stats->set_node_name(op->Name());
-    maybe_stats->set_all_start_micros(Env::Default()->NowMicros());
+    maybe_stats->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
+    maybe_stats->set_all_start_nanos(now_nanos);
     maybe_stats->set_op_start_rel_micros(0);
-    maybe_stats->set_scheduled_micros(Env::Default()->NowMicros());
+    maybe_stats->set_op_start_rel_nanos(0);
+    maybe_stats->set_scheduled_micros(now_nanos / EnvTime::kMicrosToNanos);
+    maybe_stats->set_scheduled_nanos(now_nanos);
     // TODO(apassos) track referenced tensors
   }
   retvals->resize(*num_retvals);
@@ -593,6 +602,7 @@ Status EagerLocalExecute(EagerOperation* op,
   return status;
 }
 
+#ifndef __ANDROID__
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
@@ -623,6 +633,7 @@ std::function<void()> GetRemoteTensorDestructor(
     return tensorflow::Status::OK();
   };
 }
+#endif
 
 // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
 // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
@@ -634,6 +645,10 @@ std::function<void()> GetRemoteTensorDestructor(
 // *on the receiver*.
 Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              Device* recv_device, TensorHandle** result) {
+#ifdef __ANDROID__
+  return errors::Unimplemented(
+      "Eager's remote execution is not available on Android devices.");
+#else
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -672,6 +687,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
 
   return Status::OK();
+#endif
 }
 
 Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
@@ -845,8 +861,10 @@ Status EagerExecute(EagerContext* ctx, Device* device,
   // TODO(agarwal): change Run to take vector of handles ?
   TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
   if (maybe_stats != nullptr) {
-    maybe_stats->set_op_end_rel_micros(Env::Default()->NowMicros() -
+    int64 nanos = Env::Default()->NowNanos();
+    maybe_stats->set_op_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
                                        maybe_stats->all_start_micros());
+    maybe_stats->set_op_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
     mutex_lock ml(*ctx->MetadataMu());
     if (ctx->ShouldStoreMetadata()) {
       auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();

@@ -874,8 +874,8 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
     // HostCompute module.
     // Otherwise it is preferable to leave the new instruction without device,
     // and let the automatic device placer to choose the best location.
-    if (!sharding.HasUniqueDevice() ||
-        HloSharding::IsReservedDevice(sharding.UniqueDevice().ValueOrDie())) {
+    auto device = sharding.UniqueDevice();
+    if (!device || HloSharding::IsReservedDevice(*device)) {
       copy->set_sharding(sharding);
     }
   }
