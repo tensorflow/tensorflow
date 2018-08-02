@@ -62,7 +62,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:dct_ops_test \
     -//tensorflow/python/kernel_tests:depthwise_conv_op_test \
     -//tensorflow/python/kernel_tests:fft_ops_test \
-    -//tensorflow/python/kernel_tests:functional_ops_test \
     -//tensorflow/python/kernel_tests:init_ops_test \
     -//tensorflow/python/kernel_tests:losses_test \
     -//tensorflow/python/kernel_tests:lrn_op_test \
