@@ -209,8 +209,11 @@ py_test(
     size = "small",
     srcs = ["optimize_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":stats_dataset_test_base",
         "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/contrib/data/python/ops:stats_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -431,14 +434,24 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":reader_dataset_ops_test_base",
+        ":stats_dataset_test_base",
         "//tensorflow/contrib/data/python/ops:stats_ops",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "stats_dataset_test_base",
+    srcs = ["stats_dataset_test_base.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
