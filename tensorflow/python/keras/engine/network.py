@@ -1457,6 +1457,16 @@ class Network(base_layer.Layer):
         session = None
       else:
         session = backend.get_session()
+      optimizer = getattr(self, 'optimizer', None)
+      if (optimizer
+          and not isinstance(optimizer, checkpointable.CheckpointableBase)):
+        logging.warning(
+            ('This model was compiled with a Keras optimizer (%s) but is being '
+             'saved in TensorFlow format with `save_weights`. The model\'s '
+             'weights will be saved, but unlike with TensorFlow optimizers in '
+             'the TensorFlow format the optimizer\'s state will not be '
+             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
+            % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
 
   def load_weights(self, filepath, by_name=False):
