@@ -836,6 +836,7 @@ py_library(
         ":control_flow_util",
         ":device",
         ":dtypes",
+        ":error_interpolation",
         ":op_def_registry",
         ":platform",
         ":registry",
