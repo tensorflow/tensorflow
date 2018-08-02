@@ -549,7 +549,6 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
 
 Status CheckForDeadFanout(const GraphView& view, const NodeDef& switch_node,
                           const NodeMap& node_map,
-                          bool is_optimization_aggressive,
                           DeviceBase* cpu_device, ResourceMgr* resource_mgr,
                           bool* has_dead_fanout, int* dead_fanout) {
   *has_dead_fanout = false;
@@ -571,7 +570,7 @@ Status CheckForDeadFanout(const GraphView& view, const NodeDef& switch_node,
   // We check if its a while loop such that the condition is a simple binary
   // operator which returns false for the initialization value.
   // TODO(srjoglekar): Improve to work with arbitrary predicate subgraphs.
-  if (!is_optimization_aggressive || !IsMerge(*switch_input)) {
+  if (!IsMerge(*switch_input)) {
     return Status::OK();
   }
 
@@ -604,25 +603,25 @@ Status CheckForDeadFanout(const GraphView& view, const NodeDef& switch_node,
   if (merge_node == nullptr || constant_ctrl_input == nullptr) {
     return Status::OK();
   }
-  // Find Enter.
-  // TODO(srjoglekar): Reconcile this with the optimization in
-  // ConstantFolding::MoveConstantsPastEnter
+  // Find the initialization constant (via Enter, if one exists).
   NodeDef* enter_node = nullptr;
+  NodeDef* constant_init_node = nullptr;
   for (const auto& input : merge_node->input()) {
     NodeDef* node = node_map.GetNode(input);
     if (IsEnter(*node)) {
       enter_node = node;
     }
-  }
-  if (enter_node == nullptr) {
-    return Status::OK();
-  }
-  // Find the initialization constant.
-  NodeDef* constant_init_node = nullptr;
-  for (const auto& input : enter_node->input()) {
-    NodeDef* node = node_map.GetNode(input);
     if (IsConstant(*node)) {
       constant_init_node = node;
+    }
+  }
+  if (enter_node != nullptr) {
+    if (constant_init_node != nullptr) return Status::OK();
+    for (const auto& input : enter_node->input()) {
+      NodeDef* node = node_map.GetNode(input);
+      if (IsConstant(*node)) {
+        constant_init_node = node;
+      }
     }
   }
   if (constant_init_node == nullptr) {
@@ -704,9 +703,9 @@ Status LoopOptimizer::RemoveDeadBranches(
 
     int dead_fanout;
     bool has_dead_fanout;
-    TF_RETURN_IF_ERROR(CheckForDeadFanout(
-        view, node, node_map, opt_level_ == RewriterConfig::AGGRESSIVE,
-        cpu_device_, resource_mgr_.get(), &has_dead_fanout, &dead_fanout));
+    TF_RETURN_IF_ERROR(CheckForDeadFanout(view, node, node_map, cpu_device_,
+                                          resource_mgr_.get(), &has_dead_fanout,
+                                          &dead_fanout));
     if (!has_dead_fanout) {
       continue;
     }
