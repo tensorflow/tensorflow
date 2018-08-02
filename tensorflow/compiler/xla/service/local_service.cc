@@ -95,8 +95,10 @@ ExecutionOptions CreateExecutionOptions(
     const ExecutableBuildOptions& build_options,
     const ProgramShape* program_shape) {
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+  execution_options.set_resource_input_count(
+      build_options.resource_input_count());
   execution_options.set_resource_update_count(
-     build_options.resource_update_count());
+      build_options.resource_update_count());
   if (build_options.hlo_profile().has_value()) {
     execution_options.mutable_debug_options()->set_xla_hlo_profile(
         *build_options.hlo_profile());

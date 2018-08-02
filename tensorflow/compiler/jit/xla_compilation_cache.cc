@@ -200,6 +200,7 @@ Status BuildArguments(const std::map<int, Tensor>& constant_args,
 Status XlaCompilationCache::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
+    const uint64 number_of_variables,
     std::unique_ptr<xla::LocalExecutable>* executable) {
   VLOG(2) << "Compiling to local executable";
 
@@ -212,6 +213,7 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_device_ordinal(client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
+  build_options.set_resource_input_count(number_of_variables);
   build_options.set_resource_update_count(result.resource_updates.size());
 
   auto compile_result =
@@ -333,7 +335,8 @@ Status XlaCompilationCache::CompileImpl(
   if (entry->compilation_status.ok() && executable) {
     if (entry->executable == nullptr) {
       entry->compilation_status = BuildExecutable(
-          options, entry->compilation_result, &entry->executable);
+          options, entry->compilation_result, variable_args.size(),
+          &entry->executable);
     }
     *executable = entry->executable.get();
   }

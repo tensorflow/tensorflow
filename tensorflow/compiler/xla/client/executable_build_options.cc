@@ -76,6 +76,16 @@ ExecutableBuildOptions::generate_hlo_graph() const {
   return generate_hlo_graph_;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_resource_input_count(
+    int count) {
+  resource_input_count_ = count;
+  return *this;
+}
+
+int ExecutableBuildOptions::resource_input_count() const {
+  return resource_input_count_;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_resource_update_count(
     int count) {
   resource_update_count_ = count;

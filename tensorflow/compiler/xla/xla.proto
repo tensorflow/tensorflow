@@ -224,8 +224,11 @@ message ExecutionOptions {
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
 
+  // The number of inputs which are resource variable inputs
+  uint32 resource_input_count = 6;
+
   // The number of outputs which are updates for resource variables
-  uint32 resource_update_count = 6;
+  uint32 resource_update_count = 7;
 }
 
 message GetDeviceHandlesRequest {

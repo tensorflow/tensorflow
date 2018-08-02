@@ -153,7 +153,7 @@ class EntryVisitor : public FullVisitor {
     VLOG(1) << "Processing " << inst->name();
 
     auto num_streaming = inst->parent()->num_parameters() -
-                         resources_.annotations.num_resource_variables;
+                         resources_.annotations.num_resource_inputs;
 
     parameter_streamed[inst->parameter_number()] =
         (inst->parameter_number() < num_streaming) && OkToStream(inst->shape());
@@ -226,6 +226,13 @@ class EntryVisitor : public FullVisitor {
       }
     }
 
+    for (size_t o = 0; o < outputs.size(); o++) {
+      if (!output_streamed[o] && output_map.count(o) == 0) {
+        LOG(WARNING) << "Warning: Output " << GetOutputCopyHandle(o) 
+                     << " is not streamed, but not an alias of an input.";
+      }
+    }
+
     if (inst->opcode() == HloOpcode::kParameter) {
       all_outputs_are_parameters = true;
     } else if (inst->opcode() == HloOpcode::kTuple) {
@@ -249,7 +256,7 @@ class EntryVisitor : public FullVisitor {
     if (OkToStream(inst->shape())) {
       const auto* root = inst->parent()->root_instruction();
       auto num_streaming = FlattenedXlaShape(root->shape()).size() -
-                           resources_.annotations.num_resource_variables;
+                           resources_.annotations.num_resource_outputs;
       if (root->opcode() == HloOpcode::kTuple) {
         for (int i = 0; i < root->operand_count(); i++) {
           if (root->operand(i) == inst) {
@@ -369,7 +376,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode());
-  resources.annotations.num_resource_variables =
+  resources.annotations.num_resource_inputs =
+      module->config().resource_input_count();
+  resources.annotations.num_resource_outputs =
       module->config().resource_update_count();
 
   {

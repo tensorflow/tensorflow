@@ -436,5 +436,115 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(list(filter(lambda x:x[1]==w_ul, device_to_host))), 1)
       self.assertEqual(len(list(filter(lambda x:x[1]==b_ul, device_to_host))), 1)
 
+  def testResourceCountsAreCorrect(self):
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
+        w1 = variable_scope.get_variable("w1", shape=[4, 2], dtype=np.float32,
+                                         initializer=init_ops.constant_initializer(
+                                           np.array(
+                                             [[1, 2], [3, 4], [5, 6], [7, 8]],
+                                             dtype=np.float32)))
+        b1 = variable_scope.get_variable("b1", shape=[2], dtype=np.float32,
+                                         trainable=False,
+                                         initializer=init_ops.constant_initializer(
+                                           np.array([2, 3], dtype=np.float32)))
+        w2 = variable_scope.get_variable("w2", shape=[2, 2], dtype=np.float32,
+                                         initializer=init_ops.constant_initializer(
+                                           np.array(
+                                             [[1, 2], [3, 4]],
+                                             dtype=np.float32)))
+        b2 = variable_scope.get_variable("b2", shape=[2], dtype=np.float32,
+                                         trainable=False,
+                                         initializer=init_ops.constant_initializer(
+                                           np.array([2, 3], dtype=np.float32)))
+
+      x = array_ops.placeholder(np.float32, shape=[1, 4])
+      y = math_ops.matmul(x, w1) + b1
+      y = math_ops.matmul(y, w2) + b2
+
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+
+      d_dl = "0.0"
+      w1_dl = "1.0"
+      b1_dl = "2.0"
+      w2_dl = "3.0"
+      b2_dl = "4.0"
+
+      # biases are not outputs of the graph
+      d_ul = "0"
+      w1_ul = "1"
+      w2_ul = "2"
+
+      rep = sess.run(report)
+      io_evts = tu.extract_all_io_events(rep)
+
+      # The initialization is constant, so there are no events generated on the
+      # IPU.
+
+      host_to_device = list(filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
+      device_to_host = list(filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
+
+      # Weights/biases should be downloaded once, and the input no times
+      # because it is streamed
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w1_dl, host_to_device))), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b1_dl, host_to_device))), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w2_dl, host_to_device))), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b2_dl, host_to_device))), 1)
+
+      # Weights should not be uploaded, and the loss is streamed
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w1_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 0)
+
+      # Explicitly fetch the first set of weights and biases
+      vw, vb = sess.run([w1, b1])
+
+      self.assertAllClose(
+        np.array([[100.00576782, 86.60944366],[57.62784195,51.23856354],
+                  [93.45920563,82.40240479],[155.36032104,135.74447632]],
+                 dtype=np.float32),
+        vw, rtol=1e-4)
+
+      self.assertAllClose(np.array([2, 3], dtype=np.float32), vb, rtol=1e-4)
+
+      rep = sess.run(report)
+      io_evts = tu.extract_all_io_events(rep)
+
+      host_to_device = list(filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
+      device_to_host = list(filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
+
+      # Weights/biases/inputs should not be downloaded at all
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w1_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b1_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w2_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b2_dl, host_to_device))), 0)
+
+      # Weights should be uploaded once (explicitly fetched)
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w1_ul, device_to_host))), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 0)
+
 if __name__ == "__main__":
     googletest.main()

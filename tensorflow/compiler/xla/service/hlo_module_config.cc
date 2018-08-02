@@ -57,6 +57,9 @@ string HloModuleConfig::compilation_cache_key() const {
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
+  if (resource_input_count() != 0) {
+    StrAppend(&key, "::resource_input_count=", resource_input_count());
+  }
   if (resource_update_count() != 0) {
     StrAppend(&key, "::resource_update_count=", resource_update_count());
   }

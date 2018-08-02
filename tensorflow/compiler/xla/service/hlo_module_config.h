@@ -90,6 +90,12 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  // The number of inputs which are resource variables
+  void set_resource_input_count(int32 count) {
+    resource_input_count_ = count;
+  }
+  int32 resource_input_count() const { return resource_input_count_; }
+
   // The number of outputs which are updates of resource variables
   void set_resource_update_count(int32 count) {
     resource_update_count_ = count;
@@ -134,6 +140,7 @@ class HloModuleConfig {
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
 
+  int32 resource_input_count_ = 0;
   int32 resource_update_count_ = 0;
 
   DebugOptions debug_options_;

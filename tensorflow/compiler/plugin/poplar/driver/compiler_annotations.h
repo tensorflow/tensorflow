@@ -30,7 +30,8 @@ namespace poplarplugin {
 // to the XLA graph, as opposed to the poplar lowering of that graph.
 struct CompilerAnnotations {
 
-  uint64 num_resource_variables;
+  uint64 num_resource_inputs;
+  uint64 num_resource_outputs;
 
   TensorAllocationMap tensor_allocation_map;
 
