@@ -595,7 +595,7 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   private static int elemByteSize(DataType dataType) {
-    int size = dataType.sizeInBytes();
+    int size = dataType.byteSize();
     if (size < 0) {
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
     }
