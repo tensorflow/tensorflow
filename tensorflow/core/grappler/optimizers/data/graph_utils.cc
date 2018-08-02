@@ -27,11 +27,17 @@ namespace {
 constexpr char kConstOpName[] = "Const";
 
 template <typename Predicate, typename Collection>
-int GetElementIdxWithPredicate(const Predicate& predicate,
-                               const Collection& collection) {
-  auto it = std::find_if(collection.begin(), collection.end(), predicate);
-  if (it == collection.end()) return -1;
-  return std::distance(collection.begin(), it);
+std::vector<int> GetElementIndicesWithPredicate(const Predicate& predicate,
+                                                const Collection& collection) {
+  std::vector<int> indices = {};
+  unsigned idx = 0;
+  for (auto&& element : collection) {
+    if (predicate(element)) {
+      indices.push_back(idx);
+    }
+    idx++;
+  }
+  return indices;
 }
 
 std::vector<int> CreateNameIndex(const GraphDef& graph) {
@@ -189,29 +195,39 @@ bool ContainsFunctionNodeWithName(const string& name,
 }
 
 int FindGraphNodeWithName(const string& name, const GraphDef& graph) {
-  return GetElementIdxWithPredicate(
+  std::vector<int> indices = GetElementIndicesWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       graph.node());
+  return indices.empty() ? -1 : indices.front();
 }
 
 int FindNodeWithOp(const string& op, const GraphDef& graph) {
-  return GetElementIdxWithPredicate(
+  std::vector<int> indices = GetElementIndicesWithPredicate(
+      [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
+  return indices.empty() ? -1 : indices.front();
+}
+
+std::vector<int> FindAllGraphNodesWithOp(const string& op,
+                                         const GraphDef& graph) {
+  return GetElementIndicesWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
 }
 
 int FindGraphFunctionWithName(const string& name,
                               const FunctionDefLibrary& library) {
-  return GetElementIdxWithPredicate(
+  std::vector<int> indices = GetElementIndicesWithPredicate(
       [&name](const FunctionDef& function) {
         return function.signature().name() == name;
       },
       library.function());
+  return indices.empty() ? -1 : indices.front();
 }
 
 int FindFunctionNodeWithName(const string& name, const FunctionDef& function) {
-  return GetElementIdxWithPredicate(
+  std::vector<int> indices = GetElementIndicesWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       function.node_def());
+  return indices.empty() ? -1 : indices.front();
 }
 
 void SetUniqueGraphNodeName(const string& prefix, GraphDef* graph,
@@ -219,7 +235,12 @@ void SetUniqueGraphNodeName(const string& prefix, GraphDef* graph,
   string name = prefix;
   int id = graph->node_size();
   while (ContainsGraphNodeWithName(name, *graph)) {
-    name = strings::StrCat(prefix, "/_", id);
+    if (name.rfind("_generated") != std::string::npos &&
+        (name.rfind("_generated") == (name.size() - strlen("_generated")))) {
+      name.insert(name.rfind("_generated"), strings::StrCat("/_", id));
+    } else {
+      name = strings::StrCat(prefix, "/_", id);
+    }
     ++id;
   }
   node->set_name(std::move(name));
