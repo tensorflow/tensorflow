@@ -51,7 +51,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/keras:training_gpu_test \
     -//tensorflow/python/keras:model_subclassing_test \
     -//tensorflow/python/kernel_tests:atrous_conv2d_test \
-    -//tensorflow/python/kernel_tests:bincount_op_test \
     -//tensorflow/python/kernel_tests:control_flow_ops_py_test \
     -//tensorflow/python/kernel_tests:conv1d_test \
     -//tensorflow/python/kernel_tests:conv2d_backprop_filter_grad_test \
@@ -77,7 +76,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/profiler:profile_context_test \
     -//tensorflow/python/profiler:profiler_test \
     -//tensorflow/python:cost_analyzer_test \
-    -//tensorflow/python:histogram_ops_test \
     -//tensorflow/python:image_ops_test \
     -//tensorflow/python:layers_normalization_test \
     -//tensorflow/python:layout_optimizer_test \
