@@ -859,9 +859,10 @@ Costs VirtualScheduler::Summary() const {
     const auto& memory_cost = op_cost_pair.second.memory_time.count();
     const bool is_op_cost_accurate = !op_cost_pair.second.inaccurate;
     if (cost) {  // Skip printing out zero-cost ops.
-      VLOG(1) << strings::Printf(" + %30s : %c %10ld / %10ld / %10ld",
-                                 op.c_str(), (is_op_cost_accurate ? ' ' : '~'),
-                                 cost, compute_cost, memory_cost);
+      VLOG(1) << strings::Printf(
+          " + %30s : %c %10lld / %10lld / %10lld", op.c_str(),
+          (is_op_cost_accurate ? ' ' : '~'), static_cast<int64>(cost),
+          static_cast<int64>(compute_cost), static_cast<int64>(memory_cost));
     }
   }
 
@@ -936,10 +937,12 @@ Costs VirtualScheduler::Summary() const {
                                : 0.0;
       if (cost || mem_usage_percent > 1.0) {
         // Print out only non-zero cost ops or ops with > 1% memory usage.
-        VLOG(1) << strings::Printf(" + %30s : %c %10ld / %10ld / %10ld",
+        VLOG(1) << strings::Printf(" + %30s : %c %10lld / %10lld / %10lld",
                                    op.c_str(),
-                                   (is_op_cost_accurate ? ' ' : '~'), cost,
-                                   compute_cost, memory_cost)
+                                   (is_op_cost_accurate ? ' ' : '~'),
+                                   static_cast<int64>(cost),
+                                   static_cast<int64>(compute_cost),
+                                   static_cast<int64>(memory_cost))
                 << " (" << strings::HumanReadableNumBytes(op_mem_usage) << " ["
                 << mem_usage_percent << "%] "
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
