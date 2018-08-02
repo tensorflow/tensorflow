@@ -85,7 +85,7 @@ cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
 bb42 (%arg0: i32, %f: i64):
   // CHECK: "bar"(%arg1) : (i64) -> (i1, i1, i1)
   %2 = "bar"(%f) : (i64) -> (i1,i1,i1)
-  // CHECK: return
+  // CHECK: return{{$}}
   return
 // CHECK: }
 }

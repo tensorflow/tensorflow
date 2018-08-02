@@ -945,9 +945,10 @@ void CFGFunctionPrinter::print(const CondBranchInst *inst) {
 void CFGFunctionPrinter::print(const ReturnInst *inst) {
   os << "return";
 
-  if (inst->getNumOperands() != 0)
-    os << ' ';
+  if (inst->getNumOperands() == 0)
+    return;
 
+  os << ' ';
   interleaveComma(inst->getOperands(),
                   [&](const CFGValue *operand) { printValueID(operand); });
   os << " : ";
