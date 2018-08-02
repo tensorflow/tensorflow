@@ -227,6 +227,23 @@ class FunctionTest(test.TestCase):
       y = f(x)
     self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testGraphLoopGradient(self):
+    if context.executing_eagerly():
+      self.skipTest('TODO(apassos): support loops in defuns in eager')
+
+    @function.defun
+    def f(x):
+      return control_flow_ops.while_loop(lambda _, i: i < 2,
+                                         lambda x, i: (2*x, i + 1),
+                                         [x, 0])[0]
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      t.watch(x)
+      y = f(x)
+    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
+
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
 

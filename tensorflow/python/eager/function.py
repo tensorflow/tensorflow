@@ -132,11 +132,23 @@ class CapturingGraph(ops.Graph):
       op_def=None,
       compute_shapes=True,
       compute_device=True):
-    # TODO(apassos) this should do some form of alias analysis as ops which
-    # forward the resources such as Identity and Switch can cause serialization
-    # to fail.
+    # This capturing logic interacts poorly with control flow contexts which
+    # want to replace inputs of ops far too late in the process. This can lead
+    # the context to get confused and try to create an Enter for an Enter. We
+    # can detect this here and skip the additional Enter which can confuse loop
+    # validation logic.
+    if op_type == "Enter" and inputs[0].op.type == "Enter":
+      if inputs[0].op.get_attr("frame_name") == attrs["frame_name"].s:
+        return inputs[0].op
+    # Calling AddValue on the control flow contexts to force creation of the
+    # backward accumulators in the original graph before we create placeholders
+    # to capture the inputs.
+    ctxt = ops.get_default_graph()._control_flow_context  # pylint: disable=protected-access
     for i, inp in enumerate(inputs):
-      inputs[i] = self.capture(inp)
+      if ctxt is not None and hasattr(ctxt, "AddValue"):
+        inp = ctxt.AddValue(inp)
+      inp = self.capture(inp)
+      inputs[i] = inp
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_device=compute_device)
@@ -457,7 +469,6 @@ class GraphModeFunction(object):
     self._func_name = name
     self._function_def = defined_function
     self._num_outputs = len(defined_function.signature.output_arg)
-    self._ops = operations
     self._python_func_outputs = python_func_outputs
     self._python_returns = [python_func_outputs] if isinstance(
         python_func_outputs,
@@ -501,8 +512,9 @@ class GraphModeFunction(object):
 
     forward_name = _forward_name(self._func_name)
     self._forward_fdef = _EagerDefinedFunction(
-        forward_name, self._graph, self._ops, self._input_placeholders,
-        filtered_outputs + list(extra_inputs), self._attrs)
+        forward_name, self._graph, self._graph.get_operations(),
+        self._input_placeholders, filtered_outputs + list(extra_inputs),
+        self._attrs)
     all_inputs = self._out_grad_placeholders + list(extra_placeholders)
     # Excluding input ops from the body as we do not intend to execute these
     # operations when the function is executed.

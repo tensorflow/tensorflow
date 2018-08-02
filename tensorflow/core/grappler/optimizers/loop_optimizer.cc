@@ -464,7 +464,25 @@ std::vector<int> GetStackPushNodesToConvert(
     const NodeDef& fanout_node = graph_view.graph()->node(fanout_idx);
     VLOG(1) << "Fanout " << fanout_idx << " : " << fanout_node.name();
     if (IsStackPushOp(fanout_node)) {
-      nodes_to_convert.push_back(fanout_idx);
+      // Check that the stack itself is not a node we want to preserve. This can
+      // happen when the graph we have contains only the forward pass for a loop
+      // (as when the forward and backward passes are split across different
+      // functions).
+      if (graph_view.has_node(fanout_node.input(0))) {
+        const NodeDef* stack_node =
+            &graph_view.node(graph_view.index(fanout_node.input(0)));
+        while (stack_node->op() != "Stack" && stack_node->op() != "StackV2" &&
+               stack_node->input_size() > 0 &&
+               graph_view.has_node(stack_node->input(0))) {
+          stack_node = &graph_view.node(graph_view.index(stack_node->input(0)));
+        }
+        if (nodes_to_preserve.find(stack_node->name()) ==
+            nodes_to_preserve.end()) {
+          nodes_to_convert.push_back(fanout_idx);
+        }
+      } else {
+        nodes_to_convert.push_back(fanout_idx);
+      }
     } else if (IsStackOp(fanout_node) || IsStackCloseOp(fanout_node) ||
                op_types_to_traverse.find(fanout_node.op()) !=
                    op_types_to_traverse.end()) {
