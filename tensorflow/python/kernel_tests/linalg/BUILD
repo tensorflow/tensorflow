@@ -235,7 +235,7 @@ gpu_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "linear_operator_zeros_test",
     size = "medium",
     srcs = ["linear_operator_zeros_test.py"],
