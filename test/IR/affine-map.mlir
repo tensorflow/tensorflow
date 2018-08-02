@@ -7,16 +7,26 @@
 #map1 = (i, j)[s0] -> (i, j)
 
 // CHECK: #map{{[0-9]+}} = () -> (0)
+// A map may have 0 inputs. However, an affine_apply always takes at least one input.
 #map2 = () -> (0)
 
 // All three maps are unique'd as one map and so there
 // should be only one output.
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + 1, d1)
-#map3  = (i, j) -> (i+1, j)
+// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + 1, d1 * 4 + 2)
+#map3  = (i, j) -> (i+1, 4*j + 2)
 // CHECK-EMPTY
-#map3a = (i, j) -> (1+i, j)
+#map3a = (i, j) -> (1+i, 4*j + 2)
 // CHECK-EMPTY
-#map3b = (i, j) -> (2+3-2*2+i, j)
+#map3b = (i, j) -> (2 + 3 - 2*2 + i, 4*j + 2)
+#map3c = (i, j) -> (i +1 + 0, 4*j + 2)
+#map3d = (i, j) -> (i + 3 + 2 - 4, 4*j + 2)
+#map3e = (i, j) -> (1*i+3*2-2*2-1, 4*j + 2)
+#map3f = (i, j) -> (i + 1, 4*j*1 + 2)
+#map3g = (i, j) -> (i + 1, 2*2*j + 2)
+#map3h = (i, j) -> (i + 1, 2*j*2 + 2)
+#map3i = (i, j) -> (i + 1, j*2*2 + 2)
+#map3j = (i, j) -> (i + 1, j*1*4 + 2)
+#map3k = (i, j) -> (i + 1, j*4*1 + 2)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + 2, d1)
 #map4  = (i, j) -> (3+3-2*2+i, j)
@@ -30,7 +40,7 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + s0, d1)
 #map7 = (i, j)[s0] -> (i + j + s0, j)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + 5 + d1 + s0, d1)
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + s0 + 5, d1)
 #map8 = (i, j)[s0] -> (5 + i + j + s0, j)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + 5, d1)
@@ -42,7 +52,7 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 * 2, d1 * 3)
 #map11 = (i, j)[s0] -> (2*i, 3*j)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + 12 + (d1 + s0 * 3) * 5, d1)
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + (d1 + s0 * 3) * 5 + 12, d1)
 #map12 = (i, j)[s0] -> (i + 2*6 + 5*(j+s0*3), j)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 * 5 + d1, d1)
@@ -51,8 +61,8 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1, d1)
 #map14 = (i, j)[s0] -> ((i + j), (j))
 
-// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + 5, d1 + 3)
-#map15 = (i, j)[s0] -> ((i + j)+5, (j)+3)
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 + d1 + 7, d1 + 3)
+#map15 = (i, j)[s0] -> ((i + j + 2) + 5, (j)+3)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0, 0)
 #map16 = (i, j)[s1] -> (i, 0)
@@ -66,7 +76,7 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0, d0 + d1 * 3)
 #map20 = (i, j)  -> (i, i + 3*j)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0, d0 * ((s0 * s0) * 9) + 2 + 1)
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0, d0 * ((s0 * s0) * 9) + 3)
 #map18 = (i, j)[N] -> (i, 2 + N*N*9*i + 1)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (1, d0 + d1 * 3 + 5)
@@ -105,9 +115,9 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1, d2)[s0, s1, s2] -> ((d0 * s1) * s2 + d1 * s1 + d2)
 #map35 = (i, j, k)[s0, s1, s2] -> (i*s1*s2 + j*s1 + k)
 
+// Constant folding.
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (8, 4, 1, 3, 2, 4)
 #map36 = (i, j) -> (5+3, 2*2, 8-7, 100 floordiv 32, 5 mod 3, 10 ceildiv 3)
-
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (4, 11, 512, 15)
 #map37 = (i, j) -> (5 mod 3 + 2, 5*3 - 4, 128 * (500 ceildiv 128), 40 floordiv 7 * 3)
 
@@ -123,14 +133,21 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0, s1] -> (d0, d1) size (s0, s1 + 10)
 #map41 = (i, j)[N, M] -> (i, j) size (N, M+10)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1)[s0, s1] -> (d0, d1) size (128, s0 * 2 + 5 + s1)
+// CHECK: #map{{[0-9]+}} = (d0, d1)[s0, s1] -> (d0, d1) size (128, s0 * 2 + s1 + 5)
 #map42 = (i, j)[N, M] -> (i, j) size (64 + 64, 5 + 2*N + M)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> ((d0 * 5) floordiv 4, (d1 ceildiv 7) mod s0)
 #map43 = (i, j) [s0] -> ( i * 5 floordiv 4, j ceildiv 7 mod s0)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 - d1 * 2)
-#map44 = (i, j) -> (i - 2*j)
+// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 - d1 * 2, (d1 * 6) floordiv 4)
+#map44 = (i, j) -> (i - 2*j, j * 6 floordiv 4)
+
+// Simplifications
+// CHECK: #map{{[0-9]+}} = (d0, d1, d2)[s0] -> (d0 + d1 + d2 + 1, d2 + d1, (d0 * s0) * 8)
+#map45 = (i, j, k) [N] -> (1 + i + 3 + j - 3 + k, k + 5 + j - 5, 2*i*4*N)
+
+// CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (0, d0 * 2, 0, d0, d0 * 4)
+#map46 = (i, j, k) -> (i*0, i * 128 floordiv 64, j * 0 floordiv 64, i * 64 ceildiv 64, i * 512 ceildiv 128)
 
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
@@ -143,6 +160,28 @@ extfunc @f2(memref<2xi8, #map2, 1>)
 
 // CHECK: extfunc @f3(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f3(memref<2x4xi8, #map3, 1>)
+// CHECK: extfunc @f3a(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3a(memref<2x4xi8, #map3a, 1>)
+// CHECK: extfunc @f3b(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3b(memref<2x4xi8, #map3b, 1>)
+// CHECK: extfunc @f3c(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3c(memref<2x4xi8, #map3c, 1>)
+// CHECK: extfunc @f3d(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3d(memref<2x4xi8, #map3d, 1>)
+// CHECK: extfunc @f3e(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3e(memref<2x4xi8, #map3e, 1>)
+// CHECK: extfunc @f3f(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3f(memref<2x4xi8, #map3f, 1>)
+// CHECK: extfunc @f3g(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3g(memref<2x4xi8, #map3g, 1>)
+// CHECK: extfunc @f3h(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3h(memref<2x4xi8, #map3h, 1>)
+// CHECK: extfunc @f3i(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3i(memref<2x4xi8, #map3i, 1>)
+// CHECK: extfunc @f3j(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3j(memref<2x4xi8, #map3j, 1>)
+// CHECK: extfunc @f3k(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f3k(memref<2x4xi8, #map3k, 1>)
 
 // CHECK: extfunc @f4(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f4(memref<2x4xi8, #map4, 1>)
@@ -253,11 +292,13 @@ extfunc @f41(memref<2x4xi8, #map41, 1>)
 extfunc @f42(memref<2x4xi8, #map42, 1>)
 
 // CHECK: extfunc @f43(memref<2x4xi8, #map{{[0-9]+}}>)
-extfunc @f43(memref<2x4xi8, #map42>)
+extfunc @f43(memref<2x4xi8, #map43>)
 
 // CHECK: extfunc @f44(memref<2x4xi8, #map{{[0-9]+}}>)
-extfunc @f44(memref<2x4xi8, #map43>)
+extfunc @f44(memref<2x4xi8, #map44>)
 
-// CHECK: extfunc @f45(memref<2xi8, #map{{[0-9]+}}>)
-extfunc @f45(memref<2xi8, #map44>)
+// CHECK: extfunc @f45(memref<100x100x100xi8, #map{{[0-9]+}}>)
+extfunc @f45(memref<100x100x100xi8, #map45>)
 
+// CHECK: extfunc @f45(memref<100x100x100xi8, #map{{[0-9]+}}>)
+extfunc @f45(memref<100x100x100xi8, #map46>)

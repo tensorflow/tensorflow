@@ -454,9 +454,9 @@ void ModulePrinter::printAffineExprInternal(
 
         if (rrhs->getValue() < -1) {
           printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
-          os << " - (";
+          os << " - ";
           printAffineExprInternal(rhs->getLHS(), BindingStrength::Strong);
-          os << " * " << -rrhs->getValue() << ')';
+          os << " * " << -rrhs->getValue();
           if (enclosingTightness == BindingStrength::Strong)
             os << ')';
           return;
