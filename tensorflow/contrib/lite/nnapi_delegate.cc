@@ -789,4 +789,6 @@ TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
   return kTfLiteOk;
 }
 
+bool NNAPIDelegate::IsSupported() { return NNAPIExists(); }
+
 }  // namespace tflite

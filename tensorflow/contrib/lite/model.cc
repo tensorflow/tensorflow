@@ -16,7 +16,6 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -80,8 +79,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
                                                   ErrorReporter* error_reporter,
                                                   bool use_nnapi) {
   std::unique_ptr<Allocation> allocation;
-  if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
+  if (mmap_file && MMAPAllocation::IsSupported()) {
+    if (use_nnapi && NNAPIDelegate::IsSupported())
       allocation.reset(new NNAPIAllocation(filename, error_reporter));
     else
       allocation.reset(new MMAPAllocation(filename, error_reporter));
