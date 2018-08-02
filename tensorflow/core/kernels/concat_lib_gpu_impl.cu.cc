@@ -167,13 +167,17 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
       GPU_LAUNCH_KERNEL((concat_variable_kernel<T, IntType, true>),
           dim3(config.block_count), dim3(config.thread_per_block), smem_usage,
           gpu_device.stream(),
-          input_ptrs, output_scan, output->dimension(0), output->dimension(1),
-          output->data());
+          input_ptrs, output_scan,
+	  static_cast<IntType>(output->dimension(0)),
+	  static_cast<IntType>(output->dimension(1)),
+	  output->data());
     } else {
       GPU_LAUNCH_KERNEL((concat_variable_kernel<T, IntType, false>),
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           gpu_device.stream(),
-          input_ptrs, output_scan, output->dimension(0), output->dimension(1),
+          input_ptrs, output_scan,
+	  static_cast<IntType>(output->dimension(0)),
+	  static_cast<IntType>(output->dimension(1)),
           output->data());
     }
   }
