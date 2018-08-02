@@ -1736,6 +1736,87 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklConv3D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv3DShape)
+    .Doc(R"doc(
+MKL version of Conv3D operator. Uses MKL DNN APIs to perform 3D convolution.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklConv3DBackpropInputV2")
+    .Input("input_sizes: Tshape")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Input("mkl_input_sizes: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int) >= 5")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of Convolution3D backward input. Uses MKL DNN APIs to compute the
+gradients of convolution with respect to the input.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklConv3DBackpropFilterV2")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter_size: uint8")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of Conv3DBackpropFilter. Uses MKL DNN APIs to compute the
+gradients of convolution with respect to the filter.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklRelu")
     .Input("features: T")
     .Input("mkl_features: uint8")
@@ -2161,7 +2242,7 @@ REGISTER_OP("_MklToTf")
     .Input("mkl_input: uint8")
     .Output("output: T")
     .Attr("T: {half, float, double}")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 MKL operator to convert a tensor from MKL layout to TensorFlow layout.
@@ -2183,7 +2264,7 @@ REGISTER_OP("_MklInputConversion")
     .Attr(
         "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
         "complex64, complex128}")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 MKL operator to process the inputs to an elementwise MKL op. Both inputs

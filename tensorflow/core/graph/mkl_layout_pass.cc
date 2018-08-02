@@ -2418,6 +2418,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv2d_grad_filter = "Conv2DBackpropFilter";
     csinfo_.conv2d_grad_filter_with_bias =
         "__MklDummyConv2DBackpropFilterWithBias";
+    csinfo_.conv3d = "Conv3D";
+    csinfo_.conv3d_grad_input = "Conv3DBackpropInputV2";
+    csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.identity = "Identity";
@@ -2479,6 +2482,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
+                      CopyAttrsConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv3d,
+                      mkl_op_registry::GetMklOpName(csinfo_.conv3d),
+                      CopyAttrsConv2D, AlwaysRewrite});  
+    rinfo_.push_back({csinfo_.conv3d_grad_filter,
+                      mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_filter),
+                      CopyAttrsConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv3d_grad_input,
+                      mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_input),
                       CopyAttrsConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
@@ -2614,6 +2626,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv2d_grad_input;
     string conv2d_grad_filter;
     string conv2d_grad_filter_with_bias;
+    string conv3d;
+    string conv3d_grad_input;
+    string conv3d_grad_filter;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string identity;
@@ -3578,7 +3593,6 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   string padding;
   std::vector<int32> strides;
   std::vector<int32> dilations;
-  bool use_cudnn_on_gpu;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -3586,8 +3600,6 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-  TF_CHECK_OK(
-      GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -3595,7 +3607,6 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
   nb->Attr("data_format", data_format);
-  nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
 }
 
 void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node,
