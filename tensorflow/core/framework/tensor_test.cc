@@ -1278,6 +1278,20 @@ TEST(SummarizeValue, BOOL) {
   EXPECT_EQ("0 1 1...", x.SummarizeValue(3));
 }
 
+TEST(SummarizeValue, COMPLEX64) {
+  Tensor x =
+      MkTensor<complex64>(DT_COMPLEX64, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1+0j 2+0j 3+0j 4+0j 0+0j", x.SummarizeValue(16));
+  x = MkTensor<complex64>(DT_COMPLEX64, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1+0j 2+0j][3+0j 4+0j]", x.SummarizeValue(16));
+  x = MkTensor<complex64>(DT_COMPLEX64, TensorShape({2, 2, 1, 1}),
+                          {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[1+0j]][[2+0j]]][[[3+0j]][[4+0j]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1+0j]][[2+0j]]][[[3+0j]]]...", x.SummarizeValue(3));
+  x = MkTensor<complex64>(DT_COMPLEX64, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
+}
+
 TEST(SummarizeValue, STRING) {
   Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
                               {"one", "two", "three", "four", "five"});

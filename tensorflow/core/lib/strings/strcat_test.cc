@@ -281,6 +281,12 @@ TEST(StrAppend, Basics) {
   EXPECT_EQ(result.substr(old_size),
             "A hundred K and a half squared is 10000100000.25");
 
+  std::complex<float> c(0.5, 1);
+  old_size = result.size();
+  tensorflow::strings::StrAppend(&result, "A half and the imaginary unit is ",
+                                 c);
+  EXPECT_EQ(result.substr(old_size), "A half and an imaginary unit is 0.5+1j");
+
   // Test 9 arguments, the old maximum
   old_size = result.size();
   tensorflow::strings::StrAppend(&result, 1, 22, 333, 4444, 55555, 666666,
