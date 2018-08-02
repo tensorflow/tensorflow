@@ -215,7 +215,7 @@ class Network(base_layer.Layer):
 
     self._base_init(name=name)
     self._compute_previous_mask = (
-        'mask' in tf_inspect.getargspec(self.call).args or
+        'mask' in tf_inspect.getfullargspec(self.call).args or
         hasattr(self, 'compute_mask'))
     # A Network does not create weights of its own, thus it is already
     # built.
@@ -309,7 +309,7 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    call_argspec = tf_inspect.getargspec(self.call)
+    call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
@@ -788,7 +788,7 @@ class Network(base_layer.Layer):
             x = base_layer.generate_placeholders_from_shape(input_shape)
 
           kwargs = {}
-          num_call_args = len(tf_inspect.getargspec(self.call).args)
+          num_call_args = len(tf_inspect.getfullargspec(self.call).args)
           if self._expects_training_arg and num_call_args == 3:
             # Has call signature of call(self, input, training)
             kwargs['training'] = False
@@ -1035,9 +1035,9 @@ class Network(base_layer.Layer):
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
               # Ensure mask propagation if applicable.
-              if 'mask' in tf_inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
                 kwargs.setdefault('mask', computed_mask)
-              if 'training' in tf_inspect.getargspec(layer.call).args:
+              if 'training' in tf_inspect.getfullargspec(layer.call).args:
                 kwargs.setdefault('training', training)
 
               output_tensors = nest.flatten(
@@ -1055,9 +1055,9 @@ class Network(base_layer.Layer):
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
-              if 'mask' in tf_inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
                 kwargs.setdefault('mask', computed_masks)
-              if 'training' in tf_inspect.getargspec(layer.call).args:
+              if 'training' in tf_inspect.getfullargspec(layer.call).args:
                 kwargs.setdefault('training', training)
 
               output_tensors = nest.flatten(
