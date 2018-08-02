@@ -857,6 +857,11 @@ class XlaBuilder {
                const GatherDimensionNumbers& dimension_numbers,
                tensorflow::gtl::ArraySlice<int64> window_bounds);
 
+  // Enqueues a Scatter node onto the computation.
+  XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+                const XlaOp& updates, const XlaComputation& update_computation,
+                const ScatterDimensionNumbers& dimension_numbers);
+
   // Enqueues a Send node onto the computation for device-to-device
   // communication, to send the given operand to a Recv instruction that shares
   // the same channel handle.
@@ -1296,6 +1301,10 @@ class XlaBuilder {
   friend XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
                       const GatherDimensionNumbers& dimension_numbers,
                       tensorflow::gtl::ArraySlice<int64> window_bounds);
+  friend XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+                       const XlaOp& updates,
+                       const XlaComputation& update_computation,
+                       const ScatterDimensionNumbers& dimension_numbers);
   friend void Send(const XlaOp& operand, const ChannelHandle& handle);
   friend XlaOp Recv(XlaBuilder* builder, const Shape& shape,
                     const ChannelHandle& handle);
@@ -1976,6 +1985,11 @@ XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
 XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
              const GatherDimensionNumbers& dimension_numbers,
              tensorflow::gtl::ArraySlice<int64> window_bounds);
+
+// Enqueues a Scatter node onto the computation.
+XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+              const XlaOp& updates, const XlaComputation& update_computation,
+              const ScatterDimensionNumbers& dimension_numbers);
 
 // Enqueues a Send node onto the computation for device-to-device
 // communication. This operation sends the given operand to

@@ -648,6 +648,11 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
+  // TODO(b/32945756): Compute the properties of the sub-computation.
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }

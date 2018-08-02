@@ -644,6 +644,12 @@ class HloInstruction {
       const GatherDimensionNumbers& gather_dim_numbers,
       tensorflow::gtl::ArraySlice<int64> window_bounds);
 
+  static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* scatter_indices, HloInstruction* updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
+
   // Creates a kDomain instruction which delimits an HLO domain which have
   // the provided user and operand side metadata.
   static std::unique_ptr<HloInstruction> CreateDomain(
@@ -1451,6 +1457,9 @@ class HloInstruction {
   const GatherDimensionNumbers& gather_dimension_numbers() const;
   // Delegates to HloGatherInstruction::gather_window_bounds.
   tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const;
+
+  // Delegates to HloScatterInstruction::scatter_dimension_numbers().
+  const ScatterDimensionNumbers& scatter_dimension_numbers() const;
 
   // Old methods kept for smooth subclassing transition END.
 

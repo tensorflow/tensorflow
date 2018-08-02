@@ -447,6 +447,20 @@ message GatherDimensionNumbers {
   int64 index_vector_dim = 4;
 }
 
+// Describes the dimension numbers for a scatter operation.
+//
+// All the fields are similar to the corresponding fields in
+// GatherDimensionNumbers. Differences are noted below.
+message ScatterDimensionNumbers {
+  // The set of dimensions in the updates shape that are window dimensions.
+  repeated int64 update_window_dims = 1;
+  // The set of window dimensions that must be inserted into the updates shape.
+  repeated int64 inserted_window_dims = 2;
+
+  repeated int64 scatter_dims_to_operand_dims = 3;
+  int64 index_vector_dim = 4;
+}
+
 message ConvolutionDimensionNumbers {
   // The number of the dimension that represents batch in the input.
   int64 input_batch_dimension = 7;
