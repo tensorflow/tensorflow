@@ -18,14 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import optimizer
+from tensorflow.contrib.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
 
 
-class RpropMinusOptimizer(optimizer.Optimizer):
+class RpropMinusOptimizer(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Rprop- algorithm.
 
   The Rprop (resilient backpropagation) algorithms are efficient gradient-based
@@ -45,7 +44,8 @@ class RpropMinusOptimizer(optimizer.Optimizer):
 
   **The Rprop algorithms are recommended for batch learning, _not_
   for mini-batch learning.** The variant
-  [iRprop+ (improved Rprop with weight-backtracking) algorithm](IRpropPlusOptimizer.md)
+  [iRprop+ (improved Rprop with weight-backtracking)
+   algorithm](IRpropPlusOptimizer.md)
   is empirically found to be faster and more robust than Rprop-.
   See [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz)
   for details and references.
@@ -95,71 +95,46 @@ class RpropMinusOptimizer(optimizer.Optimizer):
     super(RpropMinusOptimizer, self).__init__(use_locking, name)
 
     # Init parameters
-    self._eta_minus = eta_minus
-    self._eta_plus = eta_plus
-    self._delta_zero = delta_zero
-    self._delta_min = delta_min
-    self._delta_max = delta_max
+    self._set_hyper("eta_minus", eta_minus)
+    self._set_hyper("eta_plus", eta_plus)
+    self._set_hyper("delta_zero", delta_zero)
+    self._set_hyper("delta_min", delta_min)
+    self._set_hyper("delta_max", delta_max)
 
-    # Tensor versions of the constructor arguments, created in _prepare().
-    self._eta_minus_t = None
-    self._eta_plus_t = None
-    self._delta_min_t = None
-    self._delta_max_t = None
-
-  def _create_slots(self, var_list):
-    # Create slots for the gradient at (t-1) and
-    # the step-size "delta_update".
+  def _create_vars(self, var_list, state):
     for v in var_list:
-      # Gradient from the previous step
-      self._zeros_slot(v, "old_grad", self._name)
+      state.zeros_slot(v, "old_grad")
 
-      # Delta update slot
-      init_step = math_ops.add(array_ops.zeros(
-          v.get_shape().as_list(), dtype=v.dtype.base_dtype), self._delta_zero)
-      self._get_or_make_slot(v, init_step, "delta_update", self._name)
+      init_step = math_ops.add(
+          array_ops.zeros_like(v),
+          state.get_hyper("delta_zero", v.dtype.base_dtype))
+      state.create_slot_with_initializer(v, init_step, v.get_shape(),
+                                         v.dtype.base_dtype, "delta_update")
 
-  def _prepare(self):
-    self._eta_minus_t = ops.convert_to_tensor(self._eta_minus, name="eta_minus")
-    self._eta_plus_t = ops.convert_to_tensor(self._eta_plus, name="eta_plus")
-    self._delta_min_t = ops.convert_to_tensor(self._delta_min, name="delta_min")
-    self._delta_max_t = ops.convert_to_tensor(self._delta_max, name="delta_max")
-
-  def _apply_dense(self, grad, var):
-    old_grad = self.get_slot(var, "old_grad")
-    delta_update = self.get_slot(var, "delta_update")
-
-    eta_minus_t = math_ops.cast(self._eta_minus_t, var.dtype.base_dtype)
-    eta_plus_t = math_ops.cast(self._eta_plus_t, var.dtype.base_dtype)
-    delta_min_t = math_ops.cast(self._delta_min_t, var.dtype.base_dtype)
-    delta_max_t = math_ops.cast(self._delta_max_t, var.dtype.base_dtype)
+  def _apply_dense(self, grad, var, state):
+    old_grad = state.get_slot(var, "old_grad")
+    delta_update = state.get_slot(var, "delta_update")
 
     return training_ops.apply_rprop_minus(
         var,
         old_grad,
         delta_update,
-        eta_minus_t,
-        eta_plus_t,
-        delta_min_t,
-        delta_max_t,
+        state.get_hyper("eta_minus", var.dtype.base_dtype),
+        state.get_hyper("eta_plus", var.dtype.base_dtype),
+        state.get_hyper("delta_min", var.dtype.base_dtype),
+        state.get_hyper("delta_max", var.dtype.base_dtype),
         grad, use_locking=self._use_locking).op
 
-  def _resource_apply_dense(self, grad, var):
-    old_grad = self.get_slot(var, "old_grad")
-    delta_update = self.get_slot(var, "delta_update")
-
-    eta_minus_t = math_ops.cast(self._eta_minus_t, var.dtype.base_dtype)
-    eta_plus_t = math_ops.cast(self._eta_plus_t, var.dtype.base_dtype)
-    delta_min_t = math_ops.cast(self._delta_min_t, var.dtype.base_dtype)
-    delta_max_t = math_ops.cast(self._delta_max_t, var.dtype.base_dtype)
+  def _resource_apply_dense(self, grad, var, state):
+    old_grad = state.get_slot(var, "old_grad")
+    delta_update = state.get_slot(var, "delta_update")
 
     return training_ops.resource_apply_rprop_minus(
         var.handle,
         old_grad.handle,
         delta_update.handle,
-        eta_minus_t,
-        eta_plus_t,
-        delta_min_t,
-        delta_max_t,
+        state.get_hyper("eta_minus", var.dtype.base_dtype),
+        state.get_hyper("eta_plus", var.dtype.base_dtype),
+        state.get_hyper("delta_min", var.dtype.base_dtype),
+        state.get_hyper("delta_max", var.dtype.base_dtype),
         grad, use_locking=self._use_locking)
-

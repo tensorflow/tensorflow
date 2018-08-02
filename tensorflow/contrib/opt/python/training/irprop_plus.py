@@ -18,16 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import optimizer
+from tensorflow.contrib.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
 
 
-class IRpropPlusOptimizer(optimizer.Optimizer):
+class IRpropPlusOptimizer(optimizer_v2.OptimizerV2):
   """Optimizer that implements the iRprop+ algorithm.
 
   The Rprop (resilient backpropagation) algorithms are efficient gradient-based
@@ -59,11 +57,6 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
   TensorFlow](https://openreview.net/forum?id=r1R0o7yDz)
   for details and references.
   """
-
-  # Values for gate_gradients, taken from base class.
-  GATE_NONE = 0
-  GATE_OP = 1
-  GATE_GRAPH = 2
 
   def __init__(self,
                eta_minus=0.5,
@@ -120,100 +113,83 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
     super(IRpropPlusOptimizer, self).__init__(use_locking, name)
 
     # Init parameters
-    self._eta_minus = eta_minus
-    self._eta_plus = eta_plus
-    self._delta_zero = delta_zero
-    self._delta_min = delta_min
-    self._delta_max = delta_max
+    self._set_hyper("eta_minus", eta_minus)
+    self._set_hyper("eta_plus", eta_plus)
+    self._set_hyper("delta_zero", delta_zero)
+    self._set_hyper("delta_min", delta_min)
+    self._set_hyper("delta_max", delta_max)
 
-    # Tensor versions of the constructor arguments, created in _prepare().
-    self._eta_minus_t = None
-    self._eta_plus_t = None
-    # self._delta_zero_t = None
-    self._delta_min_t = None
-    self._delta_max_t = None
+    # Error auxiliary var
+    self._error = None
 
+  def _create_vars(self, var_list, state):
     # Error tensors
-    self._error = variable_scope.variable(0.0,
-                                          name="error", trainable=False)
-    self._old_error = variable_scope.variable(0.0,
-                                              name="old_error", trainable=False)
+    state.create_non_slot(initial_value=lambda: 0.0, name="error")
+    state.create_non_slot(initial_value=lambda: 0.0, name="old_error")
 
-  def _prepare(self):
-    self._eta_minus_t = ops.convert_to_tensor(self._eta_minus, name="eta_minus")
-    self._eta_plus_t = ops.convert_to_tensor(self._eta_plus, name="eta_plus")
-    self._delta_min_t = ops.convert_to_tensor(self._delta_min, name="delta_min")
-    self._delta_max_t = ops.convert_to_tensor(self._delta_max, name="delta_max")
-
-  def _create_slots(self, var_list):
-    # Create slots for the gradient at (t-1) and
-    # the step-size "delta_update".
     for v in var_list:
-      # Gradient from the previous step
-      self._zeros_slot(v, 'old_grad', self._name)
-      # Init value for delta at step t = 0
-      init_step = math_ops.add(array_ops.zeros(
-          v.get_shape().as_list(), dtype=v.dtype.base_dtype), self._delta_zero)
-      self._get_or_make_slot(v, init_step, "delta_update", self._name)
+      state.zeros_slot(v, "old_grad")
+
+      init_step = math_ops.add(
+          array_ops.zeros_like(v),
+          state.get_hyper("delta_zero", v.dtype.base_dtype))
+      state.create_slot_with_initializer(v, init_step, v.get_shape(),
+                                         v.dtype.base_dtype, "delta_update")
+
+  def _get_error_values(self, state=None):
+    if state is None:
+      state = self._get_per_graph_state()
+    return (state.get_non_slot("error"),
+            state.get_non_slot("old_error"))
 
   # Helper method to check if variable is scalar
   def _is_scalar(self, tensor):
     return tensor is not None and \
             tensor.shape.ndims == 0
-           #tensor.shape.ndims is not None
 
-  # Called by apply_gradients in Optimizer base class
-  def _apply_dense(self, grad, var):
-    old_grad = self.get_slot(var, 'old_grad')
-    delta_update = self.get_slot(var, "delta_update")
+  def _apply_dense(self, grad, var, state):
+    old_grad = state.get_slot(var, "old_grad")
+    delta_update = state.get_slot(var, "delta_update")
 
-    eta_minus_t = math_ops.cast(self._eta_minus_t, var.dtype.base_dtype)
-    eta_plus_t = math_ops.cast(self._eta_plus_t, var.dtype.base_dtype)
-    delta_min_t = math_ops.cast(self._delta_min_t, var.dtype.base_dtype)
-    delta_max_t = math_ops.cast(self._delta_max_t, var.dtype.base_dtype)
-    # iRprop+ error tensors
-    error_t = math_ops.cast(self._error, var.dtype.base_dtype)
-    old_error_t = math_ops.cast(self._old_error, var.dtype.base_dtype)
-
+    error, old_error = self._get_error_values(state)
+    # Update the error E(t) passed in apply_gradients or minimize
+    update_error = error.assign(self._error, use_locking=self._use_locking)
     return training_ops.apply_i_rprop_plus(
         var,
         old_grad,
         delta_update,
-        eta_minus_t,
-        eta_plus_t,
-        delta_min_t,
-        delta_max_t,
-        error_t,
-        old_error_t,
+        state.get_hyper("eta_minus", var.dtype.base_dtype),
+        state.get_hyper("eta_plus", var.dtype.base_dtype),
+        state.get_hyper("delta_min", var.dtype.base_dtype),
+        state.get_hyper("delta_max", var.dtype.base_dtype),
+        math_ops.cast(update_error, var.dtype.base_dtype),
+        math_ops.cast(old_error, var.dtype.base_dtype),
         grad, use_locking=self._use_locking).op
 
-  def _resource_apply_dense(self, grad, var):
-    old_grad = self.get_slot(var, "old_grad")
-    delta_update = self.get_slot(var, "delta_update")
+  def _resource_apply_dense(self, grad, var, state):
+    old_grad = state.get_slot(var, "old_grad")
+    delta_update = state.get_slot(var, "delta_update")
 
-    eta_minus_t = math_ops.cast(self._eta_minus_t, var.dtype.base_dtype)
-    eta_plus_t = math_ops.cast(self._eta_plus_t, var.dtype.base_dtype)
-    delta_min_t = math_ops.cast(self._delta_min_t, var.dtype.base_dtype)
-    delta_max_t = math_ops.cast(self._delta_max_t, var.dtype.base_dtype)
-    error_t = math_ops.cast(self._error, var.dtype.base_dtype)
-    old_error_t = math_ops.cast(self._old_error, var.dtype.base_dtype)
-
+    error, old_error = self._get_error_values(state)
+    update_error = error.assign(
+        math_ops.cast(self._error, error.dtype.base_dtype),
+        use_locking=self._use_locking)
     return training_ops.resource_apply_i_rprop_plus(
         var.handle,
         old_grad.handle,
         delta_update.handle,
-        eta_minus_t,
-        eta_plus_t,
-        delta_min_t,
-        delta_max_t,
-        error_t,
-        old_error_t,
+        state.get_hyper("eta_minus", var.dtype.base_dtype),
+        state.get_hyper("eta_plus", var.dtype.base_dtype),
+        state.get_hyper("delta_min", var.dtype.base_dtype),
+        state.get_hyper("delta_max", var.dtype.base_dtype),
+        math_ops.cast(update_error, var.dtype.base_dtype),
+        math_ops.cast(old_error, var.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-
   def minimize(self, loss, global_step=None, var_list=None,
-               gate_gradients=GATE_OP, aggregation_method=None,
-               colocate_gradients_with_ops=False, name=None, grad_loss=None):
+               gate_gradients=optimizer_v2.OptimizerV2.GATE_OP,
+               aggregation_method=None, colocate_gradients_with_ops=False,
+               name=None, grad_loss=None):
     """Add operations to minimize `loss` by updating `var_list`.
     This method simply combines calls `compute_gradients()` and
     `apply_gradients()`. If you want to process the gradient before applying
@@ -251,15 +227,12 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
     `grad_loss` are ignored when eager execution is enabled.
     @end_compatibility
     """
-    # Override method from base class
+    # Override method from base class, the loss is required to be scalar
 
     # Error E(t)
-    if self._is_scalar(loss):
-      self._error = loss
-    else:
-      raise ValueError(
-          "'loss' (%s) must be a 0-D tensor." % loss)
-
+    if not self._is_scalar(loss):
+      raise ValueError("'loss' (%s) must be a 0-D tensor." % loss)
+    self._error = loss
     return super(IRpropPlusOptimizer, self).minimize(
         loss,
         global_step=global_step, var_list=var_list,
@@ -267,17 +240,6 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops, name=name,
         grad_loss=grad_loss)
-
-  def _finish(self, update_ops, name_scope):
-
-    # Update the old error E(t-1) <- E(t)
-    with ops.control_dependencies(update_ops):
-      with ops.colocate_with(self._error):
-        old_error_update = self._old_error.assign(
-            self._error, use_locking=self._use_locking)
-
-    return control_flow_ops.group(*update_ops + [old_error_update],
-                                  name=name_scope)
 
   def apply_gradients(self, grads_and_vars, loss, global_step=None, name=None):
     """Apply gradients to variables.
@@ -306,14 +268,17 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
     # in this way we make sure that the error is passed to the step update
     # even when the gradients are computed using different methods.
 
-    # Error E(t)
-    if self._is_scalar(loss):
-      self._error = loss
-    else:
-      raise ValueError(
-          "'loss' (%s) must be a 0-D tensor." % loss)
+    if not self._is_scalar(loss):
+      raise ValueError("'loss' (%s) must be a 0-D tensor." % loss)
+    self._error = loss
 
     return super(IRpropPlusOptimizer, self).apply_gradients(
         grads_and_vars,
         global_step=global_step,
         name=name)
+  
+  def _finish(self, state):
+    error, old_error = self._get_error_values(state)
+    # Update the old error E(t-1) <- E(t)
+    update_old_error = old_error.assign(error, use_locking=self._use_locking)
+    return control_flow_ops.group(update_old_error)

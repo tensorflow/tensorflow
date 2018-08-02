@@ -21,9 +21,12 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.opt.python.training import irprop_plus
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 
@@ -82,9 +85,9 @@ class IRpropPlusTest(test.TestCase):
         delta0 = np.array([delta_zero, delta_zero], dtype=dtype.as_numpy_dtype)
 
         # errors
-        loss0_np = 0.5
-        old_loss0_np = -0.25
-        large_loss0_np = 2.5
+        loss_np = 0.5
+        old_loss_np = -0.25
+        large_loss_np = 2.5
 
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
@@ -95,15 +98,23 @@ class IRpropPlusTest(test.TestCase):
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable(var0_np)
           var1 = resource_variable_ops.ResourceVariable(var1_np)
+          loss_var = resource_variable_ops.ResourceVariable(loss_np)
+          large_loss_var = resource_variable_ops.ResourceVariable(large_loss_np)
         else:
           var0 = variables.Variable(var0_np)
           var1 = variables.Variable(var1_np)
-
-        loss0_var = variables.Variable(loss0_np)
-        large_loss0_var = variables.Variable(large_loss0_np)
+          loss_var = variables.Variable(loss_np)
+          large_loss_var = variables.Variable(large_loss_np)
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
+        neg_grads0 = constant_op.constant(neg_grads0_np)
+        neg_grads1 = constant_op.constant(neg_grads1_np)
+
+        # Helpers
+        vars_arr = [var0, var1]
+        pos_grads = [grads0, grads1]
+        neg_grads = [neg_grads0, neg_grads1]
 
         opt = irprop_plus.IRpropPlusOptimizer(eta_minus=eta_minus,
                                               eta_plus=eta_plus,
@@ -111,19 +122,17 @@ class IRpropPlusTest(test.TestCase):
                                               delta_max=delta_max,
                                               delta_zero=delta_zero)
 
-        pos_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
-                                         loss0_var)
-        neg_update = opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
-                                         loss0_var)
+        if not context.executing_eagerly():
+          pos_update = opt.apply_gradients(zip(pos_grads, vars_arr), loss_var)
+          neg_update = opt.apply_gradients(zip(neg_grads, vars_arr),
+                                           loss_var)
 
-        # large loss value to retract the previous weight
-        pos_large_update = opt.apply_gradients(
-            zip([grads0, grads1], [var0, var1]),
-            large_loss0_var)
+          # large loss value to retract the previous weight
+          pos_large_update = opt.apply_gradients(zip(pos_grads, vars_arr),
+                                                 large_loss_var)
 
-        neg_large_update = opt.apply_gradients(
-            zip([-grads0, -grads1], [var0, var1]),
-            large_loss0_var)
+          neg_large_update = opt.apply_gradients(zip(neg_grads, vars_arr),
+                                                 large_loss_var)
 
         if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
@@ -131,6 +140,7 @@ class IRpropPlusTest(test.TestCase):
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
           self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
+        # vars used to restore the previous weight
         old_w_t0 = var0
         old_w_t1 = var1
 
@@ -146,55 +156,51 @@ class IRpropPlusTest(test.TestCase):
         # - third iteration will retract the weight (neg sign)
         # - fourth iteration 0 sign
         for t in range(1, 11):
-          loss0 = loss0_np
-          old_loss0 = old_loss0_np
+          loss0 = loss_np
+          old_loss0 = old_loss_np
 
           if t < 4:
             grads0_sign = grads0_np
             grads1_sign = grads1_np
             if not context.executing_eagerly():
               self.evaluate(pos_update)
-            elif t > 1:
-              opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
-                                  loss0_var)
+            else:
+              opt.apply_gradients(zip(pos_grads, vars_arr), loss_var)
 
           elif t < 7:
             grads0_sign = neg_grads0_np
             grads1_sign = neg_grads1_np
-
+            loss0 = large_loss_np
             if not context.executing_eagerly():
-              loss0 = large_loss0_np
               self.evaluate(neg_large_update)
             else:
-              opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
-                                  large_loss0_var)
+              opt.apply_gradients(zip(neg_grads, vars_arr), large_loss_var)
           else:
             if t & 1 == 0:
               grads0_sign = neg_grads0_np
               grads1_sign = neg_grads1_np
               # retract weight
-              update = neg_update
-              if context.executing_eagerly():
-                opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
-                                    loss0_var)
+              if not context.executing_eagerly():
+                update = neg_update
+              else:
+                opt.apply_gradients(zip(neg_grads, vars_arr), loss_var)
             else:
               # pos grad
               grads0_sign = grads0_np
               grads1_sign = grads1_np
               old_loss0 = loss0
-              update = pos_update
+              if not context.executing_eagerly():
+                update = pos_update
 
               if t > 8:
-                loss0 = large_loss0_np
-                update = pos_large_update
-                if context.executing_eagerly():
-                  pos_large_update = opt.apply_gradients(zip([grads0, grads1],
-                                                             [var0, var1]),
-                                                         large_loss0_var)
+                loss0 = large_loss_np
+                if not context.executing_eagerly():
+                  update = pos_large_update
+                else:
+                  opt.apply_gradients(zip(pos_grads, vars_arr), large_loss_var)
               else:
                 if context.executing_eagerly():
-                  opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
-                                      loss0_var)
+                  opt.apply_gradients(zip(pos_grads, vars_arr), loss_var)
 
             if not context.executing_eagerly():
               self.evaluate(update)
@@ -228,9 +234,27 @@ class IRpropPlusTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
-  def _testInvalidLoss(self):
+  def testBasic(self):
+    self._testDense(use_resource=False)
+    self._testDense(use_resource=False,
+                    eta_minus=0.3,
+                    eta_plus=1.5,
+                    delta_min=1e-8,
+                    delta_max=30,
+                    delta_zero=0.0125)
 
-    for dtype in [dtypes.float32]:
+  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  def testResourceBasic(self):
+    self._testDense(use_resource=True)
+    self._testDense(use_resource=True,
+                    eta_minus=0.3,
+                    eta_plus=1.5,
+                    delta_min=1e-8,
+                    delta_max=30,
+                    delta_zero=0.0125)
+
+  def testInvalidLoss(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
 
       loss_var_none = None
       loss_var_vector = variables.Variable(
@@ -249,24 +273,26 @@ class IRpropPlusTest(test.TestCase):
       # type error in case no loss variable is passed, sanity check
       self.assertRaises(TypeError, opt.apply_gradients, grads)
 
-  def testDense(self):
+  def testTwoSessions(self):
+    optimizer = irprop_plus.IRpropPlusOptimizer()
+    g = ops.Graph()
+    with g.as_default():
+      with session.Session():
+        var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
+        var0_loss = variables.Variable(0.5, name="error")
+        grads0 = constant_op.constant(np.array([0.1, 0.1]))
+        optimizer.apply_gradients([(grads0, var0)], var0_loss)
 
-    self._testDense(use_resource=False)
-    self._testDense(use_resource=False,
-                    eta_minus=0.3,
-                    eta_plus=1.5,
-                    delta_min=1e-8,
-                    delta_max=30,
-                    delta_zero=0.0125)
-    self._testDense(use_resource=True)
-    self._testDense(use_resource=True,
-                    eta_minus=0.3,
-                    eta_plus=1.5,
-                    delta_min=1e-8,
-                    delta_max=30,
-                    delta_zero=0.0125)
+    gg = ops.Graph()
+    with gg.as_default():
+      with session.Session():
+        var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
+        var0_loss = variables.Variable(0.5, name="error")
+        grads0 = constant_op.constant(np.array([0.1, 0.1]))
 
-    self._testInvalidLoss()
+        # If the optimizer saves any state not keyed by graph the following line
+        # fails.
+        optimizer.apply_gradients([(grads0, var0)], var0_loss)
 
 if __name__ == '__main__':
   test.main()

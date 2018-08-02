@@ -24,6 +24,7 @@ from tensorflow.contrib.opt.python.training import rprop_minus
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -86,6 +87,13 @@ class RpropMinusTest(test.TestCase):
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
+        neg_grads0 = constant_op.constant(neg_grads0_np)
+        neg_grads1 = constant_op.constant(neg_grads1_np)
+
+        # Helpers
+        vars_arr = [var0, var1]
+        pos_grads = [grads0, grads1]
+        neg_grads = [neg_grads0, neg_grads1]
 
         opt = rprop_minus.RpropMinusOptimizer(eta_minus=eta_minus,
                                               eta_plus=eta_plus,
@@ -93,8 +101,10 @@ class RpropMinusTest(test.TestCase):
                                               delta_max=delta_max,
                                               delta_zero=delta_zero)
 
-        pos_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        neg_update = opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]))
+        if not context.executing_eagerly():
+          pos_update = opt.apply_gradients(zip(pos_grads, vars_arr))
+          neg_update = opt.apply_gradients(zip(neg_grads, vars_arr))
+
         if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
@@ -106,21 +116,20 @@ class RpropMinusTest(test.TestCase):
         # next 3 steps with negative gradient (first iteration only will have negative sign)
         # last 4 steps with alternate gradient (negative sign)
         for t in range(1, 10):
-
           if t < 4:
             grads0_sign = grads0_np
             grads1_sign = grads1_np
             if not context.executing_eagerly():
               self.evaluate(pos_update)
-            elif t > 1:
-              opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+            else:
+              opt.apply_gradients(zip(pos_grads, vars_arr))
           elif t < 7:
             grads0_sign = neg_grads0_np
             grads1_sign = neg_grads1_np
             if not context.executing_eagerly():
               self.evaluate(neg_update)
             else:
-              opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]))
+              opt.apply_gradients(zip(neg_grads, vars_arr))
           else:
             if t & 1 == 0:
               grads0_sign = neg_grads0_np
@@ -128,14 +137,14 @@ class RpropMinusTest(test.TestCase):
               if not context.executing_eagerly():
                 self.evaluate(neg_update)
               else:
-                opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]))
+                opt.apply_gradients(zip(neg_grads, vars_arr))
             else:
               grads0_sign = grads0_np
               grads1_sign = grads1_np
               if not context.executing_eagerly():
                 self.evaluate(pos_update)
               else:
-                opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+                opt.apply_gradients(zip(pos_grads, vars_arr))
 
           var0_np, delta0, old_grads0 = rprop_update_numpy(
               var0_np,
@@ -159,8 +168,7 @@ class RpropMinusTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
-  def testDense(self):
-
+  def testBasic(self):
     self._testDense(use_resource=False)
     self._testDense(use_resource=False,
                     eta_minus=0.25,
@@ -168,6 +176,9 @@ class RpropMinusTest(test.TestCase):
                     delta_min=1e-8,
                     delta_max=25,
                     delta_zero=1)
+
+  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  def testResourceBasic(self):
     self._testDense(use_resource=True)
     self._testDense(use_resource=True,
                     eta_minus=0.25,
