@@ -23,7 +23,6 @@ import os
 
 import six
 
-import tensorflow as tf
 from tensorflow.python.estimator import util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +30,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -287,10 +288,10 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
   def serving_input_receiver_fn():
     """An input_fn that expects a serialized tf.Example."""
     if base64_encode_example:
-      new_base64_placeholder = tf.placeholder(dtype=tf.string,
+      new_base64_placeholder = array_ops.placeholder(dtype=dtypes.string,
                                               shape=[default_batch_size],
                                               name='input_example_tensor')
-      serialized_tf_example = tf.map_fn(tf.decode_base64,
+      serialized_tf_example = functional_ops.map_fn(string_ops.decode_base64,
                                         new_base64_placeholder)
       receiver_tensors = {'examples': new_base64_placeholder}
     else:

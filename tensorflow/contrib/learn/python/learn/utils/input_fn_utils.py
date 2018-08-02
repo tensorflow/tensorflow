@@ -32,11 +32,12 @@ from __future__ import print_function
 
 import collections
 
-import tensorflow as tf
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.util.deprecation import deprecated
 
 
@@ -88,10 +89,10 @@ def build_parsing_serving_input_fn(feature_spec, default_batch_size=None,
   def input_fn():
     """An input_fn that expects a serialized tf.Example."""
     if base64_encode_example:
-      new_base64_placeholder = tf.placeholder(dtype=tf.string,
+      new_base64_placeholder = array_ops.placeholder(dtype=dtypes.string,
                                               shape=[default_batch_size],
                                               name='input_example_tensor')
-      serialized_tf_example = tf.map_fn(tf.decode_base64,
+      serialized_tf_example = functional_ops.map_fn(string_ops.decode_base64,
                                         new_base64_placeholder)
       inputs = {'examples': new_base64_placeholder}
     else:
