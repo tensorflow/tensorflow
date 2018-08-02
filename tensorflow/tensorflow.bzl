@@ -1096,6 +1096,10 @@ def tf_kernel_library(
     tf_gpu_kernel_library(
         name=name + "_gpu", srcs=gpu_srcs, deps=deps, **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
+  kwargs["tags"] = kwargs.get("tags", []) + [
+      "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
+      "req_dep=@local_config_cuda//cuda:cuda_headers",
+  ]
   tf_cuda_library(
       name=name,
       srcs=srcs,
