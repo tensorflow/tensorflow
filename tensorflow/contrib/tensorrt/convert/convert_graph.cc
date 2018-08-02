@@ -615,6 +615,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
 
   // Up until this point, graph is not modified. If we return !status.ok() from
   // here, this segment will be skipped
+  // TODO(aaroey): let it return proper error status for the following logic
+  // instead of checking fail.
   tensorflow::Node* engine_node = graph->AddNode(trt_node, &status);
   (*engine_nodes)[pos] = engine_node;
   if (!status.ok()) {
@@ -629,9 +631,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   }
   VLOG(1) << "input_nodes size = " << input_nodes.size();
   for (int i = 0; i < input_nodes.size(); ++i) {
-    Node* n = input_nodes[i];
+    Node* n = CHECK_NOTNULL(input_nodes[i]);
     const auto& in = inputs[i];
-    CHECK_NOTNULL(n);
     VLOG(1) << "Connecting data edge from " << n->name() << ":" << in.index
             << " to " << engine_node->name() << ":" << i;
     graph->AddEdge(n, in.index, engine_node, i);
@@ -662,7 +663,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
                        << output_node->name() << ":" << conn.outside_port;
     }
   }
-  return status;
+  return Status::OK();
 }
 
 // Function to construct a funcdef from the segment and add it to the graph.

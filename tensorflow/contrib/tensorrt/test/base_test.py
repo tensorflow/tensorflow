@@ -136,8 +136,8 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
   def setUp(self):
     """Setup method."""
     super(PartiallyConvertedTestA, self).setUp()
-    # Let it fail to build the first engine.
-    trt_convert.add_test_value("my_trt_op_0:CreateTRTNode", "fail")
+    # Let it fail to build the second engine.
+    trt_convert.add_test_value("my_trt_op_1:CreateTRTNode", "fail")
 
   def GetParams(self):
     """Create a graph containing two segment."""
@@ -167,8 +167,8 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         expected_engines={
-            # Only the second engine is built.
-            "my_trt_op_1": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
+            # Only the first engine is built.
+            "my_trt_op_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
         },
         expected_output_dims=tuple(input_dims),
         allclose_atol=1.e-06,
@@ -180,16 +180,16 @@ class PartiallyConvertedTestB(PartiallyConvertedTestA):
   def setUp(self):
     """Setup method."""
     super(PartiallyConvertedTestB, self).setUp()
-    # Let it fail to build the second engine.
+    # Let it fail to build the first engine.
     trt_convert.clear_test_values("")
-    trt_convert.add_test_value("my_trt_op_1:CreateTRTNode", "fail")
+    trt_convert.add_test_value("my_trt_op_0:CreateTRTNode", "fail")
 
   def GetParams(self):
     """Create a graph containing two segment."""
     return super(PartiallyConvertedTestB, self).GetParams()._replace(
         expected_engines={
-            # Only the first engine is built.
-            "my_trt_op_0": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
+            # Only the second engine is built.
+            "my_trt_op_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
         })
 
 
@@ -227,8 +227,8 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         expected_engines={
-            "my_trt_op_0": ["add2", "add3", "mul1"],
-            "my_trt_op_1": ["add", "add1", "mul"]
+            "my_trt_op_0": ["add", "add1", "mul"],
+            "my_trt_op_1": ["add2", "add3", "mul1"]
         },
         expected_output_dims=tuple(input_dims),
         allclose_atol=1.e-06,
@@ -289,6 +289,10 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
         input_dims=[input_dims],
         expected_engines={
             "my_trt_op_0": ["add2", "add3", "mul1"],
+            # Why segment ["add", "add1", "mul"] was assigned segment id 1
+            # instead of 0: the parent node of this segment is actually const
+            # node 'c', but it's removed later since it's const output of the
+            # segment which is not allowed.
             "my_trt_op_1": ["add", "add1", "mul"]
         },
         expected_output_dims=tuple(input_dims),
@@ -330,8 +334,8 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         expected_engines={
-            "my_trt_op_0": ["c2", "add2", "add3", "mul1"],
-            "my_trt_op_1": ["c1", "add", "add1", "mul"]
+            "my_trt_op_0": ["c1", "add", "add1", "mul"],
+            "my_trt_op_1": ["c2", "add2", "add3", "mul1"]
         },
         expected_output_dims=tuple(input_dims),
         allclose_atol=1.e-06,
