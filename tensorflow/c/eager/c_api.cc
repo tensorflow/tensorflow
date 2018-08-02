@@ -348,6 +348,11 @@ TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h) {
 }
 
 int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return -1;
+  }
   int result;
   status->status = h->handle->NumDims(&result);
   return result;
@@ -355,12 +360,22 @@ int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
 
 int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
                             TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return -1;
+  }
   tensorflow::int64 result;
   status->status = h->handle->Dim(dim_index, &result);
   return result;
 }
 
 const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return nullptr;
+  }
   tensorflow::Device* d = nullptr;
   status->status = h->handle->OpDevice(&d);
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
@@ -368,6 +383,11 @@ const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return nullptr;
+  }
   // TODO(agarwal): move this implementation inside TFE_TensorHandle.
   tensorflow::Device* d = nullptr;
   tensorflow::Device* op_device = nullptr;

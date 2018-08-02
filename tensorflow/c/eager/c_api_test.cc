@@ -615,6 +615,42 @@ void SetAndGetOpDevices(bool async) {
   TF_DeleteStatus(status);
 }
 
+TEST(CAPI, TensorHandleNullptr) {
+  TFE_TensorHandle* h = nullptr;
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+
+  TF_Tensor* t = TFE_TensorHandleResolve(h, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(t, nullptr);
+  ASSERT_EQ("The passed in handle is a nullptr",
+            string(TF_Message(status.get())));
+
+  TF_SetStatus(status.get(), TF_OK, "");
+
+  const char* device_name = TFE_TensorHandleDeviceName(h, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(device_name, nullptr);
+  ASSERT_EQ("The passed in handle is a nullptr",
+            string(TF_Message(status.get())));
+
+  TF_SetStatus(status.get(), TF_OK, "");
+
+  int num_dims = TFE_TensorHandleNumDims(h, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(num_dims, -1);
+  ASSERT_EQ("The passed in handle is a nullptr",
+            string(TF_Message(status.get())));
+
+  TF_SetStatus(status.get(), TF_OK, "");
+
+  int dim = TFE_TensorHandleDim(h, 0, status.get());
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  ASSERT_EQ(dim, -1);
+  ASSERT_EQ("The passed in handle is a nullptr",
+            string(TF_Message(status.get())));
+}
+
 void Execute_MatMul_CPU(bool async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
