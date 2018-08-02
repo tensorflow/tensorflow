@@ -18,20 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import functools
 import math
 import os
 import random
-import shutil
-import tempfile
 import time
 
 import numpy as np
 import six
 
 from google.protobuf.any_pb2 import Any
-from google.protobuf import text_format
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -71,12 +67,12 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.training import adam
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.training.checkpointable import base as checkpointable_base
 from tensorflow.python.training.checkpointable import tracking as checkpointable_tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
@@ -343,11 +339,13 @@ class SaverTest(test.TestCase):
       self.assertTrue(isinstance(val, six.string_types))
       self.assertEqual(save_path1, val)
 
-    self.assertEqual(saver_module.latest_checkpoint(save_dir1), save_path1)
+    self.assertEqual(
+        checkpoint_management.latest_checkpoint(save_dir1), save_path1)
     save_dir2 = os.path.join(self.get_temp_dir(), "save_dir2")
     os.renames(save_dir1, save_dir2)
     save_path2 = os.path.join(save_dir2, "save_copy_restore")
-    self.assertEqual(saver_module.latest_checkpoint(save_dir2), save_path2)
+    self.assertEqual(
+        checkpoint_management.latest_checkpoint(save_dir2), save_path2)
 
     # Start a second session.  In that session the parameter nodes
     # have not been initialized either.
@@ -857,7 +855,7 @@ class SaveRestoreShardedTest(test.TestCase):
         self.assertEqual(save_path + "-?????-of-00002", val)
       else:
         self.assertEqual(save_path, val)
-      meta_graph_filename = saver_module._meta_graph_filename(val)
+      meta_graph_filename = checkpoint_management.meta_graph_filename(val)
       self.assertEqual(save_path + ".meta", meta_graph_filename)
 
     if save._write_version is saver_pb2.SaverDef.V1:
@@ -951,11 +949,11 @@ class SaveRestoreShardedTest(test.TestCase):
 
     if save._write_version is saver_pb2.SaverDef.V1:
       self.assertEqual(
-          saver_module.latest_checkpoint(self.get_temp_dir()),
+          checkpoint_management.latest_checkpoint(self.get_temp_dir()),
           os.path.join(self.get_temp_dir(), "sharded_basics-?????-of-00002"))
     else:
       self.assertEqual(
-          saver_module.latest_checkpoint(self.get_temp_dir()),
+          checkpoint_management.latest_checkpoint(self.get_temp_dir()),
           os.path.join(self.get_temp_dir(), "sharded_basics"))
 
   def testSaverDef(self):
@@ -1105,7 +1103,7 @@ class MaxToKeepTest(test.TestCase):
 
   def assertCheckpointState(self, model_checkpoint_path,
                             all_model_checkpoint_paths, save_dir):
-    checkpoint_state = saver_module.get_checkpoint_state(save_dir)
+    checkpoint_state = checkpoint_management.get_checkpoint_state(save_dir)
     self.assertEqual(checkpoint_state.model_checkpoint_path,
                      model_checkpoint_path)
     self.assertEqual(checkpoint_state.all_model_checkpoint_paths,
@@ -1113,7 +1111,7 @@ class MaxToKeepTest(test.TestCase):
 
   def testMaxToKeepEager(self):
     with context.eager_mode():
-      save_dir = self._get_test_dir("max_to_keep_non_sharded")
+      save_dir = self._get_test_dir("max_to_keep_eager")
 
       v = variable_scope.variable(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=2)
@@ -1123,7 +1121,7 @@ class MaxToKeepTest(test.TestCase):
 
       s1 = save.save(None, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s1],
@@ -1131,8 +1129,8 @@ class MaxToKeepTest(test.TestCase):
 
       s2 = save.save(None, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s1, s2],
@@ -1140,9 +1138,9 @@ class MaxToKeepTest(test.TestCase):
 
       s3 = save.save(None, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s1))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
-      self.assertTrue(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s3))
       self.assertCheckpointState(
           model_checkpoint_path=s3,
           all_model_checkpoint_paths=[s2, s3],
@@ -1157,9 +1155,9 @@ class MaxToKeepTest(test.TestCase):
       # Adding s2 again (old s2 is removed first, then new s2 appended)
       s2 = save.save(None, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s1))
-      self.assertTrue(saver_module.checkpoint_exists(s3))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s3))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s3, s2],
@@ -1168,8 +1166,8 @@ class MaxToKeepTest(test.TestCase):
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save.save(None, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s3))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1178,9 +1176,9 @@ class MaxToKeepTest(test.TestCase):
       s2 = save2.save(None, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save2.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       # Deleted by the first helper.
-      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
 
   def testNonSharded(self):
     save_dir = self._get_test_dir("max_to_keep_non_sharded")
@@ -1193,7 +1191,7 @@ class MaxToKeepTest(test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s1],
@@ -1201,8 +1199,8 @@ class MaxToKeepTest(test.TestCase):
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s1, s2],
@@ -1210,9 +1208,9 @@ class MaxToKeepTest(test.TestCase):
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s1))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
-      self.assertTrue(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s3))
       self.assertCheckpointState(
           model_checkpoint_path=s3,
           all_model_checkpoint_paths=[s2, s3],
@@ -1231,15 +1229,18 @@ class MaxToKeepTest(test.TestCase):
       # Adding s2 again (old s2 is removed first, then new s2 appended)
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s1))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s1))
       self.assertFalse(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
-      self.assertTrue(saver_module.checkpoint_exists(s3))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s1)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s3))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s3)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s2)))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s3, s2],
@@ -1248,15 +1249,18 @@ class MaxToKeepTest(test.TestCase):
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s3)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s2)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s1)))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1268,16 +1272,19 @@ class MaxToKeepTest(test.TestCase):
       s2 = save2.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s3, s2], save2.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s1)))
       # Deleted by the first helper.
-      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s3)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s2)))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s3, s2],
@@ -1286,15 +1293,18 @@ class MaxToKeepTest(test.TestCase):
       # Adding s1 (s3 should now be deleted as oldest in list)
       s1 = save2.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save2.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s3)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s2)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s1)))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1306,16 +1316,19 @@ class MaxToKeepTest(test.TestCase):
       s2 = save3.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s2], save3.last_checkpoints)
       # Created by the first helper.
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s1)))
       # Deleted by the first helper.
-      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s3)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s2)))
       # Even though the file for s1 exists, this saver isn't aware of it, which
       # is why it doesn't end up in the checkpoint state.
       self.assertCheckpointState(
@@ -1326,15 +1339,18 @@ class MaxToKeepTest(test.TestCase):
       # Adding s1 (s3 should not be deleted because helper is unaware of it)
       s1 = save3.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s2, s1], save3.last_checkpoints)
-      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s3)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s2)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
+          checkpoint_management.checkpoint_exists(
+              checkpoint_management.meta_graph_filename(s1)))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1365,7 +1381,8 @@ class MaxToKeepTest(test.TestCase):
       else:
         self.assertEqual(4, len(gfile.Glob(s1 + "*")))
 
-      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s1)))
+      self.assertTrue(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s1)))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
@@ -1373,27 +1390,32 @@ class MaxToKeepTest(test.TestCase):
         self.assertEqual(2, len(gfile.Glob(s1)))
       else:
         self.assertEqual(4, len(gfile.Glob(s1 + "*")))
-      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s1)))
+      self.assertTrue(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s1)))
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(2, len(gfile.Glob(s2)))
       else:
         self.assertEqual(4, len(gfile.Glob(s2 + "*")))
-      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s2)))
+      self.assertTrue(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s2)))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
       self.assertEqual(0, len(gfile.Glob(s1 + "*")))
-      self.assertFalse(gfile.Exists(saver_module._meta_graph_filename(s1)))
+      self.assertFalse(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s1)))
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(2, len(gfile.Glob(s2)))
       else:
         self.assertEqual(4, len(gfile.Glob(s2 + "*")))
-      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s2)))
+      self.assertTrue(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s2)))
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(2, len(gfile.Glob(s3)))
       else:
         self.assertEqual(4, len(gfile.Glob(s3 + "*")))
-      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s3)))
+      self.assertTrue(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s3)))
 
   def testNoMaxToKeep(self):
     save_dir = self._get_test_dir("no_max_to_keep")
@@ -1408,20 +1430,20 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([], save.last_checkpoints)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([], save.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([], save.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
 
       # Test max_to_keep being 0.
       save2 = saver_module.Saver({"v": v}, max_to_keep=0)
       self.assertEqual([], save2.last_checkpoints)
       s1 = save2.save(sess, os.path.join(save_dir2, "s1"))
       self.assertEqual([], save2.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
       s2 = save2.save(sess, os.path.join(save_dir2, "s2"))
       self.assertEqual([], save2.last_checkpoints)
-      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s2))
 
   def testNoMetaGraph(self):
     save_dir = self._get_test_dir("no_meta_graph")
@@ -1432,8 +1454,9 @@ class MaxToKeepTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"), write_meta_graph=False)
-      self.assertTrue(saver_module.checkpoint_exists(s1))
-      self.assertFalse(gfile.Exists(saver_module._meta_graph_filename(s1)))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
+      self.assertFalse(
+          gfile.Exists(checkpoint_management.meta_graph_filename(s1)))
 
 
 class KeepCheckpointEveryNHoursTest(test.TestCase):
@@ -1489,10 +1512,10 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
       self.assertEqual([s3, s4], save.last_checkpoints)
 
       # Check that s1 is still here, but s2 is gone.
-      self.assertTrue(saver_module.checkpoint_exists(s1))
-      self.assertFalse(saver_module.checkpoint_exists(s2))
-      self.assertTrue(saver_module.checkpoint_exists(s3))
-      self.assertTrue(saver_module.checkpoint_exists(s4))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s1))
+      self.assertFalse(checkpoint_management.checkpoint_exists(s2))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s3))
+      self.assertTrue(checkpoint_management.checkpoint_exists(s4))
 
 
 class SaveRestoreWithVariableNameMap(test.TestCase):
@@ -1569,221 +1592,6 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
 
   def testNonReshapeVariable(self):
     self._testNonReshape(variables.Variable)
-
-
-class LatestCheckpointWithRelativePaths(test.TestCase):
-
-  @staticmethod
-  @contextlib.contextmanager
-  def tempWorkingDir(temppath):
-    cwd = os.getcwd()
-    os.chdir(temppath)
-    try:
-      yield
-    finally:
-      os.chdir(cwd)
-
-  @staticmethod
-  @contextlib.contextmanager
-  def tempDir():
-    tempdir = tempfile.mkdtemp()
-    try:
-      yield tempdir
-    finally:
-      shutil.rmtree(tempdir)
-
-  def testNameCollision(self):
-    # Make sure we have a clean directory to work in.
-    with self.tempDir() as tempdir:
-      # Jump to that directory until this test is done.
-      with self.tempWorkingDir(tempdir):
-        # Save training snapshots to a relative path.
-        traindir = "train/"
-        os.mkdir(traindir)
-        # Collides with the default name of the checkpoint state file.
-        filepath = os.path.join(traindir, "checkpoint")
-
-        with self.test_session() as sess:
-          unused_a = variables.Variable(0.0)  # So that Saver saves something.
-          variables.global_variables_initializer().run()
-
-          # Should fail.
-          saver = saver_module.Saver(sharded=False)
-          with self.assertRaisesRegexp(ValueError, "collides with"):
-            saver.save(sess, filepath)
-
-          # Succeeds: the file will be named "checkpoint-<step>".
-          saver.save(sess, filepath, global_step=1)
-          self.assertIsNotNone(saver_module.latest_checkpoint(traindir))
-
-          # Succeeds: the file will be named "checkpoint-<i>-of-<n>".
-          saver = saver_module.Saver(sharded=True)
-          saver.save(sess, filepath)
-          self.assertIsNotNone(saver_module.latest_checkpoint(traindir))
-
-          # Succeeds: the file will be named "checkpoint-<step>-<i>-of-<n>".
-          saver = saver_module.Saver(sharded=True)
-          saver.save(sess, filepath, global_step=1)
-          self.assertIsNotNone(saver_module.latest_checkpoint(traindir))
-
-  def testRelativePath(self):
-    # Make sure we have a clean directory to work in.
-    with self.tempDir() as tempdir:
-
-      # Jump to that directory until this test is done.
-      with self.tempWorkingDir(tempdir):
-
-        # Save training snapshots to a relative path.
-        traindir = "train/"
-        os.mkdir(traindir)
-
-        filename = "snapshot"
-        filepath = os.path.join(traindir, filename)
-
-        with self.test_session() as sess:
-          # Build a simple graph.
-          v0 = variables.Variable(0.0)
-          inc = v0.assign_add(1.0)
-
-          save = saver_module.Saver({"v0": v0})
-
-          # Record a short training history.
-          variables.global_variables_initializer().run()
-          save.save(sess, filepath, global_step=0)
-          inc.eval()
-          save.save(sess, filepath, global_step=1)
-          inc.eval()
-          save.save(sess, filepath, global_step=2)
-
-        with self.test_session() as sess:
-          # Build a new graph with different initialization.
-          v0 = variables.Variable(-1.0)
-
-          # Create a new saver.
-          save = saver_module.Saver({"v0": v0})
-          variables.global_variables_initializer().run()
-
-          # Get the most recent checkpoint name from the training history file.
-          name = saver_module.latest_checkpoint(traindir)
-          self.assertIsNotNone(name)
-
-          # Restore "v0" from that checkpoint.
-          save.restore(sess, name)
-          self.assertEqual(v0.eval(), 2.0)
-
-
-class CheckpointStateTest(test.TestCase):
-
-  def _get_test_dir(self, dirname):
-    test_dir = os.path.join(self.get_temp_dir(), dirname)
-    gfile.MakeDirs(test_dir)
-    return test_dir
-
-  def testAbsPath(self):
-    save_dir = self._get_test_dir("abs_paths")
-    abs_path = os.path.join(save_dir, "model-0")
-    ckpt = saver_module.generate_checkpoint_state_proto(save_dir, abs_path)
-    self.assertEqual(ckpt.model_checkpoint_path, abs_path)
-    self.assertTrue(os.path.isabs(ckpt.model_checkpoint_path))
-    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 1)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
-
-  def testRelPath(self):
-    train_dir = "train"
-    model = os.path.join(train_dir, "model-0")
-    # model_checkpoint_path should have no "train" directory part.
-    new_rel_path = "model-0"
-    ckpt = saver_module.generate_checkpoint_state_proto(train_dir, model)
-    self.assertEqual(ckpt.model_checkpoint_path, new_rel_path)
-    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 1)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], new_rel_path)
-
-  def testAllModelCheckpointPaths(self):
-    save_dir = self._get_test_dir("all_models_test")
-    abs_path = os.path.join(save_dir, "model-0")
-    for paths in [None, [], ["model-2"]]:
-      ckpt = saver_module.generate_checkpoint_state_proto(
-          save_dir, abs_path, all_model_checkpoint_paths=paths)
-      self.assertEqual(ckpt.model_checkpoint_path, abs_path)
-      self.assertTrue(os.path.isabs(ckpt.model_checkpoint_path))
-      self.assertEqual(
-          len(ckpt.all_model_checkpoint_paths), len(paths) if paths else 1)
-      self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
-
-  def testUpdateCheckpointState(self):
-    save_dir = self._get_test_dir("update_checkpoint_state")
-    os.chdir(save_dir)
-    # Make a temporary train directory.
-    train_dir = "train"
-    os.mkdir(train_dir)
-    abs_path = os.path.join(save_dir, "model-0")
-    rel_path = os.path.join("train", "model-2")
-    saver_module.update_checkpoint_state(
-        train_dir, rel_path, all_model_checkpoint_paths=[abs_path, rel_path])
-    ckpt = saver_module.get_checkpoint_state(train_dir)
-    self.assertEqual(ckpt.model_checkpoint_path, rel_path)
-    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
-
-  def testUpdateCheckpointStateSaveRelativePaths(self):
-    save_dir = self._get_test_dir("update_checkpoint_state")
-    os.chdir(save_dir)
-    abs_path2 = os.path.join(save_dir, "model-2")
-    rel_path2 = "model-2"
-    abs_path0 = os.path.join(save_dir, "model-0")
-    rel_path0 = "model-0"
-    saver_module._update_checkpoint_state(  # pylint: disable=protected-access
-        save_dir=save_dir,
-        model_checkpoint_path=abs_path2,
-        all_model_checkpoint_paths=[rel_path0, abs_path2],
-        save_relative_paths=True)
-
-    # File should contain relative paths.
-    file_content = file_io.read_file_to_string(
-        os.path.join(save_dir, "checkpoint"))
-    ckpt = CheckpointState()
-    text_format.Merge(file_content, ckpt)
-    self.assertEqual(ckpt.model_checkpoint_path, rel_path2)
-    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path2)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[0], rel_path0)
-
-    # get_checkpoint_state should return absolute paths.
-    ckpt = saver_module.get_checkpoint_state(save_dir)
-    self.assertEqual(ckpt.model_checkpoint_path, abs_path2)
-    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path2)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path0)
-
-  def testCheckPointStateFailsWhenIncomplete(self):
-    save_dir = self._get_test_dir("checkpoint_state_fails_when_incomplete")
-    os.chdir(save_dir)
-    ckpt_path = os.path.join(save_dir, "checkpoint")
-    ckpt_file = open(ckpt_path, "w")
-    ckpt_file.write("")
-    ckpt_file.close()
-    with self.assertRaises(ValueError):
-      saver_module.get_checkpoint_state(save_dir)
-
-  def testCheckPointCompletesRelativePaths(self):
-    save_dir = self._get_test_dir("checkpoint_completes_relative_paths")
-    os.chdir(save_dir)
-    ckpt_path = os.path.join(save_dir, "checkpoint")
-    ckpt_file = open(ckpt_path, "w")
-    ckpt_file.write("""
-        model_checkpoint_path: "./model.ckpt-687529"
-        all_model_checkpoint_paths: "./model.ckpt-687500"
-        all_model_checkpoint_paths: "./model.ckpt-687529"
-        """)
-    ckpt_file.close()
-    ckpt = saver_module.get_checkpoint_state(save_dir)
-    self.assertEqual(ckpt.model_checkpoint_path,
-                     os.path.join(save_dir, "./model.ckpt-687529"))
-    self.assertEqual(ckpt.all_model_checkpoint_paths[0],
-                     os.path.join(save_dir, "./model.ckpt-687500"))
-    self.assertEqual(ckpt.all_model_checkpoint_paths[1],
-                     os.path.join(save_dir, "./model.ckpt-687529"))
 
 
 class MetaGraphTest(test.TestCase):
@@ -2626,62 +2434,6 @@ class WriteGraphTest(test.TestCase):
     truth = os.path.join(test_dir, "l1", "l2", "l3", "graph.pbtxt")
     self.assertEqual(path, truth)
     self.assertTrue(os.path.exists(path))
-
-
-class SaverUtilsTest(test.TestCase):
-
-  def setUp(self):
-    self._base_dir = os.path.join(self.get_temp_dir(), "saver_utils_test")
-    gfile.MakeDirs(self._base_dir)
-
-  def tearDown(self):
-    gfile.DeleteRecursively(self._base_dir)
-
-  def testCheckpointExists(self):
-    for sharded in (False, True):
-      for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
-          unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
-          saver = saver_module.Saver(sharded=sharded, write_version=version)
-
-          path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
-          self.assertFalse(
-              saver_module.checkpoint_exists(path))  # Not saved yet.
-
-          ckpt_prefix = saver.save(sess, path)
-          self.assertTrue(saver_module.checkpoint_exists(ckpt_prefix))
-
-          ckpt_prefix = saver_module.latest_checkpoint(self._base_dir)
-          self.assertTrue(saver_module.checkpoint_exists(ckpt_prefix))
-
-  def testGetCheckpointMtimes(self):
-    prefixes = []
-    for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-      with self.test_session(graph=ops_lib.Graph()) as sess:
-        unused_v = variables.Variable(1.0, name="v")
-        variables.global_variables_initializer().run()
-        saver = saver_module.Saver(write_version=version)
-        prefixes.append(
-            saver.save(sess, os.path.join(self._base_dir, str(version))))
-
-    mtimes = saver_module.get_checkpoint_mtimes(prefixes)
-    self.assertEqual(2, len(mtimes))
-    self.assertTrue(mtimes[1] >= mtimes[0])
-
-  def testRemoveCheckpoint(self):
-    for sharded in (False, True):
-      for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
-        with self.test_session(graph=ops_lib.Graph()) as sess:
-          unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
-          saver = saver_module.Saver(sharded=sharded, write_version=version)
-
-          path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
-          ckpt_prefix = saver.save(sess, path)
-          self.assertTrue(saver_module.checkpoint_exists(ckpt_prefix))
-          saver_module.remove_checkpoint(ckpt_prefix, version)
-          self.assertFalse(saver_module.checkpoint_exists(ckpt_prefix))
 
 
 class ScopedGraphTest(test.TestCase):
