@@ -33,7 +33,6 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.Graph;
 import org.tensorflow.Session;
-import org.tensorflow.Shape;
 import org.tensorflow.Tensor;
 import org.tensorflow.op.Scope;
 
@@ -49,23 +48,25 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Integer> op = Constant.create(scope, value);
-      Tensor<Integer> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Integer.class);
-      assertEquals(value, result.intValue());
+      try (Tensor<Integer> result = sess.runner().fetch(op).run().get(0).expect(Integer.class)) {
+        assertEquals(value, result.intValue());
+      }
     }
   }
 
   @Test
   public void createIntBuffer() {
     int[] ints = {1, 2, 3, 4};
-    Shape shape = Shape.make(4);
+    long[] shape = {4};
 
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Integer> op = Constant.create(scope, shape, IntBuffer.wrap(ints));
-      Tensor<Integer> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Integer.class);
-      int[] actual = new int[ints.length];
-      assertArrayEquals(ints, result.copyTo(actual));
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        int[] actual = new int[ints.length];
+        assertArrayEquals(ints, result.expect(Integer.class).copyTo(actual));
+      }
     }
   }
 
@@ -77,23 +78,25 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Float> op = Constant.create(scope, value);
-      Tensor<Float> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Float.class);
-      assertEquals(value, result.floatValue(), 0.0f);
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        assertEquals(value, result.expect(Float.class).floatValue(), 0.0f);
+      }
     }
   }
 
   @Test
   public void createFloatBuffer() {
     float[] floats = {1, 2, 3, 4};
-    Shape shape = Shape.make(4);
+    long[] shape = {4};
 
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Float> op = Constant.create(scope, shape, FloatBuffer.wrap(floats));
-      Tensor<Float> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Float.class);
-      float[] actual = new float[floats.length];
-      assertArrayEquals(floats, result.copyTo(actual), EPSILON);
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        float[] actual = new float[floats.length];
+        assertArrayEquals(floats, result.expect(Float.class).copyTo(actual), EPSILON);
+      }
     }
   }
 
@@ -105,23 +108,25 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Double> op = Constant.create(scope, value);
-      Tensor<Double> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Double.class);
-      assertEquals(value, result.doubleValue(), 0.0);
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        assertEquals(value, result.expect(Double.class).doubleValue(), 0.0);
+      }
     }
   }
 
   @Test
   public void createDoubleBuffer() {
     double[] doubles = {1, 2, 3, 4};
-    Shape shape = Shape.make(4);
+    long[] shape = {4};
 
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Double> op = Constant.create(scope, shape, DoubleBuffer.wrap(doubles));
-      Tensor<Double> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Double.class);
-      double[] actual = new double[doubles.length];
-      assertArrayEquals(doubles, result.copyTo(actual), EPSILON);
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        double[] actual = new double[doubles.length];
+        assertArrayEquals(doubles, result.expect(Double.class).copyTo(actual), EPSILON);
+      }
     }
   }
 
@@ -133,23 +138,25 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Long> op = Constant.create(scope, value);
-      Tensor<Long> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Long.class);
-      assertEquals(value, result.longValue());
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        assertEquals(value, result.expect(Long.class).longValue());
+      }
     }
   }
 
   @Test
   public void createLongBuffer() {
     long[] longs = {1, 2, 3, 4};
-    Shape shape = Shape.make(4);
+    long[] shape = {4};
 
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Long> op = Constant.create(scope, shape, LongBuffer.wrap(longs));
-      Tensor<Long> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Long.class);
-      long[] actual = new long[longs.length];
-      assertArrayEquals(longs, result.copyTo(actual));
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        long[] actual = new long[longs.length];
+        assertArrayEquals(longs, result.expect(Long.class).copyTo(actual));
+      }
     }
   }
 
@@ -161,15 +168,16 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Boolean> op = Constant.create(scope, value);
-      Tensor<Boolean> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Boolean.class);
-      assertEquals(value, result.booleanValue());
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        assertEquals(value, result.expect(Boolean.class).booleanValue());
+      }
     }
   }
 
   @Test
   public void createStringBuffer() throws IOException {
     byte[] data = {(byte) 1, (byte) 2, (byte) 3, (byte) 4};
-    Shape shape = Shape.scalar();
+    long[] shape = {};
 
     // byte arrays (DataType.STRING in Tensorflow) are encoded as an offset in the data buffer,
     // followed by a varint encoded size, followed by the data.
@@ -190,8 +198,9 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<String> op = Constant.create(scope, String.class, shape, ByteBuffer.wrap(content));
-      Tensor<String> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(String.class);
-      assertArrayEquals(data, result.bytesValue());
+      try (Tensor<?> result = sess.runner().fetch(op).run().get(0)) {
+        assertArrayEquals(data, result.expect(String.class).bytesValue());
+      }
     }
   }
 }

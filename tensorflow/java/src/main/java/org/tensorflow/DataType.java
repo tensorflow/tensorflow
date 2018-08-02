@@ -39,7 +39,7 @@ public enum DataType {
    *
    * <p>TensorFlow uses the STRING type for an arbitrary sequence of bytes.
    */
-  STRING(7),
+  STRING(7, -1),
 
   /** 64-bit signed integer. */
   INT64(9, 8),
@@ -49,29 +49,22 @@ public enum DataType {
 
   private final int value;
   
-  private final int sizeInBytes;
+  private final int byteSize;
 
   /**
    * @param value must match the corresponding TF_* value in the TensorFlow C API.
+   * @param byteSize size of an element of this type, in bytes, -1 if unknown
    */
-  DataType(int value) {
-    this(value, -1);
-  }
-
-  /**
-   * @param value must match the corresponding TF_* value in the TensorFlow C API.
-   * @param sizeInBytes size of an element of this type, in bytes, -1 if unknown
-   */
-  DataType(int value, int sizeInBytes) {
+  DataType(int value, int byteSize) {
     this.value = value;
-    this.sizeInBytes = sizeInBytes;
+    this.byteSize = byteSize;
   }
 
   /**
    * @return size of an element of this type, in bytes, or -1 if element size is variable
    */
-  public int sizeInBytes() {
-    return sizeInBytes;
+  public int byteSize() {
+    return byteSize;
   }
 
   /** Corresponding value of the TF_DataType enum in the TensorFlow C API. */

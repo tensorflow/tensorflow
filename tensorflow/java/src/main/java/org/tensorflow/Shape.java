@@ -74,41 +74,7 @@ public final class Shape {
    * @return The size of the requested dimension or -1 if it is unknown.
    */
   public long size(int i) {
-    return shape == null ? -1 : shape[i];
-  }
-
-  /**
-   * The total number of elements found in a tensor of this shape.
-   * 
-   * <p>If the size of some dimensions is unknown, the total number of elements cannot be calculated and -1 is returned.
-   * 
-   * @return the number of elements or -1 if size of some dimension are unknown
-   */
-  public int numElements() {
-    if (shape == null) {
-       return -1;
-    }
-    int total = 1;
-    for (int i = 0; i < shape.length; ++i) {
-      // TODO (karllessard): There might be a lossy conversion here from 'long' sizes to 'int' total, but this issue
-      // seems ubiquitous in the current Java client implementation. It should be adressed all at once.
-      int size = (int) size(i);
-      if (size < 0) {
-        return -1;
-      }
-      total *= size;
-    }
-    return total;
-  }
-
-  /**
-   * Returns the shape as an array.
-   * 
-   * <p>Each element represent the size of the dimension at the given index. For example,
-   * {@code shape.asArray()[2]} is equal to the size of the third dimension of this shape.
-   */
-  public long[] asArray() {
-    return shape;
+    return shape[i];
   }
 
   @Override
@@ -141,6 +107,12 @@ public final class Shape {
   // Package-private constructor.
   Shape(long[] shape) {
     this.shape = shape;
+  }
+
+  // Package-private accessor.
+  // The idea is that the public API does not expose the internal array.
+  long[] asArray() {
+    return shape;
   }
 
   private long[] shape;
