@@ -101,6 +101,7 @@ public:
   // (maybe a dozen or so, but not hundreds or thousands) so we use linear
   // searches for everything.
 
+  /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() const;
 
   /// Return the specified attribute if present, null otherwise.

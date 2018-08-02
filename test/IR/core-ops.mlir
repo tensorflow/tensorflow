@@ -45,6 +45,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
 
   // CHECK: %c42_i32_0 = constant 42 : i32
   %7 = constant 42 : i32
+
+  // CHECK: %c43 = constant 43 {crazy: "foo"} : affineint
+  %8 = constant 43 {crazy: "foo"} : affineint
   return
 }
 

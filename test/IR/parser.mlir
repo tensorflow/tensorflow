@@ -177,20 +177,20 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"()
   "foo"(){} : ()->()
 
-  // CHECK: "foo"(){a: 1, b: -423, c: [true, false], d: 1.600000e+01}  : () -> ()
-  "foo"(){a: 1, b: -423, c: [true, false], d: 16.0 } : () -> ()
+  // CHECK: "foo"() {a: 1, b: -423, c: [true, false], d: 1.600000e+01}  : () -> ()
+  "foo"() {a: 1, b: -423, c: [true, false], d: 16.0 } : () -> ()
 
-  // CHECK: "foo"(){map1: #map{{[0-9]+}}}
-  "foo"(){map1: #map1} : () -> ()
+  // CHECK: "foo"() {map1: #map{{[0-9]+}}}
+  "foo"() {map1: #map1} : () -> ()
 
-  // CHECK: "foo"(){map2: #map{{[0-9]+}}}
-  "foo"(){map2: (d0, d1, d2) -> (d0, d1, d2)} : () -> ()
+  // CHECK: "foo"() {map2: #map{{[0-9]+}}}
+  "foo"() {map2: (d0, d1, d2) -> (d0, d1, d2)} : () -> ()
 
-  // CHECK: "foo"(){map12: [#map{{[0-9]+}}, #map{{[0-9]+}}]}
-  "foo"(){map12: [#map1, #map2]} : () -> ()
+  // CHECK: "foo"() {map12: [#map{{[0-9]+}}, #map{{[0-9]+}}]}
+  "foo"() {map12: [#map1, #map2]} : () -> ()
 
-  // CHECK: "foo"(){cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
-  "foo"(){if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()
+  // CHECK: "foo"() {cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
+  "foo"() {if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()
 
   return
 }

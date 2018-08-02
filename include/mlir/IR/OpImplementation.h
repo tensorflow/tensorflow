@@ -69,6 +69,14 @@ public:
   virtual void printAffineMap(const AffineMap *map) = 0;
   virtual void printAffineExpr(const AffineExpr *expr) = 0;
 
+  /// If the specified operation has attributes, print out an attribute
+  /// dictionary with their values.  elidedAttrs allows the client to ignore
+  /// specific well known attributes, commonly used if the attribute value is
+  /// printed some other way (like as a fixed operand).
+  virtual void
+  printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
+                        ArrayRef<const char *> elidedAttrs = {}) = 0;
+
   /// Print the entire operation with the default verbose formatting.
   virtual void printDefaultOp(const Operation *op) = 0;
 
@@ -127,7 +135,7 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &other) {
 ///
 /// The "%x = load" tokens are already parsed and therefore invisible to the
 /// custom op parser.  This can be supported by calling `parseOperandList` to
-/// parse the %p, then calling `parseOperandList` with a `SquareDelimeter` to
+/// parse the %p, then calling `parseOperandList` with a `SquareDelimiter` to
 /// parse the indices, then calling `parseColonTypeList` to parse the result
 /// type.
 ///
@@ -174,17 +182,23 @@ public:
   virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result,
                                   llvm::SMLoc *loc = nullptr) = 0;
 
-  /// Parse an attribute.
-  virtual bool parseAttribute(Attribute *&result,
+  /// Parse an arbitrary attribute and return it in result.  This also adds the
+  /// attribute to the specified attribute list with the specified name.  this
+  /// captures the location of the attribute in 'loc' if it is non-null.
+  virtual bool parseAttribute(Attribute *&result, const char *attrName,
+                              SmallVectorImpl<NamedAttribute> &attrs,
                               llvm::SMLoc *loc = nullptr) = 0;
 
-  /// Parse an attribute of a specific kind.
+  /// Parse an attribute of a specific kind, capturing the location into `loc`
+  /// if specified.
   template <typename AttrType>
-  bool parseAttribute(AttrType *&result, llvm::SMLoc *loc = nullptr) {
+  bool parseAttribute(AttrType *&result, const char *attrName,
+                      SmallVectorImpl<NamedAttribute> &attrs,
+                      llvm::SMLoc *loc = nullptr) {
     // Parse any kind of attribute.
     Attribute *attr;
     llvm::SMLoc tmpLoc;
-    if (parseAttribute(attr, &tmpLoc))
+    if (parseAttribute(attr, attrName, attrs, &tmpLoc))
       return true;
     if (loc)
       *loc = tmpLoc;
@@ -199,6 +213,11 @@ public:
     return false;
   }
 
+  /// If a named attribute dictionary is present, parse it into result.
+  virtual bool
+  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result,
+                             llvm::SMLoc *loc = nullptr) = 0;
+
   /// This is the representation of an operand reference.
   struct OperandType {
     llvm::SMLoc location; // Location of the token.
@@ -209,27 +228,26 @@ public:
   /// Parse a single operand.
   virtual bool parseOperand(OperandType &result) = 0;
 
-  /// These are the supported delimeters around operand lists, used by
+  /// These are the supported delimiters around operand lists, used by
   /// parseOperandList.
-  enum Delimeter {
-    /// Zero or more operands with no delimeters.
-    NoDelimeter,
+  enum Delimiter {
+    /// Zero or more operands with no delimiters.
+    None,
     /// Parens surrounding zero or more operands.
-    ParenDelimeter,
+    Paren,
     /// Square brackets surrounding zero or more operands.
-    SquareDelimeter,
+    Square,
     /// Parens supporting zero or more operands, or nothing.
-    OptionalParenDelimeter,
+    OptionalParen,
     /// Square brackets supporting zero or more ops, or nothing.
-    OptionalSquareDelimeter,
+    OptionalSquare,
   };
 
   /// Parse zero or more SSA comma-separated operand references with a specified
-  /// surrounding delimeter, and an optional required operand count.
-  virtual bool
-  parseOperandList(SmallVectorImpl<OperandType> &result,
-                   int requiredOperandCount = -1,
-                   Delimeter delimeter = Delimeter::NoDelimeter) = 0;
+  /// surrounding delimiter, and an optional required operand count.
+  virtual bool parseOperandList(SmallVectorImpl<OperandType> &result,
+                                int requiredOperandCount = -1,
+                                Delimiter delimiter = Delimiter::None) = 0;
 
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser

@@ -99,6 +99,9 @@ public:
   const Operation *getOperation() const { return state; }
   Operation *getOperation() { return state; }
 
+  /// Return all of the attributes on this operation.
+  ArrayRef<NamedAttribute> getAttrs() const { return state->getAttrs(); }
+
   /// Return an attribute with the specified name.
   Attribute *getAttr(StringRef name) const { return state->getAttr(name); }
 

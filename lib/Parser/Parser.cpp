@@ -1667,11 +1667,31 @@ public:
     return false;
   }
 
-  bool parseAttribute(Attribute *&result, llvm::SMLoc *loc = nullptr) override {
+  /// Parse an arbitrary attribute and return it in result.  This also adds the
+  /// attribute to the specified attribute list with the specified name.  this
+  /// captures the location of the attribute in 'loc' if it is non-null.
+  bool parseAttribute(Attribute *&result, const char *attrName,
+                      SmallVectorImpl<NamedAttribute> &attrs,
+                      llvm::SMLoc *loc = nullptr) override {
     if (loc)
       *loc = parser.getToken().getLoc();
     result = parser.parseAttribute();
-    return result == nullptr;
+    if (!result)
+      return true;
+
+    attrs.push_back(
+        NamedAttribute(parser.builder.getIdentifier(attrName), result));
+    return false;
+  }
+
+  /// If a named attribute list is present, parse is into result.
+  bool parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result,
+                                  llvm::SMLoc *loc = nullptr) override {
+    if (parser.getToken().isNot(Token::l_brace))
+      return false;
+    if (loc)
+      *loc = parser.getToken().getLoc();
+    return parser.parseAttributeDict(result) == ParseFailure;
   }
 
   bool parseOperand(OperandType &result) override {
@@ -1685,26 +1705,26 @@ public:
 
   bool parseOperandList(SmallVectorImpl<OperandType> &result,
                         int requiredOperandCount = -1,
-                        Delimeter delimeter = Delimeter::NoDelimeter) override {
+                        Delimiter delimiter = Delimiter::None) override {
     auto startLoc = parser.getToken().getLoc();
 
-    // Handle delimeters.
-    switch (delimeter) {
-    case Delimeter::NoDelimeter:
+    // Handle delimiters.
+    switch (delimiter) {
+    case Delimiter::None:
       break;
-    case Delimeter::OptionalParenDelimeter:
+    case Delimiter::OptionalParen:
       if (parser.getToken().isNot(Token::l_paren))
         return false;
       LLVM_FALLTHROUGH;
-    case Delimeter::ParenDelimeter:
+    case Delimiter::Paren:
       if (parser.parseToken(Token::l_paren, "expected '(' in operand list"))
         return true;
       break;
-    case Delimeter::OptionalSquareDelimeter:
+    case Delimiter::OptionalSquare:
       if (parser.getToken().isNot(Token::l_square))
         return false;
       LLVM_FALLTHROUGH;
-    case Delimeter::SquareDelimeter:
+    case Delimiter::Square:
       if (parser.parseToken(Token::l_square, "expected '[' in operand list"))
         return true;
       break;
@@ -1720,18 +1740,18 @@ public:
       } while (parser.consumeIf(Token::comma));
     }
 
-    // Handle delimeters.   If we reach here, the optional delimiters were
+    // Handle delimiters.   If we reach here, the optional delimiters were
     // present, so we need to parse their closing one.
-    switch (delimeter) {
-    case Delimeter::NoDelimeter:
+    switch (delimiter) {
+    case Delimiter::None:
       break;
-    case Delimeter::OptionalParenDelimeter:
-    case Delimeter::ParenDelimeter:
+    case Delimiter::OptionalParen:
+    case Delimiter::Paren:
       if (parser.parseToken(Token::r_paren, "expected ')' in operand list"))
         return true;
       break;
-    case Delimeter::OptionalSquareDelimeter:
-    case Delimeter::SquareDelimeter:
+    case Delimiter::OptionalSquare:
+    case Delimiter::Square:
       if (parser.parseToken(Token::r_square, "expected ']' in operand list"))
         return true;
       break;

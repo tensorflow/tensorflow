@@ -46,16 +46,15 @@ static bool
 parseDimAndSymbolList(OpAsmParser *parser,
                       SmallVectorImpl<OpAsmParser::OperandType> &opInfos,
                       SmallVector<SSAValue *, 4> &operands, unsigned &numDims) {
-  if (parser->parseOperandList(opInfos, -1,
-                               OpAsmParser::Delimeter::ParenDelimeter))
+  if (parser->parseOperandList(opInfos, -1, OpAsmParser::Delimiter::Paren))
     return true;
   // Store number of dimensions for validation by caller.
   numDims = opInfos.size();
 
   // Parse the optional symbol operands.
   auto *affineIntTy = parser->getBuilder().getAffineIntType();
-  if (parser->parseOperandList(
-          opInfos, -1, OpAsmParser::Delimeter::OptionalSquareDelimeter) ||
+  if (parser->parseOperandList(opInfos, -1,
+                               OpAsmParser::Delimiter::OptionalSquare) ||
       parser->resolveOperands(opInfos, affineIntTy, operands))
     return true;
   return false;
@@ -67,17 +66,21 @@ OpAsmParserResult AddFOp::parse(OpAsmParser *parser) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type *type;
   SSAValue *lhs, *rhs;
-  if (parser->parseOperandList(ops, 2) || parser->parseColonType(type) ||
+  SmallVector<NamedAttribute, 4> attrs;
+  if (parser->parseOperandList(ops, 2) ||
+      parser->parseOptionalAttributeDict(attrs) ||
+      parser->parseColonType(type) ||
       parser->resolveOperand(ops[0], type, lhs) ||
       parser->resolveOperand(ops[1], type, rhs))
     return {};
 
-  return OpAsmParserResult({lhs, rhs}, type);
+  return OpAsmParserResult({lhs, rhs}, type, attrs);
 }
 
 void AddFOp::print(OpAsmPrinter *p) const {
-  *p << "addf " << *getOperand(0) << ", " << *getOperand(1) << " : "
-     << *getType();
+  *p << "addf " << *getOperand(0) << ", " << *getOperand(1);
+  p->printOptionalAttrDict(getAttrs());
+  *p << " : " << *getType();
 }
 
 // Return an error message on failure.
@@ -91,14 +94,16 @@ const char *AddFOp::verify() const {
 OpAsmParserResult AffineApplyOp::parse(OpAsmParser *parser) {
   SmallVector<OpAsmParser::OperandType, 2> opInfos;
   SmallVector<SSAValue *, 4> operands;
+  SmallVector<NamedAttribute, 4> attrs;
 
   auto &builder = parser->getBuilder();
   auto *affineIntTy = builder.getAffineIntType();
 
   AffineMapAttr *mapAttr;
   unsigned numDims;
-  if (parser->parseAttribute(mapAttr) ||
-      parseDimAndSymbolList(parser, opInfos, operands, numDims))
+  if (parser->parseAttribute(mapAttr, "map", attrs) ||
+      parseDimAndSymbolList(parser, opInfos, operands, numDims) ||
+      parser->parseOptionalAttributeDict(attrs))
     return {};
   auto *map = mapAttr->getValue();
 
@@ -110,15 +115,14 @@ OpAsmParserResult AffineApplyOp::parse(OpAsmParser *parser) {
   }
 
   SmallVector<Type *, 4> resultTypes(map->getNumResults(), affineIntTy);
-  return OpAsmParserResult(
-      operands, resultTypes,
-      NamedAttribute(builder.getIdentifier("map"), mapAttr));
+  return OpAsmParserResult(operands, resultTypes, attrs);
 }
 
 void AffineApplyOp::print(OpAsmPrinter *p) const {
   auto *map = getAffineMap();
   *p << "affine_apply " << *map;
   printDimAndSymbolList(operand_begin(), operand_end(), map->getNumDims(), p);
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
 }
 
 const char *AffineApplyOp::verify() const {
@@ -147,7 +151,7 @@ void AllocOp::print(OpAsmPrinter *p) const {
   // Print dynamic dimension operands.
   printDimAndSymbolList(operand_begin(), operand_end(),
                         type->getNumDynamicDims(), p);
-  // Print memref type.
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
   *p << " : " << *type;
 }
 
@@ -155,12 +159,13 @@ OpAsmParserResult AllocOp::parse(OpAsmParser *parser) {
   MemRefType *type;
   SmallVector<SSAValue *, 4> operands;
   SmallVector<OpAsmParser::OperandType, 4> operandsInfo;
+  SmallVector<NamedAttribute, 4> attrs;
 
   // Parse the dimension operands and optional symbol operands, followed by a
   // memref type.
   unsigned numDimOperands;
   if (parseDimAndSymbolList(parser, operandsInfo, operands, numDimOperands) ||
-      parser->parseColonType(type))
+      parser->parseOptionalAttributeDict(attrs) || parser->parseColonType(type))
     return {};
 
   // Check numDynamicDims against number of question marks in memref type.
@@ -182,7 +187,7 @@ OpAsmParserResult AllocOp::parse(OpAsmParser *parser) {
     return {};
   }
 
-  return OpAsmParserResult(operands, type);
+  return OpAsmParserResult(operands, type, attrs);
 }
 
 const char *AllocOp::verify() const {
@@ -191,19 +196,20 @@ const char *AllocOp::verify() const {
 }
 
 void ConstantOp::print(OpAsmPrinter *p) const {
-  *p << "constant " << *getValue() << " : " << *getType();
+  *p << "constant " << *getValue();
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
+  *p << " : " << *getType();
 }
 
 OpAsmParserResult ConstantOp::parse(OpAsmParser *parser) {
   Attribute *valueAttr;
   Type *type;
-  if (parser->parseAttribute(valueAttr) || parser->parseColonType(type))
-    return {};
+  SmallVector<NamedAttribute, 4> attrs;
 
-  auto &builder = parser->getBuilder();
-  return OpAsmParserResult(
-      /*operands=*/{}, type,
-      NamedAttribute(builder.getIdentifier("value"), valueAttr));
+  if (parser->parseAttribute(valueAttr, "value", attrs) ||
+      parser->parseOptionalAttributeDict(attrs) || parser->parseColonType(type))
+    return {};
+  return OpAsmParserResult(/*operands=*/{}, type, attrs);
 }
 
 /// The constant op requires an attribute, and furthermore requires that it
@@ -236,8 +242,9 @@ bool ConstantIntOp::isClassFor(const Operation *op) {
 }
 
 void DimOp::print(OpAsmPrinter *p) const {
-  *p << "dim " << *getOperand() << ", " << getIndex() << " : "
-     << *getOperand()->getType();
+  *p << "dim " << *getOperand() << ", " << getIndex();
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"index");
+  *p << " : " << *getOperand()->getType();
 }
 
 OpAsmParserResult DimOp::parse(OpAsmParser *parser) {
@@ -245,15 +252,17 @@ OpAsmParserResult DimOp::parse(OpAsmParser *parser) {
   IntegerAttr *indexAttr;
   Type *type;
   SSAValue *operand;
+  SmallVector<NamedAttribute, 4> attrs;
+
   if (parser->parseOperand(operandInfo) || parser->parseComma() ||
-      parser->parseAttribute(indexAttr) || parser->parseColonType(type) ||
+      parser->parseAttribute(indexAttr, "index", attrs) ||
+      parser->parseOptionalAttributeDict(attrs) ||
+      parser->parseColonType(type) ||
       parser->resolveOperand(operandInfo, type, operand))
     return {};
 
   auto &builder = parser->getBuilder();
-  return OpAsmParserResult(
-      operand, builder.getAffineIntType(),
-      NamedAttribute(builder.getIdentifier("index"), indexAttr));
+  return OpAsmParserResult(operand, builder.getAffineIntType(), attrs);
 }
 
 const char *DimOp::verify() const {
@@ -283,7 +292,9 @@ const char *DimOp::verify() const {
 void LoadOp::print(OpAsmPrinter *p) const {
   *p << "load " << *getMemRef() << '[';
   p->printOperands(getIndices());
-  *p << "] : " << *getMemRef()->getType();
+  *p << ']';
+  p->printOptionalAttrDict(getAttrs());
+  *p << " : " << *getMemRef()->getType();
 }
 
 OpAsmParserResult LoadOp::parse(OpAsmParser *parser) {
@@ -291,17 +302,18 @@ OpAsmParserResult LoadOp::parse(OpAsmParser *parser) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType *type;
   SmallVector<SSAValue *, 4> operands;
+  SmallVector<NamedAttribute, 4> attrs;
 
   auto affineIntTy = parser->getBuilder().getAffineIntType();
   if (parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1,
-                               OpAsmParser::Delimeter::SquareDelimeter) ||
+      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(attrs) ||
       parser->parseColonType(type) ||
       parser->resolveOperands(memrefInfo, type, operands) ||
       parser->resolveOperands(indexInfo, affineIntTy, operands))
     return {};
 
-  return OpAsmParserResult(operands, type->getElementType());
+  return OpAsmParserResult(operands, type->getElementType(), attrs);
 }
 
 const char *LoadOp::verify() const {
@@ -327,7 +339,9 @@ void StoreOp::print(OpAsmPrinter *p) const {
   *p << "store " << *getValueToStore();
   *p << ", " << *getMemRef() << '[';
   p->printOperands(getIndices());
-  *p << "] : " << *getMemRef()->getType();
+  *p << ']';
+  p->printOptionalAttrDict(getAttrs());
+  *p << " : " << *getMemRef()->getType();
 }
 
 OpAsmParserResult StoreOp::parse(OpAsmParser *parser) {
@@ -336,12 +350,13 @@ OpAsmParserResult StoreOp::parse(OpAsmParser *parser) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   SmallVector<SSAValue *, 4> operands;
   MemRefType *memrefType;
+  SmallVector<NamedAttribute, 4> attrs;
 
   auto affineIntTy = parser->getBuilder().getAffineIntType();
   if (parser->parseOperand(storeValueInfo) || parser->parseComma() ||
       parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1,
-                               OpAsmParser::Delimeter::SquareDelimeter) ||
+      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(attrs) ||
       parser->parseColonType(memrefType) ||
       parser->resolveOperands(storeValueInfo, memrefType->getElementType(),
                               operands) ||
@@ -349,7 +364,7 @@ OpAsmParserResult StoreOp::parse(OpAsmParser *parser) {
       parser->resolveOperands(indexInfo, affineIntTy, operands))
     return {};
 
-  return OpAsmParserResult(operands, {});
+  return OpAsmParserResult(operands, {}, attrs);
 }
 
 const char *StoreOp::verify() const {

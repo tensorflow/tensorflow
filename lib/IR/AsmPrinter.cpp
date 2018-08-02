@@ -579,6 +579,8 @@ public:
   }
 
   void printOperand(const SSAValue *value) { printValueID(value); }
+  void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
+                             ArrayRef<const char *> elidedAttrs = {}) override;
 
   enum { nameSentinel = ~0U };
 
@@ -711,6 +713,44 @@ private:
 };
 } // end anonymous namespace
 
+void FunctionPrinter::printOptionalAttrDict(
+    ArrayRef<NamedAttribute> attrs, ArrayRef<const char *> elidedAttrs) {
+  // If there are no attributes, then there is nothing to be done.
+  if (attrs.empty())
+    return;
+
+  // Filter out any attributes that shouldn't be included.
+  SmallVector<NamedAttribute, 8> filteredAttrs;
+  for (auto attr : attrs) {
+    auto attrName = attr.first.str();
+    // Never print attributes that start with a colon.  These are internal
+    // attributes that represent location or other internal metadata.
+    if (attrName.startswith(":"))
+      continue;
+
+    // If the caller has requested that this attribute be ignored, then drop it.
+    bool ignore = false;
+    for (const char *elide : elidedAttrs)
+      ignore |= attrName == StringRef(elide);
+
+    // Otherwise add it to our filteredAttrs list.
+    if (!ignore)
+      filteredAttrs.push_back(attr);
+  }
+
+  // If there are no attributes left to print after filtering, then we're done.
+  if (filteredAttrs.empty())
+    return;
+
+  // Otherwise, print them all out in braces.
+  os << " {";
+  interleaveComma(filteredAttrs, [&](NamedAttribute attr) {
+    os << attr.first << ": ";
+    printAttribute(attr.second);
+  });
+  os << '}';
+}
+
 void FunctionPrinter::printOperation(const Operation *op) {
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
@@ -737,14 +777,7 @@ void FunctionPrinter::printDefaultOp(const Operation *op) {
 
   os << ')';
   auto attrs = op->getAttrs();
-  if (!attrs.empty()) {
-    os << '{';
-    interleaveComma(attrs, [&](NamedAttribute attr) {
-      os << attr.first << ": ";
-      printAttribute(attr.second);
-    });
-    os << '}';
-  }
+  printOptionalAttrDict(attrs);
 
   // Print the type signature of the operation.
   os << " : (";
