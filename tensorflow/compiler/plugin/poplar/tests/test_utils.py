@@ -41,16 +41,18 @@ def get_compute_sets_from_report(report):
 
 def check_all_compute_sets_in_list(cs_list, whitelist):
   result = True
+  fail_list = []
   wl = [x+'*' for x in whitelist]
   if len(cs_list) < len(wl):
-    result = False
+    print("Too few compute sets for whitelist")
+    return False
   else:
     for cs in cs_list:
       if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
+        fail_list += [ cs ]
         result = False
   if not result:
-    print(cs_list)
-    print(whitelist)
+    print("Failed to match " + str(fail_list))
   return result
 
 def extract_all_strings_from_event_trace(events):

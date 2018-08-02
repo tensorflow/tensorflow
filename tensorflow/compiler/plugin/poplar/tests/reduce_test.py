@@ -215,9 +215,11 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             # Check that there are no casts to float at the beginning
             # Note that intermidiates are still floats, so there is a final cast
             ok = ['host-exchange-local-copy-',
-                  'Execution',
-                  '/ExchangePre',
-                  'Sum/reduce.*.clone_f16/final_stage/Cast/Cast']
+                  'Sum/reduce.*.clone_f16/ReduceOnTile/InToIntermediateNoExchange/Reduce',
+                  'Sum/reduce.*.clone_f16/ReduceStage*/IntermediateToIntermediate/Reduce',
+                  'Sum/reduce.*.clone_f16/ReduceFinalStage/IntermediateToOutput/Reduce',
+                  'Sum/reduce.*.clone_f16/ReduceFinalStage/Cast']
+
             self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":
