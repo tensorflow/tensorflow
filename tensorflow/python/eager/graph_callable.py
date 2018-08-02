@@ -288,7 +288,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
     with tmp_graph.as_default():
       # Placeholders for the non-variable inputs.
       func_inputs = _get_graph_callable_inputs(shape_and_dtypes)
-      func_num_args = len(tf_inspect.getargspec(func).args)
+      func_num_args = len(tf_inspect.getfullargspec(func).args)
       if len(func_inputs) != func_num_args:
         raise TypeError("The number of arguments accepted by the decorated "
                         "function `%s` (%d) must match the number of "
