@@ -736,6 +736,7 @@ class Network(base_layer.Layer):
       return specs[0]
     return specs
 
+  @base_layer.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 
