@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+    <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+        <!-- Set to true to enable distributed class loading for examples, default is false. -->
+        <!--<property name="peerClassLoadingEnabled" value="true"/>-->
+
+        <property name="clientMode" value="true"/>
+
+        <property name="communicationSpi">
+            <bean class="org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi">
+                <!-- Override local port. -->
+                <property name="localPort" value="49505"/>
+            </bean>
+        </property>
+
+        <property name="binaryConfiguration">
+          <bean class="org.apache.ignite.configuration.BinaryConfiguration">
+            <property name="compactFooter" value="false"/>
+            <property name="nameMapper">
+              <bean class="org.apache.ignite.binary.BinaryBasicNameMapper">
+                <constructor-arg type="boolean" value="true"/>
+              </bean>
+            </property>
+            <property name="idMapper">
+              <bean class="org.apache.ignite.binary.BinaryBasicIdMapper">
+                <constructor-arg type="boolean" value="true"/>
+              </bean>
+              </property>
+           </bean>
+        </property>
+    </bean>
+</beans>

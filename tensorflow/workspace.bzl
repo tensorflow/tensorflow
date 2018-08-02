@@ -185,6 +185,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party:googleapis.BUILD"),
   )
 
+
+
   tf_http_archive(
       name = "gemmlowp",
       urls = [
@@ -582,6 +584,18 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "librdkafka-0.11.4",
       build_file = clean_dep("//third_party:kafka/BUILD"),
       patch_file = clean_dep("//third_party/kafka:config.patch"),
+  )
+
+  tf_http_archive(
+      name = "ignite",
+      urls = [
+          "https://mirror.bazel.build/github.com/apache-ignite/apache-ignite/archive/apche-ignite-2.4.0-src.zip",
+          "https://archive.apache.org/dist/ignite/2.4.0/apache-ignite-2.4.0-src.zip",
+      ],
+      sha256 = "8e613f10deaa6f5fd0e49744e7280c09a510c9fb85ad661f1b1ca322d627e90a",
+      strip_prefix = "apache-ignite-2.4.0-src",
+      build_file = clean_dep("//third_party:ignite/BUILD"),
+      patch_file = clean_dep("//third_party/ignite:config.patch"),
   )
 
   tf_http_archive(
