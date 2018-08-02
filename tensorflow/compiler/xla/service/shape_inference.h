@@ -131,7 +131,7 @@ class ShapeInference {
   // index as the leading parameter, and the program shape should match
   // accordingly (or an error will result).
   static StatusOr<Shape> InferReduceShape(
-      const Shape& arg, const Shape& init_value,
+      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       const ProgramShape& to_apply);
 

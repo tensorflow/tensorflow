@@ -828,11 +828,25 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
-    const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+    const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
     HloComputation* reduce_computation) {
-  return MakeUnique<HloReduceInstruction>(
-      shape, arg, init_value, dimensions_to_reduce, reduce_computation);
+  auto instruction = WrapUnique(new HloReduceInstruction(
+      shape, {operand, init_value}, dimensions_to_reduce, reduce_computation));
+  return std::move(instruction);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::gtl::ArraySlice<HloInstruction*> init_values,
+    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+    HloComputation* reduce_computation) {
+  std::vector<HloInstruction*> all_args;
+  all_args.reserve(operands.size() * 2);
+  all_args.insert(all_args.end(), operands.begin(), operands.end());
+  all_args.insert(all_args.end(), init_values.begin(), init_values.end());
+  return MakeUnique<HloReduceInstruction>(shape, all_args, dimensions_to_reduce,
+                                          reduce_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(

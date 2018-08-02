@@ -1707,7 +1707,7 @@ XlaOp XlaBuilder::Reduce(
 
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferReduceShape(
-                            operand_shape, init_shape, dimensions_to_reduce,
+                            {&operand_shape, &init_shape}, dimensions_to_reduce,
                             called_program_shape));
 
     for (int64 dim : dimensions_to_reduce) {

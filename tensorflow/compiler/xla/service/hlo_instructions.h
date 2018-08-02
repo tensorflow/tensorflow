@@ -331,7 +331,7 @@ class HloConcatenateInstruction : public HloInstruction {
 class HloReduceInstruction : public HloInstruction {
  public:
   explicit HloReduceInstruction(
-      const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> args,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
   // Returns the dimension sizes or numbers associated with this instruction.

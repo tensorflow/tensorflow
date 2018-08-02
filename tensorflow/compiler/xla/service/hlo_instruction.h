@@ -541,14 +541,31 @@ class HloInstruction {
       int64 dimension);
 
   // Creates a reduce instruction, where the computation (given by the handle)
-  // is applied successively to every element in operand. That is, if f is the
-  // function to apply (which either takes 2 [accumulator, value] or 3
-  // [accumulator, index, value] arguments) and init is a reduction operator
-  // specified initial value (for example, 0 for addition), then this operation
-  // will compute:
-  //   f(f(init, [index0], value0), [index1], value1), ...)
+  // is applied successively to every element in operand. For example, let f be
+  // the function to apply, which takes 2 arguments, an accumulator and the
+  // current value. Let init be an initial value (which is normally chosen to be
+  // the identity element for f, e.g. 0 if f is addition).
+  // Then the reduce HLO will compute:
+  // f(f(init, value0), value1), ...)
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
+      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      HloComputation* reduce_computation);
+
+  // A more general, multiple-argument version of the above.
+  // The function to apply, f, now takes N arguments:
+  // [accumulator0, accumulator1, ..., accumulatorN, value0, value1, ...,
+  // init_valueN], and returns an N-tuple. The performed computation is (for
+  // commutative and associative f operators) equivalent to:
+  //
+  // f_1 = f(init0, ...  initN, input0.value0, ..., inputN.value0)
+  // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
+  // ..., inputN.value1)
+  // ...
+  // TODO(b/112040122): Add support to this in HLO passes and in backends.
+  static std::unique_ptr<HloInstruction> CreateReduce(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::gtl::ArraySlice<HloInstruction*> init_values,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
 

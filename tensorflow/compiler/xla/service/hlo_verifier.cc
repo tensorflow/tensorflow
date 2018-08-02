@@ -224,10 +224,13 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 }
 
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return InvalidArgument("Variadic reduce is not supported.");
+  }
   return CheckShape(
       reduce,
       ShapeInference::InferReduceShape(
-          reduce->operand(0)->shape(), reduce->operand(1)->shape(),
+          {&reduce->operand(0)->shape(), &reduce->operand(1)->shape()},
           reduce->dimensions(), reduce->to_apply()->ComputeProgramShape()));
 }
 
