@@ -107,8 +107,8 @@ Status AddConv2D(Converter& ctx, const NodeDef& nodeDef, const T_RTG_INST_REFS& 
     if (nodeDef.attr().find("dilations") != nodeDef.attr().end()) {
         auto list = nodeDef.attr().at("dilations").list();
         std::vector<int> dilations;
-        for (int i = 0; i < list.i_size(); ++i)
-            dilations.push_back(list.i(i));
+        dilations.push_back(list.i(h_index));
+        dilations.push_back(list.i(w_index));
         std::copy(dilations.begin(), dilations.end(), op.dilation.begin());
     }
     

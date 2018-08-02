@@ -69,7 +69,7 @@ void DumpGraphToFile(const string& name, const Graph& graph) {
 void DumpMIGraph(const string& head, const string& name, void * p_program)
 {
     migraph::program* program = reinterpret_cast<migraph::program*>(p_program);
-    std::cout << "---" << head << "---" << std::endl;
+    std::cout << std::endl <<  "---" << head << "---" << std::endl;
     std::cout << name << std::endl;
     std::cout << *program << std::endl;
 }
