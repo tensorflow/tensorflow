@@ -68,7 +68,8 @@ def convert(recursive=False, verbose=False, arg_types=None):
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-      return converted_call(f, recursive, verbose, arg_types, *args, **kwargs)
+      return converted_call(f, recursive, verbose, True, arg_types, *args,
+                            **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -129,12 +130,12 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
-def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
+def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
+                   **kwargs):
   """Compiles a function call inline."""
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
-
-  if conversion.is_whitelisted_for_graph(f):
+  if not force_conversion and conversion.is_whitelisted_for_graph(f):
     return f(*args, **kwargs)
 
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
