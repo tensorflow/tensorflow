@@ -47,6 +47,8 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
+  OperationStmt *clone() const;
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//
@@ -190,7 +192,7 @@ private:
 };
 
 /// For statement represents an affine loop nest.
-class ForStmt : public Statement, public StmtBlock, public MLValue {
+class ForStmt : public Statement, public MLValue, public StmtBlock {
 public:
   // TODO: lower and upper bounds should be affine maps with
   // dimension and symbol use lists.
@@ -199,6 +201,10 @@ public:
                    MLIRContext *context);
 
   // Loop bounds and step are immortal objects and don't need to be deleted.
+  // With this dtor, ForStmt needs to inherit from MLValue before it does from
+  // StmtBlock since an MLValue can't be destroyed before the StmtBlock is ---
+  // the latter has uses for the induction variables, which is actually the
+  // MLValue here. FIXME: this dtor.
   ~ForStmt() {}
 
   AffineConstantExpr *getLowerBound() const { return lowerBound; }

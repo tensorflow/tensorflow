@@ -145,6 +145,21 @@ OperationInst *OperationInst::create(Identifier name,
   return inst;
 }
 
+OperationInst *OperationInst::clone() const {
+  SmallVector<CFGValue *, 8> operands;
+  SmallVector<Type *, 8> resultTypes;
+
+  // TODO(clattner): switch to iterator logic.
+  // Put together the operands and results.
+  for (unsigned i = 0, e = getNumOperands(); i != e; ++i)
+    operands.push_back(getInstOperand(i).get());
+
+  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+    resultTypes.push_back(getInstResult(i).getType());
+
+  return create(getName(), operands, resultTypes, getAttrs(), getContext());
+}
+
 OperationInst::OperationInst(Identifier name, unsigned numOperands,
                              unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,

@@ -120,7 +120,6 @@ void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
 
 /// Remove this statement (and its descendants) from its StmtBlock and delete
 /// all of them.
-/// TODO: erase all descendents for ForStmt/IfStmt.
 void Statement::eraseFromBlock() {
   assert(getBlock() && "Statement has no block");
   getBlock()->getStatements().erase(this);
@@ -153,6 +152,22 @@ OperationStmt *OperationStmt::create(Identifier name,
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
     new (&stmtResults[i]) StmtResult(resultTypes[i], stmt);
   return stmt;
+}
+
+/// Clone an existing OperationStmt.
+OperationStmt *OperationStmt::clone() const {
+  SmallVector<MLValue *, 8> operands;
+  SmallVector<Type *, 8> resultTypes;
+
+  // TODO(clattner): switch this to iterator logic.
+  // Put together operands and results.
+  for (unsigned i = 0, e = getNumOperands(); i != e; ++i)
+    operands.push_back(getStmtOperand(i).get());
+
+  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+    resultTypes.push_back(getStmtResult(i).getType());
+
+  return create(getName(), operands, resultTypes, getAttrs(), getContext());
 }
 
 OperationStmt::OperationStmt(Identifier name, unsigned numOperands,
@@ -205,9 +220,10 @@ void OperationStmt::dropAllReferences() {
 
 ForStmt::ForStmt(AffineConstantExpr *lowerBound, AffineConstantExpr *upperBound,
                  AffineConstantExpr *step, MLIRContext *context)
-    : Statement(Kind::For), StmtBlock(StmtBlockKind::For),
+    : Statement(Kind::For),
       MLValue(MLValueKind::ForStmt, Type::getAffineInt(context)),
-      lowerBound(lowerBound), upperBound(upperBound), step(step) {}
+      StmtBlock(StmtBlockKind::For), lowerBound(lowerBound),
+      upperBound(upperBound), step(step) {}
 
 //===----------------------------------------------------------------------===//
 // IfStmt
@@ -215,6 +231,6 @@ ForStmt::ForStmt(AffineConstantExpr *lowerBound, AffineConstantExpr *upperBound,
 
 IfStmt::~IfStmt() {
   delete thenClause;
-  if (elseClause != nullptr)
+  if (elseClause)
     delete elseClause;
 }

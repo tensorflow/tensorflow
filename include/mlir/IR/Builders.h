@@ -18,6 +18,7 @@
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
 
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
@@ -162,6 +163,12 @@ public:
     return op;
   }
 
+  OperationInst *cloneOperation(const OperationInst &srcOpInst) {
+    auto *op = srcOpInst.clone();
+    block->getOperations().insert(insertPoint, op);
+    return op;
+  }
+
   // Terminators.
 
   ReturnInst *createReturnInst(ArrayRef<CFGValue *> operands) {
@@ -232,11 +239,23 @@ public:
     insertPoint = block->end();
   }
 
+  /// Set the insertion point at the beginning of the specified block.
+  void setInsertionPointAtStart(StmtBlock *block) {
+    this->block = block;
+    insertPoint = block->begin();
+  }
+
   OperationStmt *createOperation(Identifier name, ArrayRef<MLValue *> operands,
                                  ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {
     auto *op =
         OperationStmt::create(name, operands, resultTypes, attributes, context);
+    block->getStatements().insert(insertPoint, op);
+    return op;
+  }
+
+  OperationStmt *cloneOperation(const OperationStmt &srcOpStmt) {
+    auto *op = srcOpStmt.clone();
     block->getStatements().insert(insertPoint, op);
     return op;
   }
@@ -250,6 +269,15 @@ public:
     auto *stmt = new IfStmt();
     block->getStatements().insert(insertPoint, stmt);
     return stmt;
+  }
+
+  // TODO: subsume with a generate create<ConstantInt>() method.
+  OperationStmt *createConstInt32Op(int value) {
+    std::pair<Identifier, Attribute *> namedAttr(
+        Identifier::get("value", context), getIntegerAttr(value));
+    auto *mlconst = createOperation(Identifier::get("constant", context), {},
+                                    {getIntegerType(32)}, {namedAttr});
+    return mlconst;
   }
 
 private:

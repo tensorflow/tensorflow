@@ -34,8 +34,8 @@ class MLIRContext;
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
-/// forming a tree. Statements are organized into statement blocks
-/// represented by StmtBlock class.
+/// forming a tree. Child statements are organized into statement blocks
+/// represented by a 'StmtBlock' class.
 class Statement : public llvm::ilist_node_with_parent<Statement, StmtBlock> {
 public:
   enum class Kind {
@@ -77,6 +77,7 @@ protected:
 
 private:
   Kind kind;
+  /// The statement block that containts this statement.
   StmtBlock *block = nullptr;
 
   // allow ilist_traits access to 'block' field.

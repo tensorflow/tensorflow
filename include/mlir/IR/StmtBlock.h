@@ -26,10 +26,12 @@
 #include "mlir/IR/Statement.h"
 
 namespace mlir {
-  class MLFunction;
-  class IfStmt;
+class MLFunction;
+class IfStmt;
 
-/// Statement block represents an ordered list of statements.
+/// Statement block represents an ordered list of statements, with the order
+/// being the contiguous lexical order in which the statements appear as
+/// children of a parent statement in the ML Function.
 class StmtBlock {
 public:
   enum class StmtBlockKind {
@@ -54,7 +56,7 @@ public:
 
   /// This is the list of statements in the block.
   typedef llvm::iplist<Statement> StmtListType;
-  StmtListType       &getStatements() { return statements; }
+  StmtListType &getStatements() { return statements; }
   const StmtListType &getStatements() const { return statements; }
 
   // Iteration over the statements in the block.
@@ -82,14 +84,14 @@ public:
   }
   Statement       &front() { return statements.front(); }
   const Statement &front() const {
-    return const_cast<StmtBlock*>(this)->front();
+    return const_cast<StmtBlock *>(this)->front();
   }
 
   void print(raw_ostream &os) const;
   void dump() const;
 
   /// getSublistAccess() - Returns pointer to member of statement list
-  static StmtListType StmtBlock::*getSublistAccess(Statement*) {
+  static StmtListType StmtBlock::*getSublistAccess(Statement *) {
     return &StmtBlock::statements;
   }
 
@@ -101,9 +103,8 @@ private:
   /// This is the list of statements in the block.
   StmtListType statements;
 
-  StmtBlock(const StmtBlock&) = delete;
-  void operator=(const StmtBlock&) = delete;
-
+  StmtBlock(const StmtBlock &) = delete;
+  void operator=(const StmtBlock &) = delete;
 };
 
 } //end namespace mlir

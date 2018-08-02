@@ -158,6 +158,8 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const { return Instruction::getContext(); }
 
+  OperationInst *clone() const;
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//
