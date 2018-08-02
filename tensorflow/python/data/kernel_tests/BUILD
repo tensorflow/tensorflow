@@ -385,3 +385,21 @@ tf_py_test(
         "no_windows",
     ],
 )
+
+tf_py_test(
+    name = "optional_ops_test",
+    size = "small",
+    srcs = ["optional_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
