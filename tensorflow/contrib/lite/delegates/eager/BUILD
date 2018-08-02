@@ -96,10 +96,20 @@ cc_test(
     deps = [
         ":delegate_data",
         ":kernel",
-        "//tensorflow/contrib/lite/kernels:test_util",
-        "//tensorflow/contrib/lite/testing:util",
-        "@com_google_absl//absl/memory",
+        ":test_util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "test_util",
+    testonly = True,
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
 )
