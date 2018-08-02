@@ -422,7 +422,7 @@ cc_library(
     srcs = ["test/utils.cc"],
     hdrs = ["test/utils.h"],
     deps = [
-        "@com_googlesource_code_re2//:re2",
         "//tensorflow/core:lib",
+        "@com_googlesource_code_re2//:re2",
     ],
 )

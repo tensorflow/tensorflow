@@ -478,7 +478,7 @@ tensorflow::Status SegmentGraph(
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::unordered_map<string, std::set<const tensorflow::Node*>> sg_map;
+  std::map<string, std::set<const tensorflow::Node*>> sg_map;
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the device names that the nodes in the segment are
@@ -603,7 +603,7 @@ tensorflow::Status SegmentGraph(
   for (const auto& itr : sg_map) {
     const std::set<const tensorflow::Node*>& segment_nodes = itr.second;
     if (VLOG_IS_ON(1)) {
-      string s;
+      string s = "parent=" + itr.first + ":";
       for (auto node : segment_nodes) s += " " + node->name();
       VLOG(1) << "Segment " << segments->size() << ": " << s;
     }
