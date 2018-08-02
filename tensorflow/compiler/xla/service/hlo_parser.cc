@@ -1242,6 +1242,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           dim_numbers, *window_bounds));
       break;
     }
+    case HloOpcode::kScatter: {
+      // TODO(b/32945756): Implement HLO parsing for Scatter.
+      return TokenError("HLO parsing is not implemented for Scatter.");
+    }
     case HloOpcode::kDomain: {
       DomainData domain;
       attrs["domain"] = {/*required=*/true, AttrTy::kDomain, &domain};

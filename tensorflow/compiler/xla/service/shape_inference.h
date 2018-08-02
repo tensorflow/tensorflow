@@ -268,6 +268,14 @@ class ShapeInference {
       const GatherDimensionNumbers& gather_dim_numbers,
       tensorflow::gtl::ArraySlice<int64> window_bounds);
 
+  // Helper that validates the given input shape, scatter indices shape, updates
+  // shape, and scatter dimension numbers that constitute a scatter operation,
+  // and returns the result shape of the scatter operation.
+  static StatusOr<Shape> InferScatterShape(
+      const Shape& operand_shape, const Shape& scatter_indices_shape,
+      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
+
  private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.

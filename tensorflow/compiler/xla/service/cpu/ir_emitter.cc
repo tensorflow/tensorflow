@@ -1793,6 +1793,10 @@ Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
   return Unimplemented("Send-done is not implemented on CPU.");
 }
 
+Status IrEmitter::HandleScatter(HloInstruction*) {
+  return Unimplemented("Scatter is not implemented on CPUs.");
+}
+
 Status IrEmitter::HandleSlice(HloInstruction* slice) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
   auto operand = slice->operand(0);

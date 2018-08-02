@@ -1019,6 +1019,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
         return kWhite;
       }
       return kGreen;
+    case HloOpcode::kScatter:
+      // Do not de-emphasize Scatter, since it involves significant work.
     case HloOpcode::kCopy:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).

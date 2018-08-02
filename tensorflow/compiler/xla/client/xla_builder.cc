@@ -1635,6 +1635,32 @@ XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
   });
 }
 
+XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+                          const XlaOp& updates,
+                          const XlaComputation& update_computation,
+                          const ScatterDimensionNumbers& dimension_numbers) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
+    TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
+                        GetShape(scatter_indices));
+    TF_ASSIGN_OR_RETURN(const Shape& updates_shape, GetShape(updates));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                        update_computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferScatterShape(
+                            input_shape, scatter_indices_shape, updates_shape,
+                            to_apply_shape, dimension_numbers));
+
+    *instr.mutable_scatter_dimension_numbers() = dimension_numbers;
+
+    AddCalledComputation(update_computation, &instr);
+    return AddInstruction(std::move(instr), HloOpcode::kScatter,
+                          {input, scatter_indices, updates});
+  });
+}
+
 XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaComputation& true_computation,
                               const XlaOp& false_operand,
@@ -2801,6 +2827,13 @@ XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
              tensorflow::gtl::ArraySlice<int64> window_bounds) {
   return input.builder()->Gather(input, gather_indices, dimension_numbers,
                                  window_bounds);
+}
+
+XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+              const XlaOp& updates, const XlaComputation& update_computation,
+              const ScatterDimensionNumbers& dimension_numbers) {
+  return input.builder()->Scatter(input, scatter_indices, updates,
+                                  update_computation, dimension_numbers);
 }
 
 void Send(const XlaOp& operand, const ChannelHandle& handle) {

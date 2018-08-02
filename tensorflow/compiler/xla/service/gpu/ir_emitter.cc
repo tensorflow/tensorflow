@@ -125,6 +125,10 @@ Status IrEmitter::HandleRecvDone(HloInstruction*) {
   return Unimplemented("Recv-done is not implemented on GPU");
 }
 
+Status IrEmitter::HandleScatter(HloInstruction*) {
+  return Unimplemented("Scatter is not implemented on GPUs.");
+}
+
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   std::vector<llvm::Value*> base_ptrs;
   for (const HloInstruction* operand : tuple->operands()) {
