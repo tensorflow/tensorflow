@@ -64,6 +64,7 @@ enum class OperatorType : uint8 {
   kMaxPool,
   kFakeQuant,
   kMul,
+  kOneHot,
   kRandomUniform,
   kRange,
   kRank,
@@ -146,6 +147,7 @@ enum class OperatorType : uint8 {
   kAny,
   kLogicalAnd,
   kLogicalNot,
+  kLogicalOr,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -290,6 +292,46 @@ struct Buffer : GenericBuffer {
   int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
+};
+
+class Shape {
+ public:
+  // For Shape, we stick to half-way encapsulation for now:
+  // we hide the raw dims_ member, but expose it raw by accessors
+  // because from some brainstorming, it's not at all easy to
+  // anticipate which flavor of more hermetic encapsulation would
+  // actually buy us future-proof-ness without being needlessly
+  // cumbersome.
+  Shape() {}
+  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
+
+  void ReplaceDims(std::initializer_list<int> dim_list) {
+    dims_ = std::vector<int>(dim_list);
+  }
+
+  const std::vector<int>& dims() const { return dims_; }
+  std::vector<int>* mutable_dims() { return &dims_; }
+  const int dimensions_count() const { return dims_.size(); }
+
+  // We still have that one convenience accessor to avoid
+  // the awkward double bracket issue:  shape.dims()[i].
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurrence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
+
+  bool operator==(const Shape& comp) const {
+    return (this->dims_ == comp.dims());
+  }
+
+  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
+
+ private:
+  std::vector<int> dims_;
 };
 
 // Base class for all operator classes.
@@ -1164,6 +1206,7 @@ struct TensorFlowRsqrtOperator : Operator {
 // TensorFlow equivalent: Pack
 struct PackOperator : Operator {
   PackOperator() : Operator(OperatorType::kPack) {}
+  int values_count;
   int axis = 0;
   ArrayDataType dtype = ArrayDataType::kNone;
 };
@@ -1468,6 +1511,8 @@ struct TensorFlowUnsupportedOperator : Operator {
   bool quantized = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
+  // Output shapes.
+  std::vector<Shape> output_shapes;
 };
 
 // Softmax activation function.
@@ -1725,6 +1770,38 @@ struct LogicalNotOperator : Operator {
   LogicalNotOperator() : Operator(OperatorType::kLogicalNot) {}
 };
 
+// OneHot operator:
+//
+// Inputs:
+// Inputs[0]: required: indices.
+// Inputs[1]: required: depth.
+// Inputs[2]: required: on_value.
+// Inputs[3]: required: off_value.
+//
+// TensorFlow equivalent: OneHot.
+struct OneHotOperator : Operator {
+  enum Inputs {
+    INDICES_INPUT = 0,
+    DEPTH_INPUT = 1,
+    ON_VALUE_INPUT = 2,
+    OFF_VALUE_INPUT = 3,
+  };
+
+  OneHotOperator() : Operator(OperatorType::kOneHot) {}
+  int axis = -1;
+};
+
+// LogicalOr operator:
+//
+// Inputs:
+// Inputs[0]: required: A Bool tensor.
+// Inputs[1]: required: A Bool tensor.
+//
+// TensorFlow equivalent: LogicalOr.
+struct LogicalOrOperator : Operator {
+  LogicalOrOperator() : Operator(OperatorType::kLogicalOr) {}
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -1737,46 +1814,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-class Shape {
- public:
-  // For Shape, we stick to half-way encapsulation for now:
-  // we hide the raw dims_ member, but expose it raw by accessors
-  // because from some brainstorming, it's not at all easy to
-  // anticipate which flavor of more hermetic encapsulation would
-  // actually buy us future-proof-ness without being needlessly
-  // cumbersome.
-  Shape() {}
-  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
-
-  void ReplaceDims(std::initializer_list<int> dim_list) {
-    dims_ = std::vector<int>(dim_list);
-  }
-
-  const std::vector<int>& dims() const { return dims_; }
-  std::vector<int>* mutable_dims() { return &dims_; }
-  const int dimensions_count() const { return dims_.size(); }
-
-  // We still have that one convenience accessor to avoid
-  // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const {
-    // Always check for out-of-bounds accesses, even in optimized builds where
-    // standard assertions are disabled. Out-of-bounds access here is a common
-    // occurrence.
-    CHECK_GE(i, 0);
-    CHECK_GT(dims_.size(), i);
-    return dims_[i];
-  }
-
-  bool operator==(const Shape& comp) const {
-    return (this->dims_ == comp.dims());
-  }
-
-  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
-
- private:
-  std::vector<int> dims_;
-};
 
 // Array represents an array (either a constant parameter array or an
 // activations array) in a Model.

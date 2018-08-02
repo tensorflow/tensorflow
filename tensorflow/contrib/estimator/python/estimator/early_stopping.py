@@ -394,10 +394,11 @@ def _summaries(eval_dir):
   Yields:
     `tensorflow.Event` object read from the event files.
   """
-  for event_file in gfile.Glob(
-      os.path.join(eval_dir, _EVENT_FILE_GLOB_PATTERN)):
-    for event in summary_iterator.summary_iterator(event_file):
-      yield event
+  if gfile.Exists(eval_dir):
+    for event_file in gfile.Glob(
+        os.path.join(eval_dir, _EVENT_FILE_GLOB_PATTERN)):
+      for event in summary_iterator.summary_iterator(event_file):
+        yield event
 
 
 def _get_or_create_stop_var():

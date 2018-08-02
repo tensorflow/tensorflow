@@ -356,6 +356,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ReduceMin)  //  Reduction Min
     HANDLE_OPERATORTYPENAME_CASE(Minimum)    //  Element-wise Minimum
     HANDLE_OPERATORTYPENAME_CASE(Neg)
+    HANDLE_OPERATORTYPENAME_CASE(OneHot)
     HANDLE_OPERATORTYPENAME_CASE(Pack)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(PadV2)
@@ -402,6 +403,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Any)
     HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
     HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -1585,11 +1587,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                                model);
   }
 
-  for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.has_shape()) {
-      CHECK(input_array.shape().dims_size());
-    }
-  }
   model->flags.set_change_concat_input_ranges(
       model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());

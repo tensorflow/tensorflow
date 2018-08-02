@@ -1013,6 +1013,26 @@ class ExpandDims
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class Pack : public BuiltinOperator<PackOperator, ::tflite::PackOptions,
+                                    ::tflite::BuiltinOptions_PackOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreatePackOptions(*builder, op.values_count, op.axis);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->values_count = options.values_count();
+    op->axis = options.axis();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class Shape
     : public BuiltinOperator<TensorFlowShapeOperator, ::tflite::ShapeOptions,
                              ::tflite::BuiltinOptions_ShapeOptions> {
@@ -1028,6 +1048,23 @@ class Shape
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->output_data_type = DataType::Deserialize(options.out_type());
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class OneHot : public BuiltinOperator<OneHotOperator, ::tflite::OneHotOptions,
+                                      ::tflite::BuiltinOptions_OneHotOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateOneHotOptions(*builder, op.axis);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->axis = options.axis();
   }
 
   int GetVersion(const Operator& op) const override { return 1; }
@@ -1256,6 +1293,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
   ops.emplace_back(new FakeQuant(::tflite::BuiltinOperator_FAKE_QUANT,
                                  OperatorType::kFakeQuant));
+  ops.emplace_back(
+      new Pack(::tflite::BuiltinOperator_PACK, OperatorType::kPack));
+  ops.emplace_back(
+      new OneHot(::tflite::BuiltinOperator_ONE_HOT, OperatorType::kOneHot));
 
   // Custom Operators.
   ops.emplace_back(
@@ -1309,6 +1350,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
   ops.emplace_back(new SimpleOperator<PowOperator>("POW", OperatorType::kPow));
+  ops.emplace_back(new SimpleOperator<LogicalOrOperator>(
+      "LOGICAL_OR", OperatorType::kLogicalOr));
   // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
   ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));

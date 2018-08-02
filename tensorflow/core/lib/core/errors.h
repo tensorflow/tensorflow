@@ -19,6 +19,7 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -117,6 +118,25 @@ DECLARE_ERROR(PermissionDenied, PERMISSION_DENIED)
 DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
 
 #undef DECLARE_ERROR
+
+// Produces a formatted string pattern from the name which can uniquely identify
+// this node upstream to produce an informative error message. The pattern
+// followed is: {{node <name>}}
+// Note: The pattern below determines the regex _NODEDEF_NAME_RE in the file
+// tensorflow/python/client/session.py
+// LINT.IfChange
+inline string FormatNodeNameForError(const string& name) {
+  return strings::StrCat("{{node ", name, "}}");
+}
+// LINT.ThenChange(//tensorflow/python/client/session.py)
+template <typename T>
+string FormatNodeNamesForError(const T& names) {
+  ::tensorflow::str_util::Formatter<string> f(
+      [](string* output, const string& s) {
+        ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
+      });
+  return ::tensorflow::str_util::Join(names, ", ", f);
+}
 
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;

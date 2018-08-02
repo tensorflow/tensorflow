@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
 #include <vector>
 #include <unordered_map>
 #include <utility>
@@ -1896,16 +1895,17 @@ class MklPrimitiveFactory {
   MklPrimitiveFactory() {}
   ~MklPrimitiveFactory() {}
 
-  MklPrimitive* GetOp(const std::string& key) {
+  MklPrimitive* GetOp(const string& key) {
     auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
     if (stream_iter == MklPrimitiveFactory<T>::GetHashMap().end()) {
       return nullptr;
     } else {
+      CHECK(stream_iter->second != nullptr) << "nullptr present in map";
       return stream_iter->second;
     }
   }
 
-  void SetOp(const std::string& key, MklPrimitive* op) {
+  void SetOp(const string& key, MklPrimitive* op) {
     auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
 
     CHECK(stream_iter == MklPrimitiveFactory<T>::GetHashMap().end());
@@ -1914,8 +1914,8 @@ class MklPrimitiveFactory {
   }
 
  private:
-  static inline std::unordered_map<std::string, MklPrimitive*>& GetHashMap() {
-    static thread_local std::unordered_map<std::string, MklPrimitive*> map_;
+  static inline std::unordered_map<string, MklPrimitive*>& GetHashMap() {
+    static thread_local std::unordered_map<string, MklPrimitive*> map_;
     return map_;
   }
 };
@@ -1943,9 +1943,7 @@ class FactoryKeyCreator {
     Append(StringPiece(buffer, sizeof(T)));
   }
 
-  std::string GetKey() {
-    return key_;
-  }
+  string GetKey() { return key_; }
 
  private:
   string key_;
@@ -2020,8 +2018,8 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     MklReorderPrimitiveFactory() {};
     ~MklReorderPrimitiveFactory() {};
 
-    static std::string CreateKey(const memory* from, const memory* to) {
-      std::string prefix = "reorder";
+    static string CreateKey(const memory* from, const memory* to) {
+      string prefix = "reorder";
       FactoryKeyCreator key_creator;
       auto const &from_desc =  from->get_primitive_desc().desc().data;
       auto const &to_desc =  to->get_primitive_desc().desc().data;
@@ -2038,12 +2036,12 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     }
 
     MklPrimitive* GetReorder(const memory* from, const memory* to) {
-      std::string key = CreateKey(from, to);
+      string key = CreateKey(from, to);
       return this->GetOp(key);
     }
 
     void SetReorder(const memory* from, const memory* to, MklPrimitive* op) {
-      std::string key = CreateKey(from, to);
+      string key = CreateKey(from, to);
       this->SetOp(key, op);
     }
 };

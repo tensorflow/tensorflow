@@ -105,6 +105,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       PrimitiveType return_type, HloComputation* computation,
       const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
 
+  // Emit an LLVM global variable for every constant buffer allocation.
+  Status EmitConstantGlobals();
+
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.
@@ -149,6 +152,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleAfterAll(HloInstruction* gen_token) override;
   Status HandleIota(HloInstruction* iota) override;
+  Status HandleRng(HloInstruction* rng) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -558,6 +562,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   tensorflow::gtl::FlatMap<const Literal*, llvm::Constant*,
                            LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
       emitted_literals_;
+
+  tensorflow::gtl::FlatMap<BufferAllocation::Index, llvm::Constant*>
+      constant_buffer_to_global_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

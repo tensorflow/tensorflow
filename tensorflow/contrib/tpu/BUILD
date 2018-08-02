@@ -15,6 +15,7 @@ package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
 )
@@ -36,6 +37,7 @@ cc_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
+        "python/tpu/error_handling.py",
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",

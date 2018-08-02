@@ -56,6 +56,7 @@ REGISTER_OP("GrowTreeEnsemble")
     .Input("next_stamp_token: int64")
     .Input("learning_rate: float")
     .Input("dropout_seed: int64")
+    .Input("max_tree_depth: int32")
     .Input("partition_ids: num_handlers * int32")
     .Input("gains: num_handlers * float")
     .Input("splits: num_handlers * string")
@@ -67,6 +68,8 @@ REGISTER_OP("GrowTreeEnsemble")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_input));
       // Dropout seed.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_input));
+      // Maximum tree depth.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_input));
       return Status::OK();
     })
     .Doc(R"doc(

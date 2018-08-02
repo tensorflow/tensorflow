@@ -786,6 +786,37 @@ class SaverTest(test.TestCase):
       self.assertEqual(20.0, v1.eval())
       save.save(sess, save_path)
 
+  # Test restoring large tensors (triggers a thread pool)
+  def testRestoreLargeTensors(self):
+    save_dir = self.get_temp_dir()
+    def _model():
+      small_v = [variable_scope.get_variable(
+          "small%d" % i, shape=[10, 2], use_resource=True) for i in range(5)]
+      large_v = [variable_scope.get_variable(
+          "large%d" % i, shape=[32000, 1000], use_resource=True)
+                 for i in range(3)]
+      return small_v + large_v
+
+    save_graph = ops_lib.Graph()
+    with save_graph.as_default(), self.test_session(graph=save_graph) as sess:
+      orig_vars = _model()
+      sess.run(variables.global_variables_initializer())
+      save = saver_module.Saver(max_to_keep=1)
+      variables.global_variables_initializer().run()
+      save.save(sess, save_dir)
+      orig_vals = sess.run(orig_vars)
+
+    restore_graph = ops_lib.Graph()
+    with restore_graph.as_default(), self.test_session(
+        graph=restore_graph) as sess:
+      restored_vars = _model()
+      save = saver_module.Saver(max_to_keep=1)
+      save.restore(sess, save_dir)
+      restored_vals = sess.run(restored_vars)
+
+    for orig, restored in zip(orig_vals, restored_vals):
+      self.assertAllEqual(orig, restored)
+
 
 class SaveRestoreShardedTest(test.TestCase):
 

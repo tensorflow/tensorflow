@@ -215,7 +215,7 @@ tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_FLOAT);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -253,7 +253,7 @@ tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
                                      Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -290,7 +290,7 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT32);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -326,7 +326,7 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT64);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -363,7 +363,7 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_BOOL);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -409,7 +409,7 @@ tensorflow::Status ImportStringArray(const TensorProto& input_tensor,
                                      Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_STRING);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -1045,6 +1045,11 @@ tensorflow::Status ConvertSimpleOperator(
 tensorflow::Status ConvertUnsupportedOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
+  // Names of special attributes in TF graph that are used by Toco.
+  static constexpr char kAttrOutputQuantized[] = "_output_quantized";
+  static constexpr char kAttrOutputTypes[] = "_output_types";
+  static constexpr char kAttrOutputShapes[] = "_output_shapes";
+
   LOG(INFO) << "Converting unsupported operation: " << node.op();
   auto* op = new TensorFlowUnsupportedOperator;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
@@ -1055,17 +1060,30 @@ tensorflow::Status ConvertUnsupportedOperator(
   op->tensorflow_op = node.op();
   node.SerializeToString(&op->tensorflow_node_def);
   model->operators.emplace_back(op);
-  if (HasAttr(node, "_output_quantized")) {
-    op->quantized = GetBoolAttr(node, "_output_quantized");
+  if (HasAttr(node, kAttrOutputQuantized)) {
+    op->quantized = GetBoolAttr(node, kAttrOutputQuantized);
   }
-  if (HasAttr(node, "_output_types")) {
-    const auto& output_types = GetListAttr(node, "_output_types");
+  if (HasAttr(node, kAttrOutputTypes)) {
+    const auto& output_types = GetListAttr(node, kAttrOutputTypes);
     for (int i = 0; i < output_types.type_size(); ++i) {
       op->output_data_types.push_back(ConvertDataType(output_types.type(i)));
     }
   } else if (HasAttr(node, "Tout")) {
     const auto& output_type = GetDataTypeAttr(node, "Tout");
     op->output_data_types.push_back(ConvertDataType(output_type));
+  }
+  if (HasAttr(node, kAttrOutputShapes)) {
+    const auto& output_shapes = GetListAttr(node, kAttrOutputShapes);
+    Shape output_shape;
+    for (int i = 0; i < output_shapes.shape_size(); ++i) {
+      const auto status =
+          ImportShape(output_shapes.shape(i).dim(), /*input_flat_size=*/nullptr,
+                      &output_shape);
+      if (!status.ok()) {
+        return status;
+      }
+      op->output_shapes.push_back(output_shape);
+    }
   }
   return tensorflow::Status::OK();
 }
@@ -1529,6 +1547,7 @@ tensorflow::Status ConvertPackOperator(
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
+  op->values_count = HasAttr(node, "N") ? GetIntAttr(node, "N") : num_inputs;
   op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
   op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
   op->outputs.push_back(node.name());
@@ -1814,6 +1833,27 @@ tensorflow::Status ConvertSparseToDenseOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertOneHotOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "OneHot");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 4));
+
+  const auto dtype = GetDataTypeAttr(node, "T");
+  // TODO(b/111744875): Support DT_UINT8 and quantization.
+  CHECK(dtype == DT_INT32 || dtype == DT_INT64 || dtype == DT_FLOAT ||
+        dtype == DT_BOOL);
+
+  auto op = absl::make_unique<OneHotOperator>();
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : -1;
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op.release());
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -1874,9 +1914,10 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
       {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
       {"Log", ConvertSimpleOperator<LogOperator, 1>},
-      {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
       {"LogicalAnd", ConvertSimpleOperator<LogicalAndOperator, 2>},
+      {"LogicalOr", ConvertSimpleOperator<LogicalOrOperator, 2>},
       {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1>},
+      {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
       {"MatMul", ConvertMatMulOperator},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
@@ -1890,6 +1931,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"NextIteration", ConvertOperatorSpecialCasedAsRNNBackEdge},
       {"NoOp", ConvertNoOpOperator},
       {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>},
+      {"OneHot", ConvertOneHotOperator},
       {"Pack", ConvertPackOperator},
       {"Pad", ConvertSimpleOperator<PadOperator, 2>},
       {"PadV2", ConvertSimpleOperator<PadV2Operator, 3>},

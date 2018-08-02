@@ -21,6 +21,8 @@ from __future__ import print_function
 
 from abc import ABCMeta
 from abc import abstractmethod
+
+import types
 import six
 
 from tensorflow.python.eager import context
@@ -58,7 +60,14 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
 
-def update_state(update_state_fn):
+def check_is_tensor_or_operation(x, name):
+  """Raises type error if the given input is not a tensor or operation."""
+  if not (isinstance(x, ops.Tensor) or isinstance(x, ops.Operation)):
+    raise TypeError('{0} must be a Tensor or Operation, given: {1}'.format(
+        name, x))
+
+
+def update_state_wrapper(update_state_fn):
   """Decorator to wrap metric `update_state()` with `defun()`, `add_update()`.
 
   Args:
@@ -70,7 +79,7 @@ def update_state(update_state_fn):
       executed to update the metric state with the given inputs.
   """
 
-  def decorated(*args, **kwargs):
+  def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `defun()` and `add_update()`."""
 
     # Converting update_state_fn() into a graph function, so that
@@ -79,14 +88,15 @@ def update_state(update_state_fn):
     defuned_update_state_fn = function.defun(update_state_fn)
     update_op = defuned_update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
-      metric_obj = args[0]
       metric_obj.add_update(update_op, inputs=True)
+      check_is_tensor_or_operation(
+          update_op, 'Metric {0}\'s update'.format(metric_obj.name))
     return update_op
 
   return tf_decorator.make_decorator(update_state_fn, decorated)
 
 
-def result(result_fn):
+def result_wrapper(result_fn):
   """Decorator to wrap metric `result()` function in `merge_call()`.
 
   Result computation is an idempotent operation that simply calculates the
@@ -104,26 +114,29 @@ def result(result_fn):
     The metric result tensor.
   """
 
-  def decorated(*args):
+  def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
     tower_context = distribute_lib.get_tower_context()
     if tower_context is None:  # if in cross tower context already
-      return result_fn()
+      result_t = result_fn(*args)
+    else:
+      # TODO(psv): Test distribution of metrics using different distribution
+      # strategies.
 
-    # TODO(psv): Test distribution of metrics using different distribution
-    # strategies.
+      # Creating a wrapper for merge_fn. merge_call invokes the given merge_fn
+      # with distribution object as the first parameter. We create a wrapper
+      # here so that the result function need not have that parameter.
+      def merge_fn_wrapper(distribution, merge_fn, *args):
+        # We will get `PerDevice` merge function. Taking the first one as all
+        # are identical copies of the function that we had passed below.
+        return distribution.unwrap(merge_fn)[0](*args)
 
-    # Creating a wrapper for merge_fn. merge_call invokes the given merge_fn
-    # with distribution object as the first parameter. We create a wrapper here
-    # so that the result function need not have that parameter.
-    def merge_fn_wrapper(distribution, merge_fn, *args):
-      # We will get `PerDevice` merge function. Taking the first one as all are
-      # identical copies of the function that we had passed below.
-      return distribution.unwrap(merge_fn)[0](*args)
-
-    # Wrapping result in merge_call. merge_call is used when we want to leave
-    # tower mode and compute a value in cross tower mode.
-    return tower_context.merge_call(merge_fn_wrapper, result_fn, *args)
+      # Wrapping result in merge_call. merge_call is used when we want to leave
+      # tower mode and compute a value in cross tower mode.
+      result_t = tower_context.merge_call(merge_fn_wrapper, result_fn, *args)
+    check_is_tensor_or_operation(result_t,
+                                 'Metric {0}\'s result'.format(metric_obj.name))
+    return result_t
 
   return tf_decorator.make_decorator(result_fn, decorated)
 
@@ -246,24 +259,19 @@ class Metric(Layer):
   * `__init__()`: All state variables should be created in this method by
     calling `self.add_weight()` like: `self.var = self.add_weight(...)`
   * `update_state()`: Has all updates to the state variables like:
-    self.var.assign_add(...). Please decorate the function with:
-    @update_state: Converts `update_state()` into a graph function, so that
-    we can return a single op that performs all of the variable updates and
-    adds the update op to the metric layer.
+    self.var.assign_add(...).
   * `result()`: Computes and returns a value for the metric
-    from the state variables. Please decorate the function with:
-    @result: Wraps `result()` in a distribution strategy merge_call().
+    from the state variables.
 
   Example subclass implementation:
 
   ```
   class BinaryTruePositives(Metric):
-    def __init__(self, name='binary-true-positives', dtype=dtypes.float64):
+    def __init__(self, name='binary-true-positives', dtype=None):
       super(BinaryTruePositives, self).__init__(name=name, dtype=dtype)
       self.true_positives = self.add_weight(
           'true_positives', initializer=init_ops.zeros_initializer)
 
-    @update_state
     def update_state(self, y_true, y_pred, sample_weight=None):
       y_true = math_ops.cast(y_true, dtypes.bool)
       y_pred = math_ops.cast(y_pred, dtypes.bool)
@@ -278,17 +286,24 @@ class Metric(Layer):
         values = math_ops.multiply(values, sample_weight)
       state_ops.assign_add(self.true_positives, math_ops.reduce_sum(values))
 
-    @result
     def result(self):
       return array_ops.identity(self.true_positives)
   ```
   """
   __metaclass__ = ABCMeta
 
-  def __init__(self, name=None, dtype=dtypes.float64):
+  def __init__(self, name=None, dtype=None):
     super(Metric, self).__init__(name=name, dtype=dtype)
     self.stateful = True  # All metric layers are stateful.
     self.built = True
+    self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
+
+  def __new__(cls, *args, **kwargs):
+    obj = super(Metric, cls).__new__(cls, *args, **kwargs)
+    obj.update_state = types.MethodType(
+        update_state_wrapper(obj.update_state), obj)
+    obj.result = types.MethodType(result_wrapper(obj.result), obj)
+    return obj
 
   def __call__(self, *args, **kwargs):
     """Accumulates statistics and then computes metric result value.
@@ -301,9 +316,9 @@ class Metric(Layer):
     Returns:
       The metric value tensor.
     """
-    update_op = self.update_state(*args, **kwargs)
+    update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
     with ops.control_dependencies([update_op]):
-      return self.result()
+      return self.result()  # pylint: disable=not-callable
 
   def reset_states(self):
     """Resets all of the metric state variables.
@@ -318,10 +333,8 @@ class Metric(Layer):
   def update_state(self, *args, **kwargs):
     """Accumulates statistics for the metric.
 
-    Please decorate the function with:
-    @update_state: Converts `update_state()` into a graph function, so that
-    we can return a single op that performs all of the variable updates
-      This means:
+    Note: This function is executed as a graph function in graph mode.
+    This means:
       a) Operations on the same resource are executed in textual order.
          This should make it easier to do things like add the updated
          value of a variable to another, for example.
@@ -343,9 +356,6 @@ class Metric(Layer):
 
     Result computation is an idempotent operation that simply calculates the
     metric value using the state variables.
-
-    Please decorate the function with:
-    @result: Wraps `result()` in a distribution strategy merge_call().
     """
     NotImplementedError('Must be implemented in subclasses.')
 
@@ -380,7 +390,13 @@ class Mean(Metric):
   Use `sample_weight` of 0 to mask values.
   """
 
-  def __init__(self, name='mean', dtype=dtypes.float64):
+  def __init__(self, name='mean', dtype=None):
+    """Creates a `Mean` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
     super(Mean, self).__init__(name=name, dtype=dtype)
     # Create new state variables
     self.total = self.add_weight(
@@ -388,7 +404,6 @@ class Mean(Metric):
     self.count = self.add_weight(
         'count', initializer=init_ops.zeros_initializer)
 
-  @update_state
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the mean.
 
@@ -418,14 +433,84 @@ class Mean(Metric):
     state_ops.assign_add(self.total, values)
     state_ops.assign_add(self.count, num_values)
 
-  @result
   def result(self):
     return _safe_div(self.total, self.count)
 
 
+class MeanMetricWrapper(Mean):
+  """Wraps a stateless metric function with the Mean metric."""
+
+  def __init__(self, fn, name=None, dtype=None, **kwargs):
+    """Creates a `MeanMetricWrapper` instance.
+
+    Args:
+      fn: The metric function to wrap, with signature
+        `fn(y_true, y_pred, **kwargs)`.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+      **kwargs: The keyword arguments that are passed on to `fn`.
+    """
+    super(MeanMetricWrapper, self).__init__(name=name, dtype=dtype)
+    self._fn = fn
+    self._fn_kwargs = kwargs
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates metric statistics.
+
+    `y_true` and `y_pred` should have the same shape.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be
+        a `Tensor` whose rank is either 0, or the same rank as `y_true`,
+        and must be broadcastable to `y_true`.
+    """
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+    y_pred, y_true, sample_weight = _squeeze_or_expand_dimensions(
+        y_pred, y_true, sample_weight)
+
+    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    super(MeanMetricWrapper, self).update_state(
+        matches, sample_weight=sample_weight)
+
+  def get_config(self):
+    config = self._fn_kwargs
+    base_config = super(MeanMetricWrapper, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+class BinaryAccuracy(MeanMetricWrapper):
+  """Calculates how often predictions matches labels.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the frequency with which `y_pred` matches `y_true`. This frequency is
+  ultimately returned as `binary accuracy`: an idempotent operation that simply
+  divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, name='binary-accuracy', dtype=None, threshold=0.5):
+    """Creates a `BinaryAccuracy` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+      threshold: (Optional) Float representing the threshold for deciding
+      whether prediction values are 1 or 0.
+    """
+    super(BinaryAccuracy, self).__init__(
+        binary_accuracy, name, dtype=dtype, threshold=threshold)
+
+
 @tf_export('keras.metrics.binary_accuracy')
-def binary_accuracy(y_true, y_pred):
-  return K.mean(math_ops.equal(y_true, math_ops.round(y_pred)), axis=-1)
+def binary_accuracy(y_true, y_pred, threshold=0.5):
+  threshold = math_ops.cast(threshold, y_pred.dtype)
+  y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
+  return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
 
 
 @tf_export('keras.metrics.categorical_accuracy')

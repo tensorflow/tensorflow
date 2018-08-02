@@ -145,6 +145,80 @@ Resets the FunctionBufferingResource.
 function_buffer_resource: The FunctionBufferingResource handle.
 )doc");
 
+REGISTER_OP("MultiDeviceIterator")
+    .Output("handle: resource")
+    .Attr("devices: list(string) >= 1")
+    .Attr("shared_name: string")
+    .Attr("container: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Doc(R"doc(
+Creates a MultiDeviceIterator resource.
+
+handle: Handle to the resource created.
+devices: A list of devices the iterator works across.
+shared_name: If non-empty, this resource will be shared under the given name
+  across multiple sessions.
+container: If non-empty, this resource is placed in the given container.
+  Otherwise, a default container is used.
+output_types: The type list for the return values.
+output_shapes: The list of shapes being produced.
+)doc");
+
+REGISTER_OP("MultiDeviceIteratorInit")
+    .Input("dataset: variant")
+    .Input("multi_device_iterator: resource")
+    .Output("incarnation_id: int64")
+    .Doc(R"doc(
+Initializes the multi device iterator with the given dataset.
+incarnation_id: An int64 indicating which incarnation of the MultiDeviceIterator
+  is running.
+dataset: Dataset to be iterated upon.
+multi_device_iterator: A MultiDeviceIteratorResource.
+)doc");
+
+REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
+    .Input("multi_device_iterator: resource")
+    .Input("shard_num: int32")
+    .Input("incarnation_id: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Doc(R"doc(
+Gets next element for the provided shard number.
+
+multi_device_iterator: A MultiDeviceIterator resource.
+shard_num: Integer representing which shard to fetch data for.
+incarnation_id: Which incarnation of the MultiDeviceIterator is running.
+components: Result of the get_next on the dataset.
+output_types: The type list for the return values.
+output_shapes: The list of shapes being produced.
+)doc");
+
+REGISTER_OP("MultiDeviceIteratorToStringHandle")
+    .Input("multi_device_iterator: resource")
+    .Output("string_handle: string")
+    .Doc(R"doc(
+Produces a string handle for the given MultiDeviceIterator.
+
+multi_device_iterator: A MultiDeviceIterator resource.
+string_handle: A string representing the resource.
+)doc");
+
+REGISTER_OP("MultiDeviceIteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("multi_device_iterator: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
+    .Doc(R"doc(
+Generates a MultiDeviceIterator resource from its provided string handle.
+
+string_handle: String representing the resource.
+multi_device_iterator: A MultiDeviceIterator resource.
+output_types: The type list for the return values.
+output_shapes: The list of shapes being produced.
+)doc");
+
 REGISTER_OP("ThreadPoolDataset")
     .Input("input_dataset: variant")
     .Input("thread_pool: resource")

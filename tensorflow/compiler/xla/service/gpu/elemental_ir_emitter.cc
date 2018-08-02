@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/math_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -280,6 +281,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
     case HloOpcode::kTanh:
+      // If we don't care much about precision, emit a fast approximation of
+      // tanh.
+      if (hlo_module_config_.debug_options().xla_enable_fast_math()) {
+        // Upcast F16 to F32 if necessary.
+        llvm::Type* type =
+            input_type == F16 ? b_->getFloatTy() : operand_value->getType();
+        llvm::Value* input = b_->CreateFPCast(operand_value, type);
+        llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
+        return b_->CreateFPCast(fast_tanh, operand_value->getType());
+      }
       return EmitROCDLMathCall("__ocml_tanh", {operand_value}, {input_type},
                                    output_type);
     default:
@@ -301,8 +312,9 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() const {
                              {b_->getInt32(0)},
                              {U32}, U64, {}, b_, module_),
       b_->getInt32Ty(), /*isSigned=*/true, "threads_per_block");
-  return b_->CreateNSWAdd(b_->CreateNSWMul(block_id, threads_per_block),
-			  thread_id_in_block);
+  return b_->CreateNSWAdd(
+      b_->CreateNSWMul(block_id, threads_per_block),
+      thread_id_in_block);
 }
 
 llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(

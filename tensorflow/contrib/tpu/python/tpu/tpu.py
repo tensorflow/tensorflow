@@ -314,7 +314,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # Capture the device function stack at the time of first entry
       # since that is the stack that will be used outside_compilation.
       graph = ops.get_default_graph()
-      self._outer_device_function_stack = list(graph._device_function_stack)  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      self._outer_device_function_stack = graph._device_function_stack.copy()
+      # pylint: enable=protected-access
     super(TPUReplicateContext, self).Enter()
 
   def HostComputeCore(self):

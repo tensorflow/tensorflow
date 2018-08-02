@@ -650,7 +650,7 @@ bool ROCMExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
   return ROCMDriver::GetDeviceMemoryInfo(device_ordinal_, free, total);
 }
 
-bool ROCMExecutor::GetSymbol(const string& symbol_name, void **mem,
+bool ROCMExecutor::GetSymbol(const string& symbol_name, ModuleHandle module_handle, void **mem,
                              size_t *bytes) {
   {  // give limited scope to mutex_lock
     mutex_lock lock{disk_modules_mu_};

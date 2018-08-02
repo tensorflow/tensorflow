@@ -79,7 +79,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecv(HloInstruction* recv) override;
@@ -92,7 +91,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleRng(HloInstruction* random) override;
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;

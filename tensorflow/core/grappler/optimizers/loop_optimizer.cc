@@ -616,15 +616,13 @@ Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
     }
   }
 
-  int last = optimized_graph->node_size() - 1;
-  for (int i = optimized_graph->node_size() - 1; i >= 0; --i) {
-    NodeDef* node = optimized_graph->mutable_node(i);
-    if (dead_nodes.find(node) != dead_nodes.end()) {
-      optimized_graph->mutable_node()->SwapElements(i, last);
-      last--;
-    }
+  std::vector<int> nodes_idx_to_delete;
+  nodes_idx_to_delete.reserve(dead_nodes.size());
+  for (int i = 0; i < optimized_graph->node_size(); ++i) {
+    if (dead_nodes.count(&optimized_graph->node(i)))
+      nodes_idx_to_delete.push_back(i);
   }
-  optimized_graph->mutable_node()->DeleteSubrange(last + 1, dead_nodes.size());
+  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
   for (const auto& itr : dead_merge_inputs) {
     NodeDef* dead_node = itr.first;

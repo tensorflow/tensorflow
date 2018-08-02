@@ -334,6 +334,17 @@ TEST(ShapeUtilTest, IncompatibleScalarVsTuple) {
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
 }
 
+TEST(ShapeUtilTest, OpaqueVsArray) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape2 = ShapeUtil::MakeOpaqueShape();
+  EXPECT_FALSE(ShapeUtil::Compatible(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
+}
+
 TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
   shape1.mutable_layout()->add_padded_dimensions(10);

@@ -57,13 +57,32 @@ def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,
   op._traceback = stack
 
 
-def assert_node_in_colocation_summary(test_obj, colocation_summary_string,
-                                      name, filename="", lineno=""):
-  lineno = str(lineno)
-  name_phrase = "colocate_with(%s)" % name
-  for term in [name_phrase, filename, lineno]:
-    test_obj.assertIn(term, colocation_summary_string)
-  test_obj.assertNotIn("loc:@", colocation_summary_string)
+class ComputeDeviceSummaryFromOpTest(test.TestCase):
+
+  def testCorrectFormatWithActiveDeviceAssignments(self):
+    assignments = []
+    assignments.append(
+        traceable_stack.TraceableObject("/cpu:0",
+                                        filename="hope.py",
+                                        lineno=24))
+    assignments.append(
+        traceable_stack.TraceableObject("/gpu:2",
+                                        filename="please.py",
+                                        lineno=42))
+
+    summary = error_interpolation._compute_device_summary_from_list(
+        assignments, prefix="  ")
+
+    self.assertIn("tf.device(/cpu:0)", summary)
+    self.assertIn("<hope.py:24>", summary)
+    self.assertIn("tf.device(/gpu:2)", summary)
+    self.assertIn("<please.py:42>", summary)
+
+  def testCorrectFormatWhenNoColocationsWereActive(self):
+    device_assignment_list = []
+    summary = error_interpolation._compute_device_summary_from_list(
+        device_assignment_list, prefix="  ")
+    self.assertIn("No device assignments", summary)
 
 
 class ComputeColocationSummaryFromOpTest(test.TestCase):
@@ -81,15 +100,10 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
     }
     summary = error_interpolation._compute_colocation_summary_from_dict(
         colocation_dict, prefix="  ")
-    assert_node_in_colocation_summary(self,
-                                      summary,
-                                      name="test_node_1",
-                                      filename="test_1.py",
-                                      lineno=27)
-    assert_node_in_colocation_summary(self, summary,
-                                      name="test_node_2",
-                                      filename="test_2.py",
-                                      lineno=38)
+    self.assertIn("colocate_with(test_node_1)", summary)
+    self.assertIn("<test_1.py:27>", summary)
+    self.assertIn("colocate_with(test_node_2)", summary)
+    self.assertIn("<test_2.py:38>", summary)
 
   def testCorrectFormatWhenNoColocationsWereActive(self):
     colocation_dict = {}
@@ -98,9 +112,10 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
     self.assertIn("No node-device colocations", summary)
 
 
-class InterpolateTest(test.TestCase):
+class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
 
   def setUp(self):
+    ops.reset_default_graph()
     # Add nodes to the graph for retrieval by name later.
     constant_op.constant(1, name="One")
     constant_op.constant(2, name="Two")
@@ -177,9 +192,57 @@ class InterpolateTest(test.TestCase):
     self.assertRegexpMatches(interpolated_string, expected_regex)
 
 
+class InterpolateDeviceSummaryTest(test.TestCase):
+
+  def _fancy_device_function(self, unused_op):
+    return "/cpu:*"
+
+  def setUp(self):
+    ops.reset_default_graph()
+    self.zero = constant_op.constant([0.0], name="zero")
+    with ops.device("/cpu"):
+      self.one = constant_op.constant([1.0], name="one")
+      with ops.device("/cpu:0"):
+        self.two = constant_op.constant([2.0], name="two")
+    with ops.device(self._fancy_device_function):
+      self.three = constant_op.constant(3.0, name="three")
+
+    self.graph = self.three.graph
+
+  def testNodeZeroHasNoDeviceSummaryInfo(self):
+    message = "^^node:zero:${devices}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    self.assertIn("No device assignments were active", result)
+
+  def testNodeOneHasExactlyOneInterpolatedDevice(self):
+    message = "^^node:one:${devices}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    num_devices = result.count("tf.device")
+    self.assertEqual(1, num_devices)
+    self.assertIn("tf.device(/cpu)", result)
+
+  def testNodeTwoHasTwoInterpolatedDevice(self):
+    message = "^^node:two:${devices}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    num_devices = result.count("tf.device")
+    self.assertEqual(2, num_devices)
+    self.assertIn("tf.device(/cpu)", result)
+    self.assertIn("tf.device(/cpu:0)", result)
+
+  def testNodeThreeHasFancyFunctionDisplayNameForInterpolatedDevice(self):
+    message = "^^node:three:${devices}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    num_devices = result.count("tf.device")
+    self.assertEqual(1, num_devices)
+    name_re = r"_fancy_device_function<.*error_interpolation_test.py, [0-9]+>"
+    expected_re = r"with tf.device\(.*%s\)" % name_re
+    self.assertRegexpMatches(result, expected_re)
+
+
 class InterpolateColocationSummaryTest(test.TestCase):
 
   def setUp(self):
+    ops.reset_default_graph()
     # Add nodes to the graph for retrieval by name later.
     node_one = constant_op.constant(1, name="One")
     node_two = constant_op.constant(2, name="Two")
@@ -203,12 +266,12 @@ class InterpolateColocationSummaryTest(test.TestCase):
   def testNodeThreeHasColocationInterpolation(self):
     message = "^^node:Three_with_one:${colocations}^^"
     result = error_interpolation.interpolate(message, self.graph)
-    assert_node_in_colocation_summary(self, result, name="One")
+    self.assertIn("colocate_with(One)", result)
 
   def testNodeFourHasColocationInterpolationForNodeThreeOnly(self):
     message = "^^node:Four_with_three:${colocations}^^"
     result = error_interpolation.interpolate(message, self.graph)
-    assert_node_in_colocation_summary(self, result, name="Three_with_one")
+    self.assertIn("colocate_with(Three_with_one)", result)
     self.assertNotIn(
         "One", result,
         "Node One should not appear in Four_with_three's summary:\n%s"
@@ -217,8 +280,8 @@ class InterpolateColocationSummaryTest(test.TestCase):
   def testNodeFiveHasColocationInterpolationForNodeOneAndTwo(self):
     message = "^^node:Five_with_one_with_two:${colocations}^^"
     result = error_interpolation.interpolate(message, self.graph)
-    assert_node_in_colocation_summary(self, result, name="One")
-    assert_node_in_colocation_summary(self, result, name="Two")
+    self.assertIn("colocate_with(One)", result)
+    self.assertIn("colocate_with(Two)", result)
 
   def testColocationInterpolationForNodeLackingColocation(self):
     message = "^^node:One:${colocations}^^"

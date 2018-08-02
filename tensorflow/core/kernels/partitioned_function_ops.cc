@@ -330,6 +330,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     // using device-specific threadpools when available.
     opts.runner = ctx->runner();
     opts.source_device = local_device_name_;
+    opts.allow_dead_tensors = true;
     // TODO(akshayka): Accommodate the multiple-worker scenario by adding the
     // constructed rendezvous to a rendezvous manager.
     Rendezvous* rendez = new IntraProcessRendezvous(lib->device_mgr());
