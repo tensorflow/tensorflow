@@ -168,6 +168,18 @@ ArrayMap<Scalar> MapAsArrayWithFirstDimAsRows(Scalar* data,
   return ArrayMap<Scalar>(data, rows, cols);
 }
 
+// Copied from tensorflow/core/framework/tensor_types.h
+template <typename T, int NDIMS = 1, typename IndexType = Eigen::DenseIndex>
+struct TTypes {
+  // Rank-1 tensor (vector) of scalar type T.
+  typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, IndexType>,
+                           Eigen::Aligned>
+      Flat;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
+      UnalignedConstMatrix;
+};
+
 // TODO(b/62193649): this function is only needed as long
 // as we have the --variable_batch hack.
 template <typename Scalar, int N>
