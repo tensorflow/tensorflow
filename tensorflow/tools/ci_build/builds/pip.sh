@@ -131,8 +131,8 @@ echo "Using Bazel flags: ${BAZEL_FLAGS}"
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
+ROCM_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
-   [[ ${CONTAINER_TYPE} == "rocm" ]] || \
    [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
   bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
@@ -140,6 +140,10 @@ elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
   GPU_FLAG="--gpu"
+elif [[ ${CONTAINER_TYPE} == "rocm" ]]; then
+  bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
+      die "Build failed."
+  ROCM_FLAG="--rocm"
 else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
 fi
