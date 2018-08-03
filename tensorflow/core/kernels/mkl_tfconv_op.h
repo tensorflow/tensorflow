@@ -111,10 +111,8 @@ class MklToTfOp : public OpKernel {
       // Do we need to reorder Mkl layout into TensorFlow layout?
       if (input.IsReorderNeeded(output_tf_pd)) {
         // Insert reorder between Mkl layout and TensorFlow layout.
-        std::vector<primitive> net;
-        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor, &net),
+        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor),
                  true);
-        stream(stream::kind::eager).submit(net).wait();
       } else {
         // If not, just forward input tensor to output tensor.
         CHECK(output_tensor->CopyFrom(input_tensor, output_shape));

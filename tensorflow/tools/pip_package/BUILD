@@ -11,7 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -63,12 +63,14 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph/lang:lang",
     "//tensorflow/contrib/autograph/operators:operators",
     "//tensorflow/contrib/autograph/pyct:pyct",
+    "//tensorflow/contrib/autograph/pyct/testing:testing",
     "//tensorflow/contrib/autograph/pyct/static_analysis:static_analysis",
     "//tensorflow/contrib/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
     "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
     "//tensorflow/contrib/data/python/ops:contrib_op_loader",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
@@ -78,7 +80,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
     "//tensorflow/contrib/nn:nn_py",
     "//tensorflow/contrib/predictor:predictor_pip",
-    "//tensorflow/contrib/proto:proto_pip",
+    "//tensorflow/contrib/proto:proto",
     "//tensorflow/contrib/receptive_field:receptive_field_pip",
     "//tensorflow/contrib/rpc:rpc_pip",
     "//tensorflow/contrib/session_bundle:session_bundle_pip",
@@ -104,6 +106,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
+    "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
@@ -144,7 +147,6 @@ filegroup(
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
-        "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
@@ -153,8 +155,6 @@ filegroup(
         "@lmdb//:LICENSE",
         "@local_config_nccl//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@grpc//third_party/nanopb:LICENSE.txt",
-        "@grpc//third_party/address_sorting:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@pcre//:LICENCE",
@@ -168,7 +168,15 @@ filegroup(
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-    ]) + tf_additional_license_deps(),
+        "//third_party/mkl_dnn:LICENSE",
+    ]) + if_not_system_lib(
+        "grpc",
+        [
+            "@grpc//:LICENSE",
+            "@grpc//third_party/nanopb:LICENSE.txt",
+            "@grpc//third_party/address_sorting:LICENSE",
+        ],
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(
@@ -183,9 +191,7 @@ sh_binary(
             "//tensorflow/contrib/lite/python:tflite_convert",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
-        "//tensorflow/contrib/tensorrt:init_py",
-    ]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

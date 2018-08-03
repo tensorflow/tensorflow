@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
-#define TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
+#ifndef TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
+#define TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
 
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -143,4 +143,4 @@ typename TTypes<T>::UnalignedVec Group::values() const {
 }  // namespace sparse
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
+#endif  // TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_

@@ -135,6 +135,12 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .TypeConstraint<ResourceHandle>("T"),
                         ArgOp);
 
+REGISTER_KERNEL_BUILDER(Name(kArgOp)
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<string>("T"),
+                        ArgOp);
+
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
@@ -147,6 +153,12 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input"),
+                        RetvalOp);
+
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<string>("T")
                             .HostMemory("input"),
                         RetvalOp);
 #undef REGISTER

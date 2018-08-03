@@ -61,13 +61,13 @@ class DecoratorsTest(converter_testing.TestCase):
         'simple_decorator': simple_decorator,
         'converter_testing': converter_testing,
     }
-    node = self.parse_and_analyze(
+    node, ctx = self.prepare(
         f,
         namespace,
         recursive=False,
         autograph_decorators=autograph_decorators)
-    node = decorators.transform(node, self.ctx)
-    import_line = '\n'.join(self.ctx.program.additional_imports)
+    node = decorators.transform(node, ctx)
+    import_line = '\n'.join(ctx.program.additional_imports)
     result, _ = compiler.ast_to_object(node, source_prefix=import_line)
     return getattr(result, f.__name__)
 
@@ -76,11 +76,8 @@ class DecoratorsTest(converter_testing.TestCase):
     def test_fn(a):
       return a
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = decorators.transform(node, self.ctx)
-    result, _ = compiler.ast_to_object(node)
-
-    self.assertEqual(1, result.test_fn(1))
+    with self.converted(test_fn, decorators, {}) as result:
+      self.assertEqual(1, result.test_fn(1))
 
   def test_function(self):
 
@@ -124,7 +121,7 @@ class DecoratorsTest(converter_testing.TestCase):
         return b + 11
       return inner_fn(a)
 
-    # Expected to fail because simple_decorator cannot be imported.
+    # Expected to fail because simple_decorator could not be imported.
     with self.assertRaises(transformer.AutographParseError):
       test_fn(1)
 

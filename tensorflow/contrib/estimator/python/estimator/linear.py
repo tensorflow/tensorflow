@@ -99,7 +99,8 @@ class LinearEstimator(estimator.Estimator):
                model_dir=None,
                optimizer='Ftrl',
                config=None,
-               partitioner=None):
+               partitioner=None,
+               sparse_combiner='sum'):
     """Initializes a `LinearEstimator` instance.
 
     Args:
@@ -116,6 +117,11 @@ class LinearEstimator(estimator.Estimator):
         callable. Defaults to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
+      sparse_combiner: A string specifying how to reduce if a categorical column
+        is multivalent.  One of "mean", "sqrtn", and "sum" -- these are
+        effectively different ways to do example-level normalization, which can
+        be useful for bag-of-words features. for more details, see
+        @{tf.feature_column.linear_model$linear_model}.
     """
     def _model_fn(features, labels, mode, config):
       return linear_lib._linear_model_fn(  # pylint: disable=protected-access
@@ -126,6 +132,7 @@ class LinearEstimator(estimator.Estimator):
           feature_columns=tuple(feature_columns or []),
           optimizer=optimizer,
           partitioner=partitioner,
-          config=config)
+          config=config,
+          sparse_combiner=sparse_combiner)
     super(LinearEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

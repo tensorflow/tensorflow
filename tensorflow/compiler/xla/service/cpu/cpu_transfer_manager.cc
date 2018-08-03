@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -180,7 +181,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
     tensorflow::gtl::ArraySlice<int64> dimensions(
         tensorflow::bit_cast<const int64*>(literal_shape.dimensions().data()),
         literal_shape.dimensions().size());
-    *literal = std::move(*Literal::CreateFromDimensions(
+    *literal = std::move(*LiteralUtil::CreateFromDimensions(
         literal_shape.element_type(), dimensions));
     TF_ASSIGN_OR_RETURN(Shape received_shape,
                         TransferArrayBufferFromOutfeed(
@@ -211,7 +212,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
         tensorflow::bit_cast<const int64*>(
             tuple_element_shape.dimensions().data()),
         tuple_element_shape.dimensions().size());
-    auto empty = Literal::CreateFromDimensions(
+    auto empty = LiteralUtil::CreateFromDimensions(
         tuple_element_shape.element_type(), dimensions);
     int64 size = GetByteSizeRequirement(tuple_element_shape);
     buffer_data.push_back({empty->untyped_data(), size});
@@ -232,7 +233,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
   for (int64 i = 0; i < literal_shape.tuple_shapes_size(); ++i) {
     *elements[i]->mutable_shape_do_not_use() = received_shape.tuple_shapes(i);
   }
-  *literal = std::move(*Literal::MakeTupleOwned(std::move(elements)));
+  *literal = std::move(*LiteralUtil::MakeTupleOwned(std::move(elements)));
   TF_RET_CHECK(ShapeUtil::Equal(literal->shape(), literal_shape));
   return Status::OK();
 }

@@ -22,7 +22,7 @@ tf_module {
   }
   member_method {
     name: "binary_accuracy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0.5\'], "
   }
   member_method {
     name: "binary_crossentropy"

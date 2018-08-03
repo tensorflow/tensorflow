@@ -790,7 +790,7 @@ def _ExtractImagePatchesGrad(op, grad):
 
   sp_mat = sparse_tensor.SparseTensor(
       array_ops.constant(idx, dtype=ops.dtypes.int64),
-      array_ops.ones((len(idx),), dtype=ops.dtypes.float32), sp_shape)
+      array_ops.ones((len(idx),), dtype=grad.dtype), sp_shape)
 
   jac = sparse_ops.sparse_tensor_dense_matmul(sp_mat, grad_flat)
 

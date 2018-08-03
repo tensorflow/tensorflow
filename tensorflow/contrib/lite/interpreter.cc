@@ -25,24 +25,27 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
-#ifndef TFLITE_MCU
-#include "tensorflow/contrib/lite/kernels/eigen_support.h"
-#include "tensorflow/contrib/lite/kernels/gemm_support.h"
-#endif
 #include "tensorflow/contrib/lite/memory_planner.h"
-#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
-#endif
 #include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
-#ifdef TFLITE_MCU
-class NNAPIDelegate {};
-#endif
-
 namespace {
+
+TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
+                           const TfLiteRegistration& registration,
+                           int node_index, const char* message) {
+  context->ReportError(
+      context, "Node number %d (%s) %s.\n", node_index,
+      registration.custom_name
+          ? registration.custom_name
+          : EnumNameBuiltinOperator(
+                static_cast<BuiltinOperator>(registration.builtin_code)),
+      message);
+  return kTfLiteError;
+}
 
 // Stub method which returns kTfLiteError when the function is forbidden.
 // We're registrating this function to several different function to save
@@ -120,19 +123,22 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
-  context_.eigen_context = nullptr;
-  context_.gemm_context = nullptr;
   context_.recommended_num_threads = -1;
+  context_.GetExternalContext = GetExternalContext;
+  context_.SetExternalContext = SetExternalContext;
 
   // Invalid to call these these except from TfLiteDelegate
-  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
-  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
-  SetForbiddenContextFunction(&context_.GetExecutionPlan);
+  SwitchToKernelContext();
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
   nodes_and_registration_.reserve(kTensorsReservedCapacity);
   next_execution_plan_index_to_prepare_ = 0;
+
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    external_contexts_[i] = nullptr;
+  }
+
   UseNNAPI(false);
 }
 
@@ -267,8 +273,9 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
         int node_index;
 
         TfLiteDelegateParams* params = CreateDelegateParams(delegate, subgraph);
-        AddNodeWithParameters(subgraph.input_tensors, subgraph.output_tensors,
-                              nullptr, 0, params, &registration, &node_index);
+        TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
+            subgraph.input_tensors, subgraph.output_tensors, nullptr, 0, params,
+            &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : subgraph.output_tensors) {
@@ -288,6 +295,33 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
     }
   }
   return kTfLiteOk;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    TfLiteExternalContextType type) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    return external_contexts_[type];
+  }
+  return nullptr;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    struct TfLiteContext* context, TfLiteExternalContextType type) {
+  return static_cast<Interpreter*>(context->impl_)->GetExternalContext(type);
+}
+
+void Interpreter::SetExternalContext(TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    external_contexts_[type] = ctx;
+  }
+}
+
+void Interpreter::SetExternalContext(struct TfLiteContext* context,
+                                     TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->SetExternalContext(type, ctx);
 }
 
 // Gets an TfLiteIntArray* representing the execution plan. The interpreter owns
@@ -413,6 +447,13 @@ TfLiteStatus Interpreter::AllocateTensors() {
   TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
 
   state_ = kStateInvokable;
+
+  // Reset the variable tensors to zero after (re)allocating the tensors.
+  // Developers shouldn't rely on the side effect of this function to reset
+  // variable tesnsors. They should call `ResetVariableTensorsToZero` directly
+  // instead.
+  ResetVariableTensorsToZero();
+
   return kTfLiteOk;
 }
 
@@ -537,7 +578,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
     if (OpPrepare(registration, &node) == kTfLiteError) {
-      return kTfLiteError;
+      return ReportOpError(&context_, node, registration, node_index,
+                           "failed to prepare");
     }
 
     *last_execution_plan_index_prepared = execution_plan_index;
@@ -556,7 +598,7 @@ TfLiteStatus Interpreter::PrepareOpsAndTensors() {
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
-        /*preserve_inputs=*/true));
+        /*preserve_inputs=*/true, /*preserve_intermediates*/ false));
     memory_planner_->PlanAllocations();
   }
 
@@ -582,7 +624,6 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   TfLiteStatus status = kTfLiteOk;
-#ifndef TFLITE_MCU
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -596,7 +637,6 @@ TfLiteStatus Interpreter::Invoke() {
       return kTfLiteError;
     }
   }
-#endif
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
@@ -637,7 +677,8 @@ TfLiteStatus Interpreter::Invoke() {
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
     if (OpInvoke(registration, &node) == kTfLiteError) {
-      status = kTfLiteError;
+      status = ReportOpError(&context_, node, registration, node_index,
+                             "failed to invoke");
     }
 
     // Force execution prep for downstream ops if the latest op triggered the
@@ -853,28 +894,39 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Interpreter::UseNNAPI(bool enable) {
-#ifndef TFLITE_MCU
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
-  if (!NNAPIExists()) enable = false;
+  if (!NNAPIDelegate::IsSupported()) enable = false;
   if (!enable) {
     nnapi_delegate_.reset();
   } else if (!nnapi_delegate_) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
-#endif
 }
 
 void Interpreter::SetNumThreads(int num_threads) {
   context_.recommended_num_threads = num_threads;
 
-  // TODO(ahentz): find a way to avoid this. It causes gemmlowp and eigen to
-  // be required in order to compile the framework.
-#ifndef TFLITE_MCU
-  gemm_support::SetNumThreads(&context_, num_threads);
-  eigen_support::SetNumThreads(&context_, num_threads);
-#endif
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    auto* c = external_contexts_[i];
+    if (c && c->Refresh) {
+      c->Refresh(&context_);
+    }
+  }
+}
+
+void Interpreter::SwitchToDelegateContext() {
+  context_.GetNodeAndRegistration = GetNodeAndRegistration;
+  context_.ReplaceSubgraphsWithDelegateKernels =
+      ReplaceSubgraphsWithDelegateKernels;
+  context_.GetExecutionPlan = GetExecutionPlan;
+}
+
+void Interpreter::SwitchToKernelContext() {
+  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
+  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
+  SetForbiddenContextFunction(&context_.GetExecutionPlan);
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
@@ -903,17 +955,12 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
 
   // TODO(aselle): Consider if it is worth storing pointers to delegates.
   // Setup additional context interface.
-  context_.GetNodeAndRegistration = GetNodeAndRegistration;
-  context_.ReplaceSubgraphsWithDelegateKernels =
-      ReplaceSubgraphsWithDelegateKernels;
-  context_.GetExecutionPlan = GetExecutionPlan;
+  SwitchToDelegateContext();
 
   TfLiteStatus status = delegate->Prepare(&context_, delegate);
 
   // Remove additional context info.
-  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
-  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
-  SetForbiddenContextFunction(&context_.GetExecutionPlan);
+  SwitchToKernelContext();
 
   TF_LITE_ENSURE_OK(&context_, status);
 

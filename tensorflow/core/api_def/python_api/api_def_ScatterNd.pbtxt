@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "scatter_nd"
-    deprecation_message: "tf.scatter_nd is deprecated, please use tf.manip.scatter_nd instead."
+    deprecated: true
   }
 }

@@ -140,11 +140,13 @@ REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs);
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSize");
 
 REGISTER_OP("LookupTableSizeV2")
     .Input("table_handle: resource")
     .Output("size: int64")
     .SetShapeFn(ScalarAndTwoElementVectorInputsAndScalarOutputs);
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSizeV2");
 
 REGISTER_OP("LookupTableExport")
     .Input("table_handle: Ref(string)")

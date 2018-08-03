@@ -463,7 +463,6 @@ predict_results = classifier.predict(predict_input_fn, hooks=hooks)
 ```
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.8/get_started/tflearn),
 contains a full example of how to use the tfdbg with `Estimator`s.
 To run this example, do:
 
@@ -781,7 +780,7 @@ sess.run(b)
 ``` python
 import numpy as np
 
-a = tf.Variable(np.ones[10], name="a")
+a = tf.Variable(np.ones(10), name="a")
 b = tf.add(a, a, name="b")
 sess = tf.Session()
 sess.run(tf.global_variables_initializer())

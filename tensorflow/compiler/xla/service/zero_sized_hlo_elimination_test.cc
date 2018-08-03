@@ -19,7 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -67,9 +67,16 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateParameter) {
 }
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
-  auto token = builder_.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder_.AddInstruction(HloInstruction::CreateToken());
   builder_.AddInstruction(
       HloInstruction::CreateSend(zero_sized_param_, token, 0));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {
+  builder_.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1({})));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_FALSE(changed);
 }

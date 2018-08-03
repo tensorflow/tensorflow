@@ -33,8 +33,11 @@ ConditionalThunk::ConditionalThunk(
       predicate_buffer_index_(predicate_buffer_index),
       true_operand_buffer_index_(true_operand_buffer_index),
       false_operand_buffer_index_(false_operand_buffer_index),
-      true_thunk_(std::move(true_thunk_sequence), hlo),
-      false_thunk_(std::move(false_thunk_sequence), hlo) {}
+      // Pass nullptr as the HloInstruction* to the true_thunk_ and false_thunk_
+      // constructors because these SequentialThunks are logically "part of"
+      // this ConditionalThunk, and shouldn't be profiled separately from it.
+      true_thunk_(std::move(true_thunk_sequence), nullptr),
+      false_thunk_(std::move(false_thunk_sequence), nullptr) {}
 
 Status ConditionalThunk::Initialize(const GpuExecutable& executable,
                                     se::StreamExecutor* executor) {

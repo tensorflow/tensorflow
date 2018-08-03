@@ -62,6 +62,9 @@ class EagerServiceImpl {
   Status RegisterFunction(const RegisterFunctionRequest* request,
                           RegisterFunctionResponse* response);
 
+  Status SendTensor(const SendTensorRequest* request,
+                    SendTensorResponse* response);
+
  protected:
   // This is the server-side execution context. All state regarding execution of
   // a client's ops is held in this server-side context (all generated tensors,

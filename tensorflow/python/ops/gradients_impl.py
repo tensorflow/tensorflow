@@ -55,6 +55,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 # This is to avoid a circular dependency with cond_v2_impl.
@@ -356,12 +357,19 @@ def _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):  # pyli
     yield
 
 
+def _IsPartitionedCall(op):
+  return op.type == "PartitionedCall" or op.type == "StatefulPartitionedCall"
+
+
 def _SymGrad(op, out_grads, xs):
   """Backprop through a function call node op given its outputs' gradients."""
   f_in = [x for x in _Inputs(op, xs)] + out_grads
   f_types = [x.dtype for x in _Inputs(op, xs)]
   f = attr_value_pb2.NameAttrList()
-  f.name = op.type
+  if _IsPartitionedCall(op):
+    f.name = op.get_attr("f").name
+  else:
+    f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
   # TODO(apassos) use a better dtype here
@@ -700,13 +708,19 @@ def _GradientsHelper(ys,
 
         grad_fn = None
         func_call = None
+        is_partitioned_call = _IsPartitionedCall(op)
         # pylint: disable=protected-access
-        is_func_call = src_graph._is_function(op.type)
+        is_func_call = (
+            src_graph._is_function(op.type) or is_partitioned_call)
         # pylint: enable=protected-access
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op not in stop_ops):
           if is_func_call:
-            func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
+            if is_partitioned_call:
+              func_call = src_graph._get_function(  # pylint: disable=protected-access
+                  compat.as_bytes(op.get_attr("f").name))
+            else:
+              func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
             # Note that __defun is not set if the graph is
             # imported. If it's set, we prefer to access the original
             # defun.

@@ -96,7 +96,8 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
         # TODO(isaprykin): Work around the colocate_with error.
         dnn_optimizer=adagrad.AdagradOptimizer(0.001),
         linear_optimizer=adagrad.AdagradOptimizer(0.001),
-        config=run_config.RunConfig(train_distribute=distribution))
+        config=run_config.RunConfig(
+            train_distribute=distribution, eval_distribute=distribution))
 
     num_steps = 10
     estimator.train(train_input_fn, steps=num_steps)

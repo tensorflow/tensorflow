@@ -51,7 +51,7 @@ class WeightedQuantilesSummary {
     SummaryEntry() {
       memset(this, 0, sizeof(*this));
 
-      value = 0;
+      value = ValueType();
       weight = 0;
       min_rank = 0;
       max_rank = 0;

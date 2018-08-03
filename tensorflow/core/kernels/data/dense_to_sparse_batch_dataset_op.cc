@@ -101,8 +101,8 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* output_dtypes_ = new DataTypeVector({DT_VARIANT});
-      return *output_dtypes_;
+      static DataTypeVector* output_dtypes = new DataTypeVector({DT_VARIANT});
+      return *output_dtypes;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {

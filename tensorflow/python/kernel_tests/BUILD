@@ -566,6 +566,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
     ],
+    shard_count = 16,
 )
 
 tf_py_test(
@@ -701,7 +702,7 @@ tf_py_test(
 
 tf_py_test(
     name = "priority_queue_test",
-    size = "small",
+    size = "medium",
     srcs = ["priority_queue_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1525,6 +1526,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -1717,7 +1719,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "matmul_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matmul_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2057,6 +2059,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -3092,7 +3095,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cond_v2_test",
-    size = "small",
+    size = "medium",
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
@@ -3107,4 +3110,5 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     grpc_enabled = True,
+    tags = ["no_gpu"],  # TODO(b/111656070)
 )

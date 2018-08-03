@@ -86,7 +86,8 @@ string AttrSlice::SummarizeNode() const {
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
 
 string SummarizeNodeDef(const NodeDef& node_def) {
-  string ret = strings::StrCat(node_def.name(), " = ", node_def.op(), "[");
+  string ret = strings::StrCat(FormatNodeDefForError(node_def), " = ",
+                               node_def.op(), "[");
   strings::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
   strings::StrAppend(&ret, "](");
 
@@ -99,6 +100,14 @@ string SummarizeNodeDef(const NodeDef& node_def) {
   }
   strings::StrAppend(&ret, ")");
   return ret;
+}
+
+string FormatNodeForError(const Node& node) {
+  return FormatNodeDefForError(node.def());
+}
+
+string FormatNodeDefForError(const NodeDef& node_def) {
+  return errors::FormatNodeNameForError(node_def.name());
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
@@ -634,7 +643,7 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
 Status AttachDef(const Status& status, const NodeDef& node_def) {
   Status ret = status;
   errors::AppendToMessage(
-      &ret, strings::StrCat(" [[Node: ", SummarizeNodeDef(node_def), "]]"));
+      &ret, strings::StrCat(" [[", SummarizeNodeDef(node_def), "]]"));
   return ret;
 }
 

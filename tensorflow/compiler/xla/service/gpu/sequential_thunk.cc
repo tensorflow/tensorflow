@@ -36,12 +36,7 @@ Status SequentialThunk::Initialize(const GpuExecutable& executable,
 Status SequentialThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
     HloExecutionProfiler* profiler) {
-  // TODO(b/71544591): We need to potentially measure the total time of the
-  // sequential thunk. This happens for a reduce op which consists of
-  // SequentialThunk with a thunk that initializes the output, and another thunk
-  // that does the actual reduce. Right now, in this case we would only measure
-  // the time of the last thunk, because both thunks would have the same
-  // HloInstruction.
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   for (const auto& thunk : thunks_) {
     TF_RETURN_IF_ERROR(
         thunk->ExecuteOnStream(buffer_allocations, stream, profiler));

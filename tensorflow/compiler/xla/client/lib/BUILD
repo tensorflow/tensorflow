@@ -29,8 +29,8 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
     ],
 )
@@ -45,7 +45,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
     ],
 )
 
@@ -58,7 +58,7 @@ xla_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
@@ -72,7 +72,7 @@ cc_library(
         ":constants",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
     ],
 )
 
@@ -82,10 +82,11 @@ xla_test(
     tags = ["enable_for_xla_interpreter"],
     deps = [
         ":math",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
@@ -96,9 +97,12 @@ cc_library(
     srcs = ["numeric.cc"],
     hdrs = ["numeric.h"],
     deps = [
+        ":arithmetic",
+        ":constants",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -108,6 +112,52 @@ xla_test(
     tags = ["enable_for_xla_interpreter"],
     deps = [
         ":numeric",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "prng",
+    srcs = ["prng.cc"],
+    hdrs = ["prng.h"],
+    deps = [
+        ":constants",
+        ":math",
+        ":numeric",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "sorting",
+    srcs = ["sorting.cc"],
+    hdrs = ["sorting.h"],
+    deps = [
+        ":numeric",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "sorting_test",
+    srcs = ["sorting_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":sorting",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -123,7 +173,7 @@ cc_library(
     hdrs = ["testing.h"],
     deps = [
         "//tensorflow/compiler/xla:execution_options_util",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -131,8 +181,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
     ],

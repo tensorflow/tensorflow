@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import re
 import threading
@@ -28,6 +29,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import device
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -243,7 +245,7 @@ class _FetchMapper(object):
     elif isinstance(fetch, (list, tuple)):
       # NOTE(touts): This is also the code path for namedtuples.
       return _ListFetchMapper(fetch)
-    elif isinstance(fetch, dict):
+    elif isinstance(fetch, collections.Mapping):
       return _DictFetchMapper(fetch)
     else:
       # Look for a handler in the registered expansions.
@@ -540,10 +542,11 @@ class _DeviceAttributes(object):
         (in bytes).
   """
 
-  def __init__(self, name, device_type, memory_limit_bytes):
+  def __init__(self, name, device_type, memory_limit_bytes, incarnation):
     self._name = device.canonical_name(name)
     self._device_type = device_type
     self._memory_limit_bytes = memory_limit_bytes
+    self._incarnation = incarnation
 
   @property
   def name(self):
@@ -557,11 +560,16 @@ class _DeviceAttributes(object):
   def memory_limit_bytes(self):
     return self._memory_limit_bytes
 
+  @property
+  def incarnation(self):
+    return self._incarnation
+
   def __repr__(self):
-    return '_DeviceAttributes(%s, %s, %d)' % (
+    return '_DeviceAttributes(%s, %s, %d, %d)' % (
         self.name,
         self.device_type,
         self.memory_limit_bytes,
+        self.incarnation,
     )
 
 
@@ -623,7 +631,7 @@ class BaseSession(SessionInterface):
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
       # pylint: disable=protected-access
-      self._session = tf_session.TF_NewSession(self._graph._c_graph, opts)
+      self._session = tf_session.TF_NewSessionRef(self._graph._c_graph, opts)
       # pylint: enable=protected-access
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
@@ -658,7 +666,9 @@ class BaseSession(SessionInterface):
       name = tf_session.TF_DeviceListName(raw_device_list, i)
       device_type = tf_session.TF_DeviceListType(raw_device_list, i)
       memory = tf_session.TF_DeviceListMemoryBytes(raw_device_list, i)
-      device_list.append(_DeviceAttributes(name, device_type, memory))
+      incarnation = tf_session.TF_DeviceListIncarnation(raw_device_list, i)
+      device_list.append(
+          _DeviceAttributes(name, device_type, memory, incarnation))
     tf_session.TF_DeleteDeviceList(raw_device_list)
     return device_list
 
@@ -1226,8 +1236,12 @@ class BaseSession(SessionInterface):
 
       return _fetch_handler_run
 
-  # Captures the name of a node in an error status.
-  _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')
+  # Captures the name of a node in an error status. The regex below matches
+  # both the old and the new formats:
+  # Old format: [[Node: <node_name> = ...]]
+  # New format: [[{{node <node_name>}} = ...]]
+  _NODEDEF_NAME_RE = re.compile(
+      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=')
 
   def _do_run(self, handle, target_list, fetch_list, feed_dict, options,
               run_metadata):
@@ -1282,12 +1296,15 @@ class BaseSession(SessionInterface):
       node_def = None
       op = None
       if m is not None:
-        node_name = m.group(1)
+        node_name = m.group(3)
         try:
           op = self._graph.get_operation_by_name(node_name)
           node_def = op.node_def
         except KeyError:
           pass
+      if (self._config is not None and
+          self._config.experimental.client_handles_error_formatting):
+        message = error_interpolation.interpolate(message, self._graph)
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):

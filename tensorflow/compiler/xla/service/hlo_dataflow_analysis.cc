@@ -398,18 +398,17 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
 bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
   CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
   bool changed = false;
-  // RecvDone forwards the operand value at {0} to the output.
+  // RecvDone forwards the operand value at {0} to element {0} of its output.
   for (auto& pair : GetInstructionValueSet(recv_done)) {
     ShapeIndex& index = pair.first;
     HloValueSet& value_set = pair.second;
 
-    ShapeIndex operand_index = {0};
-    for (int64 i : index) {
-      operand_index.push_back(i);
+    if (index.empty() || index[0] != 0) {
+      continue;
     }
 
     const HloValueSet& operand_value_set =
-        GetValueSet(recv_done->operand(0), operand_index);
+        GetValueSet(recv_done->operand(0), index);
     if (value_set != operand_value_set) {
       value_set = operand_value_set;
       changed = true;
@@ -578,17 +577,17 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   }
 }
 
-bool HloDataflowAnalysis::UpdateSelectValueSet(HloInstruction* select) {
-  CHECK_EQ(select->opcode(), HloOpcode::kSelect);
-  // A phi value is not defined at a kSelect instruction because kSelect does
-  // not create a new value. Rather it forwards a value from its operands. This
-  // contrasts with kWhile instruction (which does define a phi value) which has
-  // in-place update semantics.
+bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
+  CHECK_EQ(select->opcode(), HloOpcode::kTupleSelect);
+  // A phi value is not defined at a kTupleSelect instruction because
+  // kTupleSelect does not create a new value. Rather it forwards a value from
+  // its operands. This contrasts with kWhile instruction (which does define a
+  // phi value) which has in-place update semantics.
   bool changed = false;
   for (auto& pair : GetInstructionValueSet(select)) {
     const ShapeIndex& index = pair.first;
     if (index.empty()) {
-      // kSelect copies (not forwards) the top-level value.
+      // kTupleSelect copies (not forwards) the top-level value.
       continue;
     }
     HloValueSet& value_set = pair.second;
@@ -650,8 +649,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
       return UpdateGetTupleElementValueSet(instruction);
-    case HloOpcode::kSelect:
-      return UpdateSelectValueSet(instruction);
+    case HloOpcode::kTupleSelect:
+      return UpdateTupleSelectValueSet(instruction);
     case HloOpcode::kTuple:
       return UpdateTupleValueSet(instruction);
     case HloOpcode::kParameter:
@@ -850,21 +849,25 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           break;
         case HloOpcode::kCopy:
-        case HloOpcode::kSelect:
+        case HloOpcode::kTupleSelect:
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
           define_top_level_only();
           break;
         case HloOpcode::kRecvDone:
-          // RecvDone aliases its input tuple element {0}, therefore does not
-          // define any values.
-          break;
-        case HloOpcode::kSend:
-          // Send produces a tuple of {aliased operand, U32 context}, therefore
-          // only defines the top-level tuple and the tuple element at {1}.
+          // RecvDone produces a two-element tuple. Element zero aliases its
+          // input tuple element {0}; element one is a token.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
+          break;
+        case HloOpcode::kSend:
+          // Send produces a tuple of {aliased operand, U32 context, token},
+          // therefore only defines the top-level tuple and the tuple elements
+          // at {1} and {2}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{1});
+          define_value_at(/*index=*/{2});
           break;
         default:
           define_all_values();
@@ -1014,19 +1017,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kFusion) {
+    if (fusion_can_share_buffer_ != nullptr) {
+      return fusion_can_share_buffer_(user, operand);
+    }
     // Get the parameter associated with 'operand';
     HloInstruction* fusion_param =
         user->fused_parameter(user->operand_index(operand));
 
     const HloValue& value = GetValueDefinedAt(fusion_param, operand_index);
-    if (value.uses().size() != 1) {
-      if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
-        return true;
-      }
-      return false;
+    if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
+      return true;
     }
-    const HloUse& use = value.uses()[0];
-
     if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
         user->fusion_kind() == HloInstruction::FusionKind::kInput) {
       if (user->fused_expression_root()->opcode() ==
@@ -1036,13 +1037,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
         // Returns true iff there is exactly one use of 'operand' at shape index
         // 'operand_index', and this singleton use is the fused root at operand
         // index 0.
-        return use.instruction == user->fused_expression_root() &&
-               use.operand_number == 0;
-      } else {
-        return AreTransitiveUsesElementwiseOrTuple(fusion_param);
+        if (value.uses().size() == 1) {
+          const HloUse& use = value.uses()[0];
+          return use.instruction == user->fused_expression_root() &&
+                 use.operand_number == 0;
+        }
+        return false;
       }
-    } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
-               user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
+      return AreTransitiveUsesElementwiseOrTuple(fusion_param);
+    }
+    if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+        user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 
       // Check if one operand of kAdd fused root is kDot or kConvolution.
@@ -1063,11 +1068,12 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // Returns true iff there is exactly one use of 'operand' at shape index
       // 'operand_index', and this singleton use is the fused root (at operand
       // index 'other_add_operand_index').
-      return use.instruction == user->fused_expression_root() &&
-             use.operand_number == other_add_operand_index;
-    } else if (fusion_can_share_buffer_ != nullptr &&
-               fusion_can_share_buffer_(user, operand)) {
-      return true;
+      if (value.uses().size() == 1) {
+        const HloUse& use = value.uses()[0];
+        return use.instruction == user->fused_expression_root() &&
+               use.operand_number == other_add_operand_index;
+      }
+      return false;
     }
   }
 
@@ -1077,6 +1083,21 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && operand_indices[0] == 0;
+  }
+  if (user->opcode() == HloOpcode::kSort) {
+    // Only valid if there are no other users.
+    if (operand->users().size() != 1) {
+      return false;
+    }
+    // If we only sort keys, the output of sort is not a tuple, so we can always
+    // share the buffer.
+    if (user->operand_count() == 1) {
+      return true;
+    }
+    CHECK(!user_index.empty());
+    // Only share with the right tuple element buffer.
+    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {
     // Get all uses of value defined by 'operand' at 'operand_index'.

@@ -29,9 +29,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -86,27 +83,48 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(jie): Segmentation shouldn't associated with op name.
   //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
-      "Identity",
-      "Snapshot",
-      "Const",
-      "Conv2D",
-      "MaxPool",
-      "BiasAdd",
-      "Relu",
-      "Add",
-      "Mul",
-      "Sub",
-      "Rsqrt",
-      "Pad",
-      "Mean",
-      "AvgPool",
-      "ConcatV2",
-      "DepthwiseConv2dNative",
-      "FusedBatchNorm",
-      "FusedBatchNormV2",
-      // TODO(ben,jie): ...
+    "Identity",
+    "Snapshot",
+    "Const",
+    "Conv2D",
+    "MaxPool",
+    "BiasAdd",
+    "Relu",
+    "Add",
+    "Mul",
+    "Sub",
+    "Rsqrt",
+    "Pad",
+    "Mean",
+    "AvgPool",
+    "ConcatV2",
+    "DepthwiseConv2dNative",
+    "FusedBatchNorm",
+    "FusedBatchNormV2",
+    "Div",
+    "RealDiv",
+    "Rsqrt",
+    "Reciprocal",
+    "Exp",
+    "Log",
+    "Sqrt",
+    "Abs",
+    "Neg",
+#if NV_TENSORRT_MAJOR > 3
+    "MatMul",
+    "BatchMatMul",
+    "Softmax",
+    "Minimum",
+    "Maximum",
+    "TopKV2",
+    "Sum",
+    "Prod",
+    "Max",
+    "Min",
+#endif
+    // TODO(ben,jie): ...
   };
-  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
+  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
   return (candidate_ops.count(node->type_string()) ||
           PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
 }
@@ -142,7 +160,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     auto n = infer_graph->mutable_node(i);
     if (n->op() == "TRTEngineOp") {
       VLOG(1) << "Processing " << n->name();
-      string container_name = n->attr().at("segment_funcdef_name").s();
+      const string& container_name = n->attr().at("segment_funcdef_name").s();
       TRTCalibrationResource* cres = nullptr;
       auto status = calib_rm->Lookup(container_name, "Calibrator", &cres);
       if (!status.ok()) {
@@ -168,25 +186,50 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Can't get TRTCalibrator from resource manager!");
       }
       cres->Unref();
+      TF_RETURN_IF_ERROR(calib_rm->Cleanup(container_name));
     }
   }
   return tensorflow::Status::OK();
 }
 
-// Entry function from Python.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode, int minimum_segment_size, bool is_dyn_op,
     int max_cached_engines, std::vector<int> cached_engine_batches) {
-  // optimization pass
+  // Create GrapplerItem.
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
   item.graph = graph_def;
-  // grappler requires a virtual cluster with a proper GPU device
-  // in order to calculate flops>0 or fails with FATAL
-  // We add numbers from a Pascal card here to have flops>0
+
+  // TODO(aaroey): we should have used single machine cluster like the
+  // following, but the problem is then wrap_conversion will depend on
+  // direct_session and cause double linking problems. To fix this we need to
+  // fix or get rid of the swig dependency. Here we use VirtualCluster
+  // as a work around, and we need to create a session to initialize the
+  // underlying device before calling this method.
+#if 0
+  // Create single machine cluster. Note that this will create a session and
+  // initialize the gpu devices.
+  const int num_cpu_cores =
+      tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  const int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
+  VLOG(2) << "cpu_cores: " << num_cpu_cores;
+  VLOG(2) << "gpus: " << num_gpus;
+  const int timeout_s = 60 * 10;
+  std::unique_ptr<tensorflow::grappler::Cluster> cluster(
+      new tensorflow::grappler::SingleMachine(
+          timeout_s, num_cpu_cores, num_gpus));
+  // These settings are the defaults in tensorflow/python/grappler/cluster.py.
+  cluster->DisableDetailedStats(true);
+  cluster->AllowSoftPlacement(true);
+  cluster->SetNumWarmupSteps(10);
+  TF_RETURN_IF_ERROR(cluster->Provision());
+#else
+  // Create virtual cluster. Grappler requires a virtual cluster with a proper
+  // GPU device in order to calculate flops>0 or fails with FATAL in dbg mode.
+  // We add numbers from a Pascal card here to have flops>0.
   tensorflow::DeviceProperties device_properties;
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
@@ -195,47 +238,43 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   std::unique_ptr<tensorflow::grappler::Cluster> cluster(
       new tensorflow::grappler::VirtualCluster(
           {{"/GPU:0", device_properties}}));
+#endif
 
-  // single machine
-  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
-  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
-  VLOG(2) << "cpu_cores: " << num_cpu_cores;
-  VLOG(2) << "gpus: " << num_gpus;
+  // Create RewriterConfig.
   tensorflow::RewriterConfig rw_cfg;
-  // use only const folding and layout for the time being since new optimizers
-  // break the graph for us
+  // TODO(aaroey): use only const folding and layout for the time being since
+  // new optimizers break the graph for trt.
   rw_cfg.add_optimizers("constfold");
   rw_cfg.add_optimizers("layout");
-  rw_cfg.set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
-  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
-  tensorflow::GraphDef gdef;
-  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, &gdef));
-  item.graph = gdef;
+  auto optimizer = rw_cfg.add_custom_optimizers();
+  optimizer->set_name("TensorRTOptimizer");
+  auto& parameters = *(optimizer->mutable_parameter_map());
+  parameters["minimum_segment_size"].set_i(minimum_segment_size);
+  parameters["max_batch_size"].set_i(max_batch_size);
+  parameters["is_dynamic_op"].set_b(is_dyn_op);
+  parameters["max_workspace_size_bytes"].set_i(max_workspace_size_bytes);
+  TF_RETURN_IF_ERROR(GetPrecisionModeName(
+      precision_mode, parameters["precision_mode"].mutable_s()));
+  parameters["maximum_cached_engines"].set_i(max_cached_engines);
+  if (!cached_engine_batches.empty()) {
+    auto list = parameters["cached_engine_batches"].mutable_list();
+    for (const int batch : cached_engine_batches) {
+      list->add_i(batch);
+    }
+  }
 
-  // AJ refactoring shape inference through grappler/GraphProperties.
-  tensorflow::grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  // Build full graph
-  ConversionParams cp;
-  cp.input_graph_def = &gdef;
-  cp.output_names = &output_names;
-  cp.max_batch_size = max_batch_size;
-  cp.output_graph_def = new_graph_def;
-  cp.precision_mode = precision_mode;
-  cp.is_dyn_op = is_dyn_op;
-  cp.max_cached_engines = max_cached_engines;
-  cp.cached_engine_batches = cached_engine_batches;
-  cp.minimum_segment_size = minimum_segment_size;
-  cp.graph_properties = &static_graph_properties;
-  cp.max_workspace_size_bytes = max_workspace_size_bytes;
+  // Run optimizer.
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
+
   if (VLOG_IS_ON(5)) {
     std::fstream f;
     f.open("TRTConversionInput.pb",
            std::fstream::out | std::fstream::binary | std::fstream::trunc);
-    f << gdef.SerializeAsString();
+    f << new_graph_def->SerializeAsString();
     f.close();
   }
-  return ConvertAfterShapes(cp);
+  return Status::OK();
 }
 
 // Function to get subsegment information structure.
@@ -247,6 +286,7 @@ tensorflow::Status GetEngineInfo(
     const std::vector<tensorflow::Node*>& reverse_topo_order,
     EngineInfo* info) {
   std::vector<int> subgraph_node_ids;
+  std::set<int> added_const_node_ids;  // Used to prevent double insertion.
   std::set<string> segment_devices;
   int input_port = 0;
   int output_port = 0;
@@ -256,6 +296,7 @@ tensorflow::Status GetEngineInfo(
   // edge, thus there must not be any duplicates since source nodes of
   // input/output edges must be in different split of the graph.
   // TODO(aaroey): consider using node id and port instead.
+  // TODO(aaroey): using topo order instead of reverting reverse topo order.
   std::unordered_map<string, int> created_edges;
   for (auto it = reverse_topo_order.rbegin(); it != reverse_topo_order.rend();
        ++it) {
@@ -274,19 +315,22 @@ tensorflow::Status GetEngineInfo(
                 << " neither have requested device nor assigned device";
       }
     }
-    int node_id = node->id();
-    subgraph_node_ids.push_back(node_id);
+    const int node_id = node->id();
     for (const auto edge : node->in_edges()) {
       auto input_node = edge->src();
-      if (segment_nodes.count(input_node->name()) == 0) {
+      if (segment_nodes.count(input_node->name()) == 0 &&
+          !edge->IsControlEdge() && !input_node->IsSource()) {
         // Add constant input node into the segment. We don't care if it has
         // other output edges going into other engines or TF nodes. Since we add
         // it only to the subsegment node list, not the subsegment itself, it
         // won't be removed from the graph. If it doesn't have any edges, TF
         // will prune it out.
         if (input_node->type_string() == "Const") {
-          subgraph_node_ids.push_back(input_node->id());
-        } else if (!edge->IsControlEdge() && !input_node->IsSource()) {
+          if (added_const_node_ids.count(input_node->id()) == 0) {
+            added_const_node_ids.insert(input_node->id());
+            subgraph_node_ids.push_back(input_node->id());
+          }
+        } else {
           string s(input_node->name());
           StrAppend(&s, ":", edge->src_output());
           VLOG(1) << "Input edge = " << s;
@@ -303,6 +347,9 @@ tensorflow::Status GetEngineInfo(
         }
       }
     }
+    // We need to add possible const input nodes before adding this node in
+    // order to keep the topological order.
+    subgraph_node_ids.push_back(node_id);
     for (const auto edge : node->out_edges()) {
       auto output_node = edge->dst();
       if (segment_nodes.count(output_node->name()) == 0 &&
@@ -349,9 +396,9 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
                                  nvinfer1::IGpuAllocator* alloc,
                                  int max_batch_size) {
   const auto& info = infos.at(pos);
-  std::vector<tensorflow::TensorShapeProto> out_shapes;
-  std::vector<tensorflow::TensorShapeProto> input_shapes;
-  std::vector<tensorflow::PartialTensorShape> shapes;
+  std::vector<tensorflow::TensorShapeProto> output_shape_protos;
+  std::vector<tensorflow::TensorShapeProto> input_shape_protos;
+  std::vector<tensorflow::PartialTensorShape> input_shapes;
   std::vector<tensorflow::NodeDefBuilder::NodeOut> inputs;
   std::vector<tensorflow::DataType> out_types;
   VLOG(1) << "Processing " << info.engine_name;
@@ -364,11 +411,11 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
       tensorflow::TensorShapeProto out_shape;
       // shape of the output node inside segment
       conn.inside_shape.AsProto(&out_shape);
-      if (out_shapes.size() <= conn.port_number) {
-        out_shapes.resize(conn.port_number + 1);
+      if (output_shape_protos.size() <= conn.port_number) {
+        output_shape_protos.resize(conn.port_number + 1);
         out_types.resize(conn.port_number + 1);
       }
-      out_shapes.at(conn.port_number) = out_shape;
+      output_shape_protos.at(conn.port_number) = out_shape;
       out_types.at(conn.port_number) = conn.connection_type;
       continue;
     }
@@ -376,12 +423,12 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     // Set the shapes and data types of input edge.
     tensorflow::TensorShapeProto in_shape;
     conn.outside_shape.AsProto(&in_shape);
-    if (input_shapes.size() <= conn.port_number) {
+    if (input_shape_protos.size() <= conn.port_number) {
+      input_shape_protos.resize(conn.port_number + 1);
       input_shapes.resize(conn.port_number + 1);
-      shapes.resize(conn.port_number + 1);
     }
-    input_shapes.at(conn.port_number) = in_shape;
-    shapes.at(conn.port_number) = conn.outside_shape;
+    input_shape_protos.at(conn.port_number) = in_shape;
+    input_shapes.at(conn.port_number) = conn.outside_shape;
 
     string input_node = conn.outside_node_name;
     int input_port = conn.outside_port;
@@ -409,6 +456,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     VLOG(1) << "Engine Input " << input_node << ":" << input_port << " -> "
             << info.engine_name << ":" << inputs.size();
     // Skip duplicate inputs.
+    // TODO(aaroey): use std::find instead. GetEngineInfo already remove
+    // duplicate connections, so here we should never find any duplicate?
     bool new_input = true;
     for (const auto& inp : inputs) {
       if (inp.node == input_node && inp.index == input_port) {
@@ -436,8 +485,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         info.precision_mode == INT8MODE ? FP32MODE : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, shapes, &trt_logger,
-        alloc, /*calibrator=*/nullptr, &engine,
+        max_batch_size, info.max_workspace_size_bytes, input_shapes,
+        &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string =
@@ -453,21 +502,10 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   // TODO(aaroey): use enum instead, and add a helper method to do the
   // conversion.
   string prec_string;
-  switch (info.precision_mode) {
-    case FP32MODE:
-      prec_string = "FP32";
-      break;
-    case FP16MODE:
-      prec_string = "FP16";
-      break;
-    case INT8MODE:
-      prec_string = "INT8";
-      if (!TRTResourceManager::instance()->getManager("TRTCalibration")) {
-        LOG(ERROR) << "Failed to construct calibration storage";
-      }
-      break;
-    default:
-      return tensorflow::errors::OutOfRange("Unknown precision mode");
+  TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
+  if (info.precision_mode == INT8MODE &&
+      !TRTResourceManager::instance()->getManager("TRTCalibration")) {
+    LOG(ERROR) << "Failed to construct calibration storage";
   }
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
@@ -485,8 +523,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   }
   tensorflow::NodeDef trt_node;
   tensorflow::Status status =
-      node_builder.Attr("input_shapes", input_shapes)
-          .Attr("output_shapes", out_shapes)
+      node_builder.Attr("input_shapes", input_shape_protos)
+          .Attr("output_shapes", output_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_funcdef_name",
@@ -595,7 +633,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
         edge->src()->output_type(edge->src_output()));
     VLOG(1) << " input " << nout.node << ":" << nout.index
             << " dtype=" << tensorflow::DataTypeString(nout.data_type);
-    node_builder.Input({nout});
+    // nvcc complains that Input(<brace-enclosed initializer list>) is
+    // ambiguous, so do not use Input({nout}).
+    node_builder.Input(nout);
     TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
                            .Attr("index", i)
                            .Finalize(&nd));
@@ -632,77 +672,42 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
 }
 
 std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
-    ConversionParams& params, EngineInfo& engine) {
+    const ConversionParams& params, const EngineInfo& engine) {
   int cuda_device_id = -1;
-  auto check_device_id = [](int tfid) -> int {
-    tensorflow::TfGpuId tf_gpu_id(tfid);
-    CudaGpuId cuda_gpu_id;
-    Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
-    if (s.ok()) {
-      VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-              << cuda_gpu_id.value();
-      return cuda_gpu_id.value();
-    }
-    VLOG(2) << "TF GPU with id " << tfid << " do not exist " << s;
-    return -1;
-  };
   tensorflow::Allocator* dev_allocator = nullptr;
-  // we need to us PM here since in python path there is no way to get
-  // to allocators.
-  // TODO(sami): when grappler devices become available else path will not be
-  // necessary
-  auto pm = tensorflow::GPUProcessState::singleton();
-  if (params.cluster) {  // get allocator
-    tensorflow::Device* device = nullptr;
-    if (params.cluster->GetDeviceSet()) {
-      device = params.cluster->GetDeviceSet()->FindDeviceByName(engine.device);
+  if (params.cluster) {
+    std::vector<tensorflow::Device*> devices;
+    if (!engine.device.empty() && params.cluster->GetDeviceSet()) {
+      DeviceNameUtils::ParsedName parsed_name;
+      if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name) &&
+          parsed_name.has_id) {
+        params.cluster->GetDeviceSet()->FindMatchingDevices(parsed_name,
+                                                            &devices);
+      }
     }
-    if (device) {
+    if (!devices.empty()) {
+      if (devices.size() > 1) {
+        string msg = "Found multiple matching devices using name '";
+        StrAppend(&msg, engine.device, "': ");
+        for (auto d : devices) StrAppend(&msg, d->name(), ", ");
+        StrAppend(&msg, ". Will get the allocator from first one.");
+        LOG(WARNING) << msg;
+      }
       tensorflow::AllocatorAttributes alloc_attr;
-      dev_allocator = device->GetAllocator(alloc_attr);
-      VLOG(1) << "Using allocator " << dev_allocator->Name();
+      cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
+      dev_allocator = devices[0]->GetAllocator(alloc_attr);
+      VLOG(1) << "Using allocator " << dev_allocator->Name()
+              << " and cuda_device_id " << cuda_device_id;
     } else {
       LOG(WARNING) << "Cluster is set but device '" << engine.device
                    << "' is not found in the cluster";
     }
-  } else {  // cluster not found, possibly a python call
-    VLOG(1) << "Cluster is not set, probably called from python";
-    int found_device = 0;
-    bool try_gpu_ids = true;
-    // if device is set, try to find the device. Might be a problem for multi
-    // host case but TensorRT do not support multi host setups yet.
-    if (!engine.device.empty()) {
-      DeviceNameUtils::ParsedName parsed_name;
-      if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name)) {
-        cuda_device_id = parsed_name.has_id ? parsed_name.id : -1;
-      }
-      try_gpu_ids = !parsed_name.has_id;
-    }
-    if (try_gpu_ids) {
-      while (found_device < 100) {
-        cuda_device_id = check_device_id(found_device);
-        if (cuda_device_id >= 0) break;
-        found_device++;
-      }
-    }
-    if (found_device == 100) {
-      LOG(ERROR) << " Can't find a GPU device to work with. Please "
-                    "instantiate a session to initialize devices";
-      return std::make_pair(cuda_device_id, dev_allocator);
-    }
-    LOG(WARNING)
-        << "Can't determine the device, constructing an allocator at device "
-        << found_device;
-    tensorflow::GPUOptions gpuoptions;
-    // this will be a noop if device is already initialized
-    gpuoptions.set_allow_growth(true);
-    tensorflow::TfGpuId tf_gpu_id(found_device);
-    dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
   }
   return std::make_pair(cuda_device_id, dev_allocator);
 }
 
 // Entry function from optimization pass.
+// TODO(aaeory): parameter should use pointer type.
 tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   // Convert graphdef to graph.
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
@@ -720,7 +725,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, segment_options, &initial_segments));
+      &graph, IsTensorRTCandidate, InputEdgeValidator(*params.graph_properties),
+      OutputEdgeValidator(), segment_options, &initial_segments));
   if (initial_segments.size() > 1) {
     VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
             << initial_segments.size();
@@ -800,7 +806,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
     // to use unique_ptr here.
-    std::unique_ptr<nvinfer1::IGpuAllocator> alloc;
+    std::unique_ptr<TRTBaseAllocator> alloc;
     auto device_alloc = GetDeviceAndAllocator(params, engine);
     int cuda_device_id = 0;
     if (device_alloc.first >= 0) {
