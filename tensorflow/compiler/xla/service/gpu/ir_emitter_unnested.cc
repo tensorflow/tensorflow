@@ -171,40 +171,6 @@ Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
   return DfsHloVisitor::Postprocess(hlo);
 }
 
-namespace {
-bool ImplementedAsHostToDeviceMemcpy(const BufferAssignment& buffer_assignment,
-                                     const HloInstruction& hlo) {
-  // `hlo` needs to satisfy the following conditions to be implemented as a
-  // host-to-device cuMemcpy.
-  //
-  // 1. `hlo` is a kCopy instruction.
-  // 2. `hlo`'s only operand is a kConstant instruction.
-  // 3. `hlo` and its operand have the same shape (thus the same layout too).
-  // 4. The address of `hlo`'s buffer is known at runtime (without dereferencing
-  //    pointers in a tuple).
-  return hlo.opcode() == HloOpcode::kCopy &&
-         hlo.operand(0)->opcode() == HloOpcode::kConstant &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.GetUniqueTopLevelSlice(&hlo).ok();
-}
-
-bool ImplementedAsDeviceToDeviceMemcpy(
-    const BufferAssignment& buffer_assignment, const HloInstruction& hlo) {
-  // `hlo` needs to satisfy three conditions to be implemented as a
-  // device-to-device cuMemcpy.
-  //
-  // 1. `hlo` is a kCopy instruction.
-  // 2. `hlo` and its operand have the same shape (thus the same layout too).
-  // 3. `hlo` and its operand have a statically-known buffer assignment
-  //     (constants do not, for instance), which means the source buffer also
-  //     resides on the device.
-  return hlo.opcode() == HloOpcode::kCopy &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.GetUniqueTopLevelSlice(&hlo).ok() &&
-         buffer_assignment.GetUniqueTopLevelSlice(hlo.operand(0)).ok();
-}
-}  // namespace
-
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     const HloInstruction& inst,
     tensorflow::gtl::ArraySlice<const BufferAllocation*> args) {
@@ -730,13 +696,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 }
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
-  if (ImplementedAsHostToDeviceMemcpy(ir_emitter_context_->buffer_assignment(),
-                                      *copy)) {
-    thunk_sequence_->emplace_back(BuildHostToDeviceCopyThunk(copy));
-    return Status::OK();
-  }
-  if (ImplementedAsDeviceToDeviceMemcpy(
-          ir_emitter_context_->buffer_assignment(), *copy)) {
+  CHECK(ShapeUtil::Compatible(copy->operand(0)->shape(), copy->shape()));
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context_->buffer_assignment();
+  if (LayoutUtil::Equal(copy->operand(0)->shape().layout(),
+                        copy->shape().layout()) &&
+      buffer_assignment.GetUniqueTopLevelSlice(copy->operand(0)).ok()) {
     thunk_sequence_->emplace_back(BuildDeviceToDeviceCopyThunk(copy));
     return Status::OK();
   }
