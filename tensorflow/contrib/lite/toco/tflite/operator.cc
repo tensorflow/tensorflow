@@ -1070,6 +1070,27 @@ class OneHot : public BuiltinOperator<OneHotOperator, ::tflite::OneHotOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class CTCBeamSearchDecoder
+    : public CustomOperator<CTCBeamSearchDecoderOperator> {
+ public:
+  using CustomOperator::CustomOperator;
+
+  void WriteOptions(const TocoOperator& op,
+                    flexbuffers::Builder* fbb) const override {
+    fbb->Int("beam_width", op.beam_width);
+    fbb->Int("top_paths", op.top_paths);
+    fbb->Bool("merge_repeated", op.merge_repeated);
+  }
+
+  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
+    op->beam_width = m["beam_width"].AsInt32();
+    op->top_paths = m["top_paths"].AsInt32();
+    op->merge_repeated = m["merge_repeated"].AsBool();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -1301,6 +1322,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   // Custom Operators.
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
+  ops.emplace_back(new CTCBeamSearchDecoder(
+      "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
   ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
                                              OperatorType::kUnsupported));
 

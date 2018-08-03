@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
-#define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
+// Copied from tensorflow/core/util/ctc/ctc_beam_search.h
+// TODO(b/111524997): Remove this file.
+#ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SEARCH_H_
+#define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SEARCH_H_
 
 #include <algorithm>
 #include <cmath>
@@ -23,18 +25,15 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/top_n.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/ctc/ctc_beam_entry.h"
-#include "tensorflow/core/util/ctc/ctc_beam_scorer.h"
-#include "tensorflow/core/util/ctc/ctc_decoder.h"
-#include "tensorflow/core/util/ctc/ctc_loss_util.h"
+#include "tensorflow/contrib/lite/experimental/kernels/ctc_beam_entry.h"
+#include "tensorflow/contrib/lite/experimental/kernels/ctc_beam_scorer.h"
+#include "tensorflow/contrib/lite/experimental/kernels/ctc_decoder.h"
+#include "tensorflow/contrib/lite/experimental/kernels/ctc_loss_util.h"
+#include "tensorflow/contrib/lite/experimental/kernels/top_n.h"
+#include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 
-namespace tensorflow {
+namespace tflite {
+namespace experimental {
 namespace ctc {
 
 template <typename CTCBeamState = ctc_beam_search::EmptyBeamState,
@@ -91,17 +90,17 @@ class CTCBeamSearchDecoder : public CTCDecoder {
       : CTCDecoder(num_classes, batch_size, merge_repeated),
         beam_width_(beam_width),
         leaves_(beam_width),
-        beam_scorer_(CHECK_NOTNULL(scorer)) {
+        beam_scorer_(scorer) {
     Reset();
   }
 
   ~CTCBeamSearchDecoder() override {}
 
   // Run the hibernating beam search algorithm on the given input.
-  Status Decode(const CTCDecoder::SequenceLength& seq_len,
-                const std::vector<CTCDecoder::Input>& input,
-                std::vector<CTCDecoder::Output>* output,
-                CTCDecoder::ScoreOutput* scores) override;
+  bool Decode(const CTCDecoder::SequenceLength& seq_len,
+              const std::vector<CTCDecoder::Input>& input,
+              std::vector<CTCDecoder::Output>* output,
+              CTCDecoder::ScoreOutput* scores) override;
 
   // Calculate the next step of the beam search and update the internal state.
   template <typename Vector>
@@ -127,8 +126,8 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   void Reset();
 
   // Extract the top n paths at current time step
-  Status TopPaths(int n, std::vector<std::vector<int>>* paths,
-                  std::vector<float>* log_probs, bool merge_repeated) const;
+  bool TopPaths(int n, std::vector<std::vector<int>>* paths,
+                std::vector<float>* log_probs, bool merge_repeated) const;
 
  private:
   int beam_width_;
@@ -150,11 +149,12 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   std::unique_ptr<BeamRoot> beam_root_;
   BaseBeamScorer<CTCBeamState>* beam_scorer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoder);
+  CTCBeamSearchDecoder(const CTCBeamSearchDecoder&) = delete;
+  void operator=(const CTCBeamSearchDecoder&) = delete;
 };
 
 template <typename CTCBeamState, typename CTCBeamComparer>
-Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
+bool CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
     const CTCDecoder::SequenceLength& seq_len,
     const std::vector<CTCDecoder::Input>& input,
     std::vector<CTCDecoder::Output>* output, ScoreOutput* scores) {
@@ -166,12 +166,10 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
                   [this](const CTCDecoder::Output& output) -> bool {
                     return output.size() < this->batch_size_;
                   })) {
-    return errors::InvalidArgument(
-        "output needs to be of size at least (top_n, batch_size).");
+    return false;
   }
   if (scores->rows() < batch_size_ || scores->cols() < top_n) {
-    return errors::InvalidArgument(
-        "scores needs to be of size at least (batch_size, top_n).");
+    return false;
   }
 
   for (int b = 0; b < batch_size_; ++b) {
@@ -194,14 +192,14 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
       leaves_.push(entry);
     }
 
-    Status status =
+    bool status =
         TopPaths(top_n, &beams, &beam_log_probabilities, merge_repeated_);
-    if (!status.ok()) {
+    if (!status) {
       return status;
     }
 
-    CHECK_EQ(top_n, beam_log_probabilities.size());
-    CHECK_EQ(beams.size(), beam_log_probabilities.size());
+    TFLITE_DCHECK_EQ(top_n, beam_log_probabilities.size());
+    TFLITE_DCHECK_EQ(beams.size(), beam_log_probabilities.size());
 
     for (int i = 0; i < top_n; ++i) {
       // Copy output to the correct beam + batch
@@ -209,7 +207,7 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
       (*scores)(b, i) = -beam_log_probabilities[i];
     }
   }  // for (int b...
-  return Status::OK();
+  return true;
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>
@@ -219,7 +217,7 @@ float CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::GetTopK(
     std::vector<int>* top_k_indices) {
   // Find Top K choices, complexity nk in worst case. The array input is read
   // just once.
-  CHECK_EQ(num_classes_, input.size());
+  TFLITE_DCHECK_EQ(num_classes_, input.size());
   top_k_logits->clear();
   top_k_indices->clear();
   top_k_logits->resize(K, -INFINITY);
@@ -264,7 +262,7 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
                                      : -std::numeric_limits<float>::infinity();
 
   // Extract the beams sorted in decreasing new probability
-  CHECK_EQ(num_classes_, raw_input.size());
+  TFLITE_DCHECK_EQ(num_classes_, raw_input.size());
 
   std::unique_ptr<std::vector<BeamEntry*>> branches(leaves_.Extract());
   leaves_.Reset();
@@ -384,17 +382,18 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Reset() {
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>
-Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
+bool CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
     int n, std::vector<std::vector<int>>* paths, std::vector<float>* log_probs,
     bool merge_repeated) const {
-  CHECK_NOTNULL(paths)->clear();
-  CHECK_NOTNULL(log_probs)->clear();
+  TFLITE_DCHECK(paths);
+  TFLITE_DCHECK(log_probs);
+  paths->clear();
+  log_probs->clear();
   if (n > beam_width_) {
-    return errors::InvalidArgument("requested more paths than the beam width.");
+    return false;
   }
   if (n > leaves_.size()) {
-    return errors::InvalidArgument(
-        "Less leaves in the beam search than requested.");
+    return false;
   }
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> top_branches(n);
@@ -411,11 +410,11 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
     paths->push_back(e->LabelSeq(merge_repeated));
     log_probs->push_back(e->newp.total);
   }
-  return Status::OK();
+  return true;
 }
 
 }  // namespace ctc
-}  // namespace tensorflow
+}  // namespace experimental
+}  // namespace tflite
 
-#endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_search.h)
+#endif  // TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SEARCH_H_

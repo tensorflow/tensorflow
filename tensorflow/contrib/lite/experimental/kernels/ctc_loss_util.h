@@ -1,5 +1,4 @@
-// LINT.IfChange
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
-#define TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
+// Copied from tensorflow/core/util/ctc/ctc_loss_util.h
+// TODO(b/111524997): Remove this file.
+#ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_LOSS_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_LOSS_UTIL_H_
 
 #include <cmath>
 #include <limits>
 
-namespace tensorflow {
+namespace tflite {
+namespace experimental {
 namespace ctc {
 
 const float kLogZero = -std::numeric_limits<float>::infinity();
@@ -32,10 +34,8 @@ const float kLogZero = -std::numeric_limits<float>::infinity();
 inline float LogSumExp(float log_prob_1, float log_prob_2) {
   // Always have 'b' be the smaller number to avoid the exponential from
   // blowing up.
-  if (log_prob_1 == kLogZero) {
-    return log_prob_2;
-  } else if (log_prob_2 == kLogZero) {
-    return log_prob_1;
+  if (log_prob_1 == kLogZero && log_prob_2 == kLogZero) {
+    return kLogZero;
   } else {
     return (log_prob_1 > log_prob_2)
                ? log_prob_1 + log1pf(expf(log_prob_2 - log_prob_1))
@@ -44,7 +44,7 @@ inline float LogSumExp(float log_prob_1, float log_prob_2) {
 }
 
 }  // namespace ctc
-}  // namespace tensorflow
+}  // namespace experimental
+}  // namespace tflite
 
-#endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_loss_util.h)
+#endif  // TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_LOSS_UTIL_H_

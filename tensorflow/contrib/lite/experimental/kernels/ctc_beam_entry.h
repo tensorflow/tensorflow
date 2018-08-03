@@ -1,5 +1,4 @@
-// LINT.IfChange
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
-#define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
+// Copied from tensorflow/core/util/ctc/ctc_beam_entry.h
+// TODO(b/111524997): Remove this file.
+#ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_ENTRY_H_
+#define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_ENTRY_H_
 
 #include <algorithm>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/ctc/ctc_loss_util.h"
+#include "tensorflow/contrib/lite/experimental/kernels/ctc_loss_util.h"
 
-namespace tensorflow {
+namespace tflite {
+namespace experimental {
 namespace ctc {
 
 // The ctc_beam_search namespace holds several classes meant to be accessed only
@@ -91,7 +90,7 @@ struct BeamEntry {
   BeamEntry<CTCBeamState>* parent;
   int label;
   // All instances of child BeamEntry are owned by *beam_root.
-  gtl::FlatMap<int, BeamEntry<CTCBeamState>*> children;
+  std::unordered_map<int, BeamEntry<CTCBeamState>*> children;
   BeamProbability oldp;
   BeamProbability newp;
   CTCBeamState state;
@@ -105,7 +104,9 @@ struct BeamEntry {
   BeamEntry(BeamEntry* p, int l, BeamRoot<CTCBeamState>* beam_root)
       : parent(p), label(l), beam_root(beam_root) {}
   BeamRoot<CTCBeamState>* beam_root;
-  TF_DISALLOW_COPY_AND_ASSIGN(BeamEntry);
+
+  BeamEntry(const BeamEntry&) = delete;
+  void operator=(const BeamEntry&) = delete;
 };
 
 // This class owns all instances of BeamEntry.  This is used to avoid recursive
@@ -143,7 +144,7 @@ class BeamComparer {
 }  // namespace ctc_beam_search
 
 }  // namespace ctc
-}  // namespace tensorflow
+}  // namespace experimental
+}  // namespace tflite
 
-#endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_entry.h)
+#endif  // TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_ENTRY_H_

@@ -1,5 +1,4 @@
-// LINT.IfChange
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,12 +21,15 @@ limitations under the License.
 // BeamScorerInterface. The default CTC decoding behavior is implemented
 // through BaseBeamScorer.
 
-#ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SCORER_H_
-#define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SCORER_H_
+// Copied from tensorflow/core/util/ctc/ctc_beam_scorer.h
+// TODO(b/111524997): Remove this file.
+#ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SCORER_H_
+#define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SCORER_H_
 
-#include "tensorflow/core/util/ctc/ctc_beam_entry.h"
+#include "tensorflow/contrib/lite/experimental/kernels/ctc_beam_entry.h"
 
-namespace tensorflow {
+namespace tflite {
+namespace experimental {
 namespace ctc {
 
 // Base implementation of a beam scorer used by default by the decoder that can
@@ -71,7 +73,7 @@ class BaseBeamScorer {
 };
 
 }  // namespace ctc
-}  // namespace tensorflow
+}  // namespace experimental
+}  // namespace tflite
 
-#endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SCORER_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_scorer.h)
+#endif  // TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_KERNELS_CTC_BEAM_SCORER_H_
