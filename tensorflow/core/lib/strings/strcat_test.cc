@@ -283,9 +283,8 @@ TEST(StrAppend, Basics) {
 
   std::complex<float> c(0.5, 1);
   old_size = result.size();
-  tensorflow::strings::StrAppend(&result, "A half and the imaginary unit is ",
-                                 c);
-  EXPECT_EQ(result.substr(old_size), "A half and an imaginary unit is 0.5+1j");
+  tensorflow::strings::StrAppend(&result, c);
+  EXPECT_EQ(result.substr(old_size), "0.5+1j");
 
   // Test 9 arguments, the old maximum
   old_size = result.size();
