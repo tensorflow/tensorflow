@@ -64,6 +64,16 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kRelu1 || type == OperatorType::kRelu6;
 }
 
+// The quantized op allows output arrays of type float using
+// the attribute support_output_type_float_in_quantized_op
+bool SupportOutputTypeFloatInQuantizedOp(const Operator& op) {
+  auto type = op.type;
+  if (type == OperatorType::kUnsupported) {
+    auto* unsupported = static_cast<const TensorFlowUnsupportedOperator*>(&op);
+    return unsupported->support_output_type_float_in_quantized_op;
+  }
+  return false;
+}
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
   auto& array = model->GetArray(array_name);
   // Normally we should have a MinMax recorded on this Array,
@@ -584,61 +594,67 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
   }
 
   // Quantize outputs, add Dequantize ops as needed on the outputs side
-  for (std::size_t output_index = 0; output_index < op.outputs.size();
-       output_index++) {
-    ArrayDataType quantized_data_type;
-    QuantizationParams quantization_params;
-    if (ChooseQuantizationForOperatorOutput(this, model, op, output_index,
-                                            &quantized_data_type,
-                                            &quantization_params)) {
-      changed = true;
-      const auto& output = op.outputs[output_index];
-      auto& output_array = model->GetArray(output);
+  if (SupportOutputTypeFloatInQuantizedOp(op)) {
+    LOG(WARNING)
+        << HelpfulOperatorTypeName(op) << " is a quantized op"
+        << "but it has a model flag that sets the output arrays to float.";
+  } else {
+    for (std::size_t output_index = 0; output_index < op.outputs.size();
+         output_index++) {
+      QuantizationParams quantization_params;
+      ArrayDataType quantized_data_type;
+      if (ChooseQuantizationForOperatorOutput(this, model, op, output_index,
+                                              &quantized_data_type,
+                                              &quantization_params)) {
+        changed = true;
+        const auto& output = op.outputs[output_index];
+        auto& output_array = model->GetArray(output);
 
-      // Fix up the min/max information on the output array to match the chosen
-      // quantization parameters.
-      CHECK(output_array.minmax)
-          << "Output array named " << output << " lacks minmax";
-      auto& output_minmax = output_array.GetMinMax();
-      FixMinMaxPostQuantization(this, quantized_data_type, quantization_params,
-                                &output_minmax);
+        // Fix up the min/max information on the output array to match the
+        // chosen quantization parameters.
+        CHECK(output_array.minmax)
+            << "Output array named " << output << " lacks minmax";
+        auto& output_minmax = output_array.GetMinMax();
+        FixMinMaxPostQuantization(this, quantized_data_type,
+                                  quantization_params, &output_minmax);
 
-      QuantizeArray(this, model, output, quantized_data_type,
-                    quantization_params);
+        QuantizeArray(this, model, output, quantized_data_type,
+                      quantization_params);
 
-      const auto& dequantized_output =
-          AvailableArrayName(*model, output + "_dequantized");
-      auto& dequantized_output_array =
-          model->GetOrCreateArray(dequantized_output);
-      dequantized_output_array.data_type = ArrayDataType::kFloat;
-      dequantized_output_array.final_data_type = output_array.data_type;
-      auto& dequantized_output_minmax =
-          dequantized_output_array.GetOrCreateMinMax();
-      dequantized_output_minmax.min = output_minmax.min;
-      dequantized_output_minmax.max = output_minmax.max;
-      for (const auto& other_op : model->operators) {
-        for (auto& other_op_input : other_op->inputs) {
-          if (other_op_input == output) {
-            other_op_input = dequantized_output;
+        const auto& dequantized_output =
+            AvailableArrayName(*model, output + "_dequantized");
+        auto& dequantized_output_array =
+            model->GetOrCreateArray(dequantized_output);
+        dequantized_output_array.data_type = ArrayDataType::kFloat;
+        dequantized_output_array.final_data_type = output_array.data_type;
+        auto& dequantized_output_minmax =
+            dequantized_output_array.GetOrCreateMinMax();
+        dequantized_output_minmax.min = output_minmax.min;
+        dequantized_output_minmax.max = output_minmax.max;
+        for (const auto& other_op : model->operators) {
+          for (auto& other_op_input : other_op->inputs) {
+            if (other_op_input == output) {
+              other_op_input = dequantized_output;
+            }
           }
         }
-      }
-      auto* dequantize_op = new DequantizeOperator;
-      dequantize_op->inputs = {output};
-      dequantize_op->outputs = {dequantized_output};
-      for (int i = 0; i < model->flags.output_arrays_size(); i++) {
-        if (model->flags.output_arrays(i) == output) {
-          // TODO(b/78013785): never rename output arrays.
-          AddMessageF(
-              "Renaming output array %d after inserting dequant op %s: %s -> "
-              "%s",
-              i, LogName(*dequantize_op), model->flags.output_arrays(i),
-              dequantized_output);
-          model->flags.set_output_arrays(i, dequantized_output);
+        auto* dequantize_op = new DequantizeOperator;
+        dequantize_op->inputs = {output};
+        dequantize_op->outputs = {dequantized_output};
+        for (int i = 0; i < model->flags.output_arrays_size(); i++) {
+          if (model->flags.output_arrays(i) == output) {
+            // TODO(b/78013785): never rename output arrays.
+            AddMessageF(
+                "Renaming output array %d after inserting dequant op %s: %s -> "
+                "%s",
+                i, LogName(*dequantize_op), model->flags.output_arrays(i),
+                dequantized_output);
+            model->flags.set_output_arrays(i, dequantized_output);
+          }
         }
+        const auto op_it = FindOp(*model, &op);
+        model->operators.emplace(op_it + 1, dequantize_op);
       }
-      const auto op_it = FindOp(*model, &op);
-      model->operators.emplace(op_it + 1, dequantize_op);
     }
   }
 

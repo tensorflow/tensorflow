@@ -1200,6 +1200,12 @@ class TensorFlowUnsupported : public BaseOperator {
           break;
         case flexbuffers::TYPE_BOOL:
           (*attr)[key].set_b(value.AsBool());
+          if (string(key) == "_output_quantized") {
+            op->quantized = value.AsBool();
+          }
+          if (string(key) == "_support_output_type_float_in_quantized_op") {
+            op->support_output_type_float_in_quantized_op = value.AsBool();
+          }
           break;
         case flexbuffers::TYPE_VECTOR_INT: {
           auto* list = (*attr)[key].mutable_list();
