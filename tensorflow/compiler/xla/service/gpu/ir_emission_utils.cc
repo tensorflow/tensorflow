@@ -38,14 +38,16 @@ namespace gpu {
 namespace {
 
 // Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape) {
-  return ShapeUtil::Rank(shape) == 2 && !LayoutUtil::IsPadded(shape);
+bool IsRank2WithNoPadding(const Shape& shape, int64 batch_dimensions_size) {
+  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2 &&
+         !LayoutUtil::IsPadded(shape);
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
 bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
-                        const Shape& output_shape) {
+                        const Shape& output_shape,
+                        int64 batch_dimensions_size) {
   // The inputs and the output must
   // 1) be matrices with no padding and a non-zero number of elements,
   // 2) have an allowed element type.
@@ -53,9 +55,10 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
        output_primitive_type == F64);
-  return type_is_allowed && IsRank2WithNoPadding(lhs_shape) &&
-         IsRank2WithNoPadding(rhs_shape) &&
-         IsRank2WithNoPadding(output_shape) &&
+  return type_is_allowed &&
+         IsRank2WithNoPadding(lhs_shape, batch_dimensions_size) &&
+         IsRank2WithNoPadding(rhs_shape, batch_dimensions_size) &&
+         IsRank2WithNoPadding(output_shape, batch_dimensions_size) &&
          !ShapeUtil::IsZeroElementArray(lhs_shape) &&
          !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
@@ -64,14 +67,15 @@ bool DotImplementedAsGemm(const HloInstruction& dot) {
   CHECK_EQ(dot.opcode(), HloOpcode::kDot);
   const Shape& lhs_shape = dot.operand(0)->shape();
   const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
   // If gemm can accept the operand shapes, use it rather than a custom
   // kernel.
-  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape())) {
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape(),
+                         dim_numbers.lhs_batch_dimensions_size())) {
     // The size of the reduction dimension should match. The shape inference
     // guarantees this invariant, so the check here is for programming
     // errors.
-    const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
     CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
              rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
     return true;

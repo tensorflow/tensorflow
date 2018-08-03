@@ -345,11 +345,6 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() > 0 ||
-      dnums.rhs_batch_dimensions_size() > 0) {
-    return Unimplemented("Dot with batch dimensions not implemented.");
-  }
   if (ImplementedAsGemm(*dot)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(dot));
     return Status::OK();

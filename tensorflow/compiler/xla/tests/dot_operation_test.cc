@@ -612,7 +612,7 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
   using T = TypeParam;
 
   XlaBuilder builder(this->TestName());
@@ -645,6 +645,48 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
       &builder,
       /*expected=*/
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+      {x_data.get(), y_data.get()}, this->error_spec_);
+}
+
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
+                     "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
+                     "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(3);
+  dnums.add_rhs_contracting_dimensions(2);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_lhs_batch_dimensions(1);
+  dnums.add_rhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(1);
+
+  DotGeneral(x, y, dnums);
+
+  auto x_data =
+      this->client_
+          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D<T>(
+              {{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+               {{{9.0f, 10.0f}, {11.0f, 12.0f}},
+                {{13.0f, 14.0f}, {15.0f, 16.0f}}}}))
+          .ConsumeValueOrDie();
+
+  auto y_data =
+      this->client_
+          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D<T>(
+              {{{{1.0f, 0.0f}, {0.0f, 1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}},
+               {{{0.0f, 1.0f}, {1.0f, 0.0f}}, {{0.0f, 1.0f}, {1.0f, 0.0f}}}}))
+          .ConsumeValueOrDie();
+
+  this->template ComputeAndCompareR4<T>(
+      &builder,
+      /*expected=*/
+      {{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+       {{{10.0f, 9.0f}, {12.0f, 11.0f}}, {{14.0f, 13.0f}, {16.0f, 15.0f}}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
