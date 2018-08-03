@@ -268,5 +268,18 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(poplar::Graph& graph,
   return seq;
 }
 
+StatusOr<poplar::program::Program> ConvertWithoutUse(poplar::Graph& graph,
+                                                     CompilerResources& res,
+                                                     const HloInstruction* inst,
+                                                     const xla::Shape& output,
+                                                     TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  return seq;
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

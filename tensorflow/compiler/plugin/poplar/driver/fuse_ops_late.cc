@@ -48,6 +48,8 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"bias_apply", 0},
     {"reduction_no_convert", 1},
     {"reduction_no_convert", 1},
+    {"convert_no_use", 0},
+    {"convert_no_use", 0},
     {"wide_const", 1},
 };
 
@@ -244,6 +246,16 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {5}},
      {HloOpcode::kParameter, false, 0, IsF16, {}},
      {HloOpcode::kParameter, false, 1, IsF16, {}}},
+
+    // Convert and then convert back F16 -> F32 -> F16
+    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
+     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {2}},
+     {HloOpcode::kParameter, false, 0, IsF16, {}}},
+
+    // Convert and then convert back F32 -> F16 -> F32
+    {{HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {1}},
+     {HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {2}},
+     {HloOpcode::kParameter, false, 0, IsF32, {}}},
 
     // Broadcast scalar constant (must be low priority)
     {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},

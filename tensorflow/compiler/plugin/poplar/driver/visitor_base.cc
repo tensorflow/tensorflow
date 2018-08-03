@@ -77,6 +77,7 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"reduction_no_convert", CreateReductionNoConvert},
     {"max_pool", CreatePoplibsWindowReduction},
     {"max_pool_grad", CreateBwdMaxPool},
+    {"convert_no_use", ConvertWithoutUse},
 };
 
 BaseVisitor::BaseVisitor(poplar::Graph& graph, CompilerResources& res)
