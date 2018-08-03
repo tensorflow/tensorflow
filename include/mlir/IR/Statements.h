@@ -206,7 +206,7 @@ public:
     // Explicitly erase statements instead of relying of 'StmtBlock' destructor
     // since child statements need to be destroyed before the MLValue that this
     // for stmt represents is destroyed.
-    getStatements().clear();
+    clear();
   }
 
   AffineConstantExpr *getLowerBound() const { return lowerBound; }
