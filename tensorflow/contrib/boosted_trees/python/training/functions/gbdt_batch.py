@@ -353,6 +353,9 @@ class GradientBoostedDecisionTreeModel(object):
       self._gradient_shape = tensor_shape.scalar()
       self._hessian_shape = tensor_shape.scalar()
     else:
+      if center_bias:
+        raise ValueError("Center bias should be False for multiclass.")
+
       self._gradient_shape = tensor_shape.TensorShape([logits_dimension])
       if (learner_config.multi_class_strategy ==
           learner_pb2.LearnerConfig.FULL_HESSIAN):

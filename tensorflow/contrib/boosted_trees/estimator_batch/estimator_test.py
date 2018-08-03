@@ -39,6 +39,15 @@ def _train_input_fn():
   return features, label
 
 
+def _multiclass_train_input_fn():
+  features = {
+      "x": constant_op.constant([[2.], [1.], [1.], [5.], [3.5], [4.6], [3.5]])
+  }
+  label = constant_op.constant(
+      [[1], [0], [0], [2], [2], [0], [1]], dtype=dtypes.int32)
+  return features, label
+
+
 def _ranking_train_input_fn():
   features = {
       "a.f1": constant_op.constant([[3.], [0.3], [1.]]),
@@ -248,6 +257,86 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     classifier.fit(input_fn=_train_input_fn, steps=15)
     self._assert_checkpoint(classifier.model_dir, global_step=10000000)
 
+  def testFitAndEvaluateMultiClassTreePerClassDontThrowException(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 3
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.multi_class_strategy = (
+        learner_pb2.LearnerConfig.TREE_PER_CLASS)
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        n_classes=learner_config.num_classes,
+        num_trees=1,
+        examples_per_layer=7,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[contrib_feature_column.real_valued_column("x")])
+
+    classifier.fit(input_fn=_multiclass_train_input_fn, steps=100)
+    classifier.evaluate(input_fn=_eval_input_fn, steps=1)
+    classifier.export(self._export_dir_base)
+    result_iter = classifier.predict(input_fn=_eval_input_fn)
+    for prediction_dict in result_iter:
+      self.assertTrue("classes" in prediction_dict)
+
+  def testFitAndEvaluateMultiClassDiagonalDontThrowException(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 3
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.multi_class_strategy = (
+        learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        n_classes=learner_config.num_classes,
+        num_trees=1,
+        examples_per_layer=7,
+        model_dir=model_dir,
+        config=config,
+        center_bias=False,
+        feature_columns=[contrib_feature_column.real_valued_column("x")])
+
+    classifier.fit(input_fn=_multiclass_train_input_fn, steps=100)
+    classifier.evaluate(input_fn=_eval_input_fn, steps=1)
+    classifier.export(self._export_dir_base)
+    result_iter = classifier.predict(input_fn=_eval_input_fn)
+    for prediction_dict in result_iter:
+      self.assertTrue("classes" in prediction_dict)
+
+  def testFitAndEvaluateMultiClassFullDontThrowException(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 3
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.multi_class_strategy = (
+        learner_pb2.LearnerConfig.FULL_HESSIAN)
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        n_classes=learner_config.num_classes,
+        num_trees=1,
+        examples_per_layer=7,
+        model_dir=model_dir,
+        config=config,
+        center_bias=False,
+        feature_columns=[contrib_feature_column.real_valued_column("x")])
+
+    classifier.fit(input_fn=_multiclass_train_input_fn, steps=100)
+    classifier.evaluate(input_fn=_eval_input_fn, steps=1)
+    classifier.export(self._export_dir_base)
+    result_iter = classifier.predict(input_fn=_eval_input_fn)
+    for prediction_dict in result_iter:
+      self.assertTrue("classes" in prediction_dict)
+
 
 class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
 
@@ -302,6 +391,87 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
     est.train(input_fn=_ranking_train_input_fn, steps=1000)
     est.evaluate(input_fn=_ranking_train_input_fn, steps=1)
     est.predict(input_fn=_infer_ranking_train_input_fn)
+
+  def testFitAndEvaluateMultiClassTreePerClasssDontThrowException(self):
+    n_classes = 3
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = n_classes
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.multi_class_strategy = (
+        learner_pb2.LearnerConfig.TREE_PER_CLASS)
+
+    head_fn = estimator.core_multiclass_head(n_classes=n_classes)
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.CoreGradientBoostedDecisionTreeEstimator(
+        learner_config=learner_config,
+        head=head_fn,
+        num_trees=1,
+        center_bias=False,
+        examples_per_layer=7,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[core_feature_column.numeric_column("x")])
+
+    classifier.train(input_fn=_multiclass_train_input_fn, steps=100)
+    classifier.evaluate(input_fn=_multiclass_train_input_fn, steps=1)
+    classifier.predict(input_fn=_eval_input_fn)
+
+  def testFitAndEvaluateMultiClassDiagonalDontThrowException(self):
+    n_classes = 3
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = n_classes
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.multi_class_strategy = (
+        learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
+
+    head_fn = estimator.core_multiclass_head(n_classes=n_classes)
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.CoreGradientBoostedDecisionTreeEstimator(
+        learner_config=learner_config,
+        head=head_fn,
+        num_trees=1,
+        center_bias=False,
+        examples_per_layer=7,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[core_feature_column.numeric_column("x")])
+
+    classifier.train(input_fn=_multiclass_train_input_fn, steps=100)
+    classifier.evaluate(input_fn=_multiclass_train_input_fn, steps=1)
+    classifier.predict(input_fn=_eval_input_fn)
+
+  def testFitAndEvaluateMultiClassFullDontThrowException(self):
+    n_classes = 3
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = n_classes
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.multi_class_strategy = (
+        learner_pb2.LearnerConfig.FULL_HESSIAN)
+
+    head_fn = estimator.core_multiclass_head(n_classes=n_classes)
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.CoreGradientBoostedDecisionTreeEstimator(
+        learner_config=learner_config,
+        head=head_fn,
+        num_trees=1,
+        center_bias=False,
+        examples_per_layer=7,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[core_feature_column.numeric_column("x")])
+
+    classifier.train(input_fn=_multiclass_train_input_fn, steps=100)
+    classifier.evaluate(input_fn=_multiclass_train_input_fn, steps=1)
+    classifier.predict(input_fn=_eval_input_fn)
 
 
 if __name__ == "__main__":
