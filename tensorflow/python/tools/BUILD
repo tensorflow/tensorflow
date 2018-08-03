@@ -63,6 +63,7 @@ py_binary(
     srcs = ["import_pb_to_tensorboard.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tensorrt:init_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
