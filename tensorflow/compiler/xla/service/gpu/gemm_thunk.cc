@@ -47,12 +47,6 @@ struct MatrixDescriptor {
   int64 batch_size;
 };
 
-template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  return se::DeviceMemory<T>(wrapped);
-}
-
 // Performs a gemm call without an explicit algorithm on lhs_matrix and
 // rhs_matrix, and stores the result to output_matrix.
 template <typename Element>
@@ -84,43 +78,19 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
         .ok();
   }
 
-  // Create the buffers for batched gemm.
-  // TODO(b/112111608): We could avoid all of this and also make it faster by
-  // using cuBLAS 8's strided batched gemm.
-  using DeviceMemoryType = se::DeviceMemory<Element>;
-  std::vector<DeviceMemoryType> a_device_memory;
-  std::vector<DeviceMemoryType> b_device_memory;
-  std::vector<DeviceMemoryType> c_device_memory;
-  std::vector<DeviceMemoryType*> a_ptrs;
-  std::vector<DeviceMemoryType*> b_ptrs;
-  std::vector<DeviceMemoryType*> c_ptrs;
-  a_device_memory.reserve(batch_size);
-  b_device_memory.reserve(batch_size);
-  c_device_memory.reserve(batch_size);
-  a_ptrs.reserve(batch_size);
-  b_ptrs.reserve(batch_size);
-  c_ptrs.reserve(batch_size);
-  auto* a_base_ptr = static_cast<Element*>(lhs_data.opaque());
-  auto* b_base_ptr = static_cast<Element*>(rhs_data.opaque());
-  auto* c_base_ptr = static_cast<Element*>(output_data.opaque());
-  for (int64 i = 0; i < batch_size; ++i) {
-    a_device_memory.push_back(AsDeviceMemory(
-        a_base_ptr + i * lhs_matrix.num_rows * lhs_matrix.num_cols));
-    b_device_memory.push_back(AsDeviceMemory(
-        b_base_ptr + i * rhs_matrix.num_rows * rhs_matrix.num_cols));
-    c_device_memory.push_back(AsDeviceMemory(
-        c_base_ptr + i * output_matrix.num_rows * output_matrix.num_cols));
-    a_ptrs.push_back(&a_device_memory.back());
-    b_ptrs.push_back(&b_device_memory.back());
-    c_ptrs.push_back(&c_device_memory.back());
-  }
+  int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
+  int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
+  int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
   return stream
-      ->ThenBlasGemmBatched(
+      ->ThenBlasGemmStridedBatched(
           lhs_transpose, rhs_transpose, output_matrix.num_rows,
-          output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
-          a_ptrs, /*leading dim of LHS=*/lhs_matrix.num_rows, b_ptrs,
-          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0, c_ptrs,
-          /*leading dim of output=*/output_matrix.num_rows, batch_size)
+          output_matrix.num_cols, /*size of reduce dim=*/k,
+          /*alpha=*/alpha, lhs_data,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, lhs_stride, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
+          /*beta=*/0.0, &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, output_stride,
+          batch_size)
       .ok();
 }
 
