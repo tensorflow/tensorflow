@@ -171,6 +171,12 @@ public:
     return op;
   }
 
+  // Create operation of specific op type at the current insertion point.
+  template <typename OpTy, typename... Args>
+  OpPointer<OpTy> create(Args... args) {
+    return OpTy::build(this, args...);
+  }
+
   // Terminators.
 
   ReturnInst *createReturnInst(ArrayRef<CFGValue *> operands) {
@@ -260,6 +266,12 @@ public:
     auto *op = srcOpStmt.clone();
     block->getStatements().insert(insertPoint, op);
     return op;
+  }
+
+  // Create operation of specific op type at the current insertion point.
+  template <typename OpTy, typename... Args>
+  OpPointer<OpTy> create(Args... args) {
+    return OpTy::build(this, args...);
   }
 
   // Creates for statement. When step is not specified, it is set to 1.

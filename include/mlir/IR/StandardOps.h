@@ -37,10 +37,18 @@ class OperationSet;
 ///   %2 = addf %0, %1 : f32
 ///
 class AddFOp
-    : public OpBase<AddFOp, OpTrait::NOperands<2>::Impl, OpTrait::OneResult> {
+    : public OpBase<AddFOp, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
+                    OpTrait::SameOperandsAndResultType> {
 public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "addf"; }
+
+  template <class Builder, class Value>
+  static OpPointer<AddFOp> build(Builder *builder, Value *lhs, Value *rhs) {
+    // The resultant type of a addf is the same as both the lhs and rhs.
+    return OpPointer<AddFOp>(AddFOp(builder->createOperation(
+        builder->getIdentifier("addf"), {lhs, rhs}, {lhs->getType()}, {})));
+  }
 
   const char *verify() const;
   static OpAsmParserResult parse(OpAsmParser *parser);

@@ -29,6 +29,7 @@
 #define MLIR_IR_OPDEFINITION_H
 
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/SSAValue.h"
 
 namespace mlir {
 class Type;
@@ -491,6 +492,26 @@ public:
 
   void setResult(unsigned i, SSAValue *value) {
     this->getOperation()->setResult(i, value);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
+/// operand and result type.
+template <typename ConcreteType>
+class SameOperandsAndResultType
+    : public TraitBase<ConcreteType, SameOperandsAndResultType> {
+public:
+  static const char *verifyTrait(const Operation *op) {
+    auto *type = op->getResult(0)->getType();
+    for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
+      if (op->getResult(i)->getType() != type)
+        return "requires the same type for all operands and results";
+    }
+    for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
+      if (op->getOperand(i)->getType() != type)
+        return "requires the same type for all operands and results";
+    }
+    return nullptr;
   }
 };
 
