@@ -917,6 +917,7 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
     os << '\n';
   }
 
+  os << "  ";
   print(block->getTerminator());
   os << '\n';
 }
