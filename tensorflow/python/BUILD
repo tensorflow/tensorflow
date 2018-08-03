@@ -834,6 +834,7 @@ py_library(
     deps = [
         ":c_api_util",
         ":control_flow_util",
+        ":cpp_shape_inference_proto_py",
         ":device",
         ":dtypes",
         ":error_interpolation",
