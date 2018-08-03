@@ -38,6 +38,12 @@ def create_in_process_cluster(num_workers, num_ps):
   worker_config = config_pb2.ConfigProto()
   worker_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
 
+  # Enable collective ops which has no impact on non-collective ops.
+  # TODO(yuefengz, tucker): removing this after we move the initialization of
+  # collective mgr to the session level.
+  worker_config.experimental.collective_group_leader = (
+      '/job:worker/replica:0/task:0')
+
   ps_config = config_pb2.ConfigProto()
   ps_config.device_count['GPU'] = 0
 
@@ -86,6 +92,7 @@ class MultiWorkerTestBase(test.TestCase):
       graph: Optional graph to use during the returned session.
       config: An optional config_pb2.ConfigProto to use to configure the
         session.
+      target: the target of session to connect to.
 
     Yields:
       A Session object that should be used as a context manager to surround

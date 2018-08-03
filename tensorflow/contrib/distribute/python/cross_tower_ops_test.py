@@ -21,13 +21,17 @@ from __future__ import print_function
 import itertools
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
+from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import values as value_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -374,6 +378,174 @@ class MultiWorkerCrossTowerOpsTest(multi_worker_test_base.MultiWorkerTestBase,
   def testReductionAndBroadcast(self, cross_tower_ops, distribution):
     with distribution.scope():
       self._testReductionAndBroadcast(cross_tower_ops, distribution)
+
+
+class MultiWorkerCollectiveAllReduceTest(
+    multi_worker_test_base.MultiWorkerTestBase, parameterized.TestCase):
+
+  collective_key_base = 10000
+
+  @classmethod
+  def setUpClass(cls):
+    """Create a local cluster with 2 workers."""
+    cls._workers, cls._ps = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=0)
+    cls._cluster_spec = {
+        run_config.TaskType.WORKER: [
+            "fake_worker_0", "fake_worker_1", "fake_worker_2"
+        ]
+    }
+
+  def setUp(self):
+    super(MultiWorkerCollectiveAllReduceTest, self).setUp()
+    # Reusing keys are not supported well. So we have to give a different
+    # collective key base for different tests.
+    MultiWorkerCollectiveAllReduceTest.collective_key_base += 100000
+
+  def _get_test_objects(self, task_type, task_id, num_gpus=0, local_mode=False):
+    collective_keys = cross_tower_utils.CollectiveKeys(
+        group_key_start=10 * num_gpus +
+        MultiWorkerCollectiveAllReduceTest.collective_key_base,
+        instance_key_start=num_gpus * 100 +
+        MultiWorkerCollectiveAllReduceTest.collective_key_base,
+        instance_key_with_id_start=num_gpus * 10000 +
+        MultiWorkerCollectiveAllReduceTest.collective_key_base)
+    if local_mode:
+      collective_all_reduce_ops = cross_tower_ops_lib.CollectiveAllReduce(
+          1, num_gpus, collective_keys=collective_keys)
+      if num_gpus:
+        devices = ["/device:GPU:%d" % i for i in range(num_gpus)]
+      else:
+        devices = ["/device:CPU:0"]
+      return collective_all_reduce_ops, devices, "local"
+    else:
+      collective_all_reduce_ops = cross_tower_ops_lib.CollectiveAllReduce(
+          3, num_gpus, collective_keys=collective_keys)
+      if num_gpus:
+        devices = [
+            "/job:%s/task:%d/device:GPU:%d" % (task_type, task_id, i)
+            for i in range(num_gpus)
+        ]
+      else:
+        devices = ["/job:%s/task:%d" % (task_type, task_id)]
+      return collective_all_reduce_ops, devices, self._workers[task_id].target
+
+  def _assert_values_equal(self, left, right, sess):
+    if isinstance(left, list):
+      for l, r in zip(left, right):
+        self._assert_values_equal(l, r, sess)
+    else:
+      self.assertEqual(type(left), type(right))
+      self.assertEqual(set(left.devices), set(right.devices))
+
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 6
+
+      left_values = np.array(
+          sess.run(list(left._index.values()), options=run_options)).flatten()
+      right_values = np.array(right._index.values()).flatten()
+      self.assertEqual(len(left_values), len(right_values))
+      for l, r in zip(left_values, right_values):
+        self.assertEqual(l, r)
+
+  def _test_reduction(self, task_type, task_id, num_gpus, local_mode=False):
+    collective_all_reduce, devices, master_target = self._get_test_objects(
+        task_type, task_id, num_gpus, local_mode=local_mode)
+    if local_mode:
+      num_workers = 1
+      worker_device = None
+    else:
+      num_workers = len(self._workers)
+      worker_device = "/job:%s/task:%d" % (task_type, task_id)
+    with ops.Graph().as_default(), \
+         ops.device(worker_device), \
+         self.test_session(target=master_target) as sess:
+      # Collective ops doesn't support scalar tensors, so we have to construct
+      # 1-d tensors.
+      values = [constant_op.constant([float(d)]) for d in range(len(devices))]
+      per_device = _make_per_device(values, devices)
+      mean = np.array([(len(devices) - 1.) / 2.])
+
+      values_2 = [constant_op.constant([d + 1.0]) for d in range(len(devices))]
+      per_device_2 = _make_per_device(values_2, devices)
+      mean_2 = np.array([mean[0] + 1.])
+
+      destination_mirrored = _fake_mirrored(1., devices)
+      destination_different = _fake_mirrored(1., _cpu_device)
+      destination_str = _cpu_device
+      destination_list = devices
+
+      all_destinations = [
+          None, destination_mirrored, destination_different, destination_str,
+          destination_list
+      ]
+
+      # test reduce()
+      for destinations in all_destinations:
+        self._assert_values_equal(
+            collective_all_reduce.reduce(
+                vs.VariableAggregation.MEAN,
+                per_device,
+                destinations=destinations),
+            _fake_mirrored(mean, destinations or per_device), sess)
+        self._assert_values_equal(
+            collective_all_reduce.reduce(
+                vs.VariableAggregation.MEAN,
+                per_device_2,
+                destinations=destinations),
+            _fake_mirrored(mean_2, destinations or per_device), sess)
+        self._assert_values_equal(
+            collective_all_reduce.reduce(
+                vs.VariableAggregation.SUM,
+                per_device,
+                destinations=destinations),
+            _fake_mirrored(mean * len(devices) * num_workers, destinations or
+                           per_device), sess)
+        self._assert_values_equal(
+            collective_all_reduce.reduce(
+                vs.VariableAggregation.SUM,
+                per_device_2,
+                destinations=destinations),
+            _fake_mirrored(mean_2 * len(devices) * num_workers, destinations or
+                           per_device), sess)
+
+      # test batch_reduce()
+      for d1, d2 in itertools.product(all_destinations, all_destinations):
+        self._assert_values_equal(
+            collective_all_reduce.batch_reduce(vs.VariableAggregation.MEAN,
+                                               [(per_device, d1),
+                                                (per_device_2, d2)]),
+            [
+                _fake_mirrored(mean, d1 or per_device),
+                _fake_mirrored(mean_2, d2 or per_device_2)
+            ], sess)
+        self._assert_values_equal(
+            collective_all_reduce.batch_reduce(vs.VariableAggregation.SUM,
+                                               [(per_device, d1),
+                                                (per_device_2, d2)]),
+            [
+                _fake_mirrored(mean * len(devices) * num_workers, d1 or
+                               per_device),
+                _fake_mirrored(mean_2 * len(devices) * num_workers, d2 or
+                               per_device_2)
+            ], sess)
+
+    return True
+
+  @combinations.generate(
+      combinations.combine(mode=["graph"], num_gpus=[0, 1, 2]))
+  def testReductionDistributed(self, num_gpus):
+    if context.num_gpus() < num_gpus:
+      return
+    self._run_between_graph_clients(self._test_reduction, self._cluster_spec,
+                                    num_gpus)
+
+  # Collective ops doesn't support strategy with one device.
+  def testReductionLocal(self, num_gpus=2):
+    if context.num_gpus() < num_gpus:
+      return
+    self._run_between_graph_clients(
+        self._test_reduction, self._cluster_spec, num_gpus, local_model=True)
 
 
 if __name__ == "__main__":
