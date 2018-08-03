@@ -1223,6 +1223,15 @@ void Statement::print(raw_ostream &os) const {
 
 void Statement::dump() const { print(llvm::errs()); }
 
+void StmtBlock::print(raw_ostream &os) const {
+  MLFunction *function = findFunction();
+  ModuleState state(function->getContext());
+  ModulePrinter modulePrinter(os, state);
+  MLFunctionPrinter(function, modulePrinter).print(this);
+}
+
+void StmtBlock::dump() const { print(llvm::errs()); }
+
 void Function::print(raw_ostream &os) const {
   ModuleState state(getContext());
   ModulePrinter(os, state).print(this);

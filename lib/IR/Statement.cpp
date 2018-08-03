@@ -77,6 +77,19 @@ bool Statement::isInnermost() const {
   return nlc.numNestedLoops == 1;
 }
 
+Statement *Statement::clone() const {
+  switch (kind) {
+  case Kind::Operation:
+    return cast<OperationStmt>(this)->clone();
+  case Kind::If:
+    llvm_unreachable("cloning for if's not implemented yet");
+    return cast<IfStmt>(this)->clone();
+  case Kind::For:
+    llvm_unreachable("cloning for loops not implemented yet");
+    return cast<ForStmt>(this)->clone();
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // ilist_traits for Statement
 //===----------------------------------------------------------------------===//
@@ -227,6 +240,15 @@ ForStmt::ForStmt(AffineConstantExpr *lowerBound, AffineConstantExpr *upperBound,
       StmtBlock(StmtBlockKind::For), lowerBound(lowerBound),
       upperBound(upperBound), step(step) {}
 
+ForStmt *ForStmt::clone() const {
+  auto *stmt = new ForStmt(getLowerBound(), getUpperBound(), getStep(),
+                           Statement::findFunction()->getContext());
+  for (auto &s : getStatements()) {
+    stmt->getStatements().push_back(s.clone());
+  }
+  return stmt;
+}
+
 //===----------------------------------------------------------------------===//
 // IfStmt
 //===----------------------------------------------------------------------===//
@@ -235,4 +257,9 @@ IfStmt::~IfStmt() {
   delete thenClause;
   if (elseClause)
     delete elseClause;
+}
+
+IfStmt *IfStmt::clone() const {
+  llvm_unreachable("cloning for if's not implemented yet");
+  return nullptr;
 }

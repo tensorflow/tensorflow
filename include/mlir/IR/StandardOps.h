@@ -164,6 +164,17 @@ protected:
 ///
 class ConstantIntOp : public ConstantOp {
 public:
+  template <class Builder>
+  static OpPointer<ConstantIntOp> build(Builder *builder, int64_t value,
+                                        unsigned width) {
+    std::pair<Identifier, Attribute *> namedAttr(
+        builder->getIdentifier("value"), builder->getIntegerAttr(value));
+    auto *type = builder->getIntegerType(width);
+
+    return OpPointer<ConstantIntOp>(ConstantIntOp(builder->createOperation(
+        builder->getIdentifier("constant"), {}, type, {namedAttr})));
+  }
+
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value")->getValue();
   }

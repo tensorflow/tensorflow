@@ -22,8 +22,9 @@
 #ifndef MLIR_IR_STMTBLOCK_H
 #define MLIR_IR_STMTBLOCK_H
 
-#include "mlir/Support/LLVM.h"
 #include "mlir/IR/Statement.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 class MLFunction;
@@ -100,6 +101,9 @@ public:
   static StmtListType StmtBlock::*getSublistAccess(Statement *) {
     return &StmtBlock::statements;
   }
+
+  void print(raw_ostream &os) const;
+  void dump() const;
 
 protected:
   StmtBlock(StmtBlockKind kind) : kind(kind) {}

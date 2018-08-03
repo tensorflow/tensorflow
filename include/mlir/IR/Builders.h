@@ -253,6 +253,9 @@ public:
     insertPoint = block->begin();
   }
 
+  /// Get the current insertion point of the builder.
+  StmtBlock::iterator getInsertionPoint() const { return insertPoint; }
+
   OperationStmt *createOperation(Identifier name, ArrayRef<MLValue *> operands,
                                  ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {
@@ -262,7 +265,7 @@ public:
     return op;
   }
 
-  OperationStmt *cloneOperation(const OperationStmt &srcOpStmt) {
+  OperationStmt *clone(const OperationStmt &srcOpStmt) {
     auto *op = srcOpStmt.clone();
     block->getStatements().insert(insertPoint, op);
     return op;
@@ -274,6 +277,29 @@ public:
     return OpTy::build(this, args...);
   }
 
+  ForStmt *clone(const ForStmt &srcForStmt) {
+    auto *forStmt = srcForStmt.clone();
+    block->getStatements().insert(insertPoint, forStmt);
+    return forStmt;
+  }
+
+  IfStmt *clone(const IfStmt &srcIfStmt) {
+    auto *ifStmt = srcIfStmt.clone();
+    block->getStatements().insert(insertPoint, ifStmt);
+    return ifStmt;
+  }
+
+  Statement *clone(const Statement &stmt) {
+    switch (stmt.getKind()) {
+    case Statement::Kind::Operation:
+      return clone(cast<const OperationStmt>(stmt));
+    case Statement::Kind::If:
+      return clone(cast<const IfStmt>(stmt));
+    case Statement::Kind::For:
+      return clone(cast<const ForStmt>(stmt));
+    }
+  }
+
   // Creates for statement. When step is not specified, it is set to 1.
   ForStmt *createFor(AffineConstantExpr *lowerBound,
                      AffineConstantExpr *upperBound,
@@ -283,15 +309,6 @@ public:
     auto *stmt = new IfStmt();
     block->getStatements().insert(insertPoint, stmt);
     return stmt;
-  }
-
-  // TODO: subsume with a generate create<ConstantInt>() method.
-  OperationStmt *createConstInt32Op(int value) {
-    std::pair<Identifier, Attribute *> namedAttr(
-        Identifier::get("value", context), getIntegerAttr(value));
-    auto *mlconst = createOperation(Identifier::get("constant", context), {},
-                                    {getIntegerType(32)}, {namedAttr});
-    return mlconst;
   }
 
 private:

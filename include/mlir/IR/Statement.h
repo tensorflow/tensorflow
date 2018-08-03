@@ -48,6 +48,9 @@ public:
   /// Remove this statement from its block and delete it.
   void eraseFromBlock();
 
+  /// Clone this statement, the cloning is deep.
+  Statement *clone() const;
+
   /// Returns the statement block that contains this statement.
   StmtBlock *getBlock() const { return block; }
 

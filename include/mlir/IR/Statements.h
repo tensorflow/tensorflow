@@ -209,6 +209,9 @@ public:
     clear();
   }
 
+  /// Deep clone this for stmt.
+  ForStmt *clone() const;
+
   AffineConstantExpr *getLowerBound() const { return lowerBound; }
   AffineConstantExpr *getUpperBound() const { return upperBound; }
   AffineConstantExpr *getStep() const { return step; }
@@ -269,6 +272,9 @@ public:
       elseClause(nullptr) {}
 
   ~IfStmt();
+
+  /// Deep clone this IfStmt.
+  IfStmt *clone() const;
 
   IfClause *getThenClause() const { return thenClause; }
   IfClause *getElseClause() const { return elseClause; }
