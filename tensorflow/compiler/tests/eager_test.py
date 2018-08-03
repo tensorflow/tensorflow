@@ -384,7 +384,6 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual([[20., 40.], [90., 120.]], d.numpy())
 
   def testDefunInGradientTape(self):
-    self.skipTest('b/112172115: Broken by loop support in defun')
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
@@ -402,7 +401,6 @@ class EagerFunctionTest(xla_test.XLATestCase):
     self.assertEqual(30, dy.numpy())
 
   def testSliceInDefun(self):
-    self.skipTest('b/112172115: Broken by loop support in defun')
     with self.test_scope():
 
       @function.defun
