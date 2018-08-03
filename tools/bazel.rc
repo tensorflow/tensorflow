@@ -61,3 +61,6 @@ build --define=grpc_no_ares=true
 build --spawn_strategy=standalone
 build --genrule_strategy=standalone
 build -c opt
+
+# Modular TF build options
+build:dynamic_kernels --define=dynamic_loaded_kernels=true
