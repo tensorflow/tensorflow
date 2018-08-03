@@ -511,8 +511,13 @@ class GraphModeFunction(object):
       extra_placeholders = []
 
     forward_name = _forward_name(self._func_name)
+    # Note: we cannot have placeholder ops in the graph or the TPU compilation
+    # pass fails.
+    placeholder_ops = set([y.op for y in self._input_placeholders])
+    function_ops = [x for x in self._graph.get_operations()
+                    if x not in placeholder_ops]
     self._forward_fdef = _EagerDefinedFunction(
-        forward_name, self._graph, self._graph.get_operations(),
+        forward_name, self._graph, function_ops,
         self._input_placeholders, filtered_outputs + list(extra_inputs),
         self._attrs)
     all_inputs = self._out_grad_placeholders + list(extra_placeholders)
