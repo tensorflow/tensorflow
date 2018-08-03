@@ -122,10 +122,14 @@ class Stream {
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
+  //
+  // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later. Sub-streams that are !ok() will not be reused.
+  //
+  // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
@@ -2050,6 +2054,9 @@ class Stream {
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();
+
+  // Returns a debugging string "[stream=0x...,impl=0x...]".
+  string DebugStreamPointers() const;
 
  private:
   friend class host::HostBlas;  // for parent_.
