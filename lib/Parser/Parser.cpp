@@ -21,8 +21,6 @@
 
 #include "mlir/Parser.h"
 #include "Lexer.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -33,6 +31,8 @@
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/SourceMgr.h"
 using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
@@ -524,7 +524,6 @@ Type *Parser::parseFunctionType() {
   return builder.getFunctionType(arguments, results);
 }
 
-
 /// Parse a list of types without an enclosing parenthesis.  The list must have
 /// at least one member.
 ///
@@ -574,6 +573,7 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type *> &elements) {
 ///                    | integer-literal
 ///                    | float-literal
 ///                    | string-literal
+///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///
 Attribute *Parser::parseAttribute() {
@@ -642,13 +642,18 @@ Attribute *Parser::parseAttribute() {
       return nullptr;
     return builder.getArrayAttr(elements);
   }
-  default:
+  case Token::hash_identifier:
+  case Token::l_paren: {
     // Try to parse affine map reference.
-    auto *affineMap = parseAffineMapReference();
-    if (affineMap != nullptr)
+    if (auto *affineMap = parseAffineMapReference())
       return builder.getAffineMapAttr(affineMap);
-
     return (emitError("expected constant attribute value"), nullptr);
+  }
+  default: {
+    if (Type *type = parseType())
+      return builder.getTypeAttr(type);
+    return nullptr;
+  }
   }
 }
 

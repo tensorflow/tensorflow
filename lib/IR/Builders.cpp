@@ -100,6 +100,10 @@ AffineMapAttr *Builder::getAffineMapAttr(AffineMap *value) {
   return AffineMapAttr::get(value, context);
 }
 
+TypeAttr *Builder::getTypeAttr(Type *type) {
+  return TypeAttr::get(type, context);
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions and Affine Map.
 //===----------------------------------------------------------------------===//

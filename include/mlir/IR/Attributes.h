@@ -24,6 +24,7 @@
 namespace mlir {
 class MLIRContext;
 class AffineMap;
+class Type;
 
 /// Instances of the Attribute class are immutable, uniqued, immortal, and owned
 /// by MLIRContext.  As such, they are passed around by raw non-const pointer.
@@ -34,6 +35,7 @@ public:
     Integer,
     Float,
     String,
+    Type,
     Array,
     AffineMap,
     // TODO: Function references.
@@ -171,6 +173,23 @@ private:
   AffineMapAttr(AffineMap *value) : Attribute(Kind::AffineMap), value(value) {}
   ~AffineMapAttr() = delete;
   AffineMap *value;
+};
+
+class TypeAttr : public Attribute {
+public:
+  static TypeAttr *get(Type *type, MLIRContext *context);
+
+  Type *getValue() const { return value; }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::Type;
+  }
+
+private:
+  TypeAttr(Type *value) : Attribute(Kind::Type), value(value) {}
+  ~TypeAttr() = delete;
+  Type *value;
 };
 
 } // end namespace mlir.

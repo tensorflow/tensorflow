@@ -287,3 +287,10 @@ bb0:
   return %x, %y, %z, %t, %f : i32, i23, i23, i1, i1
 }
 
+// CHECK-LABEL: cfgfunc @typeattr
+cfgfunc @typeattr() -> () {
+bb0:
+// CHECK: "foo"() {bar: tensor<??f32>} : () -> ()
+  "foo"(){bar: tensor<??f32>} : () -> ()
+  return
+}

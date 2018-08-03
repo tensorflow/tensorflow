@@ -249,6 +249,7 @@ public:
   using ArrayAttrSet = DenseSet<ArrayAttr *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
   DenseMap<AffineMap *, AffineMapAttr *> affineMapAttrs;
+  DenseMap<Type *, TypeAttr *> typeAttrs;
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
@@ -619,6 +620,16 @@ AffineMapAttr *AffineMapAttr::get(AffineMap *value, MLIRContext *context) {
 
   result = context->getImpl().allocator.Allocate<AffineMapAttr>();
   new (result) AffineMapAttr(value);
+  return result;
+}
+
+TypeAttr *TypeAttr::get(Type *type, MLIRContext *context) {
+  auto *&result = context->getImpl().typeAttrs[type];
+  if (result)
+    return result;
+
+  result = context->getImpl().allocator.Allocate<TypeAttr>();
+  new (result) TypeAttr(type);
   return result;
 }
 

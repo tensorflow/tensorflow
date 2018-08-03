@@ -280,6 +280,9 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
   case Attribute::Kind::AffineMap:
     printAffineMapReference(cast<AffineMapAttr>(attr)->getValue());
     break;
+  case Attribute::Kind::Type:
+    printType(cast<TypeAttr>(attr)->getValue());
+    break;
   }
 }
 
