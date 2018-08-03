@@ -8,6 +8,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
@@ -63,14 +64,15 @@ py_binary(
     srcs = ["import_pb_to_tensorboard.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/tensorrt:init_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
-    ],
+    ] + if_not_windows([
+        "//tensorflow/contrib/tensorrt:init_py",
+    ]),
 )
 
 py_test(
