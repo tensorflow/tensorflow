@@ -356,6 +356,8 @@ with tf.Session() as sess:
   saver.restore(sess, path_to_checkpoint)
 ```
 
+Note that it is not allowed to save the state of the iterator which uses `shuffle`.
+
 ## Reading input data
 
 ### Consuming NumPy arrays
