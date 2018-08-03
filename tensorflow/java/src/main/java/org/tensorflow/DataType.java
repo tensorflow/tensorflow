@@ -61,7 +61,7 @@ public enum DataType {
   }
 
   /**
-   * @return size of an element of this type, in bytes, or -1 if element size is variable
+   * Returns the size of an element of this type, in bytes, or -1 if element size is variable.
    */
   public int byteSize() {
     return byteSize;
