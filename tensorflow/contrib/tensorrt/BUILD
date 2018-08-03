@@ -184,6 +184,8 @@ py_library(
     ],
 )
 
+# TODO(aaroey): this wrapper has been causing troubles of double linking, so
+# either get rid of it, or split to make it contain minimum dependencies.
 tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
@@ -274,7 +276,6 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -412,4 +413,7 @@ cc_library(
     srcs = ["convert/utils.cc"],
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
