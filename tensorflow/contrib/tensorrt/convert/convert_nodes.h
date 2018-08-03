@@ -36,11 +36,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-static const char* kInputPHName = "InputPH_";
-static const char* kOutputPHName = "OutputPH_";
+static const char* kInputPHName = "TensorRTInputPH_";
+static const char* kOutputPHName = "TensorRTOutputPH_";
 namespace convert {
 
 struct EngineConnection {
+  // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
                    const string& inside, int in_id, int in_port,
                    bool input_edge, int port)
@@ -53,21 +54,35 @@ struct EngineConnection {
         is_input_edge(input_edge),
         port_number(port) {}
 
+  // Constructs a control edge.
+  EngineConnection(const string& outside, int out_id, const string& inside,
+                   int in_id, bool input_edge)
+      : outside_node_name(outside),
+        outside_id(out_id),
+        outside_port(Graph::kControlSlot),
+        inside_node_name(inside),
+        inside_id(in_id),
+        inside_port(Graph::kControlSlot),
+        is_input_edge(input_edge),
+        port_number(Graph::kControlSlot) {}
+
+  bool is_control_edge() const { return port_number == Graph::kControlSlot; }
+
   const string outside_node_name;
   const int outside_id;
   const int outside_port;
-  tensorflow::PartialTensorShape outside_shape;
+  tensorflow::PartialTensorShape outside_shape;  // Only set for input edge.
 
   const string inside_node_name;
   const int inside_id;
   const int inside_port;
-  tensorflow::PartialTensorShape inside_shape;
+  tensorflow::PartialTensorShape inside_shape;  // Only set for output edge.
 
   tensorflow::DataType connection_type;
-  bool is_input_edge;
+  const bool is_input_edge;
 
-  // The port number of the TRT node connecting to this edge.
-  int port_number;
+  // The port number of the TRT node connected with this edge.
+  const int port_number;
 };
 
 struct EngineInfo {
@@ -80,7 +95,9 @@ struct EngineInfo {
   string device;
   tensorflow::GraphDef segment_graph_def;
 
-  // The segment nodes that are on one side of the edges are topological sorted.
+  // Non-control input connections inside this vector are sorted in a way such
+  // that, the segment nodes connecting to them are topological sorted.
+  // In addition, for non-control connections, there must be no duplicates.
   std::vector<EngineConnection> connections;
 
   enum class EngineType { TRTStatic = 0, TRTDynamic = 1 };
@@ -96,6 +113,7 @@ struct EngineInfo {
 // (OutputPH_*). This function needs to be called before TensorRT nodes
 // inserted in order to correctly get sizes from the original graph.
 //
+// - subgraph_node_names: the node names of the subgraph.
 // - subgraph_node_ids: the node ids of the subgraph, must be sorted in
 //   topological order.
 // - segment_def: the output GraphDef, whose non-input/output nodedefs will be
@@ -105,6 +123,7 @@ struct EngineInfo {
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
+    const std::set<string>& subgraph_node_names,
     const std::vector<int>& subgraph_node_ids,
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope);

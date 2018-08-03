@@ -20,9 +20,13 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
 import six as _six
+from tensorflow.contrib.tensorrt.wrap_conversion import add_test_value
 from tensorflow.contrib.tensorrt.wrap_conversion import calib_convert
+from tensorflow.contrib.tensorrt.wrap_conversion import clear_test_values
+from tensorflow.contrib.tensorrt.wrap_conversion import enable_test_value
 from tensorflow.contrib.tensorrt.wrap_conversion import get_linked_tensorrt_version
 from tensorflow.contrib.tensorrt.wrap_conversion import get_loaded_tensorrt_version
+from tensorflow.contrib.tensorrt.wrap_conversion import get_test_value
 from tensorflow.contrib.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2

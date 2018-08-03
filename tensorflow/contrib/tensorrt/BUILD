@@ -85,11 +85,12 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":test_utils",
         ":trt_allocator",
+        ":trt_conversion",
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
-        ":trt_conversion",
         ":utils",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -194,6 +195,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     deps = [
+        ":test_utils",
         ":trt_conversion",
         ":trt_engine_op_kernel",
         "//third_party/python_runtime:headers",
@@ -266,6 +268,7 @@ tf_cuda_library(
     ],
     deps = [
         ":segment",
+        ":test_utils",
         ":trt_allocator",
         ":trt_plugins",
         ":trt_logging",
@@ -415,5 +418,15 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    srcs = ["test/utils.cc"],
+    hdrs = ["test/utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
