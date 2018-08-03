@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/aot/runtime.h"
-
-#include <stdlib.h>
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 
 #include "tensorflow/core/platform/dynamic_annotations.h"
 
 namespace tensorflow {
-namespace tfcompile {
-namespace runtime {
-
 namespace {
-
 // Inline memory allocation routines here, because depending on '//base' brings
 // in libraries which use c++ streams, which adds considerable code size on
 // android.
-inline void* aligned_malloc(size_t size, int minimum_alignment) {
+void* aligned_malloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__) || defined(OS_ANDROID) || defined(OS_CYGWIN)
   return memalign(minimum_alignment, size);
 #elif defined(_WIN32)
@@ -47,7 +41,7 @@ inline void* aligned_malloc(size_t size, int minimum_alignment) {
 #endif
 }
 
-inline void aligned_free(void* aligned_memory) {
+void aligned_free(void* aligned_memory) {
 #if defined(_WIN32)
   _aligned_free(aligned_memory);
 #else
@@ -58,10 +52,10 @@ inline void aligned_free(void* aligned_memory) {
 size_t align_to(size_t n, size_t align) {
   return (((n - 1) / align) + 1) * align;
 }
-
 }  // namespace
 
-size_t aligned_buffer_bytes(const intptr_t* sizes, size_t n) {
+namespace cpu_function_runtime {
+size_t AlignedBufferBytes(const intptr_t* sizes, size_t n) {
   size_t total = 0;
   for (size_t i = 0; i < n; ++i) {
     if (sizes[i] > 0) {
@@ -73,7 +67,7 @@ size_t aligned_buffer_bytes(const intptr_t* sizes, size_t n) {
 
 void* MallocContiguousBuffers(const intptr_t* sizes, size_t n, void** bufs,
                               bool annotate_initialized) {
-  const size_t total = aligned_buffer_bytes(sizes, n);
+  const size_t total = AlignedBufferBytes(sizes, n);
   void* contiguous = nullptr;
   if (total > 0) {
     contiguous = aligned_malloc(total, kAlign);
@@ -102,7 +96,5 @@ void FreeContiguous(void* contiguous) {
     aligned_free(contiguous);
   }
 }
-
-}  // namespace runtime
-}  // namespace tfcompile
+}  // namespace cpu_function_runtime
 }  // namespace tensorflow

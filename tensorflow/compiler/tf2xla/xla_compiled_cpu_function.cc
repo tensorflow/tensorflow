@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 
 #include <cassert>
-#include "tensorflow/compiler/aot/runtime.h"
 
 namespace tensorflow {
 
@@ -34,11 +34,11 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       hlo_profile_printer_data_(static_data.hlo_profile_printer_data) {
   // Allocate arg and temp buffers.
   if (alloc_mode == AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS) {
-    alloc_args_ = tensorflow::tfcompile::runtime::MallocContiguousBuffers(
+    alloc_args_ = cpu_function_runtime::MallocContiguousBuffers(
         static_data.arg_sizes, static_data.num_args, args_,
         /*annotate_initialized=*/false);
   }
-  alloc_temps_ = tensorflow::tfcompile::runtime::MallocContiguousBuffers(
+  alloc_temps_ = cpu_function_runtime::MallocContiguousBuffers(
       static_data.temp_sizes, static_data.num_temps, temps_,
       /*annotate_initialized=*/true);
 
@@ -72,8 +72,8 @@ bool XlaCompiledCpuFunction::Run() {
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
-  tensorflow::tfcompile::runtime::FreeContiguous(alloc_args_);
-  tensorflow::tfcompile::runtime::FreeContiguous(alloc_temps_);
+  cpu_function_runtime::FreeContiguous(alloc_args_);
+  cpu_function_runtime::FreeContiguous(alloc_temps_);
   delete[] args_;
   delete[] temps_;
   delete[] arg_index_to_temp_index_;

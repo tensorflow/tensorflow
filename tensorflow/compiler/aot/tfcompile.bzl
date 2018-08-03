@@ -309,7 +309,6 @@ def tf_library(
             srcs = [test_file],
             deps = [
                 ":" + name,
-                "//tensorflow/compiler/aot:runtime",
                 "//tensorflow/compiler/aot:tf_library_test_main",
                 "//tensorflow/compiler/xla:executable_run_options",
                 "//third_party/eigen3",
@@ -357,7 +356,6 @@ def tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:benchmark",
-                "//tensorflow/compiler/aot:runtime",
                 "//tensorflow/compiler/xla:executable_run_options",
                 "//third_party/eigen3",
             ] + if_android([
