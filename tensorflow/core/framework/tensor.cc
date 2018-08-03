@@ -904,6 +904,10 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a) {
 inline float PrintOneElement(const Eigen::half& h) {
   return static_cast<float>(h);
 }
+template <typename T>
+inline const std::complex<T>& PrintOneElement(const std::complex<T>& a) {
+  return a;
+}
 
 // Print from left dim to right dim recursively.
 template <typename T>
@@ -1013,6 +1017,13 @@ string Tensor::SummarizeValue(int64 max_entries) const {
       // will emit "1 0..." which is more compact.
       return SummarizeArray<bool>(limit, num_elts, shape_, data);
       break;
+    case DT_COMPLEX64:
+      return SummarizeArray<std::complex<float>>(limit, num_elts, shape_, data);
+      break;
+    case DT_COMPLEX128:
+      return SummarizeArray<std::complex<double>>(limit, num_elts, shape_,
+                                                  data);
+      break;
     default: {
       // All irregular cases
       string ret;
@@ -1030,7 +1041,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
           } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
-            // complex64, quantized).
+            // quantized).
             strings::StrAppend(&ret, "?");
         }
       }
