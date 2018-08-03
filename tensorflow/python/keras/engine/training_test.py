@@ -2090,5 +2090,91 @@ class TestTrainingWithDataset(test.TestCase):
         model.train_on_batch(dataset)
 
 
+class TestTrainingWithMetrics(test.TestCase):
+  """Training tests related to metrics."""
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_metrics_correctness(self):
+    with self.test_session():
+      model = keras.Sequential()
+      model.add(
+          keras.layers.Dense(
+              3, activation='relu', input_dim=4, kernel_initializer='ones'))
+      model.add(
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones'))
+      model.compile(
+          loss='mae',
+          metrics=['accuracy'],
+          optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+      # verify correctness of stateful and stateless metrics.
+      x = np.ones((100, 4))
+      y = np.ones((100, 1))
+      outs = model.evaluate(x, y)
+      self.assertEqual(outs[1], 1.)
+
+      y = np.zeros((100, 1))
+      outs = model.evaluate(x, y)
+      self.assertEqual(outs[1], 0.)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_metrics_correctness_with_iterator(self):
+    model = keras.Sequential()
+    model.add(
+        keras.layers.Dense(
+            8, activation='relu', input_dim=4, kernel_initializer='ones'))
+    model.add(
+        keras.layers.Dense(1, activation='sigmoid', kernel_initializer='ones'))
+    model.compile(
+        loss='binary_crossentropy',
+        metrics=['accuracy'],
+        optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+    np.random.seed(123)
+    x = np.random.randint(10, size=(100, 4)).astype(np.float32)
+    y = np.random.randint(2, size=(100, 1)).astype(np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+    outs = model.evaluate(iterator, steps=10)
+    self.assertEqual(np.around(outs[1], decimals=1), 0.5)
+
+    y = np.zeros((100, 1), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+    outs = model.evaluate(iterator, steps=10)
+    self.assertEqual(outs[1], 0.)
+
+  def test_metrics_correctness_with_weighted_metrics(self):
+    with self.test_session():
+      np.random.seed(1337)
+      x = np.array([[[1.], [1.]], [[0.], [0.]]])
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(1, kernel_initializer='ones'),
+              input_shape=(2, 1)))
+      model.compile(
+          RMSPropOptimizer(learning_rate=0.001),
+          loss='mse',
+          sample_weight_mode='temporal',
+          weighted_metrics=['accuracy'])
+      y = np.array([[[1.], [1.]], [[1.], [1.]]])
+
+      outs = model.evaluate(x, y)
+      self.assertEqual(outs, [0.5, 0.5])
+
+      w = np.array([[0., 0.], [0., 0.]])
+      outs = model.evaluate(x, y, sample_weight=w)
+      self.assertEqual(outs, [0., 0.])
+
+      w = np.array([[3., 4.], [1., 2.]])
+      outs = model.evaluate(x, y, sample_weight=w)
+      self.assertArrayNear(outs, [0.3, 0.7], .001)
+
+
 if __name__ == '__main__':
   test.main()
