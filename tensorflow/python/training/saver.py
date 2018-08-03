@@ -59,6 +59,12 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(allenl): Remove these aliases once all users are migrated off.
 get_checkpoint_state = checkpoint_management.get_checkpoint_state
 update_checkpoint_state = checkpoint_management.update_checkpoint_state
+generate_checkpoint_state_proto = (
+    checkpoint_management.generate_checkpoint_state_proto)
+latest_checkpoint = checkpoint_management.latest_checkpoint
+checkpoint_exists = checkpoint_management.checkpoint_exists
+get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
+remove_checkpoint = checkpoint_management.remove_checkpoint
 
 
 # Op names which identify variable reads which should be saved.
