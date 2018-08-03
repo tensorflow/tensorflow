@@ -92,6 +92,18 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_function_runtime",
+    srcs = ["cpu_function_runtime.cc"],
+    hdrs = ["cpu_function_runtime.h"],
+    deps = [
+        # Keep dependencies to a minimum here; this library is used in every AOT
+        # binary produced by tfcompile.
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:framework_lite",
+    ],
+)
+
+cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
@@ -99,9 +111,20 @@ cc_library(
     deps = [
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
-        "//tensorflow/compiler/aot:runtime",
+        ":cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_function_runtime_test",
+    srcs = ["cpu_function_runtime_test.cc"],
+    deps = [
+        ":cpu_function_runtime",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
