@@ -4287,6 +4287,33 @@ inline void BroadcastLogical(const bool* input1_data,
   }
 }
 
+// TODO(ycling): Refactoring. Remove BroadcastLogical and use the more
+// generalized and efficient BroadcastBinaryFunction.
+//
+// R: Result type. T1: Input 1 type. T2: Input 2 type.
+template <typename R, typename T1, typename T2>
+inline void BroadcastBinaryFunction(const T1* input1_data,
+                                    const Dims<4>& input1_dims,
+                                    const T2* input2_data,
+                                    const Dims<4>& input2_dims, R* output_data,
+                                    const Dims<4>& output_dims,
+                                    R (*func)(T1, T2)) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              func(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                   input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 
