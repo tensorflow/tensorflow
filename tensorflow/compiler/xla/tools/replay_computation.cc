@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -182,11 +183,18 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
   // Run the computation num_runs times, and return the result from the last
   // execution.
+  const bool xla_hlo_profile =
+      legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
   tensorflow::gtl::optional<ScopedShapedBuffer> result;
   for (int i = 0; i < opts.num_runs; ++i) {
+    // If xla_hlo_profile is enabled, print a noisy message before the last run,
+    // making it easier to separate this profile from the others in the logspam.
+    if (xla_hlo_profile && i == opts.num_runs - 1) {
+      LOG(INFO) << "\n\n***** Final run below ******";
+    }
     ExecutionProfile profile;
     ExecutableRunOptions run_options;
     run_options.set_execution_profile(&profile);
