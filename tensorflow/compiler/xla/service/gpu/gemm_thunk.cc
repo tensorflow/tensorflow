@@ -32,17 +32,26 @@ namespace {
 // dimensions.
 struct MatrixDescriptor {
   MatrixDescriptor(se::DeviceMemoryBase matrix_data, bool needs_transpose,
-                   int64 matrix_num_rows, int64 matrix_num_cols)
+                   int64 matrix_num_rows, int64 matrix_num_cols,
+                   int64 matrix_batch_size)
       : data(matrix_data),
         transpose(needs_transpose),
         num_rows(matrix_num_rows),
-        num_cols(matrix_num_cols) {}
+        num_cols(matrix_num_cols),
+        batch_size(matrix_batch_size) {}
 
   se::DeviceMemoryBase data;
   bool transpose;  // Whether this matrix needs to be transposed.
   int64 num_rows;
   int64 num_cols;
+  int64 batch_size;
 };
+
+template <typename T>
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  return se::DeviceMemory<T>(wrapped);
+}
 
 // Performs a gemm call without an explicit algorithm on lhs_matrix and
 // rhs_matrix, and stores the result to output_matrix.
@@ -51,6 +60,9 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
             MatrixDescriptor output_matrix, double alpha, se::Stream* stream) {
   DCHECK(!output_matrix.transpose);
 
+  const int64 batch_size = lhs_matrix.batch_size;
+  CHECK_EQ(batch_size, rhs_matrix.batch_size);
+  CHECK_EQ(batch_size, output_matrix.batch_size);
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
@@ -61,13 +73,54 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
                                             : se::blas::Transpose::kNoTranspose;
   auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
+  if (batch_size == 1) {
+    return stream
+        ->ThenBlasGemm(
+            lhs_transpose, rhs_transpose, output_matrix.num_rows,
+            output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
+            lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+            /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
+            &output_data, /*leading dim of output=*/output_matrix.num_rows)
+        .ok();
+  }
+
+  // Create the buffers for batched gemm.
+  // TODO(b/112111608): We could avoid all of this and also make it faster by
+  // using cuBLAS 8's strided batched gemm.
+  using DeviceMemoryType = se::DeviceMemory<Element>;
+  std::vector<DeviceMemoryType> a_device_memory;
+  std::vector<DeviceMemoryType> b_device_memory;
+  std::vector<DeviceMemoryType> c_device_memory;
+  std::vector<DeviceMemoryType*> a_ptrs;
+  std::vector<DeviceMemoryType*> b_ptrs;
+  std::vector<DeviceMemoryType*> c_ptrs;
+  a_device_memory.reserve(batch_size);
+  b_device_memory.reserve(batch_size);
+  c_device_memory.reserve(batch_size);
+  a_ptrs.reserve(batch_size);
+  b_ptrs.reserve(batch_size);
+  c_ptrs.reserve(batch_size);
+  auto* a_base_ptr = static_cast<Element*>(lhs_data.opaque());
+  auto* b_base_ptr = static_cast<Element*>(rhs_data.opaque());
+  auto* c_base_ptr = static_cast<Element*>(output_data.opaque());
+  for (int64 i = 0; i < batch_size; ++i) {
+    a_device_memory.push_back(AsDeviceMemory(
+        a_base_ptr + i * lhs_matrix.num_rows * lhs_matrix.num_cols));
+    b_device_memory.push_back(AsDeviceMemory(
+        b_base_ptr + i * rhs_matrix.num_rows * rhs_matrix.num_cols));
+    c_device_memory.push_back(AsDeviceMemory(
+        c_base_ptr + i * output_matrix.num_rows * output_matrix.num_cols));
+    a_ptrs.push_back(&a_device_memory.back());
+    b_ptrs.push_back(&b_device_memory.back());
+    c_ptrs.push_back(&c_device_memory.back());
+  }
   return stream
-      ->ThenBlasGemm(
+      ->ThenBlasGemmBatched(
           lhs_transpose, rhs_transpose, output_matrix.num_rows,
           output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
-          lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
-          &output_data, /*leading dim of output=*/output_matrix.num_rows)
+          a_ptrs, /*leading dim of LHS=*/lhs_matrix.num_rows, b_ptrs,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0, c_ptrs,
+          /*leading dim of output=*/output_matrix.num_rows, batch_size)
       .ok();
 }
 
@@ -93,6 +146,10 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
                          se::blas::AlgorithmType algorithm, se::Stream* stream,
                          se::blas::ProfileResult* output_profile_result) {
   DCHECK(!output_matrix.transpose);
+
+  CHECK_EQ(1, lhs_matrix.batch_size);
+  CHECK_EQ(1, rhs_matrix.batch_size);
+  CHECK_EQ(1, output_matrix.batch_size);
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
@@ -270,12 +327,37 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   se::DeviceMemoryBase output_data =
       buffer_allocations.GetDeviceAddress(output_buffer_);
 
+  DotDimensionNumbers dim_nums = GetDimensionNumbers(*hlo_instruction());
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
+           dim_nums.rhs_batch_dimensions_size());
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
+           ShapeUtil::Rank(output_shape_));
+
+  int64 row_dim = dim_nums.lhs_batch_dimensions_size();
+  int64 col_dim = dim_nums.lhs_batch_dimensions_size() + 1;
+  int64 batch_size = std::accumulate(output_shape_.dimensions().begin(),
+                                     output_shape_.dimensions().end() - 2, 1,
+                                     std::multiplies<int64>());
+
+  // Check that the batch dims don't cover the last two dims.
+  for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+    CHECK_NE(row_dim, batch_dim);
+    CHECK_NE(col_dim, batch_dim);
+  }
+
+  // Verify that the non-batch dimensions are minor-most. This is required for
+  // efficient access.
+  for (const auto* shape : {&lhs_shape_, &rhs_shape_, &output_shape_}) {
+    CHECK_LT(shape->layout().minor_to_major(row_dim), 2);
+    CHECK_LT(shape->layout().minor_to_major(col_dim), 2);
+  }
+
   // BLAS gemm reduces rows of LHS and columns of RHS. The Dot operator between
   // matrices reduces dimension 1 of LHS and dimension 0 of RHS regardless of
   // their layout. Therefore, we should treat dimension 0 as row and dimension 1
   // as column when mapping a matrix Dot to BLAS gemm.
-  int64 output_num_rows = output_shape_.dimensions(0);
-  int64 output_num_cols = output_shape_.dimensions(1);
+  int64 output_num_rows = output_shape_.dimensions(row_dim);
+  int64 output_num_cols = output_shape_.dimensions(col_dim);
 
   // BLAS gemm expects the inputs and the output are in column-major order.
   // Therefore, we need to convert dot between row-major matrices to that
@@ -298,30 +380,36 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   // the leading dimension of the LHS matrix of gemm is the number of rows in
   // B^T and thus the number of columns in B.
 
-  auto make_descriptor = [this](se::DeviceMemoryBase data, const Shape& shape,
-                                bool transpose) -> MatrixDescriptor {
-    bool is_row_major = LayoutUtil::Minor(shape.layout(), 0) != 0;
-    bool layout_mismatch = LayoutUtil::Minor(shape.layout(), 0) !=
-                           LayoutUtil::Minor(output_shape_.layout(), 0);
-    return MatrixDescriptor(data, transpose ^ layout_mismatch,
-                            shape.dimensions(is_row_major),
-                            shape.dimensions(!is_row_major));
+  auto make_descriptor = [&](se::DeviceMemoryBase data, const Shape& shape,
+                             bool transpose) -> MatrixDescriptor {
+    bool is_row_major = LayoutUtil::Minor(shape.layout(), row_dim) != 0;
+    bool layout_mismatch = LayoutUtil::Minor(shape.layout(), row_dim) !=
+                           LayoutUtil::Minor(output_shape_.layout(), row_dim);
+    return MatrixDescriptor(
+        data, transpose ^ layout_mismatch,
+        shape.dimensions(row_dim + static_cast<int64>(is_row_major)),
+        shape.dimensions(row_dim + static_cast<int64>(!is_row_major)),
+        batch_size);
   };
 
-  DotDimensionNumbers dim_nums = GetDimensionNumbers(*hlo_instruction());
-
   const MatrixDescriptor lhs_descriptor = make_descriptor(
-      lhs_data, lhs_shape_, dim_nums.lhs_contracting_dimensions(0) == 0);
+      lhs_data, lhs_shape_, dim_nums.lhs_contracting_dimensions(0) == row_dim);
   const MatrixDescriptor rhs_descriptor = make_descriptor(
-      rhs_data, rhs_shape_, dim_nums.rhs_contracting_dimensions(0) == 1);
+      rhs_data, rhs_shape_, dim_nums.rhs_contracting_dimensions(0) == col_dim);
 
   // Dispatches to a regular cublas gemm, a gemm-with-algorithm, or attempts to
   // autotune this gemm to figure out the best algorithm.
-  auto launch = [this](MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-                       MatrixDescriptor output_matrix, se::Stream* stream) {
+  auto launch = [&](MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+                    MatrixDescriptor output_matrix, se::Stream* stream) {
     PrimitiveType element_type = output_shape_.element_type();
     se::blas::ComputationType computation_type =
         GetBlasComputationType(element_type);
+
+    // TODO(b/112111608): Implement auto tune for batched gemm.
+    if (batch_size != 1) {
+      return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
+                                     alpha_, stream);
+    }
 
     auto thunk_name = [&] {
       return hlo_instruction() != nullptr ? hlo_instruction()->ToString()
@@ -368,16 +456,16 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
 
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   bool launch_ok;
-  if (LayoutUtil::Minor(output_shape_.layout(), 0) == 0) {
-    launch_ok = launch(
-        lhs_descriptor, rhs_descriptor,
-        MatrixDescriptor(output_data, false, output_num_rows, output_num_cols),
-        stream);
+  if (LayoutUtil::Minor(output_shape_.layout(), row_dim) == 0) {
+    launch_ok = launch(lhs_descriptor, rhs_descriptor,
+                       MatrixDescriptor(output_data, false, output_num_rows,
+                                        output_num_cols, batch_size),
+                       stream);
   } else {
-    launch_ok = launch(
-        rhs_descriptor, lhs_descriptor,
-        MatrixDescriptor(output_data, false, output_num_cols, output_num_rows),
-        stream);
+    launch_ok = launch(rhs_descriptor, lhs_descriptor,
+                       MatrixDescriptor(output_data, false, output_num_cols,
+                                        output_num_rows, batch_size),
+                       stream);
   }
 
   if (!launch_ok) {

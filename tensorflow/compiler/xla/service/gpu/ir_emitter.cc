@@ -454,6 +454,9 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   const Shape& lhs_shape = lhs_instruction->shape();
   const Shape& rhs_shape = rhs_instruction->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+  CHECK_EQ(dnums.lhs_batch_dimensions_size(),
+           dnums.rhs_batch_dimensions_size());
 
   // TODO(b/110211620): Convert to use i32 index_type when it is possible.
   llvm::Type* index_type = b_.getInt64Ty();
@@ -489,9 +492,15 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   const int64 lhs_reduction_dimension =
       ShapeUtil::GetDimensionNumber(lhs_shape, -1);
   const int64 rhs_reduction_dimension =
-      ShapeUtil::Rank(rhs_shape) >= 2
+      ShapeUtil::Rank(rhs_shape) >= 2 + dnums.lhs_batch_dimensions_size()
           ? ShapeUtil::GetDimensionNumber(rhs_shape, -2)
-          : 0;
+          : dnums.lhs_batch_dimensions_size();
+
+  // Check that the batch dims don't cover the last two dims.
+  for (int64 batch_dim : dnums.lhs_batch_dimensions()) {
+    CHECK_NE(lhs_reduction_dimension, batch_dim);
+    CHECK_NE(rhs_reduction_dimension, batch_dim);
+  }
 
   // Verify the reduction dimension in the two operands are the same size.
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
@@ -505,6 +514,13 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       lhs_array, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
       rhs_array, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
+
+  // We don't have to iterate over the batch dimensions in both arrays, simplify
+  // the loop nest of the rhs.
+  for (int i = 0; i != dnums.lhs_batch_dimensions_size(); ++i) {
+    DCHECK(c_linear_search(dnums.lhs_batch_dimensions(), i));
+    rhs_index[i] = lhs_index[i];
+  }
 
   // Create the reduction loop which does the sum of products reduction.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
@@ -568,7 +584,9 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       target_index.push_back(lhs_index[dimension]);
     }
   }
-  for (size_t dimension = 0; dimension < rhs_index.size(); ++dimension) {
+  // Skip over the batch dimensions to not have them in the index twice.
+  for (size_t dimension = dnums.lhs_batch_dimensions_size();
+       dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
       target_index.push_back(rhs_index[dimension]);
     }
