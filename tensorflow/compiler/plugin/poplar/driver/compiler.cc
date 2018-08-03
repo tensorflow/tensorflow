@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
@@ -228,7 +229,7 @@ class EntryVisitor : public FullVisitor {
 
     for (size_t o = 0; o < outputs.size(); o++) {
       if (!output_streamed[o] && output_map.count(o) == 0) {
-        LOG(WARNING) << "Warning: Output " << GetOutputCopyHandle(o) 
+        LOG(WARNING) << "Warning: Output " << GetOutputCopyHandle(o)
                      << " is not streamed, but not an alias of an input.";
       }
     }
@@ -402,6 +403,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<HloCSE>(true);
     pipeline.AddPass<WideConstFinder>();
+    pipeline.AddPass<CommutativeInstructionReorderOperands>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<FuseMaxPool>(resources.annotations);

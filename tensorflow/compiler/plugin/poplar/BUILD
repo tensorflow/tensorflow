@@ -34,6 +34,7 @@ cc_library(
     srcs = [
         "driver/allocation_finder.cc",
         "driver/classification_predicates.cc",
+        "driver/commutative_instruction_reorder_operands.cc",
         "driver/computation_flattener.cc",
         "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
@@ -56,6 +57,7 @@ cc_library(
     hdrs = [
         "driver/allocation_finder.h",
         "driver/classification_predicates.h",
+        "driver/commutative_instruction_reorder_operands.h",
         "driver/compiler_annotations.h",
         "driver/computation_flattener.h",
         "driver/convolution_classifier.h",
@@ -372,6 +374,16 @@ tf_cc_test(
 tf_cc_test(
     name = "while_loop_condition_simplify_test",
     srcs = ["tests/while_loop_condition_simplify_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "commutative_instruction_reorder_operands_test",
+    srcs = ["tests/commutative_instruction_reorder_operands_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -715,6 +727,7 @@ test_suite(
         "ipu_engine_cache_test",
         "inplace_test",
         "constant_test",
+        "commutative_instruction_reorder_operands_test",
     ],
 )
 
@@ -747,6 +760,7 @@ test_suite(
         "ipu_engine_cache_test",
         "inplace_test",
         "constant_test",
+        "commutative_instruction_reorder_operands_test",
     ],
 )
 

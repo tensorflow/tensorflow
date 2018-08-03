@@ -90,7 +90,7 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
     // Relu with broadcast
-    {{HloOpcode::kMaximum, true, 0, IsFloatType, {1, 3}},
+    {{HloOpcode::kMaximum, true, 0, IsFloatType, {3, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
@@ -104,10 +104,10 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
     // Sigmoid with broadcast
-    {{HloOpcode::kAdd, true, 0, IsFloatType, {4, 1}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
+    {{HloOpcode::kAdd, true, 0, IsFloatType, {1, 4}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {2, 4}},
      {HloOpcode::kTanh, true, 0, nullptr, {3}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 6}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {6, 4}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
      {HloOpcode::kConstant, true, 0, IsConstantHalf, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
@@ -221,7 +221,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     // Bias reduction and application
     {{HloOpcode::kSubtract, true, 0, IsOutputFeed, {1, 2}},
      {HloOpcode::kParameter, false, 0, IsTrueParameter, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {3, 5}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {5, 3}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kReduce, true, 0, IsBiasReduce, {7, 6}},
