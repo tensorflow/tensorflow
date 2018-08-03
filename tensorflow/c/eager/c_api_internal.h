@@ -59,7 +59,6 @@ struct TFE_ContextOptions {
   // true if async execution is enabled.
   bool async = false;
   TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
-  tensorflow::ServerDef server_def;
 };
 
 struct TFE_Context {
@@ -72,23 +71,6 @@ struct TFE_Context {
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
                 async, std::move(device_mgr), rendezvous) {}
-
-  explicit TFE_Context(
-      const tensorflow::SessionOptions& opts,
-      TFE_ContextDevicePlacementPolicy default_policy, bool async,
-      tensorflow::DeviceMgr* local_device_mgr,
-      tensorflow::Rendezvous* rendezvous,
-      std::unique_ptr<tensorflow::ServerInterface> server,
-      std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers,
-      std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr,
-      const tensorflow::gtl::FlatMap<tensorflow::string, tensorflow::uint64>&
-          remote_contexts)
-      : context(opts,
-                static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                    default_policy),
-                async, local_device_mgr, rendezvous, std::move(server),
-                std::move(remote_eager_workers), std::move(remote_device_mgr),
-                remote_contexts) {}
 
   tensorflow::EagerContext context;
 };

@@ -303,8 +303,14 @@ Status EagerLocalExecute(EagerOperation* op,
     // See WARNING comment in Execute (before kernel->Run) - would be nice to
     // rework to avoid this subtlety.
     tf_shared_lock l(*ctx->FunctionsMu());
-    status = KernelAndDevice::Init(ndef, ctx->func_lib(device), ctx->runner(),
-                                   kernel);
+    auto* flr = ctx->func_lib(device);
+
+    if (flr == nullptr) {
+      return errors::Unavailable(
+          "Unable to find a FunctionLibraryRuntime corresponding to device ",
+          device->name());
+    }
+    status = KernelAndDevice::Init(ndef, flr, ctx->runner(), kernel);
     if (!status.ok()) {
       delete kernel;
       return status;
@@ -383,6 +389,13 @@ std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
   return [ctx, eager_client, context_id, op_id, output_num]() {
+    if (!ctx->HasActiveRemoteContext(context_id)) {
+      // This means that this tensor was pointing to a remote device, which has
+      // been changed out from under us. Simply return since there is nothing we
+      // can do.
+      return tensorflow::Status::OK();
+    }
+
     std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
     request->set_context_id(context_id);
 
