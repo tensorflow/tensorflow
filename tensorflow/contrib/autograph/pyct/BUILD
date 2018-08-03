@@ -25,6 +25,7 @@ py_library(
         "cfg.py",
         "compiler.py",
         "inspect_utils.py",
+        "origin_info.py",
         "parser.py",
         "pretty_printer.py",
         "qual_names.py",
@@ -95,6 +96,16 @@ py_test(
         ":pyct",
         "//tensorflow/python:client_testlib",
         "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "origin_info_test",
+    srcs = ["origin_info_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

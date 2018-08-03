@@ -73,6 +73,8 @@ def do_quantize_training_on_graphdef(input_graph, num_bits):
 
 do_quantize_training_on_graphdef._tf_api_names = [
     'train.do_quantize_training_on_graphdef']
+do_quantize_training_on_graphdef._tf_api_names_v1 = [
+    'train.do_quantize_training_on_graphdef']
 %}
 
 %unignoreall

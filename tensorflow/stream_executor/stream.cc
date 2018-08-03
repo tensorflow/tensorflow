@@ -267,6 +267,12 @@ Stream::Stream(StreamExecutor *parent,
 Stream::~Stream() {
   VLOG_CALL();
 
+  // Ensure the stream is completed.
+  auto status = BlockHostUntilDone();
+  if (!status.ok()) {
+    LOG(WARNING) << "Error blocking host until done in stream destructor: "
+                 << status;
+  }
   temporary_memory_manager_.ForceDeallocateAll();
 
   if (allocated_) {
@@ -1377,15 +1383,16 @@ Stream &Stream::ThenPoolForward(
     const dnn::BatchDescriptor &input_dimensions,
     const DeviceMemory<double> &input_data,
     const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<double> *output_data) {
+    DeviceMemory<double> *output_data, ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
-            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
-                                    input_data, output_dimensions,
-                                    output_data));
+                                    input_data, output_dimensions, output_data,
+                                    workspace_allocator));
     } else {
       SetError();
       LOG(WARNING)
@@ -1401,15 +1408,16 @@ Stream &Stream::ThenPoolForward(
     const dnn::BatchDescriptor &input_dimensions,
     const DeviceMemory<float> &input_data,
     const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data) {
+    DeviceMemory<float> *output_data, ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
-            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
-                                    input_data, output_dimensions,
-                                    output_data));
+                                    input_data, output_dimensions, output_data,
+                                    workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1422,15 +1430,17 @@ Stream &Stream::ThenPoolForward(
     const dnn::BatchDescriptor &input_dimensions,
     const DeviceMemory<Eigen::half> &input_data,
     const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<Eigen::half> *output_data) {
+    DeviceMemory<Eigen::half> *output_data,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
-            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
-                                    input_data, output_dimensions,
-                                    output_data));
+                                    input_data, output_dimensions, output_data,
+                                    workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1445,16 +1455,19 @@ Stream &Stream::ThenPoolBackward(
     const dnn::BatchDescriptor &output_dimensions,
     const DeviceMemory<double> &output_data,
     const DeviceMemory<double> &input_diff_data,
-    DeviceMemory<double> *output_diff_data) {
+    DeviceMemory<double> *output_diff_data,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
-            PARAM(input_diff_data), PARAM(output_diff_data));
+            PARAM(input_diff_data), PARAM(output_diff_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolBackward(this, pooling_dimensions, input_dimensions,
                                      input_data, output_dimensions, output_data,
-                                     input_diff_data, output_diff_data));
+                                     input_diff_data, output_diff_data,
+                                     workspace_allocator));
     } else {
       SetError();
       LOG(WARNING)
@@ -1472,16 +1485,19 @@ Stream &Stream::ThenPoolBackward(
     const dnn::BatchDescriptor &output_dimensions,
     const DeviceMemory<float> &output_data,
     const DeviceMemory<float> &input_diff_data,
-    DeviceMemory<float> *output_diff_data) {
+    DeviceMemory<float> *output_diff_data,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
-            PARAM(input_diff_data), PARAM(output_diff_data));
+            PARAM(input_diff_data), PARAM(output_diff_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolBackward(this, pooling_dimensions, input_dimensions,
                                      input_data, output_dimensions, output_data,
-                                     input_diff_data, output_diff_data));
+                                     input_diff_data, output_diff_data,
+                                     workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1496,16 +1512,19 @@ Stream &Stream::ThenPoolBackward(
     const dnn::BatchDescriptor &output_dimensions,
     const DeviceMemory<Eigen::half> &output_data,
     const DeviceMemory<Eigen::half> &input_diff_data,
-    DeviceMemory<Eigen::half> *output_diff_data) {
+    DeviceMemory<Eigen::half> *output_diff_data,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
-            PARAM(input_diff_data), PARAM(output_diff_data));
+            PARAM(input_diff_data), PARAM(output_diff_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolBackward(this, pooling_dimensions, input_dimensions,
                                      input_data, output_dimensions, output_data,
-                                     input_diff_data, output_diff_data));
+                                     input_diff_data, output_diff_data,
+                                     workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1552,16 +1571,18 @@ Stream &Stream::ThenNormalizeBackwardWithDimensions(
     const dnn::BatchDescriptor &dimensions, const DeviceMemory<float> &raw_data,
     const DeviceMemory<float> &normalized_data,
     const DeviceMemory<float> &normalized_variable_gradient,
-    DeviceMemory<float> *raw_variable_gradient) {
+    DeviceMemory<float> *raw_variable_gradient,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(raw_data),
             PARAM(normalized_data), PARAM(normalized_variable_gradient),
-            PARAM(raw_variable_gradient));
+            PARAM(raw_variable_gradient), PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoNormalizeBackwardWithDimensions(
           this, normalize_descriptor, dimensions, raw_data, normalized_data,
-          normalized_variable_gradient, raw_variable_gradient));
+          normalized_variable_gradient, raw_variable_gradient,
+          workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1920,7 +1941,14 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
   mutex_lock lock(mu_);
   for (auto &stream : sub_streams_) {
     if (stream.first.get() == sub_stream) {
-      stream.second = true;
+      // Streams have a monotonic state machine; if a stream
+      // encounters an error, it will remain in an error state
+      // forever. Only allow re-use of ok streams.
+      //
+      // TODO(toddw): Improve this mechanism, if necessary, to drop
+      // failed streams completely.
+      const bool ready_to_reuse = sub_stream->ok();
+      stream.second = ready_to_reuse;
       return;
     }
   }
@@ -4657,6 +4685,115 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
               scratch_allocator);
 }
 
+Stream &Stream::ThenBlasGemmStridedBatched(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, float alpha, const DeviceMemory<Eigen::half> &a, int lda,
+    int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb, int64 stride_b,
+    float beta, DeviceMemory<Eigen::half> *c, int ldc, int64 stride_c,
+    int batch_count) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(stride_a), PARAM(b),
+            PARAM(ldb), PARAM(stride_b), PARAM(beta), PARAM(c), PARAM(ldc),
+            PARAM(stride_c), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64, float,
+               const DeviceMemory<Eigen::half> &, int, int64,
+               const DeviceMemory<Eigen::half> &, int, int64, float,
+               DeviceMemory<Eigen::half> *, int, int64, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmStridedBatched, transa,
+              transb, m, n, k, alpha, a, lda, stride_a, b, ldb, stride_b, beta,
+              c, ldc, stride_c, batch_count);
+}
+
+Stream &Stream::ThenBlasGemmStridedBatched(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
+    int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
+    float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
+    int batch_count) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(stride_a), PARAM(b),
+            PARAM(ldb), PARAM(stride_b), PARAM(beta), PARAM(c), PARAM(ldc),
+            PARAM(stride_c), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64, float,
+               const DeviceMemory<float> &, int, int64,
+               const DeviceMemory<float> &, int, int64, float,
+               DeviceMemory<float> *, int, int64, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmStridedBatched, transa,
+              transb, m, n, k, alpha, a, lda, stride_a, b, ldb, stride_b, beta,
+              c, ldc, stride_c, batch_count);
+}
+
+Stream &Stream::ThenBlasGemmStridedBatched(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+    int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
+    double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
+    int batch_count) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(stride_a), PARAM(b),
+            PARAM(ldb), PARAM(stride_b), PARAM(beta), PARAM(c), PARAM(ldc),
+            PARAM(stride_c), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64, double,
+               const DeviceMemory<double> &, int, int64,
+               const DeviceMemory<double> &, int, int64, double,
+               DeviceMemory<double> *, int, int64, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmStridedBatched, transa,
+              transb, m, n, k, alpha, a, lda, stride_a, b, ldb, stride_b, beta,
+              c, ldc, stride_c, batch_count);
+}
+
+Stream &Stream::ThenBlasGemmStridedBatched(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, std::complex<float> alpha,
+    const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,
+    const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
+    std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+    int64 stride_c, int batch_count) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(stride_a), PARAM(b),
+            PARAM(ldb), PARAM(stride_b), PARAM(beta), PARAM(c), PARAM(ldc),
+            PARAM(stride_c), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64,
+               std::complex<float>, const DeviceMemory<std::complex<float>> &,
+               int, int64, const DeviceMemory<std::complex<float>> &, int,
+               int64, std::complex<float>, DeviceMemory<std::complex<float>> *,
+               int, int64, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmStridedBatched, transa,
+              transb, m, n, k, alpha, a, lda, stride_a, b, ldb, stride_b, beta,
+              c, ldc, stride_c, batch_count);
+}
+
+Stream &Stream::ThenBlasGemmStridedBatched(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, std::complex<double> alpha,
+    const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,
+    const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,
+    std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+    int64 stride_c, int batch_count) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(stride_a), PARAM(b),
+            PARAM(ldb), PARAM(stride_b), PARAM(beta), PARAM(c), PARAM(ldc),
+            PARAM(stride_c), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64,
+               std::complex<double>, const DeviceMemory<std::complex<double>> &,
+               int, int64, const DeviceMemory<std::complex<double>> &, int,
+               int64, std::complex<double>,
+               DeviceMemory<std::complex<double>> *, int, int64, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmStridedBatched, transa,
+              transb, m, n, k, alpha, a, lda, stride_a, b, ldb, stride_b, beta,
+              c, ldc, stride_c, batch_count);
+}
+
 Stream &Stream::ThenSetRngSeed(const uint8 *seed, uint64 seed_bytes) {
   VLOG_CALL(PARAM(seed), PARAM(seed_bytes));
 
@@ -5228,24 +5365,11 @@ port::Status Stream::BlockHostUntilDone() {
     return status;
   }
 
-  port::Status first_error;
-  {
-    // Wait until all active sub-streams have done their tasks.
-    mutex_lock lock(mu_);
-    for (auto &stream : sub_streams_) {
-      if (!stream.second) {
-        first_error.Update(stream.first->BlockHostUntilDone());
-        // Set this sub-stream as available.
-        stream.second = true;
-      }
-    }
-  }
-
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  first_error.Update(parent_->BlockHostUntilDone(this));
-  CheckError(first_error.ok());
-  return first_error;
+  port::Status error = parent_->BlockHostUntilDone(this);
+  CheckError(error.ok());
+  return error;
 }
 
 }  // namespace stream_executor

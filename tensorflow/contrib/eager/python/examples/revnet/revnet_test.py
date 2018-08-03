@@ -31,10 +31,13 @@ tfe = tf.contrib.eager
 
 def train_one_iter(model, inputs, labels, optimizer, global_step=None):
   """Train for one iteration."""
-  grads, vars_, loss = model.compute_gradients(inputs, labels, training=True)
-  optimizer.apply_gradients(zip(grads, vars_), global_step=global_step)
+  logits, saved_hidden = model(inputs)
+  grads, loss = model.compute_gradients(
+      saved_hidden=saved_hidden, labels=labels)
+  optimizer.apply_gradients(
+      zip(grads, model.trainable_variables), global_step=global_step)
 
-  return loss
+  return logits, loss
 
 
 class RevNetTest(tf.test.TestCase):
@@ -42,6 +45,8 @@ class RevNetTest(tf.test.TestCase):
   def setUp(self):
     super(RevNetTest, self).setUp()
     config = config_.get_hparams_cifar_38()
+    config.add_hparam("n_classes", 10)
+    config.add_hparam("dataset", "cifar-10")
     # Reconstruction could cause numerical error, use double precision for tests
     config.dtype = tf.float64
     config.fused = False  # Fused batch norm does not support tf.float64
@@ -93,9 +98,10 @@ class RevNetTest(tf.test.TestCase):
 
   def test_compute_gradients(self):
     """Test `compute_gradients` function."""
-    self.model(self.x, training=False)  # Initialize model
-    grads, vars_, loss = self.model.compute_gradients(
-        inputs=self.x, labels=self.t, training=True, l2_reg=True)
+    _, saved_hidden = self.model(self.x)  # Initialize model
+    grads, loss = self.model.compute_gradients(
+        saved_hidden=saved_hidden, labels=self.t)
+    vars_ = self.model.trainable_variables
     self.assertTrue(isinstance(grads, list))
     self.assertTrue(isinstance(vars_, list))
     self.assertEqual(len(grads), len(vars_))
@@ -104,7 +110,7 @@ class RevNetTest(tf.test.TestCase):
 
     # Compare against the true gradient computed by the tape
     with tf.GradientTape() as tape:
-      logits, _ = self.model(self.x, training=True)
+      logits, _ = self.model(self.x)
       loss_true = self.model.compute_loss(logits=logits, labels=self.t)
     grads_true = tape.gradient(loss_true, vars_)
     self.assertAllClose(loss, loss_true)
@@ -119,7 +125,9 @@ class RevNetTest(tf.test.TestCase):
   def test_compute_gradients_defun(self):
     """Test `compute_gradients` function with defun."""
     compute_gradients = tfe.defun(self.model.compute_gradients)
-    grads, vars_, _ = compute_gradients(self.x, self.t, training=True)
+    _, saved_hidden = self.model(self.x)
+    grads, _ = compute_gradients(saved_hidden=saved_hidden, labels=self.t)
+    vars_ = self.model.trainable_variables
     self.assertTrue(isinstance(grads, list))
     self.assertTrue(isinstance(vars_, list))
     self.assertEqual(len(grads), len(vars_))
@@ -131,6 +139,9 @@ class RevNetTest(tf.test.TestCase):
     """Test model training in graph mode."""
     with tf.Graph().as_default():
       config = config_.get_hparams_cifar_38()
+      config.add_hparam("n_classes", 10)
+      config.add_hparam("dataset", "cifar-10")
+
       x = tf.random_normal(
           shape=(self.config.batch_size,) + self.config.input_shape)
       t = tf.random_uniform(
@@ -138,17 +149,13 @@ class RevNetTest(tf.test.TestCase):
           minval=0,
           maxval=self.config.n_classes,
           dtype=tf.int32)
-      global_step = tfe.Variable(0., trainable=False)
+      global_step = tf.Variable(0., trainable=False)
       model = revnet.RevNet(config=config)
-      model(x)
-      updates = model.get_updates_for(x)
-
-      x_ = tf.identity(x)
-      grads_all, vars_all, _ = model.compute_gradients(x_, t, training=True)
+      _, saved_hidden = model(x)
+      grads, _ = model.compute_gradients(saved_hidden=saved_hidden, labels=t)
       optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-      with tf.control_dependencies(updates):
-        train_op = optimizer.apply_gradients(
-            zip(grads_all, vars_all), global_step=global_step)
+      train_op = optimizer.apply_gradients(
+          zip(grads, model.trainable_variables), global_step=global_step)
 
       with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())

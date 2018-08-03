@@ -23,10 +23,6 @@ function run_configure_for_gpu_build {
   # Enable CUDA support
   export TF_NEED_CUDA=1
 
-  # TODO(pcloudy): Remove this after TensorFlow uses its own CRSOOTOOL
-  # for GPU build on Windows
-  export USE_MSVC_WRAPPER=1
-
   yes "" | ./configure
 }
 
@@ -37,10 +33,10 @@ function set_remote_cache_options {
   echo "build --tls_enabled=true" >> "${TMP_BAZELRC}"
   echo "build --remote_timeout=3600" >> "${TMP_BAZELRC}"
   echo "build --auth_enabled=true" >> "${TMP_BAZELRC}"
-  echo "build --spawn_strategy=remote" >> "${TMP_BAZELRC}"
-  echo "build --strategy=Javac=remote" >> "${TMP_BAZELRC}"
-  echo "build --strategy=Closure=remote" >> "${TMP_BAZELRC}"
-  echo "build --genrule_strategy=remote" >> "${TMP_BAZELRC}"
+  echo "build --spawn_strategy=standalone" >> "${TMP_BAZELRC}"
+  echo "build --strategy=Javac=standalone" >> "${TMP_BAZELRC}"
+  echo "build --strategy=Closure=standalone" >> "${TMP_BAZELRC}"
+  echo "build --genrule_strategy=standalone" >> "${TMP_BAZELRC}"
   echo "build --google_credentials=$GOOGLE_CLOUD_CREDENTIAL" >> "${TMP_BAZELRC}"
 }
 

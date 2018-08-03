@@ -77,9 +77,10 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if context.executing_eagerly():
-    return var._unique_id  # pylint: disable=protected-access
-  return (var.op.graph, var.op.name)
+  # TODO(ashankar): Consolidate handling for eager and graph
+  if hasattr(var, "op"):
+    return (var.op.graph, var.op.name)
+  return var._unique_id  # pylint: disable=protected-access
 
 
 class _OptimizableVariable(object):

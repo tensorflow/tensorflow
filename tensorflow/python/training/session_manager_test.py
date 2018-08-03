@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_manager
@@ -174,13 +175,13 @@ class SessionManagerTest(test.TestCase):
                  os.path.join(checkpoint_dir, "recover_session_checkpoint"))
     self._test_recovered_variable(checkpoint_dir=checkpoint_dir)
     self._test_recovered_variable(
-        checkpoint_filename_with_path=saver_lib.latest_checkpoint(
+        checkpoint_filename_with_path=checkpoint_management.latest_checkpoint(
             checkpoint_dir))
     # Cannot set both checkpoint_dir and checkpoint_filename_with_path.
     with self.assertRaises(ValueError):
       self._test_recovered_variable(
           checkpoint_dir=checkpoint_dir,
-          checkpoint_filename_with_path=saver_lib.latest_checkpoint(
+          checkpoint_filename_with_path=checkpoint_management.latest_checkpoint(
               checkpoint_dir))
 
   def testWaitForSessionReturnsNoneAfterTimeout(self):

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -113,7 +114,7 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   const Shape& index_shape = index_vector->shape();
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateFromDimensions(index_shape.element_type(), {1})));
+          LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));
 
   // We extract out individual components from the smaller index and concatenate
   // them (interspersing zeros as needed) into the larger index.

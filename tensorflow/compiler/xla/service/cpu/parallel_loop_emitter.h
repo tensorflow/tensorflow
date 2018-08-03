@@ -54,7 +54,7 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       const llvm_ir::IrArray& target_array,
                       const DynamicLoopBounds* dynamic_loop_bounds,
-                      llvm::IRBuilder<>* ir_builder);
+                      llvm::IRBuilder<>* b);
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;

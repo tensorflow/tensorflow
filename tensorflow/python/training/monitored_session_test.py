@@ -44,6 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
@@ -1364,8 +1365,8 @@ class MonitoredSessionTest(test.TestCase):
       with monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               scaffold,
-              checkpoint_filename_with_path=saver_lib.latest_checkpoint(
-                  logdir))) as session:
+              checkpoint_filename_with_path=
+              checkpoint_management.latest_checkpoint(logdir))) as session:
         self.assertEqual(2, session.run(gstep))
 
   def test_retry_initialization_on_aborted_error(self):

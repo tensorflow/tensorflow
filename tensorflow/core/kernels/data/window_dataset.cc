@@ -17,6 +17,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// TODO(b/110981596): Support checkpointing.
 class WindowDataset : public DatasetBase {
  public:
   WindowDataset(std::vector<std::vector<Tensor>> elements,

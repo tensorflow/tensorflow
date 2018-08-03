@@ -85,6 +85,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "window_dataset_op",
+    srcs = ["window_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        ":window_dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "slide_dataset_op",
     srcs = ["slide_dataset_op.cc"],
     deps = [
@@ -191,12 +204,28 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "parallel_map_iterator",
+    srcs = ["parallel_map_iterator.cc"],
+    hdrs = ["parallel_map_iterator.h"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 tf_kernel_library(
     name = "parallel_map_dataset_op",
     srcs = ["parallel_map_dataset_op.cc"],
     deps = [
         ":captured_function",
         ":dataset",
+        ":parallel_map_iterator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -525,6 +554,7 @@ tf_kernel_library(
     deps = [
         ":dataset",
         ":dataset_utils",
+        ":optional_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -533,6 +563,20 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_kernel_library(
+    name = "optional_ops",
+    srcs = ["optional_ops.cc"],
+    hdrs = ["optional_ops.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -546,15 +590,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/tensor_bundle",
-    ],
-)
-
-tf_kernel_library(
-    name = "identity_dataset_op",
-    srcs = ["identity_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:framework",
     ],
 )
 
@@ -606,12 +641,12 @@ tf_kernel_library(
         ":generator_dataset_op",
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
-        ":identity_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_and_batch_dataset_op",
         ":map_dataset_op",
         ":optimize_dataset_op",
+        ":optional_ops",
         ":padded_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
@@ -634,6 +669,7 @@ tf_kernel_library(
         ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
         ":unbatch_dataset_op",
+        ":window_dataset_op",
         ":writer_ops",
         ":zip_dataset_op",
     ],

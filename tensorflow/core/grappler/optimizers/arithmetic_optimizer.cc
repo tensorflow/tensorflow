@@ -2598,23 +2598,36 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
       : ArithmeticOptimizerStage("ConvertExpm1", ctx, ctx_ext) {}
   ~ConvertExpm1Stage() override = default;
 
-  bool IsSupported(const NodeDef* node) const override { return IsExp(*node); }
+  bool IsSupported(const NodeDef* node) const override {
+    if (!IsSub(*node))
+      return false;
+
+    NodeDef* input;
+    if (!GetInputNode(node->input(0), &input).ok())
+      return false;
+
+    return IsExp(*input);
+  }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
-    if (!IsSub(*input)) {
+    if (ctx().graph_properties->GetInputProperties(node->name()).size() < 2) {
       return Status::OK();
     }
 
-    if (ctx().graph_properties->GetInputProperties(input->name()).size() < 2) {
+    NodeDef* exp;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &exp));
+    if (!IsExp(*exp)) {
+      return Status::OK();
+    }
+
+    if (ctx().graph_properties->GetInputProperties(exp->name()).empty()) {
       return Status::OK();
     }
 
     const auto& t =
-        ctx().graph_properties->GetInputProperties(input->name())[0];
+        ctx().graph_properties->GetInputProperties(exp->name())[0];
     const auto& c =
-        ctx().graph_properties->GetInputProperties(input->name())[1];
+        ctx().graph_properties->GetInputProperties(node->name())[1];
     for (int k = 0; k < c.shape().dim_size(); ++k) {
       // Skip if c shape is not fully determined.
       if (c.shape().dim(k).size() < 0) {
@@ -2650,18 +2663,18 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
           return Status::OK();
         }
       }
-      NodeDef *x, *y;
-      TF_RETURN_IF_ERROR(GetInputNode(input->input(0), &x));
-      TF_RETURN_IF_ERROR(GetInputNode(input->input(1), &y));
+      NodeDef *exp_input, *ones;
+      TF_RETURN_IF_ERROR(GetInputNode(exp->input(0), &exp_input));
+      TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &ones));
       node->set_op("Expm1");
-      node->set_input(0, input->input(0));
-      node->add_input(AsControlDependency(y->name()));
-      ForwardControlDependencies(node, {input});
+      node->set_input(0, exp->input(0));
+      node->set_input(1, AsControlDependency(ones->name()));
+      ForwardControlDependencies(node, {exp});
 
       AddToOptimizationQueue(node);
-      AddToOptimizationQueue(input);
-      AddToOptimizationQueue(x);
-      AddToOptimizationQueue(y);
+      AddToOptimizationQueue(exp);
+      AddToOptimizationQueue(exp_input);
+      AddToOptimizationQueue(ones);
     }
     return Status::OK();
   }
@@ -3078,14 +3091,7 @@ void ArithmeticOptimizer::DedupComputations() {
 
   // Delete duplicates
   if (fetch_nodes_known_ && !duplicates.empty()) {
-    int last = optimized_graph_->node_size() - 1;
-    for (auto it = duplicates.rbegin(); it != duplicates.rend(); ++it) {
-      int index = *it;
-      optimized_graph_->mutable_node()->SwapElements(index, last);
-      last--;
-    }
-    optimized_graph_->mutable_node()->DeleteSubrange(last + 1,
-                                                     duplicates.size());
+    EraseNodesFromGraph(duplicates, optimized_graph_);
     // Rebuild the NodeMap which was invalidated by the node  swapping above.
     node_map_.reset(new NodeMap(optimized_graph_));
   }

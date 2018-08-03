@@ -314,7 +314,7 @@ serve multiple clients.
 
 **Cluster**
 
-A TensorFlow cluster comprises a one or more "jobs", each divided into lists of
+A TensorFlow cluster comprises one or more "jobs", each divided into lists of
 one or more "tasks". A cluster is typically dedicated to a particular high-level
 objective, such as training a neural network, using many machines in parallel. A
 cluster is defined by

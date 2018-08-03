@@ -293,7 +293,7 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
               ph2: np.arange(8).astype(np.int32)
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        print(sess.run(next_element))
+        sess.run(next_element)
 
       # No 0th dimension (i.e. scalar value) for one component.
       sess.run(
@@ -303,7 +303,7 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
               ph2: 7
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        print(sess.run(next_element))
+        sess.run(next_element)
 
   def testBatchAndDropRemainder(self):
     components = (np.arange(7),

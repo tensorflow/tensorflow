@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -56,6 +57,17 @@ int NumSchedulableCPUs() {
   GetSystemInfo(&system_info);
   return system_info.dwNumberOfProcessors;
 }
+
+bool NUMAEnabled() {
+  // Not yet implemented: coming soon.
+  return false;
+}
+
+int NUMANumNodes() { return 1; }
+
+void NUMASetThreadNodeAffinity(int node) {}
+
+int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {
 #ifdef TENSORFLOW_USE_JEMALLOC
@@ -107,6 +119,14 @@ void Free(void* ptr) {
   return free(ptr);
 #endif
 }
+
+void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
+  return AlignedMalloc(size, minimum_alignment);
+}
+
+void NUMAFree(void* ptr, size_t size) { Free(ptr); }
+
+int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.

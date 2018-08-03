@@ -500,17 +500,17 @@ bool c_is_sorted(const C& c, Compare&& comp) {
 }
 
 template <typename C>
-auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
+auto c_adjacent_find(C& c) -> decltype(std::begin(c)) {
   return std::adjacent_find(std::begin(c), std::end(c));
 }
 
 template <typename C, typename Pred>
-auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+auto c_find_if(C& c, Pred&& pred) -> decltype(std::begin(c)) {
   return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
 template <typename C, typename Value>
-auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
+auto c_find(C& c, Value&& value) -> decltype(std::begin(c)) {
   return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
 }
 
@@ -560,6 +560,11 @@ void InsertAt(C* c, int64 index, Value&& value) {
 template <typename C>
 void EraseAt(C* c, int64 index) {
   c->erase(c->begin() + index);
+}
+
+template <typename T>
+std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
+  return std::vector<T>(slice.begin(), slice.end());
 }
 
 template <typename T, int N>

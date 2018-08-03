@@ -31,6 +31,10 @@ bool CpuOpFilter(KernelDef* kdef) {
         DT_FLOAT);
     return true;
   }
+  // TODO(b/26783907): The CPU backend currently does not implement sort.
+  if (kdef->op() == "XlaSort" || kdef->op() == "TopKV2") {
+    return false;
+  }
   if (kdef->op() == "Const") {
     AddDtypeToKernalDefConstraint("dtype", DT_STRING, kdef);
   }

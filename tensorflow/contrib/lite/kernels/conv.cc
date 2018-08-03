@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -257,10 +256,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
-    TF_LITE_ENSURE(context, real_multiplier < 1.0);
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
-    data->output_shift *= -1;
+
+    int exponent;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
+    data->output_shift = -exponent;
     CalculateActivationRangeUint8(params->activation, output,
                                   &data->output_activation_min,
                                   &data->output_activation_max);
@@ -418,6 +417,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         filter_data = GetTensorData<float>(filter);
       }
       multithreaded_ops::Conv(
+          *eigen_support::GetThreadPoolDevice(context),
           GetTensorData<float>(input), GetTensorDims(input), filter_data,
           GetTensorDims(filter), GetTensorData<float>(bias),
           GetTensorDims(bias), params->stride_width, params->stride_height,

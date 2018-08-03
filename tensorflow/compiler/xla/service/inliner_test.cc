@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -51,10 +51,10 @@ TEST_F(InlinerTest, MapMax) {
   auto max_f32 = max_builder.Build();
 
   auto builder = HloComputation::Builder("MapMaxFunction");
-  auto lhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3, 4})));
-  auto rhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({4, 3, 2, 1})));
+  auto lhs = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({1, 2, 3, 4})));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({4, 3, 2, 1})));
   builder.AddInstruction(
       HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
@@ -70,7 +70,7 @@ TEST_F(InlinerTest, MapMax) {
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
-  auto expected = Literal::CreateR1<float>({4, 3, 3, 4});
+  auto expected = LiteralUtil::CreateR1<float>({4, 3, 3, 4});
   EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
 }
 
@@ -83,12 +83,12 @@ TEST_F(InlinerTest, MapConstant) {
       HloInstruction::CreateParameter(0, r0f32, "x"));
   (void)param1;
   const2_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
   auto const2_f32 = const2_builder.Build();
 
   auto builder = HloComputation::Builder("MapConstFunction");
   auto lhs = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1, 2, 3, 4}, {5, 6, 7, 8}})));
+      LiteralUtil::CreateR2<float>({{1, 2, 3, 4}, {5, 6, 7, 8}})));
   builder.AddInstruction(
       HloInstruction::CreateMap(lhs->shape(), {lhs}, const2_f32.get()));
 
@@ -104,7 +104,7 @@ TEST_F(InlinerTest, MapConstant) {
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
-  auto expected = Literal::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
+  auto expected = LiteralUtil::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
   EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
 }
 
@@ -123,10 +123,10 @@ TEST_F(InlinerTest, MapSubtractOppositeOrder) {
   auto max_f32 = max_builder.Build();
 
   auto builder = HloComputation::Builder("MapSubFunction");
-  auto lhs = builder.AddInstruction(
-    HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3, 4})));
-  auto rhs = builder.AddInstruction(
-    HloInstruction::CreateConstant(Literal::CreateR1<float>({4, 3, 2, 1})));
+  auto lhs = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({1, 2, 3, 4})));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({4, 3, 2, 1})));
   builder.AddInstruction(
     HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
@@ -142,7 +142,7 @@ TEST_F(InlinerTest, MapSubtractOppositeOrder) {
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
-  auto expected = Literal::CreateR1<float>({3, 1, -1, -3});
+  auto expected = LiteralUtil::CreateR1<float>({3, 1, -1, -3});
   EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
 }
 

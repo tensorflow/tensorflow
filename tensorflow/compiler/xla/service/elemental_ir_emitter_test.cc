@@ -57,8 +57,8 @@ ENTRY main {
 }
 )";
 
-  std::unique_ptr<Literal> lhs = Literal::CreateR3<int32>({{{1}, {2}}});
-  std::unique_ptr<Literal> rhs = Literal::CreateR3<int32>({{{3}, {4}}});
+  std::unique_ptr<Literal> lhs = LiteralUtil::CreateR3<int32>({{{1}, {2}}});
+  std::unique_ptr<Literal> rhs = LiteralUtil::CreateR3<int32>({{{3}, {4}}});
   RunTest(hlo_text, {lhs.get(), rhs.get()});
 }
 }  // namespace

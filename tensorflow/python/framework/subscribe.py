@@ -47,7 +47,7 @@ def _recursive_apply(tensors, apply_fn):
   tensors_type = type(tensors)
   if tensors_type is ops.Tensor:
     return apply_fn(tensors)
-  elif tensors_type is variables.Variable:
+  elif isinstance(tensors, variables.Variable):
     return apply_fn(tensors.value())
   elif isinstance(tensors, (list, tuple)):
     tensors = [_recursive_apply(t, apply_fn) for t in tensors]

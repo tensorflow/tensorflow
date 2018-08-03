@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -217,7 +218,7 @@ class NearComparator {
       return Printf(
           "actual %s, expected %s, index %s, rel error %8.3g, abs error %8.3g",
           FpValueToString(actual).c_str(), FpValueToString(expected).c_str(),
-          Literal::MultiIndexAsString(
+          LiteralUtil::MultiIndexAsString(
               IndexUtil::LinearIndexToMultidimensionalIndex(shape,
                                                             linear_index))
               .c_str(),
@@ -722,7 +723,7 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
   return AppendStatus(result,
                       tensorflow::strings::Printf(
                           "\nat index: %s\nexpected: %s\nactual:   %s",
-                          Literal::MultiIndexAsString(multi_index).c_str(),
+                          LiteralUtil::MultiIndexAsString(multi_index).c_str(),
                           ToStringTruncated(expected).c_str(),
                           ToStringTruncated(actual).c_str()));
 }

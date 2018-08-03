@@ -60,11 +60,32 @@ HloSharding HloSharding::Tuple(
     const Shape& tuple_shape,
     tensorflow::gtl::ArraySlice<HloSharding> shardings) {
   CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  for (auto& sharding : shardings) {
+    CHECK(!sharding.IsTuple()) << sharding.ToString();
+  }
   std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
   CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))
       << "Flat list has " << flattened_list.size() << ", required "
       << RequiredLeaves(tuple_shape);
   return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
+                                     const HloSharding& sharding) {
+  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  CHECK(!sharding.IsTuple()) << sharding.ToString();
+  int64 leaf_count = ShapeUtil::GetLeafCount(tuple_shape);
+  std::vector<HloSharding> flattened_list;
+  flattened_list.reserve(leaf_count);
+  for (int64 i = 0; i < leaf_count; ++i) {
+    flattened_list.push_back(sharding);
+  }
+  return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::Single(const Shape& shape,
+                                const HloSharding& sharding) {
+  return ShapeUtil::IsTuple(shape) ? SingleTuple(shape, sharding) : sharding;
 }
 
 string HloSharding::ToString() const {
@@ -106,15 +127,15 @@ std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {
   if (IsTuple()) {
     for (auto& tuple_element_sharding : tuple_elements()) {
       auto unique_device = tuple_element_sharding.UniqueDevice();
-      if (unique_device.ok()) {
-        device_map[unique_device.ValueOrDie()] += 1;
+      if (unique_device) {
+        device_map[*unique_device] += 1;
       }
     }
     element_count = tuple_elements().size();
   } else {
     auto unique_device = UniqueDevice();
-    if (unique_device.ok()) {
-      device_map[unique_device.ValueOrDie()] += 1;
+    if (unique_device) {
+      device_map[*unique_device] += 1;
     }
   }
   if (count != nullptr) {
@@ -217,40 +238,31 @@ StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
   return Tuple(ShapeTree<HloSharding>(shape, *this));
 }
 
-StatusOr<int64> HloSharding::UniqueDevice() const {
+tensorflow::gtl::optional<int64> HloSharding::UniqueDevice() const {
   if (IsTuple()) {
     if (tuple_elements_.empty()) {
-      return tensorflow::errors::InvalidArgument(
-          "UniqueDevice() called on empty tuple");
+      return tensorflow::gtl::nullopt;
     }
-    std::vector<StatusOr<int64>> results;
-    std::transform(tuple_elements_.begin(), tuple_elements_.end(),
-                   std::back_inserter(results),
-                   [](const HloSharding& s) { return s.UniqueDevice(); });
-    if (std::all_of(results.begin(), results.end(),
-                    [&](const StatusOr<int64>& s) {
-                      return s.ok() && results[0].ok() &&
-                             s.ValueOrDie() == results[0].ValueOrDie();
-                    })) {
-      return results[0];
-    } else {
-      return tensorflow::errors::InvalidArgument(
-          "Tuple did not contain a unique device");
+    tensorflow::gtl::optional<int64> unique_device;
+    for (auto& tuple_sharding : tuple_elements_) {
+      auto device = tuple_sharding.UniqueDevice();
+      if (!device || (unique_device && *device != *unique_device)) {
+        return tensorflow::gtl::nullopt;
+      }
+      unique_device = device;
     }
+    return unique_device;
   }
-  if (!replicated_ && maximal_ && !IsTuple()) {
+  if (!replicated_ && maximal_) {
     return static_cast<int64>(*tile_assignment_.begin());
   }
-  return tensorflow::errors::InvalidArgument(
-      "UniqueDevice() called on sharding that executes on multiple devices");
+  return tensorflow::gtl::nullopt;
 }
 
-bool HloSharding::HasUniqueDevice() const {
-  if (IsTuple()) {
-    return UniqueDevice().status().ok();
-  } else {
-    return !IsReplicated() && IsTileMaximal();
-  }
+int64 HloSharding::GetUniqueDevice() const {
+  auto device = UniqueDevice();
+  CHECK(device) << "Sharding does not have a unique device: " << *this;
+  return *device;
 }
 
 Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {

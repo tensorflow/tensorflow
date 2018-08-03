@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "lgamma"
-    deprecation_message: "tf.lgamma is deprecated, please use tf.math.lgamma instead."
+    deprecated: true
   }
 }

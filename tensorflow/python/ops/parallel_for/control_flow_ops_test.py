@@ -23,6 +23,8 @@ import time
 from absl import flags
 import numpy as np
 
+from tensorflow.core.example import example_pb2
+from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,6 +37,7 @@ from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
@@ -1344,6 +1347,56 @@ class SparseTest(PForTest):
     manual = sparse_tensor.SparseTensor([[i, 0, 0] for i in range(num_iters)],
                                         [1] * num_iters,
                                         (num_iters, num_iters, num_iters))
+    self.run_and_assert_equal(pfor, manual)
+
+
+class ParsingTest(PForTest):
+
+  def test_decode_csv(self):
+    csv_tensor = constant_op.constant([["1:2:3"], ["::"], ["7:8:9"]])
+    kwargs = {"record_defaults": [[10], [20], [30]], "field_delim": ":"}
+
+    def loop_fn(i):
+      line = array_ops.gather(csv_tensor, i)
+      return parsing_ops.decode_csv(line, **kwargs)
+
+    self._test_loop_fn(loop_fn, iters=3, loop_fn_dtypes=[dtypes.int32] * 3)
+
+  def test_parse_single_example(self):
+
+    def _int64_feature(*values):
+      return feature_pb2.Feature(int64_list=feature_pb2.Int64List(value=values))
+
+    def _bytes_feature(*values):
+      return feature_pb2.Feature(
+          bytes_list=feature_pb2.BytesList(
+              value=[v.encode("utf-8") for v in values]))
+
+    examples = constant_op.constant([
+        example_pb2.Example(
+            features=feature_pb2.Features(
+                feature={
+                    "dense_int": _int64_feature(i),
+                    "dense_str": _bytes_feature(str(i)),
+                    "sparse_int": _int64_feature(i, i * 2, i * 4, i * 8),
+                    "sparse_str": _bytes_feature(*["abc"] * i)
+                })).SerializeToString() for i in range(10)
+    ])
+
+    features = {
+        "dense_int": parsing_ops.FixedLenFeature((), dtypes.int64, 0),
+        "dense_str": parsing_ops.FixedLenFeature((), dtypes.string, ""),
+        "sparse_int": parsing_ops.VarLenFeature(dtypes.int64),
+        "sparse_str": parsing_ops.VarLenFeature(dtypes.string),
+    }
+
+    def loop_fn(i):
+      example_proto = array_ops.gather(examples, i)
+      f = parsing_ops.parse_single_example(example_proto, features)
+      return f
+
+    pfor = pfor_control_flow_ops.pfor(loop_fn, iters=10)
+    manual = parsing_ops.parse_example(examples, features)
     self.run_and_assert_equal(pfor, manual)
 
 

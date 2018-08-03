@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import warnings
 
@@ -25,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -45,7 +47,9 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
 
 
@@ -415,6 +419,69 @@ class IteratorTest(test.TestCase):
         sess.run(
             next_element, feed_dict={handle_placeholder: iterator_4_handle})
 
+  def testIteratorStringHandleFuture(self):
+    with forward_compat.forward_compatibility_horizon(2018, 8, 4):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
+
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_4 = dataset_4.make_one_shot_iterator()
+
+      handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      feedable_iterator = iterator_ops.Iterator.from_string_handle(
+          handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+      next_element = feedable_iterator.get_next()
+
+      self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
+      self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
+      self.assertEqual([], feedable_iterator.output_shapes)
+
+      with self.test_session() as sess:
+        iterator_3_handle = sess.run(iterator_3.string_handle())
+        iterator_4_handle = sess.run(iterator_4.string_handle())
+
+        self.assertEqual(
+            10,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            1,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            20,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            2,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            30,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            3,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            40,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(
+              next_element, feed_dict={handle_placeholder: iterator_3_handle})
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(
+              next_element, feed_dict={handle_placeholder: iterator_4_handle})
+
   def testIteratorStringHandleReuseTensorObject(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     one_shot_iterator = dataset.make_one_shot_iterator()
@@ -722,6 +789,99 @@ class IteratorTest(test.TestCase):
       for foo in dataset:
         self.assertEqual(val, foo.numpy())
         val += 1
+
+
+class IteratorCheckpointingTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSaveRestoreOneShotIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(
+        math_ops.square).batch(2)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator.get_next())
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    with self.test_session() as sess:
+      self.assertAllEqual([1, 4], get_next())
+      save_path = checkpoint.save(checkpoint_prefix)
+      self.assertAllEqual([9, 16], get_next())
+      self.assertAllEqual([25, 36], get_next())
+      checkpoint.restore(save_path).run_restore_ops(sess)
+      self.assertAllEqual([9, 16], get_next())
+      self.assertAllEqual([25, 36], get_next())
+      with self.assertRaises(errors.OutOfRangeError):
+        get_next()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSaveRestoreMultipleIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    dataset = dataset.map(math_ops.square).batch(2)
+    iterator_1 = dataset.make_one_shot_iterator()
+    get_next_1 = iterator_1.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator_1.get_next())
+    iterator_2 = dataset.make_one_shot_iterator()
+    get_next_2 = iterator_2.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator_2.get_next())
+    dataset_2 = dataset_ops.Dataset.range(10)
+    iterator_3 = dataset_2.make_one_shot_iterator()
+    get_next_3 = iterator_3.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator_3.get_next())
+    checkpoint = checkpointable_utils.Checkpoint(
+        iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
+    with self.test_session() as sess:
+      self.assertAllEqual([1, 4], get_next_1())
+      self.assertAllEqual(0, get_next_3())
+      self.assertAllEqual(1, get_next_3())
+      self.assertAllEqual(2, get_next_3())
+      save_path = checkpoint.save(checkpoint_prefix)
+      self.assertAllEqual([1, 4], get_next_2())
+      self.assertAllEqual([9, 16], get_next_2())
+      self.assertAllEqual(3, get_next_3())
+      checkpoint.restore(save_path).run_restore_ops(sess)
+      self.assertAllEqual([9, 16], get_next_1())
+      self.assertAllEqual([1, 4], get_next_2())
+      self.assertAllEqual(3, get_next_3())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRestoreExhaustedIterator(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.range(3)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next if context.executing_eagerly(
+    ) else functools.partial(self.evaluate, iterator.get_next())
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    with self.test_session() as sess:
+      self.assertAllEqual(0, get_next())
+      self.assertAllEqual(1, get_next())
+      save_path = checkpoint.save(checkpoint_prefix)
+      self.assertAllEqual(2, get_next())
+      checkpoint.restore(save_path).run_restore_ops(sess)
+      self.assertAllEqual(2, get_next())
+      save_path = checkpoint.save(checkpoint_prefix)
+      checkpoint.restore(save_path).run_restore_ops(sess)
+      with self.assertRaises(errors.OutOfRangeError):
+        get_next()
+
+  def testRestoreInReconstructedIteratorInitializable(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dataset = dataset_ops.Dataset.range(10)
+    iterator = dataset.make_initializable_iterator()
+    get_next = iterator.get_next()
+    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    for i in range(5):
+      with self.test_session() as sess:
+        checkpoint.restore(checkpoint_management.latest_checkpoint(
+            checkpoint_directory)).initialize_or_restore(sess)
+        for j in range(2):
+          self.assertEqual(i * 2 + j, sess.run(get_next))
+        checkpoint.save(file_prefix=checkpoint_prefix)
 
 
 if __name__ == "__main__":

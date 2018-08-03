@@ -21,30 +21,30 @@ from __future__ import print_function
 import shutil
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.gan.python import namedtuples
+from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
 from tensorflow.contrib.gan.python.estimator.python import gan_estimator_impl as estimator
 from tensorflow.contrib.gan.python.losses.python import tuple_losses as losses
 from tensorflow.contrib.learn.python.learn.learn_io import graph_io
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import learning_rate_decay
-from tensorflow.python.training import monitored_session
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 
@@ -60,120 +60,109 @@ def discriminator_fn(data, unused_conditioning, mode):
   return layers.fully_connected(data, 1)
 
 
-def mock_head(testcase, expected_generator_inputs, expected_real_data,
-              generator_scope_name):
-  """Returns a mock head that validates logits values and variable names."""
-  discriminator_scope_name = 'Discriminator'  # comes from TFGAN defaults
-  generator_var_names = set([
-      '%s/fully_connected/weights:0' % generator_scope_name,
-      '%s/fully_connected/biases:0' % generator_scope_name])
-  discriminator_var_names = set([
-      '%s/fully_connected/weights:0' % discriminator_scope_name,
-      '%s/fully_connected/biases:0' % discriminator_scope_name])
+class GetGANModelTest(test.TestCase, parameterized.TestCase):
+  """Tests that `GetGANModel` produces the correct model."""
 
-  def _create_estimator_spec(features, mode, logits, labels):
-    gan_model = logits  # renaming for clarity
-    is_predict = mode == model_fn_lib.ModeKeys.PREDICT
-    testcase.assertIsNone(features)
-    testcase.assertIsNone(labels)
-    testcase.assertIsInstance(gan_model, namedtuples.GANModel)
-
-    trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
-    expected_var_names = (generator_var_names if is_predict else
-                          generator_var_names | discriminator_var_names)
-    testcase.assertItemsEqual(expected_var_names,
-                              [var.name for var in trainable_vars])
-
-    assertions = []
-    def _or_none(x):
-      return None if is_predict else x
-    testcase.assertEqual(expected_generator_inputs, gan_model.generator_inputs)
-    # TODO(joelshor): Add check on `generated_data`.
-    testcase.assertItemsEqual(
-        generator_var_names,
-        set([x.name for x in gan_model.generator_variables]))
-    testcase.assertEqual(generator_scope_name, gan_model.generator_scope.name)
-    testcase.assertEqual(_or_none(expected_real_data), gan_model.real_data)
-    # TODO(joelshor): Add check on `discriminator_real_outputs`.
-    # TODO(joelshor): Add check on `discriminator_gen_outputs`.
-    if is_predict:
-      testcase.assertIsNone(gan_model.discriminator_scope)
-    else:
-      testcase.assertEqual(discriminator_scope_name,
-                           gan_model.discriminator_scope.name)
-
-    with ops.control_dependencies(assertions):
-      if mode == model_fn_lib.ModeKeys.TRAIN:
-        return model_fn_lib.EstimatorSpec(
-            mode=mode, loss=array_ops.zeros([]),
-            train_op=control_flow_ops.no_op(), training_hooks=[])
-      elif mode == model_fn_lib.ModeKeys.EVAL:
-        return model_fn_lib.EstimatorSpec(
-            mode=mode, predictions=gan_model.generated_data,
-            loss=array_ops.zeros([]))
-      elif mode == model_fn_lib.ModeKeys.PREDICT:
-        return model_fn_lib.EstimatorSpec(
-            mode=mode, predictions=gan_model.generated_data)
-      else:
-        testcase.fail('Invalid mode: {}'.format(mode))
-
-  head = test.mock.NonCallableMagicMock(spec=head_lib._Head)
-  head.create_estimator_spec = test.mock.MagicMock(
-      wraps=_create_estimator_spec)
-
-  return head
-
-
-class GANModelFnTest(test.TestCase):
-  """Tests that _gan_model_fn passes expected logits to mock head."""
-
-  def setUp(self):
-    self._model_dir = tempfile.mkdtemp()
-
-  def tearDown(self):
-    if self._model_dir:
-      writer_cache.FileWriterCache.clear()
-      shutil.rmtree(self._model_dir)
-
-  def _test_logits_helper(self, mode):
-    """Tests that the expected logits are passed to mock head."""
+  @parameterized.named_parameters(
+      ('train', model_fn_lib.ModeKeys.TRAIN),
+      ('eval', model_fn_lib.ModeKeys.EVAL),
+      ('predict', model_fn_lib.ModeKeys.PREDICT))
+  def test_get_gan_model(self, mode):
     with ops.Graph().as_default():
-      training_util.get_or_create_global_step()
-      generator_inputs = {'x': array_ops.zeros([5, 4])}
-      real_data = (None if mode == model_fn_lib.ModeKeys.PREDICT else
-                   array_ops.zeros([5, 4]))
-      generator_scope_name = 'generator'
-      head = mock_head(self,
-                       expected_generator_inputs=generator_inputs,
-                       expected_real_data=real_data,
-                       generator_scope_name=generator_scope_name)
-      estimator_spec = estimator._gan_model_fn(
-          features=generator_inputs,
-          labels=real_data,
-          mode=mode,
-          generator_fn=generator_fn,
-          discriminator_fn=discriminator_fn,
-          generator_scope_name=generator_scope_name,
-          head=head)
-      with monitored_session.MonitoredTrainingSession(
-          checkpoint_dir=self._model_dir) as sess:
-        if mode == model_fn_lib.ModeKeys.TRAIN:
-          sess.run(estimator_spec.train_op)
-        elif mode == model_fn_lib.ModeKeys.EVAL:
-          sess.run(estimator_spec.loss)
-        elif mode == model_fn_lib.ModeKeys.PREDICT:
-          sess.run(estimator_spec.predictions)
-        else:
-          self.fail('Invalid mode: {}'.format(mode))
+      generator_inputs = {'x': array_ops.ones([3, 4])}
+      real_data = (array_ops.zeros([3, 4]) if
+                   mode != model_fn_lib.ModeKeys.PREDICT else None)
+      gan_model = estimator._get_gan_model(
+          mode, generator_fn, discriminator_fn, real_data, generator_inputs,
+          add_summaries=False)
 
-  def test_logits_predict(self):
-    self._test_logits_helper(model_fn_lib.ModeKeys.PREDICT)
+    self.assertEqual(generator_inputs, gan_model.generator_inputs)
+    self.assertIsNotNone(gan_model.generated_data)
+    self.assertEqual(2, len(gan_model.generator_variables))  # 1 FC layer
+    self.assertIsNotNone(gan_model.generator_fn)
+    if mode == model_fn_lib.ModeKeys.PREDICT:
+      self.assertIsNone(gan_model.real_data)
+      self.assertIsNone(gan_model.discriminator_real_outputs)
+      self.assertIsNone(gan_model.discriminator_gen_outputs)
+      self.assertIsNone(gan_model.discriminator_variables)
+      self.assertIsNone(gan_model.discriminator_scope)
+      self.assertIsNone(gan_model.discriminator_fn)
+    else:
+      self.assertIsNotNone(gan_model.real_data)
+      self.assertIsNotNone(gan_model.discriminator_real_outputs)
+      self.assertIsNotNone(gan_model.discriminator_gen_outputs)
+      self.assertEqual(2, len(gan_model.discriminator_variables))  # 1 FC layer
+      self.assertIsNotNone(gan_model.discriminator_scope)
+      self.assertIsNotNone(gan_model.discriminator_fn)
 
-  def test_logits_eval(self):
-    self._test_logits_helper(model_fn_lib.ModeKeys.EVAL)
 
-  def test_logits_train(self):
-    self._test_logits_helper(model_fn_lib.ModeKeys.TRAIN)
+def get_dummy_gan_model():
+  # TODO(joelshor): Find a better way of creating a variable scope.
+  with variable_scope.variable_scope('generator') as gen_scope:
+    gen_var = variable_scope.get_variable('dummy_var', initializer=0.0)
+  with variable_scope.variable_scope('discriminator') as dis_scope:
+    dis_var = variable_scope.get_variable('dummy_var', initializer=0.0)
+  return tfgan_tuples.GANModel(
+      generator_inputs=None,
+      generated_data=array_ops.ones([3, 4]),
+      generator_variables=[gen_var],
+      generator_scope=gen_scope,
+      generator_fn=None,
+      real_data=array_ops.zeros([3, 4]),
+      discriminator_real_outputs=array_ops.ones([1, 2, 3]) * dis_var,
+      discriminator_gen_outputs=array_ops.ones([1, 2, 3]) * gen_var * dis_var,
+      discriminator_variables=[dis_var],
+      discriminator_scope=dis_scope,
+      discriminator_fn=None)
+
+
+def dummy_loss_fn(gan_model):
+  return math_ops.reduce_sum(gan_model.discriminator_real_outputs -
+                             gan_model.discriminator_gen_outputs)
+
+
+def get_metrics(gan_model):
+  return {
+      'mse_custom_metric': metrics_lib.mean_squared_error(
+          gan_model.real_data, gan_model.generated_data)
+  }
+
+
+class GetEstimatorSpecTest(test.TestCase, parameterized.TestCase):
+  """Tests that the EstimatorSpec is constructed appropriately."""
+
+  @classmethod
+  def setUpClass(cls):
+    cls._generator_optimizer = training.GradientDescentOptimizer(1.0)
+    cls._discriminator_optimizer = training.GradientDescentOptimizer(1.0)
+
+  @parameterized.named_parameters(
+      ('train', model_fn_lib.ModeKeys.TRAIN),
+      ('eval', model_fn_lib.ModeKeys.EVAL),
+      ('predict', model_fn_lib.ModeKeys.PREDICT))
+  def test_get_estimator_spec(self, mode):
+    with ops.Graph().as_default():
+      self._gan_model = get_dummy_gan_model()
+      spec = estimator._get_estimator_spec(
+          mode,
+          self._gan_model,
+          generator_loss_fn=dummy_loss_fn,
+          discriminator_loss_fn=dummy_loss_fn,
+          get_eval_metric_ops_fn=get_metrics,
+          generator_optimizer=self._generator_optimizer,
+          discriminator_optimizer=self._discriminator_optimizer)
+
+    self.assertEqual(mode, spec.mode)
+    if mode == model_fn_lib.ModeKeys.PREDICT:
+      self.assertEqual(self._gan_model.generated_data, spec.predictions)
+    elif mode == model_fn_lib.ModeKeys.TRAIN:
+      self.assertShapeEqual(np.array(0), spec.loss)  # must be a scalar
+      self.assertIsNotNone(spec.train_op)
+      self.assertIsNotNone(spec.training_hooks)
+    elif mode == model_fn_lib.ModeKeys.EVAL:
+      self.assertEqual(self._gan_model.generated_data, spec.predictions)
+      self.assertShapeEqual(np.array(0), spec.loss)  # must be a scalar
+      self.assertIsNotNone(spec.eval_metric_ops)
 
 
 # TODO(joelshor): Add pandas test.
@@ -194,12 +183,6 @@ class GANEstimatorIntegrationTest(test.TestCase):
       gstep = training_util.get_or_create_global_step()
       lr = learning_rate_decay.exponential_decay(1.0, gstep, 10, 0.9)
       return training.GradientDescentOptimizer(lr)
-
-    def get_metrics(gan_model):
-      return {
-          'mse_custom_metric': metrics_lib.mean_squared_error(
-              gan_model.real_data, gan_model.generated_data)
-      }
 
     gopt = make_opt if lr_decay else training.GradientDescentOptimizer(1.0)
     dopt = make_opt if lr_decay else training.GradientDescentOptimizer(1.0)

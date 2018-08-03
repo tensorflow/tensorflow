@@ -33,12 +33,9 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
-
 DATA_FORMATS = (
     ("_data_format_NHWC", "NHWC"),
     ("_data_format_NCHW", "NCHW"),
-    ("_data_format_HWNC", "HWNC"),
-    ("_data_format_HWCN", "HWCN"),
 )
 
 

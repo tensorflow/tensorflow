@@ -817,11 +817,12 @@ class GradLoopState(object):
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.
-    if outer_forward_ctxt:
-      outer_forward_ctxt.Enter()
-    cnt, forward_index = forward_ctxt.AddForwardLoopCounter(outer_grad_state)
-    if outer_forward_ctxt:
-      outer_forward_ctxt.Exit()
+    with forward_ctxt._graph.as_default():  # pylint: disable=protected-access
+      if outer_forward_ctxt:
+        outer_forward_ctxt.Enter()
+      cnt, forward_index = forward_ctxt.AddForwardLoopCounter(outer_grad_state)
+      if outer_forward_ctxt:
+        outer_forward_ctxt.Exit()
     self._forward_context = forward_ctxt
     self._forward_index = forward_index
 
@@ -984,60 +985,61 @@ class GradLoopState(object):
         for the stack can't be found.
     """
     # curr_ctxt is the context that tf.gradients was called in.
-    curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
-    with ops.control_dependencies(None):
-      if curr_ctxt:
-        curr_ctxt.Enter()
-      with ops.colocate_with(value):
-        # We only need to pass maximum_iterations to the stack if
-        # we're inside an XLA context.
-        if not util.IsInXLAContext(value.op):
-          max_size = constant_op.constant(-1, dtypes.int32)
-        else:
-          max_size = GetMaxSizeFromNestedMaximumIterations(
-              value, self.forward_context)
-        acc = gen_data_flow_ops.stack_v2(
-            max_size=max_size, elem_type=value.dtype.base_dtype, name="f_acc")
-      if curr_ctxt:
-        curr_ctxt.Exit()
+    with self._forward_index.graph.as_default():
+      curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+      with ops.control_dependencies(None):
+        if curr_ctxt:
+          curr_ctxt.Enter()
+        with ops.colocate_with(value):
+          # We only need to pass maximum_iterations to the stack if
+          # we're inside an XLA context.
+          if not util.IsInXLAContext(value.op):
+            max_size = constant_op.constant(-1, dtypes.int32)
+          else:
+            max_size = GetMaxSizeFromNestedMaximumIterations(
+                value, self.forward_context)
+          acc = gen_data_flow_ops.stack_v2(
+              max_size=max_size, elem_type=value.dtype.base_dtype, name="f_acc")
+        if curr_ctxt:
+          curr_ctxt.Exit()
 
-      # Make acc available in the forward context.
-      enter_acc = self.forward_context.AddValue(acc)
+        # Make acc available in the forward context.
+        enter_acc = self.forward_context.AddValue(acc)
 
-      # Add the stack_push op in the context of value.op.
-      swap_enabled = self.forward_context.swap_memory
-      value_ctxt = util.GetOutputContext(value.op)
-      if value_ctxt == self.forward_context:
-        # value is not nested in the forward context.
-        self.forward_context.Enter()
-        push = gen_data_flow_ops.stack_push_v2(
-            enter_acc, value, swap_memory=swap_enabled)
-        self.forward_context.Exit()
-        # Protect stack push and order it before forward_index.
-        self.forward_index.op._add_control_input(push.op)
-      else:
-        # value is in a cond context within the forward context.
-        if not isinstance(value_ctxt, CondContext):
-          raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
-        if dead_branch:
-          # The special case for creating a zero tensor for a dead
-          # branch of a switch. See ControlFlowState.ZerosLike().
-          value_ctxt.outer_context.Enter()
+        # Add the stack_push op in the context of value.op.
+        swap_enabled = self.forward_context.swap_memory
+        value_ctxt = util.GetOutputContext(value.op)
+        if value_ctxt == self.forward_context:
+          # value is not nested in the forward context.
+          self.forward_context.Enter()
           push = gen_data_flow_ops.stack_push_v2(
               enter_acc, value, swap_memory=swap_enabled)
-          value_ctxt.outer_context.Exit()
-          push.op._set_control_flow_context(value_ctxt)
+          self.forward_context.Exit()
+          # Protect stack push and order it before forward_index.
+          self.forward_index.op._add_control_input(push.op)
         else:
-          value_ctxt.Enter()
-          push = gen_data_flow_ops.stack_push_v2(
-              enter_acc, value, swap_memory=swap_enabled)
-          value_ctxt.Exit()
-        # Protect stack push and order it before forward_sync.
-        self.forward_sync._add_control_input(push.op)
-      # Order stack push after the successor of forward_index
-      add_op = self.forward_index.op.inputs[0].op
-      push.op._add_control_input(add_op)
-      return acc
+          # value is in a cond context within the forward context.
+          if not isinstance(value_ctxt, CondContext):
+            raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
+          if dead_branch:
+            # The special case for creating a zero tensor for a dead
+            # branch of a switch. See ControlFlowState.ZerosLike().
+            value_ctxt.outer_context.Enter()
+            push = gen_data_flow_ops.stack_push_v2(
+                enter_acc, value, swap_memory=swap_enabled)
+            value_ctxt.outer_context.Exit()
+            push.op._set_control_flow_context(value_ctxt)
+          else:
+            value_ctxt.Enter()
+            push = gen_data_flow_ops.stack_push_v2(
+                enter_acc, value, swap_memory=swap_enabled)
+            value_ctxt.Exit()
+          # Protect stack push and order it before forward_sync.
+          self.forward_sync._add_control_input(push.op)
+        # Order stack push after the successor of forward_index
+        add_op = self.forward_index.op.inputs[0].op
+        push.op._add_control_input(add_op)
+        return acc
 
   def AddBackpropAccumulatedValue(self, history_value, value,
                                   dead_branch=False):
@@ -1817,15 +1819,34 @@ class CondContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
-      # Remove any external control dependency on this op
+      # If we're in a while loop, remove any control inputs from outside the
+      # loop.
       self._RemoveExternalControlEdges(op)
-      # pylint: disable=protected-access
-      op._add_control_input(self._pivot.op)
-      # pylint: enable=protected-access
+
+      if not any(util.OpInContext(input_op, self)
+                 for input_op in op.control_inputs):
+        # pylint: disable=protected-access
+        op._add_control_input(self._pivot.op)
+        # pylint: enable=protected-access
     else:
+      # Make each input to 'op' available in this CondContext. If an input is
+      # already part of this context there's nothing to do, but if it's
+      # external, AddValue() will handle adding the appropriate Switch node and
+      # other bookkeeping.
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        real_x = self.AddValue(x)
+        if op.type == "Merge" and x.op.type == "NextIteration":
+          # Edge case: if we're importing a while loop inside this CondContext,
+          # AddValue() will not correctly handle the NextIteration inputs to
+          # Merge node. The problem is that the NextIteration should also be
+          # part of this context, but if we're importing it won't have been
+          # processed and added to the context yet, so AddValue() will try to
+          # add a Switch which results in an invalid graph. Instead, we use the
+          # NextIteration input as-is here, and it will eventually be added to
+          # the context via AddOp().
+          real_x = x
+        else:
+          real_x = self.AddValue(x)
         if real_x != x:
           # pylint: disable=protected-access
           op._update_input(index, real_x)
@@ -2196,6 +2217,7 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = []
     # The list of enter tensors for loop variables.
     self._loop_enters = []
+    self._graph = ops.get_default_graph()
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `WhileContext` from protocol buffer.
@@ -2249,6 +2271,7 @@ class WhileContext(ControlFlowContext):
           op._set_attr("frame_name",
                        attr_value_pb2.AttrValue(s=compat.as_bytes(self.name)))
           # pylint: enable=protected-access
+    self._graph = ops.get_default_graph()
 
   @property
   def maximum_iterations(self):
@@ -2573,7 +2596,14 @@ class WhileContext(ControlFlowContext):
     Returns:
       The loop index.
     """
-    one = constant_op.constant(1, name="b_count")
+    in_separate_functions = count.graph is not ops.get_default_graph()
+    if in_separate_functions:
+      # Brings the count into this graph
+      count = array_ops.identity(count)
+    else:
+      # TODO(apassos) XLA expects this constant to be created outside the loop,
+      # so doing that for now.
+      one = constant_op.constant(1, name="b_count")
 
     self.Enter()
     self.AddName(count.name)
@@ -2588,6 +2618,8 @@ class WhileContext(ControlFlowContext):
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
+    if in_separate_functions:
+      one = constant_op.constant(1, name="b_count")
     pred = math_ops.greater_equal(merge_count, one)
     self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
@@ -2932,7 +2964,8 @@ class WhileContext(ControlFlowContext):
 
     return original_body_result, exit_vars
 
-  def BuildLoop(self, pred, body, loop_vars, shape_invariants):
+  def BuildLoop(self, pred, body, loop_vars, shape_invariants,
+                return_same_structure):
     """Add the loop termination condition and body to the graph."""
 
     # Keep original_loop_vars to identify which are TensorArrays
@@ -2960,7 +2993,11 @@ class WhileContext(ControlFlowContext):
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
         flat_sequence=exit_vars_with_tensor_arrays)
-    return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
+
+    if return_same_structure:
+      return packed_exit_vars
+    else:
+      return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()
@@ -3000,7 +3037,8 @@ def while_loop(cond,
                back_prop=True,
                swap_memory=False,
                name=None,
-               maximum_iterations=None):
+               maximum_iterations=None,
+               return_same_structure=False):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -3076,11 +3114,16 @@ def while_loop(cond,
       to run.  If provided, the `cond` output is AND-ed with an additional
       condition ensuring the number of iterations executed is no greater than
       `maximum_iterations`.
+    return_same_structure: If True, output has same structure as `loop_vars`. If
+      eager execution is enabled, this is ignored (and always treated as True).
 
   Returns:
-    The output tensors for the loop variables after the loop. When the length
-    of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
-    the length of `loop_vars` is greater than 1 it returns a list.
+    The output tensors for the loop variables after the loop.
+     If `return_same_structure` is True, the return value has the same
+     structure as `loop_vars`.
+     If `return_same_structure` is False, the return value is a Tensor,
+     TensorArray or IndexedSlice if the length of `loop_vars` is 1, or a list
+     otherwise.
 
   Raises:
     TypeError: if `cond` or `body` is not callable.
@@ -3135,7 +3178,7 @@ def while_loop(cond,
   happen is that the thread updating `x` can never get ahead of the
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
-  
+
   ```python
   import tensorflow as tf
 
@@ -3217,7 +3260,8 @@ def while_loop(cond,
     # be encapsulated in the root context.
     if loop_context.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
-    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
+    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants,
+                                    return_same_structure)
     if maximum_iterations is not None:
       return result[1]
     else:

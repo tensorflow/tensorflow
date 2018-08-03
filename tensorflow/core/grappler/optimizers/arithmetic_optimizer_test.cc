@@ -2553,10 +2553,9 @@ TEST_F(ArithmeticOptimizerTest, Expm1) {
   auto x1 = ops::Const(s.WithOpName("x1"), {2.0f, 2.0f}, {1, 2});
   auto x2 = ops::Const(s.WithOpName("x2"), {1.0f, 1.0f}, {1, 2});
   auto x3 = ops::Const(s.WithOpName("x3"), {3.0f, 3.0f}, {1, 2});
-  auto s12 = ops::Sub(s.WithOpName("s12").WithControlDependencies(x3), x1, x2);
-  auto s23 = ops::Sub(s.WithOpName("s23"), x2, x3);
-  Output out1 = ops::Exp(s.WithOpName("out1"), s12);
-  Output out2 = ops::Exp(s.WithOpName("out2"), s23);
+  auto exp1 = ops::Exp(s.WithOpName("exp1").WithControlDependencies(x3), x1);
+  Output out1 = ops::Sub(s.WithOpName("out1"), exp1, x2);
+  Output out2 = ops::Sub(s.WithOpName("out2"), exp1, x3);
 
   GrapplerItem item;
   item.fetch = {"out1", "out2"};
@@ -2571,15 +2570,20 @@ TEST_F(ArithmeticOptimizerTest, Expm1) {
   auto tensors = EvaluateNodes(got, item.fetch);
   EXPECT_EQ(2, tensors.size());
 
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+
   GraphDef want;
   AddNode("x1", "Const", {}, {}, &want);
   AddNode("x2", "Const", {}, {}, &want);
   AddNode("x3", "Const", {}, {}, &want);
-  AddNode("s23", "Sub", {"x2", "x3"}, {}, &want);
+  AddNode("exp1", "Exp", {"x1", AsControlDependency("x3")}, {}, &want);
   AddNode("out1", "Expm1",
           {"x1", AsControlDependency("x2"), AsControlDependency("x3")}, {},
           &want);
-  AddNode("out2", "Exp", {"s23"}, {}, &want);
+  AddNode("out2", "Sub", {"exp1", "x3"}, {}, &want);
 
   CompareGraphs(want, got);
 }
