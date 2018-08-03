@@ -267,7 +267,7 @@ bb2(%x2 : i64, %y2 : i32, %z2 : i32):
 
 // Test pretty printing of constant names.
 // CHECK-LABEL: cfgfunc @constants
-cfgfunc @constants() -> (i32, i23, i23) {
+cfgfunc @constants() -> (i32, i23, i23, i1, i1) {
 bb0:
   // CHECK: %c42_i32 = constant 42 : i32
   %x = constant 42 : i32
@@ -278,7 +278,12 @@ bb0:
   // CHECK: %c17_i23_0 = constant 17 : i23
   %z = constant 17 : i23
 
-  // CHECK: return %c42_i32, %c17_i23, %c17_i23_0
-  return %x, %y, %z : i32, i23, i23
+  // CHECK: %true = constant 1 : i1
+  %t = constant 1 : i1
+  // CHECK: %false = constant 0 : i1
+  %f = constant 0 : i1
+
+  // CHECK: return %c42_i32, %c17_i23, %c17_i23_0, %true, %false
+  return %x, %y, %z, %t, %f : i32, i23, i23, i1, i1
 }
 

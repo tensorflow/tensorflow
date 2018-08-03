@@ -80,6 +80,9 @@ public:
   bool isF32() const { return getKind() == Kind::F32; }
   bool isF64() const { return getKind() == Kind::F64; }
 
+  /// Return true if this is an integer type with the specified width.
+  bool isInteger(unsigned width) const;
+
   // Convenience factories.
   static IntegerType *getInteger(unsigned width, MLIRContext *ctx);
   static FloatType *getBF16(MLIRContext *ctx);
@@ -152,6 +155,13 @@ private:
 
 inline IntegerType *Type::getInteger(unsigned width, MLIRContext *ctx) {
   return IntegerType::get(width, ctx);
+}
+
+/// Return true if this is an integer type with the specified width.
+inline bool Type::isInteger(unsigned width) const {
+  if (auto *intTy = dyn_cast<IntegerType>(this))
+    return intTy->getWidth() == width;
+  return false;
 }
 
 class FloatType : public Type {

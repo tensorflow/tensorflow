@@ -594,9 +594,14 @@ protected:
     // Give constant integers special names.
     if (auto *op = value->getDefiningOperation()) {
       if (auto intOp = op->getAs<ConstantIntOp>()) {
-        specialName << 'c' << intOp->getValue();
-        if (!intOp->getType()->isAffineInt())
-          specialName << '_' << *intOp->getType();
+        // i1 constants get special names.
+        if (intOp->getType()->isInteger(1)) {
+          specialName << (intOp->getValue() ? "true" : "false");
+        } else {
+          specialName << 'c' << intOp->getValue();
+          if (!intOp->getType()->isAffineInt())
+            specialName << '_' << *intOp->getType();
+        }
       }
     }
 
@@ -1150,6 +1155,27 @@ void AffineMap::print(raw_ostream &os) const {
   ModuleState state(/*no context is known*/ nullptr);
   ModulePrinter(os, state).printAffineMap(this);
 }
+
+void SSAValue::print(raw_ostream &os) const {
+  switch (getKind()) {
+  case SSAValueKind::BBArgument:
+    // TODO: Improve this.
+    os << "<bb argument>\n";
+    return;
+  case SSAValueKind::InstResult:
+    return getDefiningInst()->print(os);
+  case SSAValueKind::FnArgument:
+    // TODO: Improve this.
+    os << "<function argument>\n";
+    return;
+  case SSAValueKind::StmtResult:
+    return getDefiningStmt()->print(os);
+  case SSAValueKind::ForStmt:
+    return cast<ForStmt>(this)->print(os);
+  }
+}
+
+void SSAValue::dump() const { print(llvm::errs()); }
 
 void Instruction::print(raw_ostream &os) const {
   ModuleState state(getFunction()->getContext());

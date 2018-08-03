@@ -87,9 +87,6 @@ public:
     return const_cast<StmtBlock *>(this)->front();
   }
 
-  void print(raw_ostream &os) const;
-  void dump() const;
-
   /// getSublistAccess() - Returns pointer to member of statement list
   static StmtListType StmtBlock::*getSublistAccess(Statement *) {
     return &StmtBlock::statements;

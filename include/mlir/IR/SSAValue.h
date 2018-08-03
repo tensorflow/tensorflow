@@ -80,11 +80,19 @@ public:
     return const_cast<SSAValue *>(this)->getDefiningOperation();
   }
 
+  void print(raw_ostream &os) const;
+  void dump() const;
+
 protected:
   SSAValue(SSAValueKind kind, Type *type) : typeAndKind(type, kind) {}
 private:
   const llvm::PointerIntPair<Type *, 3, SSAValueKind> typeAndKind;
 };
+
+inline raw_ostream &operator<<(raw_ostream &os, const SSAValue &value) {
+  value.print(os);
+  return os;
+}
 
 /// This template unifies the implementation logic for CFGValue and MLValue
 /// while providing more type-specific APIs when walking use lists etc.

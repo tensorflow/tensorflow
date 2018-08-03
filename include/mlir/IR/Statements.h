@@ -211,6 +211,9 @@ public:
   AffineConstantExpr *getUpperBound() const { return upperBound; }
   AffineConstantExpr *getStep() const { return step; }
 
+  using Statement::dump;
+  using Statement::print;
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
     return stmt->getKind() == Kind::For;
