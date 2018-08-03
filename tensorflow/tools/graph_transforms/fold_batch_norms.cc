@@ -73,7 +73,8 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
 
         // Make sure all the inputs really are vectors, with as many entries as
         // there are columns in the weights.
-        const int weights_cols_index = conv_node.op() == "Conv2D" ? 3 : (conv_node.op() == "DepthwiseConv2dNative" ? 2 : 1);
+        const int weights_cols_index = conv_node.op() == "Conv2D" ? 3 : \
+                            (conv_node.op() == "DepthwiseConv2dNative" ? 2 : 1);
         const int64 weights_cols = weights.shape().dim_size(weights_cols_index);
         if ((mul_values.shape().dims() != 1) ||
             (mul_values.shape().dim_size(0) != weights_cols)) {
