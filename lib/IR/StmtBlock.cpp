@@ -38,7 +38,10 @@ Statement *StmtBlock::getParentStmt() const {
 MLFunction *StmtBlock::findFunction() const {
   StmtBlock *block = const_cast<StmtBlock *>(this);
 
-  while (block->getParentStmt() != nullptr)
+  while (block->getParentStmt()) {
     block = block->getParentStmt()->getBlock();
-  return static_cast<MLFunction *>(block);
+    if (!block)
+      return nullptr;
+  }
+  return dyn_cast<MLFunction>(block);
 }

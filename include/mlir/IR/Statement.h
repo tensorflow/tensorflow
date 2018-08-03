@@ -45,7 +45,6 @@ public:
   };
 
   Kind getKind() const { return kind; }
-
   /// Remove this statement from its block and delete it.
   void eraseFromBlock();
 
@@ -58,6 +57,7 @@ public:
 
   /// Returns the function that this statement is part of.
   /// The function is determined by traversing the chain of parent statements.
+  /// Returns nullptr if the statement is unlinked.
   MLFunction *findFunction() const;
 
   /// Returns true if there are no more loops nested under this stmt.

@@ -582,6 +582,7 @@ public:
   }
 
   void printOperand(const SSAValue *value) { printValueID(value); }
+
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<const char *> elidedAttrs = {}) override;
 
@@ -1182,6 +1183,10 @@ void SSAValue::print(raw_ostream &os) const {
 void SSAValue::dump() const { print(llvm::errs()); }
 
 void Instruction::print(raw_ostream &os) const {
+  if (!getFunction()) {
+    os << "<<UNLINKED INSTRUCTION>>\n";
+    return;
+  }
   ModuleState state(getFunction()->getContext());
   ModulePrinter modulePrinter(os, state);
   CFGFunctionPrinter(getFunction(), modulePrinter).print(this);
@@ -1193,6 +1198,10 @@ void Instruction::dump() const {
 }
 
 void BasicBlock::print(raw_ostream &os) const {
+  if (!getFunction()) {
+    os << "<<UNLINKED BLOCK>>\n";
+    return;
+  }
   ModuleState state(getFunction()->getContext());
   ModulePrinter modulePrinter(os, state);
   CFGFunctionPrinter(getFunction(), modulePrinter).print(this);
@@ -1202,6 +1211,11 @@ void BasicBlock::dump() const { print(llvm::errs()); }
 
 void Statement::print(raw_ostream &os) const {
   MLFunction *function = findFunction();
+  if (!function) {
+    os << "<<UNLINKED STATEMENT>>\n";
+    return;
+  }
+
   ModuleState state(function->getContext());
   ModulePrinter modulePrinter(os, state);
   MLFunctionPrinter(function, modulePrinter).print(this);

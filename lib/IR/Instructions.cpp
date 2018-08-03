@@ -71,11 +71,13 @@ void OperationInst::destroy() {
 
 /// Return the context this operation is associated with.
 MLIRContext *Instruction::getContext() const {
-  return getFunction()->getContext();
+  auto *fn = getFunction();
+  return fn ? fn->getContext() : nullptr;
 }
 
 CFGFunction *Instruction::getFunction() const {
-  return getBlock()->getFunction();
+  auto *block = getBlock();
+  return block ? block->getFunction() : nullptr;
 }
 
 unsigned Instruction::getNumOperands() const {
