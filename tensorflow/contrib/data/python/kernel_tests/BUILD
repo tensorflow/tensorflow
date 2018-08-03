@@ -209,7 +209,6 @@ py_test(
     size = "small",
     srcs = ["optimize_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
     deps = [
         ":stats_dataset_test_base",
         "//tensorflow/contrib/data/python/ops:optimization",
@@ -242,7 +241,7 @@ cuda_py_test(
     tags = [
         "manual",
         "no_oss",
-        "no_windows_gpu" +
+        "no_windows_gpu",
         "notap",
     ],
 )
