@@ -1532,6 +1532,9 @@ struct TensorFlowUnsupportedOperator : Operator {
   string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
+  // A boolean indicating if the unsupported op output should allow float values
+  // in quantized mode.
+  bool support_output_type_float_in_quantized_op = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
   // Output shapes.

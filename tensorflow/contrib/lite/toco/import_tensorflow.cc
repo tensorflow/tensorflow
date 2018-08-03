@@ -1049,6 +1049,8 @@ tensorflow::Status ConvertUnsupportedOperator(
   static constexpr char kAttrOutputQuantized[] = "_output_quantized";
   static constexpr char kAttrOutputTypes[] = "_output_types";
   static constexpr char kAttrOutputShapes[] = "_output_shapes";
+  static constexpr char kAttrSupportOutputTypeFloatInQuantizedOp[] =
+      "_support_output_type_float_in_quantized_op";
 
   LOG(INFO) << "Converting unsupported operation: " << node.op();
   auto* op = new TensorFlowUnsupportedOperator;
@@ -1060,8 +1062,14 @@ tensorflow::Status ConvertUnsupportedOperator(
   op->tensorflow_op = node.op();
   node.SerializeToString(&op->tensorflow_node_def);
   model->operators.emplace_back(op);
+  // Parse if the op supports quantization
   if (HasAttr(node, kAttrOutputQuantized)) {
     op->quantized = GetBoolAttr(node, kAttrOutputQuantized);
+  }
+  // Parse if the quantized op allows output arrays of type float
+  if (HasAttr(node, kAttrSupportOutputTypeFloatInQuantizedOp)) {
+    op->support_output_type_float_in_quantized_op =
+        GetBoolAttr(node, kAttrSupportOutputTypeFloatInQuantizedOp);
   }
   if (HasAttr(node, kAttrOutputTypes)) {
     const auto& output_types = GetListAttr(node, kAttrOutputTypes);
