@@ -171,7 +171,7 @@ class TrainSpec(
 class EvalSpec(
     collections.namedtuple('EvalSpec', [
         'input_fn', 'steps', 'name', 'hooks', 'exporters', 'start_delay_secs',
-        'throttle_secs'
+        'throttle_secs', 'throttle_steps'
     ])):
   """Configuration for the "eval" part for the `train_and_evaluate` call.
 
@@ -188,7 +188,8 @@ class EvalSpec(
               hooks=None,
               exporters=None,
               start_delay_secs=120,
-              throttle_secs=600):
+              throttle_secs=600,
+              throttle_steps=None):
     """Creates a validated `EvalSpec` instance.
 
     Args:
@@ -217,6 +218,12 @@ class EvalSpec(
       throttle_secs: Int. Do not re-evaluate unless the last evaluation was
         started at least this many seconds ago. Of course, evaluation does not
         occur if no new checkpoints are available, hence, this is the minimum.
+        if throttle_secs is set, throttle_steps should be set None.
+      throttle_steps: Int. Do not re-evaluate unless the last evaluation was
+        started at least throttle_steps before. throttle_steps and throttle_secs
+        can not be set at the same time, if throttle_steps is set, throttle_secs
+        should be set None, evaluation will be started if the difference between
+        current step and last eval step is greater than throttle_steps.
 
     Returns:
       A validated `EvalSpec` object.
@@ -248,9 +255,22 @@ class EvalSpec(
           start_delay_secs))
 
     # Validate throttle_secs.
-    if throttle_secs < 0:
+    if (throttle_secs is not None) and throttle_secs < 0:
       raise ValueError(
           'Must specify throttle_secs >= 0, given: {}'.format(throttle_secs))
+
+    # Validate throttle_steps.
+    if (throttle_steps is not None) and throttle_steps < 0:
+      raise ValueError(
+          'Must specify throttle_steps >= 0, given: {}'.format(throttle_steps))
+
+    # Validate throttle_steps and throttle_secs
+    if throttle_secs is None and throttle_steps is None:
+      raise ValueError('Either throttle_secs or throttle_steps '
+                       'should be provided.')
+    if (throttle_secs is not None) and(throttle_steps is not None):
+      raise ValueError('Can not provide both throttle_secs and '
+                       'throttle_steps.')
 
     return super(EvalSpec, cls).__new__(
         cls,
@@ -260,7 +280,8 @@ class EvalSpec(
         hooks=hooks,
         exporters=exporters,
         start_delay_secs=start_delay_secs,
-        throttle_secs=throttle_secs)
+        throttle_secs=throttle_secs,
+        throttle_steps=throttle_steps)
 
 
 @estimator_export('estimator.train_and_evaluate')
@@ -471,15 +492,29 @@ class _NewCheckpointListenerForEvaluate(
     basic_session_run_hooks.CheckpointSaverListener):
   """A saver listener to run evaluate with every checkpoint."""
 
-  def __init__(self, evaluator, eval_throttle_secs, continuous_eval_listener):
+  def __init__(self, evaluator, continuous_eval_listener,
+               eval_throttle_secs=None, eval_throttle_steps=None):
     self._evaluator = evaluator
     self._eval_throttle_secs = eval_throttle_secs
+    self._eval_throttle_steps = eval_throttle_steps
     self._continuous_eval_listener = continuous_eval_listener
     self.eval_result, self.export_results = None, None
+    if self._eval_throttle_secs is None and \
+            self._eval_throttle_steps is None:
+      raise ValueError('Either eval_throttle_secs or eval_throttle_steps'
+                       'should be provided.')
+    if (self._eval_throttle_secs is not None) and \
+            (self._eval_throttle_steps is not None):
+      raise ValueError('Can not provide both eval_throttle_secs '
+                       'and eval_throttle_steps.')
 
   def begin(self):
-    self._timer = basic_session_run_hooks.SecondOrStepTimer(
-        every_secs=self._eval_throttle_secs)
+    if self._eval_throttle_secs is not None:
+      self._timer = basic_session_run_hooks.SecondOrStepTimer(
+          every_secs=self._eval_throttle_secs)
+    else:
+      self._timer = basic_session_run_hooks.SecondOrStepTimer(
+          every_steps=self._eval_throttle_steps)
     self._is_first_run = True
 
   def after_save(self, session, global_step_value):
@@ -646,11 +681,19 @@ class _TrainingExecutor(object):
 
     # When the underlying `Estimator` object saves a new checkpoint, we would
     # like this callback to be called so that evaluation and export can trigger.
-    saving_listeners = [
-        _NewCheckpointListenerForEvaluate(evaluator,
-                                          self._eval_spec.throttle_secs,
-                                          _ContinuousEvalListener())
-    ]
+    if self._eval_spec.throttle_secs is not None:
+      saving_listeners = [
+          _NewCheckpointListenerForEvaluate(
+              evaluator, _ContinuousEvalListener(),
+              eval_throttle_secs=self._eval_spec.throttle_secs)
+      ]
+    else:
+      saving_listeners = [
+          _NewCheckpointListenerForEvaluate(
+              evaluator, _ContinuousEvalListener(),
+              eval_throttle_steps=self._eval_spec.throttle_steps)
+      ]
+
     self._start_distributed_training(saving_listeners=saving_listeners)
 
   def run_evaluator(self):
@@ -679,9 +722,15 @@ class _TrainingExecutor(object):
     evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
                                              self._train_spec.max_steps)
 
-    listener_for_eval = _NewCheckpointListenerForEvaluate(
-        evaluator, self._eval_spec.throttle_secs,
-        self._continuous_eval_listener)
+    if self._eval_spec.throttle_secs is not None:
+      listener_for_eval = _NewCheckpointListenerForEvaluate(
+          evaluator, self._continuous_eval_listener,
+          eval_throttle_secs=self._eval_spec.throttle_secs)
+    else:
+      listener_for_eval = _NewCheckpointListenerForEvaluate(
+          evaluator, self._continuous_eval_listener,
+          eval_throttle_steps=self._eval_spec.throttle_steps)
+
     saving_listeners = [listener_for_eval]
 
     self._estimator.train(
@@ -771,6 +820,8 @@ class _TrainingExecutor(object):
     """Repeatedly calls `Estimator` evaluate and export until training ends."""
 
     _assert_eval_spec(self._eval_spec)
+    if self._eval_spec.throttle_secs is None:
+      raise ValueError('Set throttle_secs when using continuous evaluation')
 
     start_delay_secs = self._eval_spec.start_delay_secs
     if start_delay_secs:
@@ -778,6 +829,7 @@ class _TrainingExecutor(object):
       time.sleep(start_delay_secs)
 
     latest_eval_result = None
+    latest_eval_step = None
     evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
                                              self._train_spec.max_steps)
 
