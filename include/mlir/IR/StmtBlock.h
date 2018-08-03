@@ -40,6 +40,15 @@ public:
     IfClause // IfClause
   };
 
+  ~StmtBlock() { clear(); }
+
+  void clear() {
+    // Clear statements in the reverse order so that uses are destroyed
+    // before their defs.
+    while (!empty())
+      statements.pop_back();
+  }
+
   StmtBlockKind getStmtBlockKind() const { return kind; }
 
   /// Returns the closest surrounding statement that contains this block or

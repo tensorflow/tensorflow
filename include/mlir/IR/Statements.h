@@ -200,12 +200,14 @@ public:
                    AffineConstantExpr *upperBound, AffineConstantExpr *step,
                    MLIRContext *context);
 
-  // Loop bounds and step are immortal objects and don't need to be deleted.
-  // With this dtor, ForStmt needs to inherit from MLValue before it does from
-  // StmtBlock since an MLValue can't be destroyed before the StmtBlock is ---
-  // the latter has uses for the induction variables, which is actually the
-  // MLValue here. FIXME: this dtor.
-  ~ForStmt() {}
+  ~ForStmt() {
+    // Loop bounds and step are immortal objects and don't need to be deleted.
+
+    // Explicitly erase statements instead of relying of 'StmtBlock' destructor
+    // since child statements need to be destroyed before the MLValue that this
+    // for stmt represents is destroyed.
+    getStatements().clear();
+  }
 
   AffineConstantExpr *getLowerBound() const { return lowerBound; }
   AffineConstantExpr *getUpperBound() const { return upperBound; }
