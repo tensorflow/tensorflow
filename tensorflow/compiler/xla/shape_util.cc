@@ -792,7 +792,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   if (LayoutUtil::IsSparseArray(shape)) {
     allocated_element_count = LayoutUtil::MaxSparseElements(shape.layout());
   } else {
-    CHECK(LayoutUtil::IsDenseArray(shape));
+    CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
     tensorflow::gtl::ArraySlice<int64> padded_dimensions =
         LayoutUtil::PaddedDimensions(shape);
     if (!padded_dimensions.empty()) {
