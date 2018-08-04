@@ -247,7 +247,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
           auto y_pos_flat = y_pos[y_idx].flat<Y_T>();
           auto y_neg_flat = y_neg[y_idx].flat<Y_T>();
           const int64 y_size = y_shapes[y_idx].num_elements();
-          const Y_T scale = Y_T{2 * delta};
+          const Y_T scale = 2 * delta;
           auto jacobian = (*jacobian_ts)[x_idx * y_num + y_idx].matrix<JAC_T>();
           for (int c = 0; c < y_size; ++c) {
             SetJacobian<Y_T, JAC_T>(&jacobian, r * x_stride + unit_dimension,
@@ -409,6 +409,7 @@ Status ComputeGradientError(const Scope& scope, const Output& x,
       const Output& y, const TensorShape& y_shape, JAC_T* max_error);
 
 INSTANTIATE_GRAD_ERR_TYPE(float, float, float);
+INSTANTIATE_GRAD_ERR_TYPE(double, float, double);
 INSTANTIATE_GRAD_ERR_TYPE(double, double, double);
 INSTANTIATE_GRAD_ERR_TYPE(complex64, float, float);
 INSTANTIATE_GRAD_ERR_TYPE(float, complex64, float);
