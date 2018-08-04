@@ -47,6 +47,9 @@ PyRecordWriter* PyRecordWriter::New(const string& filename,
 }
 
 PyRecordWriter::~PyRecordWriter() {
+  // Writer depends on file during close for zlib flush, so destruct first.
+  writer_.reset();
+  file_.reset();
 }
 
 bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
