@@ -29,7 +29,7 @@ build:mkl -c opt
 
 # This config option is used to enable MKL-DNN open source library only,
 # without depending on MKL binary version.
-build:mkl_open_source_only --define=build_with_mkl_dnn_only=true 
+build:mkl_open_source_only --define=build_with_mkl_dnn_only=true
 build:mkl_open_source_only --define=build_with_mkl=true --define=enable_mkl=true
 
 build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
@@ -84,3 +84,5 @@ build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
+
+# Do not commit the tf_configure.bazelrc line
