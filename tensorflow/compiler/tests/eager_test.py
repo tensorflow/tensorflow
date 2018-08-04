@@ -400,6 +400,21 @@ class EagerFunctionTest(xla_test.XLATestCase):
     self.assertEqual(75, y.numpy())
     self.assertEqual(30, dy.numpy())
 
+  def testGradientTapeInDefun(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun
+      def f():
+        x = constant_op.constant(1.0)
+        with backprop.GradientTape() as tape:
+          y = v0 * x
+        dy = tape.gradient(y, v0)
+        return dy
+
+      dy = f()
+      self.assertEqual(1.0, dy.numpy())
+
   def testSliceInDefun(self):
     with self.test_scope():
 
