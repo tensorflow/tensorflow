@@ -1253,8 +1253,40 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kScatter: {
-      // TODO(b/32945756): Implement HLO parsing for Scatter.
-      return TokenError("HLO parsing is not implemented for Scatter.");
+      optional<std::vector<tensorflow::int64>> update_window_dims;
+      attrs["update_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &update_window_dims};
+      optional<std::vector<tensorflow::int64>> inserted_window_dims;
+      attrs["inserted_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &inserted_window_dims};
+      optional<std::vector<tensorflow::int64>> scatter_dims_to_operand_dims;
+      attrs["scatter_dims_to_operand_dims"] = {/*required=*/true,
+                                               AttrTy::kBracedInt64List,
+                                               &scatter_dims_to_operand_dims};
+      optional<tensorflow::int64> index_vector_dim;
+      attrs["index_vector_dim"] = {/*required=*/true, AttrTy::kInt64,
+                                   &index_vector_dim};
+
+      optional<HloComputation*> update_computation;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &update_computation};
+
+      if (!ParseOperands(&operands, /*expected_size=*/3) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+
+      ScatterDimensionNumbers dim_numbers =
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/*update_window_dims,
+              /*inserted_window_dims=*/*inserted_window_dims,
+              /*scatter_dims_to_operand_dims=*/*scatter_dims_to_operand_dims,
+              /*index_vector_dim=*/*index_vector_dim);
+
+      instruction = builder->AddInstruction(HloInstruction::CreateScatter(
+          shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
+          /*updates=*/operands[2], *update_computation, dim_numbers));
+      break;
     }
     case HloOpcode::kDomain: {
       DomainData domain;
