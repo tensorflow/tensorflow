@@ -180,6 +180,31 @@ py_test(
 )
 
 py_test(
+    name = "lmdb_dataset_op_test",
+    size = "medium",
+    srcs = ["lmdb_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+        "no_pip",
+    ],
+    data = ["//tensorflow/core:lmdb_testdata"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "map_dataset_op_test",
     size = "medium",
     srcs = ["map_dataset_op_test.py"],
