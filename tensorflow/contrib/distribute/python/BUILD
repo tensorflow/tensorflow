@@ -134,6 +134,24 @@ py_library(
 )
 
 py_library(
+    name = "collective_all_reduce_strategy",
+    srcs = ["collective_all_reduce_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":cross_tower_ops",
+        ":cross_tower_utils",
+        ":mirrored_strategy",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "strategy_test_lib",
     testonly = 1,
     srcs = ["strategy_test_lib.py"],
@@ -327,6 +345,37 @@ py_library(
     ],
 )
 
+py_test(
+    name = "collective_all_reduce_strategy_test",
+    srcs = ["collective_all_reduce_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":cross_tower_utils",
+        ":multi_worker_test_base",
+        ":strategy_test_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/estimator:run_config",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "minimize_loss_test_lib",
     testonly = 1,
@@ -497,8 +546,11 @@ py_library(
         "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -533,7 +585,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -541,6 +595,7 @@ py_library(
 
 cuda_py_test(
     name = "cross_tower_ops_test",
+    size = "large",
     srcs = ["cross_tower_ops_test.py"],
     additional_deps = [
         ":combinations",
@@ -555,7 +610,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    shard_count = 15,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
