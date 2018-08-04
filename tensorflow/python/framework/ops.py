@@ -455,7 +455,7 @@ class Tensor(_TensorLike):
   def __iter__(self):
     if not context.executing_eagerly():
       raise TypeError(
-          "Tensor objects are not iterable when eager execution is not "
+          "Tensor objects are only iterable when eager execution is "
           "enabled. To iterate over this tensor use tf.map_fn.")
     shape = self._shape_tuple()
     if shape is None:
