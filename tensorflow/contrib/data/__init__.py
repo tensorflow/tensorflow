@@ -25,6 +25,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
+@@LMDBDataset
 @@RandomDataset
 @@Reducer
 @@SqlDataset
@@ -93,6 +94,7 @@ from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
 from tensorflow.contrib.data.python.ops.random_ops import RandomDataset
 from tensorflow.contrib.data.python.ops.readers import CsvDataset
+from tensorflow.contrib.data.python.ops.readers import LMDBDataset
 from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
 from tensorflow.contrib.data.python.ops.readers import make_csv_dataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
