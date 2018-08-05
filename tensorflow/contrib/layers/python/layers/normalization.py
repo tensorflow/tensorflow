@@ -235,7 +235,7 @@ def group_norm(inputs,
   """
   # TODO(shlens): Support partially defined shapes for the inputs.
   inputs = ops.convert_to_tensor(inputs)
-  original_shape = inputs.shape
+  original_shape = array_ops.shape(inputs)
 
   if inputs.shape.ndims is None:
     raise ValueError('Inputs %s has undefined rank.' % inputs.name)
@@ -286,6 +286,7 @@ def group_norm(inputs,
   # Reshape the input by the group within the channel dimension.
   inputs_shape = (axes_before_channels + [groups, channels // groups] +
                   axes_after_channels)
+  inputs_shape = list(map(lambda d: -1 if d is None else d, inputs_shape))
   inputs = array_ops.reshape(inputs, inputs_shape)
 
   # Determine the dimensions across which moments are calculated.
