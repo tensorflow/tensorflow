@@ -29,6 +29,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import device
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -1301,6 +1302,9 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
+      if (self._config is not None and
+          self._config.experimental.client_handles_error_formatting):
+        message = error_interpolation.interpolate(message, self._graph)
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):

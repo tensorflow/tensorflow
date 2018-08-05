@@ -85,6 +85,17 @@ typedef FastParseExampleConfig FastParseSingleExampleConfig;
 Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
                               const string& serialized, Result* result);
 
+// Parses a batch of serialized SequenceExample protos and converts them into
+// result according to given config.
+// Given example names have to either be empty or the same size as serialized.
+// example_names are used only for error messages.
+Status FastParseSequenceExample(
+    const example::FastParseExampleConfig& context_config,
+    const example::FastParseExampleConfig& feature_list_config,
+    gtl::ArraySlice<string> serialized, gtl::ArraySlice<string> example_names,
+    thread::ThreadPool* thread_pool, example::Result* context_result,
+    example::Result* feature_list_result);
+
 // This function parses serialized Example and populates given example.
 // It uses the same specialized parser as FastParseExample which is efficient.
 // But then constructs Example which is relatively slow.

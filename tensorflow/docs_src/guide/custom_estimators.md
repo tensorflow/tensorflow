@@ -149,7 +149,7 @@ model. This configuration step is similar to how we configured the @{tf.estimato
 
 ```python
 classifier = tf.estimator.Estimator(
-    model_fn=my_model,
+    model_fn=my_model_fn,
     params={
         'feature_columns': my_feature_columns,
         # Two hidden layers of 10 nodes each.
@@ -474,7 +474,7 @@ Instantiate the custom Estimator through the Estimator base class as follows:
 ```python
     # Build 2 hidden layer DNN with 10, 10 units respectively.
     classifier = tf.estimator.Estimator(
-        model_fn=my_model,
+        model_fn=my_model_fn,
         params={
             'feature_columns': my_feature_columns,
             # Two hidden layers of 10 nodes each.

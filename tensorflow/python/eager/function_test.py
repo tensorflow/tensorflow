@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import sys
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import iterator_ops
@@ -225,6 +226,23 @@ class FunctionTest(test.TestCase):
       t.watch(x)
       y = f(x)
     self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testGraphLoopGradient(self):
+    if context.executing_eagerly():
+      self.skipTest('TODO(apassos): support loops in defuns in eager')
+
+    @function.defun
+    def f(x):
+      return control_flow_ops.while_loop(lambda _, i: i < 2,
+                                         lambda x, i: (2*x, i + 1),
+                                         [x, 0])[0]
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      t.watch(x)
+      y = f(x)
+    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -1211,6 +1229,174 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     train()
     self.assertEqual(v.numpy(), -1.0)
+
+  def testFunctionModifiesInputList(self):
+    # Tests on `list` methods that do in place modification, except `list.sort`
+    # since it cannot even be "defunned" in the first place
+
+    def get_list():
+      return [constant_op.constant(0.), constant_op.constant(1.)]
+
+    expected_msg = (
+        'Function to be traced should not modify structure of input '
+        'arguments. Check if your function has list and dictionary '
+        'operations that alter input arguments, '
+        'such as `list.pop`, `list.append`')
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def append(l):
+        l.append(constant_op.constant(0.))
+
+      append(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def extend(l):
+        l.extend([constant_op.constant(0.)])
+
+      extend(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def insert(l):
+        l.insert(0, constant_op.constant(0.))
+
+      insert(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def pop(l):
+        l.pop()
+
+      pop(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def reverse(l):
+        l.reverse()
+
+      reverse(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def remove(l):
+        l.remove(l[0])
+
+      remove(get_list())
+
+    # `list.clear` is a method that is in Py3 but not Py2
+    if sys.version.startswith('3'):
+
+      with self.assertRaisesRegexp(ValueError, expected_msg):
+
+        @function.defun
+        def clear(l):
+          l.clear()
+
+        clear(get_list())
+
+    # One last test for keyword arguments
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def kwdappend(**kwargs):
+        l = kwargs['l']
+        l.append(constant_op.constant(0.))
+
+      kwdappend(l=get_list())
+
+  def testFunctionModifiesInputDict(self):
+
+    def get_dict():
+      return {'t1': constant_op.constant(0.), 't2': constant_op.constant(1.)}
+
+    expected_msg = (
+        'Function to be traced should not modify structure of input '
+        'arguments. Check if your function has list and dictionary '
+        'operations that alter input arguments, '
+        'such as `list.pop`, `list.append`')
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def clear(m):
+        m.clear()
+
+      clear(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def pop(m):
+        m.pop('t1')
+
+      pop(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def popitem(m):
+        m.popitem()
+
+      popitem(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def update(m):
+        m.update({'t1': constant_op.constant(3.)})
+
+      update(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def setdefault(m):
+        m.setdefault('t3', constant_op.constant(3.))
+
+      setdefault(get_dict())
+
+  def testFunctionModifiesInputNest(self):
+    # Test on functions that modify structure of nested input arguments
+    expected_msg = (
+        'Function to be traced should not modify structure of input '
+        'arguments. Check if your function has list and dictionary '
+        'operations that alter input arguments, '
+        'such as `list.pop`, `list.append`')
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def modify(n):
+        n[0]['t1'].append(constant_op.constant(1.))
+
+      nested_input = [{
+          't1': [constant_op.constant(0.),
+                 constant_op.constant(1.)],
+      },
+                      constant_op.constant(2.)]
+
+      modify(nested_input)
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      # The flat list doesn't change whereas the true structure changes
+      @function.defun
+      def modify_same_flat(n):
+        n[0].append(n[1].pop(0))
+
+      nested_input = [[constant_op.constant(0.)],
+                      [constant_op.constant(1.),
+                       constant_op.constant(2.)]]
+
+      modify_same_flat(nested_input)
 
 
 if __name__ == '__main__':

@@ -1070,6 +1070,27 @@ class OneHot : public BuiltinOperator<OneHotOperator, ::tflite::OneHotOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class CTCBeamSearchDecoder
+    : public CustomOperator<CTCBeamSearchDecoderOperator> {
+ public:
+  using CustomOperator::CustomOperator;
+
+  void WriteOptions(const TocoOperator& op,
+                    flexbuffers::Builder* fbb) const override {
+    fbb->Int("beam_width", op.beam_width);
+    fbb->Int("top_paths", op.top_paths);
+    fbb->Bool("merge_repeated", op.merge_repeated);
+  }
+
+  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
+    op->beam_width = m["beam_width"].AsInt32();
+    op->top_paths = m["top_paths"].AsInt32();
+    op->merge_repeated = m["merge_repeated"].AsBool();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -1179,6 +1200,12 @@ class TensorFlowUnsupported : public BaseOperator {
           break;
         case flexbuffers::TYPE_BOOL:
           (*attr)[key].set_b(value.AsBool());
+          if (string(key) == "_output_quantized") {
+            op->quantized = value.AsBool();
+          }
+          if (string(key) == "_support_output_type_float_in_quantized_op") {
+            op->support_output_type_float_in_quantized_op = value.AsBool();
+          }
           break;
         case flexbuffers::TYPE_VECTOR_INT: {
           auto* list = (*attr)[key].mutable_list();
@@ -1301,6 +1328,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   // Custom Operators.
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
+  ops.emplace_back(new CTCBeamSearchDecoder(
+      "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
   ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
                                              OperatorType::kUnsupported));
 
@@ -1350,6 +1379,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
   ops.emplace_back(new SimpleOperator<PowOperator>("POW", OperatorType::kPow));
+  ops.emplace_back(new SimpleOperator<LogicalOrOperator>(
+      "LOGICAL_OR", OperatorType::kLogicalOr));
   // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
   ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));

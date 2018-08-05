@@ -462,6 +462,7 @@ Status MarkForCompilationPass::Run(
 
   VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
+  VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
   std::unique_ptr<DeadnessAnalysis> deadness;

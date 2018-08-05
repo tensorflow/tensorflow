@@ -210,7 +210,9 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  build_options.set_device_ordinal(client_->default_device_ordinal());
+  build_options.set_device_ordinal(options.device_ordinal != -1
+                                       ? options.device_ordinal
+                                       : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_resource_input_count(number_of_variables);
@@ -259,6 +261,7 @@ Status XlaCompilationCache::CompileImpl(
     xla::LocalExecutable** executable,
     const XlaCompiler::CompileOptions* compile_options,
     bool compile_single_op) {
+  CHECK_NE(executable, nullptr);
   VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
@@ -330,19 +333,15 @@ Status XlaCompilationCache::CompileImpl(
           compile_options ? *compile_options : XlaCompiler::CompileOptions(),
           function, args, &entry->compilation_result);
     }
+    TF_RETURN_IF_ERROR(entry->compilation_status);
+    CHECK_EQ(entry->executable.get(), nullptr);
+    entry->compilation_status =
+        BuildExecutable(options, entry->compilation_result, &entry->executable);
   }
+  TF_RETURN_IF_ERROR(entry->compilation_status);
   *compilation_result = &entry->compilation_result;
-  if (entry->compilation_status.ok() && executable) {
-    if (entry->executable == nullptr) {
-      entry->compilation_status = BuildExecutable(
-          options, entry->compilation_result, variable_args.size(),
-          &entry->executable);
-    }
-    *executable = entry->executable.get();
-  }
-
-  Status status = entry->compilation_status;
-  return status;
+  *executable = entry->executable.get();
+  return Status::OK();
 }
 
 }  // namespace tensorflow

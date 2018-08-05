@@ -19,13 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as pycoll
+import threading
 
 from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.contrib.distribute.python import values as value_lib
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 
@@ -218,6 +221,146 @@ def split_grads_by_size(threshold_size, device_grads):
   return small_grads, large_grads
 
 
+# threading.Lock() cannot be pickled and therefore cannot be a field of
+# CollectiveKeys.
+_lock = threading.Lock()
+
+
+# TODO(yuefengz): use random key starts to avoid reusing keys?
+class CollectiveKeys(object):
+  """Class that manages collective keys.
+
+  We need to manage three different keys for collective:
+
+  *Group key*: an integer key to identify the set of cooperative devices.
+  Collective ops work under the same set of devices must using the same group
+  key.
+
+  *Instance key*: an integer key to identify the set of same counterpart of
+  tensors on different devices in a device group that need to be all-reduced.
+
+  "Graph key": an integer key that is unique key graph. This is used to support
+  multiple graphs per client session. It must be non-zero and set in the
+  `config` argument of each call to `session.run`.
+  """
+
+  def __init__(self,
+               group_key_start=1,
+               instance_key_start=100,
+               instance_key_with_id_start=10000):
+    """Initializes the object.
+
+    Args:
+      group_key_start: the starting integer of group key.
+      instance_key_start: the starting integer of instance key.
+      instance_key_with_id_start: the starting integer of instance key that is
+        recorded with an id.
+    """
+    self._group_key = group_key_start
+    self._group_key_table = dict()
+
+    # For instance keys with ids
+    self._instance_key_id_to_key_table = dict()
+    self._instance_key_with_id_counter = instance_key_with_id_start
+
+    # For instance keys without ids
+    self._instance_key_start = instance_key_start
+
+    self._thread_local = threading.local()
+
+  def _get_thread_local_object(self):
+    # We make instance key without key ids thread local so that it will work
+    # with MirroredStrategy and distribute coordinator.
+    if not hasattr(self._thread_local, 'instance_key'):
+      self._thread_local.instance_key = self._instance_key_start
+    return self._thread_local
+
+  def get_group_key(self, devices):
+    """Returns a group key for the set of devices.
+
+    Args:
+      devices: list of strings naming devices in a collective group.
+
+    Returns:
+      int key uniquely identifying the set of device names.
+    """
+    parsed = [pydev.DeviceSpec.from_string(d) for d in devices]
+    # In the between-graph replicated training, different workers need to get
+    # the same device key. So we remove the task_type and task_id from the
+    # devices.
+    # TODO(yuefengz): in the in-graph replicated training, we need to include
+    # task_type and task_id.
+    names = sorted(['%s:%d' % (d.device_type, d.device_index) for d in parsed])
+    key_id = ','.join(names)
+    with _lock:
+      if key_id not in self._group_key_table:
+        new_key = self._group_key
+        self._group_key += 1
+        self._group_key_table[key_id] = new_key
+    return self._group_key_table[key_id]
+
+  def get_instance_key(self, key_id=None):
+    """Returns a new instance key for use in defining a collective op.
+
+    Args:
+      key_id: optional string. If set, key will be recorded and the same key
+        will be returned when the same key_id is provided. If not, an increasing
+        instance key will be returned.
+    """
+    if key_id:
+      with _lock:
+        if key_id not in self._instance_key_id_to_key_table:
+          self._instance_key_with_id_counter += 1
+          self._instance_key_id_to_key_table[key_id] = (
+              self._instance_key_with_id_counter)
+      return self._instance_key_id_to_key_table[key_id]
+    else:
+      v = self._get_thread_local_object().instance_key
+      self._get_thread_local_object().instance_key += 1
+      return v
+
+
+def build_collective_reduce(input_tensors,
+                            num_workers,
+                            collective_keys,
+                            reduction_op='Add',
+                            unary_op='Id'):
+  """Build a subgraph that does one full all-reduce, using the collective Op.
+
+  Args:
+    input_tensors: tensors within a single worker graph that are to be reduced
+      together; must be one per device.
+    num_workers: total number of workers with identical independent graphs that
+      will be doing this same reduction.  The reduction will actually include
+      the corresponding tensors at all these workers.
+    collective_keys: a CollectiveKeys object.
+    reduction_op: string naming the reduction op.
+    unary_op: string naming the unary final op.
+
+  Returns:
+    An array of final tensors, one per device, computed by the full reduction.
+
+  Raises:
+    ValueError: There must be at least two tensors over all the workers.
+  """
+  group_size = len(input_tensors) * num_workers
+  if group_size < 2:
+    raise ValueError('num_workers * len(input_tensors) must be 2 or greater')
+  devices = [t.device for t in input_tensors]
+  num_devices = len(devices)
+  group_key = collective_keys.get_group_key(devices)
+  instance_key = collective_keys.get_instance_key()
+  out_tensors = []
+  subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
+  for d in range(num_devices):
+    with ops.device(devices[d]):
+      reduce_op = collective_ops.all_reduce(
+          input_tensors[d], group_size, group_key, instance_key, reduction_op,
+          unary_op, subdiv_offsets)
+      out_tensors.append(reduce_op)
+  return out_tensors
+
+
 def sum_grad_and_var_all_reduce(grad_and_vars,
                                 num_workers,
                                 alg,
@@ -253,10 +396,10 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
     else:
       raise ValueError('unsupported all_reduce alg: ', alg)
 
-    result = []
-    for (_, v), g in zip(grad_and_vars, summed_grads):
-      result.append([g, v])
-    return result
+  result = []
+  for (_, v), g in zip(grad_and_vars, summed_grads):
+    result.append([g, v])
+  return result
 
 
 def sum_gradients_all_reduce(dev_prefixes, tower_grads, num_workers, alg,

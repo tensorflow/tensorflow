@@ -48,6 +48,8 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

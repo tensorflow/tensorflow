@@ -40,12 +40,14 @@ _LOCAL_GPU_0 = "/device:GPU:0"
 
 
 def _normalize_cluster_spec(cluster_spec):
+  """Makes `cluster_spec` into a `ClusterSpec` object."""
   if isinstance(cluster_spec, (dict, cluster_pb2.ClusterDef)):
     return server_lib.ClusterSpec(cluster_spec)
   elif not isinstance(cluster_spec, server_lib.ClusterSpec):
     raise ValueError(
         "`cluster_spec' should be dict or a `tf.train.ClusterSpec` or a "
         "`tf.train.ClusterDef` object")
+  return cluster_spec
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.

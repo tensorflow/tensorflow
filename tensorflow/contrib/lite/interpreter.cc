@@ -26,18 +26,12 @@ limitations under the License.
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
-#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
-#endif
 #include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
-#ifdef TFLITE_MCU
-class NNAPIDelegate {};
-#endif
-
 namespace {
 
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
@@ -630,7 +624,6 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   TfLiteStatus status = kTfLiteOk;
-#ifndef TFLITE_MCU
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -644,7 +637,6 @@ TfLiteStatus Interpreter::Invoke() {
       return kTfLiteError;
     }
   }
-#endif
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
@@ -902,17 +894,15 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Interpreter::UseNNAPI(bool enable) {
-#ifndef TFLITE_MCU
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
-  if (!NNAPIExists()) enable = false;
+  if (!NNAPIDelegate::IsSupported()) enable = false;
   if (!enable) {
     nnapi_delegate_.reset();
   } else if (!nnapi_delegate_) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
-#endif
 }
 
 void Interpreter::SetNumThreads(int num_threads) {

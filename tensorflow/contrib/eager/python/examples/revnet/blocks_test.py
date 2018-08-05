@@ -116,63 +116,6 @@ def _validate_block_call_channels_first(block_factory, test):
 
 class RevBlockTest(tf.test.TestCase):
 
-  def test_call_channels_first(self):
-    """Test `call` function with `channels_first` data format."""
-    if not tf.test.is_gpu_available():
-      self.skipTest("GPU not available")
-
-    with tf.device("/gpu:0"):  # Default NCHW format
-      input_shape = (128, 8, 8)
-      data_shape = (16,) + input_shape
-      x = tf.random_normal(shape=data_shape)
-
-      # Stride of 1
-      block = blocks.RevBlock(
-          n_res=3, filters=128, strides=(1, 1), input_shape=input_shape)
-      y_tr, y_ev = block(x, training=True), block(x, training=False)
-      self.assertEqual(y_tr.shape, y_ev.shape)
-      self.assertEqual(y_ev.shape, (16, 128, 8, 8))
-      self.assertNotAllClose(y_tr, y_ev)
-
-      # Stride of 2
-      block = blocks.RevBlock(
-          n_res=3, filters=128, strides=(2, 2), input_shape=input_shape)
-      y_tr, y_ev = block(x, training=True), block(x, training=False)
-      self.assertEqual(y_tr.shape, y_ev.shape)
-      self.assertEqual(y_ev.shape, [16, 128, 4, 4])
-      self.assertNotAllClose(y_tr, y_ev)
-
-  def test_call_channels_last(self):
-    """Test `call` function with `channels_last` data format."""
-    with tf.device("/cpu:0"):  # NHWC format
-      input_shape = (8, 8, 128)
-      data_shape = (16,) + input_shape
-      x = tf.random_normal(shape=data_shape)
-
-      # Stride 1
-      block = blocks.RevBlock(
-          n_res=3,
-          filters=128,
-          strides=(1, 1),
-          input_shape=input_shape,
-          data_format="channels_last")
-      y_tr, y_ev = block(x, training=True), block(x, training=False)
-      self.assertEqual(y_tr.shape, y_ev.shape)
-      self.assertEqual(y_ev.shape, (16, 8, 8, 128))
-      self.assertNotAllClose(y_tr, y_ev)
-
-      # Stride of 2
-      block = blocks.RevBlock(
-          n_res=3,
-          filters=128,
-          strides=(2, 2),
-          input_shape=input_shape,
-          data_format="channels_last")
-      y_tr, y_ev = block(x, training=True), block(x, training=False)
-      self.assertEqual(y_tr.shape, y_ev.shape)
-      self.assertEqual(y_ev.shape, (16, 4, 4, 128))
-      self.assertNotAllClose(y_tr, y_ev)
-
   def _check_grad_angle(self, grads, grads_true, atol=1e0):
     """Check the angle between two list of vectors are all close."""
     for g1, g2 in zip(grads, grads_true):
@@ -190,6 +133,7 @@ class RevBlockTest(tf.test.TestCase):
       data_shape = (16,) + input_shape
       x = tf.random_normal(shape=data_shape, dtype=tf.float64)
       dy = tf.random_normal(shape=data_shape, dtype=tf.float64)
+      dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
       block = blocks.RevBlock(
           n_res=3,
           filters=128,
@@ -199,9 +143,13 @@ class RevBlockTest(tf.test.TestCase):
           dtype=tf.float64)
       with tf.GradientTape() as tape:
         tape.watch(x)
-        y = block(x, training=True)
+        x1, x2 = tf.split(x, num_or_size_splits=2, axis=1)
+        y1, y2 = block((x1, x2), training=True)
+        y = tf.concat((y1, y2), axis=1)
       # Compute grads from reconstruction
-      dx, dw = block.backward_grads(x, y, dy, training=True)
+      (dx1, dx2), dw = block.backward_grads(
+          x=(x1, x2), y=(y1, y2), dy=(dy1, dy2), training=True)
+      dx = tf.concat((dx1, dx2), axis=1)
       vars_ = block.trainable_variables
       # Compute true grads
       grads = tape.gradient(y, [x] + vars_, output_gradients=dy)
@@ -214,6 +162,7 @@ class RevBlockTest(tf.test.TestCase):
       # Stride 2
       x = tf.random_normal(shape=data_shape, dtype=tf.float64)
       dy = tf.random_normal(shape=(16, 128, 4, 4), dtype=tf.float64)
+      dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
       block = blocks.RevBlock(
           n_res=3,
           filters=128,
@@ -223,9 +172,13 @@ class RevBlockTest(tf.test.TestCase):
           dtype=tf.float64)
       with tf.GradientTape() as tape:
         tape.watch(x)
-        y = block(x, training=True)
+        x1, x2 = tf.split(x, num_or_size_splits=2, axis=1)
+        y1, y2 = block((x1, x2), training=True)
+        y = tf.concat((y1, y2), axis=1)
       # Compute grads from reconstruction
-      dx, dw = block.backward_grads(x, y, dy, training=True)
+      (dx1, dx2), dw = block.backward_grads(
+          x=(x1, x2), y=(y1, y2), dy=(dy1, dy2), training=True)
+      dx = tf.concat((dx1, dx2), axis=1)
       vars_ = block.trainable_variables
       # Compute true grads
       grads = tape.gradient(y, [x] + vars_, output_gradients=dy)
@@ -238,15 +191,6 @@ class RevBlockTest(tf.test.TestCase):
 
 class _ResidualTest(tf.test.TestCase):
 
-  def test_call(self):
-    """Test `call` function.
-
-    Varying downsampling and data format options.
-    """
-
-    _validate_block_call_channels_first(blocks._Residual, self)
-    _validate_block_call_channels_last(blocks._Residual, self)
-
   def test_backward_grads_channels_first(self):
     """Test `backward_grads` function with `channels_first` data format."""
     if not tf.test.is_gpu_available():
@@ -258,6 +202,7 @@ class _ResidualTest(tf.test.TestCase):
       # Use double precision for testing
       x_true = tf.random_normal(shape=data_shape, dtype=tf.float64)
       dy = tf.random_normal(shape=data_shape, dtype=tf.float64)
+      dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=1)
       residual = blocks._Residual(
           filters=128,
           strides=(1, 1),
@@ -266,15 +211,19 @@ class _ResidualTest(tf.test.TestCase):
           dtype=tf.float64)
 
       with tf.GradientTape() as tape:
-        x_true = tf.identity(x_true)
         tape.watch(x_true)
-        y = residual(x_true, training=True)
+        x1_true, x2_true = tf.split(x_true, num_or_size_splits=2, axis=1)
+        y1, y2 = residual((x1_true, x2_true), training=True)
+        y = tf.concat((y1, y2), axis=1)
 
       # Gradients computed due to reversibility
-      x, dx, dw = residual.backward_grads(y, dy=dy, training=True)
-      vars_ = residual.trainable_variables
+      (x1, x2), (dx1, dx2), dw = residual.backward_grads(
+          y=(y1, y2), dy=(dy1, dy2), training=True)
+      x = tf.concat((x1, x2), axis=1)
+      dx = tf.concat((dx1, dx2), axis=1)
       # True gradients computed by the tape
-      grads = tape.gradient(y, [x_true] + vars_, output_gradients=dy)
+      grads = tape.gradient(
+          y, [x_true] + residual.trainable_variables, output_gradients=dy)
       dx_true, dw_true = grads[0], grads[1:]
 
       self.assertAllClose(x_true, x)

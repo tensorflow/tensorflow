@@ -322,8 +322,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
           if (bias_data) {
             acc += bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
           }
-          acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-              acc, output_multiplier, kReverseShift * output_shift);
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              kReverseShift * output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -4249,6 +4249,65 @@ inline void BroadcastPow(const T* input1_data, const Dims<4>& input1_dims,
           output_data[Offset(output_dims, c, x, y, b)] =
               std::pow(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
                        input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+        }
+      }
+    }
+  }
+}
+
+inline void Logical(const bool* input1_data, const Dims<4>& input1_dims,
+                    const bool* input2_data, const Dims<4>& input2_dims,
+                    bool* output_data, const Dims<4>& output_dims,
+                    const std::function<bool(bool, bool)>& func) {
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = func(input1_data[i], input2_data[i]);
+  }
+}
+
+inline void BroadcastLogical(const bool* input1_data,
+                             const Dims<4>& input1_dims,
+                             const bool* input2_data,
+                             const Dims<4>& input2_dims, bool* output_data,
+                             const Dims<4>& output_dims,
+                             const std::function<bool(bool, bool)>& func) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              func(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                   input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+        }
+      }
+    }
+  }
+}
+
+// TODO(ycling): Refactoring. Remove BroadcastLogical and use the more
+// generalized and efficient BroadcastBinaryFunction.
+//
+// R: Result type. T1: Input 1 type. T2: Input 2 type.
+template <typename R, typename T1, typename T2>
+inline void BroadcastBinaryFunction(const T1* input1_data,
+                                    const Dims<4>& input1_dims,
+                                    const T2* input2_data,
+                                    const Dims<4>& input2_dims, R* output_data,
+                                    const Dims<4>& output_dims,
+                                    R (*func)(T1, T2)) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              func(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                   input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
         }
       }
     }

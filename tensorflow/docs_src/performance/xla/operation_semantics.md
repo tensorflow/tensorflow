@@ -1431,19 +1431,29 @@ complete and returns the received data.
 See also
 [`XlaBuilder::Reduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Applies a reduction function to an array.
+Applies a reduction function to one or more arrays in parallel.
 
-<b> `Reduce(operand, init_value, computation, dimensions)` </b>
+<b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type             | Semantics
-------------- | ---------------- | ---------------------------------------
-`operand`     | `XlaOp`          | array of type `T`
-`init_value`  | `XlaOp`          | scalar of type `T`
-`computation` | `XlaComputation` | computation of type `T, T -> T`
-`dimensions`  | `int64` array    | unordered array of dimensions to reduce
+Arguments     | Type                  | Semantics
+------------- | --------------------- | ---------------------------------------
+`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
+`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
+`computation` | `XlaComputation`      | computation of type
+              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
+`dimensions`  | `int64` array         | unordered array of dimensions to reduce
 
-This operation reduces one or more dimensions of the input array into scalars.
-The rank of the returned array is `rank(operand) - len(dimensions)`.
+Where:
+* N is required to be greater or equal to 1.
+* All input arrays must have the same dimensions.
+* If `N = 1`, `Collate(T)` is `T`.
+* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
+
+The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
+`T_i`, the dimensions of which are described below.
+
+This operation reduces one or more dimensions of each input array into scalars.
+The rank of each returned array is `rank(operand) - len(dimensions)`.
 `init_value` is the initial value used for every reduction and may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
 identity of the reduction function (for example, 0 for addition). The applied
@@ -1459,9 +1469,9 @@ enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
 incorrect or unpredictable results in XLA reductions.
 
-As an example, when reducing across the one dimension in a 1D array with values
-[10, 11, 12, 13], with reduction function `f` (this is `computation`) then that
-could be computed as
+As an example, when reducing across one dimension in a single 1D array with
+values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
 
@@ -1542,6 +1552,34 @@ We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
+
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. For example, consider the following
+reduction function, which can be used to compute the max and the argmax of a
+a 1-D tensor in parallel:
+
+```
+f: (Float, Int, Float, Int) -> Float, Int
+f(max, argmax, value, index):
+  if value >= argmax:
+    return (value, index)
+  else:
+    return (max, argmax)
+```
+
+For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
+`I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
+input dimension is equivalent to the following recursive application:
+```
+f_0 = f(I_V, I_K, V_0, K_0)
+f_1 = f(f_0.first, f_0.second, V_1, K_1)
+...
+f_(N-1) = f(f_(N-2).first, f_(N-2).second, V_(N-1), K_(N-1))
+```
+
+Applying this reduction to an array of values, and an array of sequential
+indices (i.e. iota), will co-iterate over the arrays, and return a tuple
+containing the maximal value and the matching index.
 
 ## ReducePrecision
 
@@ -1800,6 +1838,138 @@ is implementation-defined.
 | `b`       | `XlaOp`                 | Scalar of type T specifying upper |
 :           :                         : limit of interval                 :
 | `shape`   | `Shape`                 | Output shape of type T            |
+
+## Scatter
+
+The XLA scatter operation generates a result which is the value of the input
+tensor `operand`, with several slices (at indices specified by
+`scatter_indices`) updated with the values in `updates` using
+`update_computation`.
+
+See also
+[`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+
+<b> `scatter(operand, scatter_indices, updates, update_computation, index_vector_dim, update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims)` </b>
+
+|Arguments         | Type                   | Semantics                        |
+|------------------|------------------------|----------------------------------|
+|`operand`         | `XlaOp`                | Tensor to be scattered into.     |
+|`scatter_indices` | `XlaOp`                | Tensor containing the starting   |
+:                  :                        : indices of the slices that must  :
+:                  :                        : be scattered to.                 :
+|`updates`         | `XlaOp`                | Tensor containing the values that|
+:                  :                        : must be used for scattering.     :
+|`update_computation`| `XlaComputation`     | Computation to be used for       |
+:                  :                        : combining the existing values in :
+:                  :                        : the input tensor and the updates :
+:                  :                        : during scatter. This computation :
+:                  :                        : should be of type `T, T -> T`.   :
+|`index_vector_dim`| `int64`                | The dimension in                 |
+:                  :                        : `scatter_indices` that contains  :
+:                  :                        : the starting indices.            :
+|`update_window_dims`| `ArraySlice<int64>`  | The set of dimensions in         |
+:                  :                        : `updates` shape that are _window :
+:                  :                        : dimensions_.                     :
+|`inserted_window_dims`| `ArraySlice<int64>`| The set of _window dimensions_   |
+:                  :                        : that must be inserted into       :
+:                  :                        : `updates` shape.                 :
+|`scatter_dims_to_operand_dims`| `ArraySlice<int64>`  | A dimensions map from  |
+:                  :                        : the scatter indices to the       :
+:                  :                        : operand index space. This array  :
+:                  :                        : is interpreted as mapping `i` to :
+:                  :                        : `scatter_dims_to_operand_dims[i]`:
+:                  :                        : . It has to be one-to-one and    :
+:                  :                        : total.                           :
+
+If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
+`scatter_indices` to have a trailing `1` dimension.
+
+We define `update_scatter_dims` of type `ArraySlice<int64>` as the set of
+dimensions in `updates` shape that are not in `update_window_dims`, in ascending
+order.
+
+The arguments of scatter should follow these constraints:
+
+  - `updates` tensor must be of rank `update_window_dims.size +
+  scatter_indices.rank - 1`.
+
+  - Bounds of dimension `i` in `updates` must conform to the following:
+      - If `i` is present in `update_window_dims` (i.e. equal to
+        `update_window_dims`[`k`] for some `k`), then the bound of dimension
+        `i` in `updates` must not exceed the corresponding bound of `operand`
+        after accounting for the `inserted_window_dims` (i.e.
+        `adjusted_window_bounds`[`k`], where `adjusted_window_bounds` contains
+        the bounds of `operand` with the bounds at indices
+        `inserted_window_dims` removed).
+      - If `i` is present in `update_scatter_dims` (i.e. equal to
+        `update_scatter_dims`[`k`] for some `k`), then the bound of dimension
+        `i` in `updates` must be equal to the corresponding bound of
+        `scatter_indices`, skipping `index_vector_dim` (i.e.
+        `scatter_indices.shape.dims`[`k`], if `k` < `index_vector_dim` and
+        `scatter_indices.shape.dims`[`k+1`] otherwise).
+
+  - `update_window_dims` must be in ascending order, not have any repeating
+    dimension numbers, and be in the range `[0, updates.rank)`.
+
+  - `inserted_window_dims` must be in ascending order, not have any
+    repeating dimension numbers, and be in the range `[0, operand.rank)`.
+
+  - `scatter_dims_to_operand_dims.size` must be equal to
+    `scatter_indices`[`index_vector_dim`], and its values must be in the range
+    `[0, operand.rank)`.
+
+For a given index `U` in the `updates` tensor, the corresponding index `I` in
+the `operand` tensor into which this update has to be applied is computed as
+follows:
+
+  1. Let `G` = { `U`[`k`] for `k` in `update_scatter_dims` }. Use `G` to look up
+     an index vector `S` in the `scatter_indices` tensor such that `S`[`i`] =
+     `scatter_indices`[Combine(`G`, `i`)] where Combine(A, b) inserts b at
+     positions `index_vector_dim` into A.
+  2. Create an index `S`<sub>`in`</sub> into `operand` using `S` by scattering
+     `S` using the `scatter_dims_to_operand_dims` map. More formally:
+       1. `S`<sub>`in`</sub>[`scatter_dims_to_operand_dims`[`k`]] = `S`[`k`] if
+          `k` < `scatter_dims_to_operand_dims.size`.
+       2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+  3. Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
+     at `update_window_dims` in `U` according to `inserted_window_dims`.
+     More formally:
+       1. `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if
+          `k` < `update_window_dims.size`, where `window_dims_to_operand_dims`
+          is the monotonic function with domain [`0`, `update_window_dims.size`)
+          and range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For
+          example, if `update_window_dims.size` is `4`, `operand.rank` is `6`,
+          and `inserted_window_dims` is {`0`, `2`} then
+          `window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`,
+          `3`→`5`}).
+       2. `W`<sub>`in`</sub>[`_`] = `0` otherwise.
+  4. `I` is `W`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+     addition.
+
+In summary, the scatter operation can be defined as follows.
+
+   - Initialize `output` with `operand`, i.e. for all indices `O` in the
+     `operand` tensor:\
+       `output`[`O`] = `operand`[`O`]
+   - For every index `U` in the `updates` tensor and the corresponding index `O`
+     in the `operand` tensor:\
+       `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
+
+The order in which updates are applied is non-deterministic. So, when multiple
+indices in `updates` refer to the same index in `operand`, the corresponding
+value in `output` will be non-deterministic.
+
+Note that the first parameter that is passed into the `update_computation` will
+always be the current value from the `output` tensor and the second parameter
+will always be the value from the `updates` tensor. This is important
+specifically for cases when the `update_computation` is _not commutative_.
+
+Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
+the scatter op updates the elements in the input that are extracted by the
+corresponding gather op.
+
+For a detailed informal description and examples, refer to the
+"Informal Description" section under `Gather`.
 
 ## Select
 

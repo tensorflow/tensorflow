@@ -819,7 +819,7 @@ class _FuncGraph(ops.Graph):
 def func_graph_from_py_func(func, arg_names, arg_types, name=None,
                             capture_by_value=False, device=None,
                             colocation_stack=None, container=None,
-                            collections_ref=None):
+                            collections_ref=None, arg_shapes=None):
   """Returns a _FuncGraph generated from `func`.
 
   Args:
@@ -836,6 +836,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
     container: A container name the _FuncGraph should start with.
     collections_ref: A reference to a collections dict the _FuncGraph should
       use internally.
+    arg_shapes: A sequence of the function's argument shapes.
 
   Returns:
     A _FuncGraph.
@@ -857,9 +858,12 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
       func_graph._colocation_stack = colocation_stack
     # pylint: enable=protected-access
 
+    if arg_shapes is None:
+      arg_shapes = [None] * len(arg_types)
+
     # Create placeholders for the function arguments.
-    for (argname, argtype) in zip(arg_names, arg_types):
-      argholder = array_ops.placeholder(argtype, name=argname)
+    for (argname, argtype, argshape) in zip(arg_names, arg_types, arg_shapes):
+      argholder = array_ops.placeholder(argtype, shape=argshape, name=argname)
       func_graph.inputs.append(argholder)
     # Call func and gather the output tensors.
     with vs.variable_scope("", custom_getter=func_graph.getvar):

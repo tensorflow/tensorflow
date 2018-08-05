@@ -22,6 +22,7 @@ import csv
 import os
 import re
 import shutil
+import tempfile
 import threading
 import unittest
 
@@ -29,10 +30,12 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import adam
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -63,7 +66,7 @@ class KerasCallbacksTest(test.TestCase):
       np.random.seed(1337)
 
       temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
       filepath = os.path.join(temp_dir, 'checkpoint.h5')
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -479,7 +482,7 @@ class KerasCallbacksTest(test.TestCase):
     with self.test_session():
       np.random.seed(1337)
       temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
       filepath = os.path.join(temp_dir, 'log.tsv')
 
       sep = '\t'
@@ -557,7 +560,7 @@ class KerasCallbacksTest(test.TestCase):
     # does not result in invalid CSVs.
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     with self.test_session():
       fp = os.path.join(tmpdir, 'test.csv')
@@ -649,7 +652,7 @@ class KerasCallbacksTest(test.TestCase):
     np.random.seed(1337)
 
     temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
@@ -747,7 +750,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_TensorBoard_histogram_freq_must_have_validation_data(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     with self.test_session():
       filepath = os.path.join(tmpdir, 'logs')
@@ -819,7 +822,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     with self.test_session():
       filepath = os.path.join(tmpdir, 'logs')
@@ -917,9 +920,12 @@ class KerasCallbacksTest(test.TestCase):
       def close(self):
         pass
 
+    def _init_writer(obj):
+      obj.writer = FileWriterStub(obj.log_dir)
+
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
         test_samples=TEST_SAMPLES,
@@ -940,13 +946,13 @@ class KerasCallbacksTest(test.TestCase):
           loss='categorical_crossentropy',
           optimizer='sgd',
           metrics=['accuracy'])
+      keras.callbacks.TensorBoard._init_writer = _init_writer
       tsb = keras.callbacks.TensorBoard(
           log_dir=tmpdir,
           histogram_freq=1,
           write_images=True,
           write_grads=True,
           batch_size=5)
-      tsb._writer_class = FileWriterStub
       cbks = [tsb]
 
       # fit with validation data
@@ -964,7 +970,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_Tensorboard_histogram_summaries_with_generator(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     def generator():
       x = np.random.randn(10, 100).astype(np.float32)
@@ -1061,7 +1067,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_TensorBoard_with_ReduceLROnPlateau(self):
     with self.test_session():
       temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1118,11 +1124,11 @@ class KerasCallbacksTest(test.TestCase):
       def close(self):
         pass
 
-    logdir = 'fake_dir'
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    # log every batch
-    tb_cbk = keras.callbacks.TensorBoard(logdir)
-    tb_cbk.writer = FileWriterStub(logdir)
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk.writer = FileWriterStub(temp_dir)
 
     for batch in range(5):
       tb_cbk.on_batch_end(batch, {'acc': np.float32(batch)})
@@ -1150,10 +1156,11 @@ class KerasCallbacksTest(test.TestCase):
       def close(self):
         pass
 
-    logdir = 'fake_dir'
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    tb_cbk = keras.callbacks.TensorBoard(logdir)
-    tb_cbk.writer = FileWriterStub(logdir)
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk.writer = FileWriterStub(temp_dir)
 
     tb_cbk.on_batch_end(0, {'acc': np.float32(5.0)})
     tb_cbk.on_epoch_end(0, {'acc': np.float32(10.0)})
@@ -1163,6 +1170,43 @@ class KerasCallbacksTest(test.TestCase):
     epoch_step, epoch_summary = tb_cbk.writer.epoch_summary
     self.assertEqual(epoch_step, 0)
     self.assertEqual(epoch_summary.value[0].simple_value, 10.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_Tensorboard_eager(self):
+    with self.test_session():
+      temp_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=TRAIN_SAMPLES,
+          test_samples=TEST_SAMPLES,
+          input_shape=(INPUT_DIM,),
+          num_classes=NUM_CLASSES)
+      y_test = keras.utils.to_categorical(y_test)
+      y_train = keras.utils.to_categorical(y_train)
+
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(
+              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+      model.compile(
+          loss='binary_crossentropy',
+          optimizer=adam.AdamOptimizer(0.01),
+          metrics=['accuracy'])
+
+      cbks = [keras.callbacks.TensorBoard(log_dir=temp_dir)]
+
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=2,
+          verbose=0)
+
+      self.assertTrue(os.path.exists(temp_dir))
 
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:

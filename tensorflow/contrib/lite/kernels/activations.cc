@@ -212,25 +212,25 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
 
-  output->type = input->type;
-
   // Currently only Float32 is supported
   // TODO(ycling): Support other data types.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, alpha->type, kTfLiteFloat32);
+  output->type = input->type;
 
-  // Currently, only support 4D `input` and 3D `alpha` with shape
-  // (1, 1, channels).
-  // TODO(impjdi): Support other cases where `alpha` is broadcastable
-  // to `input`.
-  TF_LITE_ENSURE_EQ(context, input->dims->size, 4);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->size, 3);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[0], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[1], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[2], input->dims->data[3]);
+  // PRelu (parameteric Relu) shares the same alpha value on "shared axis".
+  // This means it's always required to "broadcast" alpha values in PRelu.
+  TfLiteIntArray* output_size = nullptr;
+  TF_LITE_ENSURE_OK(
+      context, CalculateShapeForBroadcast(context, input, alpha, &output_size));
 
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, output_size));
+  // After broadcasting, the output shape should always be the same as the
+  // input shape.
+  TF_LITE_ENSURE(context, HaveSameShapes(input, output));
+
+  return kTfLiteOk;
 }
 
 TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
@@ -524,33 +524,24 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <typename T>
+T ApplyPrelu(T input, T alpha) {
+  return input >= 0.0 ? input : input * alpha;
+}
+
 TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
-  const TfLiteTensor* output = GetOutput(context, node, 0);
-
+  TfLiteTensor* output = GetOutput(context, node, 0);
   if (input->type != kTfLiteFloat32) {
     context->ReportError(context, "Only float32 supported currently, got %d.",
                          input->type);
     return kTfLiteError;
   }
-  TF_LITE_ENSURE_EQ(context, input->dims->size, 4);
-  const int batches = input->dims->data[0];
-  const int height = input->dims->data[1];
-  const int width = input->dims->data[2];
-  const int channels = input->dims->data[3];
-
-  TF_LITE_ENSURE_EQ(context, alpha->dims->size, 3);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[0], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[1], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[2], channels);
-
-  const int n = batches * height * width * channels;
-  for (int i = 0; i < n; ++i) {
-    const float x = input->data.f[i];
-    output->data.f[i] = x >= 0.0f ? x : alpha->data.f[i % channels] * x;
-  }
-
+  reference_ops::BroadcastBinaryFunction<float, float, float>(
+      GetTensorData<float>(input), GetTensorDims(input),
+      GetTensorData<float>(alpha), GetTensorDims(alpha),
+      GetTensorData<float>(output), GetTensorDims(output), ApplyPrelu<float>);
   return kTfLiteOk;
 }
 

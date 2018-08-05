@@ -238,7 +238,7 @@ class CallTreeTransformer(converter.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      ag__.converted_call(func, True, False, {}, args)
+      ag__.converted_call(func, True, False, False, {}, args)
     """
     call_expr = templates.replace(template, func=node.func, args=node.args)
     new_call = call_expr[0].value
