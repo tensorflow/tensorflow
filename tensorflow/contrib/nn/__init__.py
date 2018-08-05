@@ -34,6 +34,7 @@ from tensorflow.contrib.nn.python.ops.alpha_dropout import *
 from tensorflow.contrib.nn.python.ops.cross_entropy import *
 from tensorflow.contrib.nn.python.ops.sampling_ops import *
 from tensorflow.contrib.nn.python.ops.scaled_softplus import *
+from tensorflow.contrib.nn.python.ops.correlation_cost import *
 from tensorflow.python.ops.nn_ops import conv1d_transpose
 from tensorflow.python.ops.nn_ops import nth_element
 # pylint: enable=unused-import,wildcard-import

@@ -32,6 +32,7 @@ py_library(
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/constrained_optimization",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
+        "//tensorflow/contrib/correlation_cost:correlation_cost_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/data",
@@ -158,6 +159,7 @@ cc_library(
         "//tensorflow/contrib/text:all_kernels",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
+        "//tensorflow/contrib/correlation_cost:correlation_cost_op_kernels"
     ]) + select({
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
