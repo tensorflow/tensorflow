@@ -36,6 +36,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.util.deprecation import deprecated
 
 
@@ -66,7 +68,8 @@ class InputFnOps(collections.namedtuple('InputFnOps',
 
 @deprecated(None, 'Please use '
             'tf.estimator.export.build_parsing_serving_input_receiver_fn.')
-def build_parsing_serving_input_fn(feature_spec, default_batch_size=None):
+def build_parsing_serving_input_fn(feature_spec, default_batch_size=None,
+                                   base64_encode_example=False):
   """Build an input_fn appropriate for serving, expecting fed tf.Examples.
 
   Creates an input_fn that expects a serialized tf.Example fed into a string
@@ -78,16 +81,26 @@ def build_parsing_serving_input_fn(feature_spec, default_batch_size=None):
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.
     default_batch_size: the number of query examples expected per batch.
         Leave unset for variable batch size (recommended).
+    base64_encode_example: use base64 to encode serialized examples or not.
 
   Returns:
     An input_fn suitable for use in serving.
   """
   def input_fn():
     """An input_fn that expects a serialized tf.Example."""
-    serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
-                                                  shape=[default_batch_size],
-                                                  name='input_example_tensor')
-    inputs = {'examples': serialized_tf_example}
+    if base64_encode_example:
+      new_base64_placeholder = array_ops.placeholder(dtype=dtypes.string,
+                                              shape=[default_batch_size],
+                                              name='input_example_tensor')
+      serialized_tf_example = functional_ops.map_fn(string_ops.decode_base64,
+                                        new_base64_placeholder)
+      inputs = {'examples': new_base64_placeholder}
+    else:
+      serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
+                                                    shape=[default_batch_size],
+                                                    name='input_example_tensor')
+      inputs = {'examples': serialized_tf_example}
+
     features = parsing_ops.parse_example(serialized_tf_example, feature_spec)
     labels = None  # these are not known in serving!
     return InputFnOps(features, labels, inputs)
