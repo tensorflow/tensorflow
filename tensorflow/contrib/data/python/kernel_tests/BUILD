@@ -183,12 +183,12 @@ py_test(
     name = "lmdb_dataset_op_test",
     size = "medium",
     srcs = ["lmdb_dataset_op_test.py"],
+    data = ["//tensorflow/core:lmdb_testdata"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_windows",
         "no_pip",
+        "no_windows",
     ],
-    data = ["//tensorflow/core:lmdb_testdata"],
     deps = [
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/python:client_testlib",

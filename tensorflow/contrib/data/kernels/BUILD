@@ -62,7 +62,6 @@ cc_library(
     ],
 )
 
-
 cc_library(
     name = "threadpool_dataset_op",
     srcs = ["threadpool_dataset_op.cc"],
