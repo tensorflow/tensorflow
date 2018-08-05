@@ -1167,7 +1167,7 @@ def resize_image_with_pad(image,
     _ImageDimensions(padded, rank=4)
 
     if not is_batch:
-      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, axis=[0])
 
     return padded
 
