@@ -177,3 +177,8 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+)
