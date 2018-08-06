@@ -298,9 +298,7 @@ class Model(Network):
 
     # Prepare output masks.
     if not context.executing_eagerly():
-      masks = self.compute_mask(self.inputs, mask=None)
-      if masks is None:
-        masks = [None for _ in self.outputs]
+      masks = [getattr(x, '_keras_mask', None) for x in self.outputs]
       if not isinstance(masks, list):
         masks = [masks]
 
