@@ -838,11 +838,10 @@ def _encode_arg(arg):
           _TensorType(arg.values.dtype, arg.values._shape_tuple()),
           _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
       ])
-  # pylint: enable=protected-access
   elif isinstance(arg, np.ndarray):
-    # TODO(akshayka): Consider instead converting this NumPy array to a Tensor
-    # and encoding it with a _TensorType.
-    return ("array", arg.shape, tuple(arg.reshape(-1)))
+    tensor = ops.convert_to_tensor(arg)
+    return _TensorType(tensor.dtype, tensor._shape_tuple())
+  # pylint: enable=protected-access
   elif isinstance(arg, (list, tuple)):
     return tuple([_encode_arg(elem) for elem in arg])
   elif isinstance(arg, dict):
