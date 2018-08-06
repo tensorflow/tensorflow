@@ -3236,6 +3236,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/mutex_test.cc",
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
