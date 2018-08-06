@@ -2238,6 +2238,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2266,6 +2267,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2292,6 +2294,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
         "@png_archive//:png",
     ],
 )

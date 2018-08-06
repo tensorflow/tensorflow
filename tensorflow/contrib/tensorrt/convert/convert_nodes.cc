@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -2690,7 +2691,7 @@ tensorflow::Status ConvertGraphDefToEngine(
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
-    VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
+    VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
     if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
         (node_def.op() == "Placeholder")) {
       nvinfer1::DimsCHW input_dim_pseudo_chw;
@@ -2788,6 +2789,7 @@ tensorflow::Status ConvertGraphDefToEngine(
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
+    const std::set<string>& subgraph_node_names,
     const std::vector<int>& subgraph_node_ids,  // In topological order
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope) {
@@ -2796,6 +2798,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
   // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
+    if (connection.is_control_edge()) continue;
     auto outside_node = graph->FindNodeId(connection.outside_id);
     if (!outside_node) {
       // This should never happen, unless the original graph is problematic.
@@ -2809,13 +2812,13 @@ tensorflow::Status ConvertSegmentToGraphDef(
       GetInputProperties(graph_properties,
                          graph->FindNodeId(connection.outside_id),
                          connection.outside_port, &partial_shape, &dtype);
-
+      connection.outside_shape = partial_shape;
     } else {
       GetOutputProperties(graph_properties,
                           graph->FindNodeId(connection.outside_id),
                           connection.outside_port, &partial_shape, &dtype);
+      connection.inside_shape = partial_shape;
     }
-    connection.outside_shape = partial_shape;
     connection.connection_type = dtype;
 
     // Add dummy input/output nodes to the segment graphdef.
@@ -2868,12 +2871,12 @@ tensorflow::Status ConvertSegmentToGraphDef(
     old_to_new_id_map[node_id] = segment_def->node_size();
     auto snode = segment_def->add_node();
     snode->CopyFrom(node->def());
-    VLOG(1) << "Copying " << snode->name() << " to subgraph";
+    VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
   for (int i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
-    if (!connection.is_input_edge) continue;
+    if (connection.is_control_edge() || !connection.is_input_edge) continue;
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
     const string placeholder_name =
@@ -2882,6 +2885,39 @@ tensorflow::Status ConvertSegmentToGraphDef(
             << " from " << snode->input(connection.inside_port) << " to "
             << placeholder_name;
     snode->set_input(connection.inside_port, placeholder_name);
+  }
+  // Remove control inputs that are not inside the segment.
+  for (int i = 0; i < segment_def->node_size(); ++i) {
+    auto snode = segment_def->mutable_node(i);
+    const int input_size = snode->input_size();
+    int input_idx = 0;
+    int actual_input_idx = 0;
+    while (input_idx < input_size) {
+      TensorId input = ParseTensorName(snode->input(input_idx));
+      if (!subgraph_node_names.count(
+              string(input.first.data(), input.first.size())) &&
+          !str_util::StartsWith(input.first, kInputPHName)) {
+        if (input.second == Graph::kControlSlot) {
+          VLOG(1) << "... removing control inputs " << input.first
+                  << " from subgraph.";
+          ++input_idx;
+          continue;
+        } else {
+          return tensorflow::errors::InvalidArgument(
+              "Found non control input outside the segment that is not an "
+              "engine connection to ",
+              snode->name(), ": ", input.first);
+        }
+      }
+      if (actual_input_idx != input_idx) {
+        snode->set_input(actual_input_idx, snode->input(input_idx));
+      }
+      ++input_idx;
+      ++actual_input_idx;
+    }
+    for (int remove = input_size - actual_input_idx; remove > 0; --remove) {
+      snode->mutable_input()->RemoveLast();
+    }
   }
   *common_scope = local_scope;
   VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
@@ -2897,12 +2933,12 @@ bool InputEdgeValidator::operator()(const tensorflow::Edge* in_edge) const {
   nvinfer1::DataType trt_dtype;
   Status status = ValidateInputProperties(shape, dtype, &trt_dtype);
   if (!status.ok()) {
-    VLOG(2) << "--> Need to remove input node " << in_edge->dst()->name()
+    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
             << ": " << status;
     return false;
   }
   if (shape.dims() < 3 && in_edge->src()->type_string() != "Const") {
-    VLOG(2) << "--> Need to remove input node " << in_edge->dst()->name()
+    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
             << " which has an input at port " << in_edge->dst_input()
             << " with #dim<3 and is not a const: " << shape;
     return false;
@@ -2913,7 +2949,7 @@ bool InputEdgeValidator::operator()(const tensorflow::Edge* in_edge) const {
 bool OutputEdgeValidator::operator()(const tensorflow::Edge* out_edge) const {
   if (out_edge->IsControlEdge()) return true;
   if (out_edge->src()->type_string() == "Const") {
-    VLOG(2) << "--> Need to remove output node " << out_edge->src()->name()
+    VLOG(1) << "--> Need to remove output node " << out_edge->src()->name()
             << " which is a Const.";
     return false;
   }

@@ -119,7 +119,7 @@ Status GrapplerFunctionConnectivity::ExpandFunctionDefInput(
   if (Scanner(remaining)
           .OneLiteral(":")
           .RestartCapture()
-          .One(strings::Scanner::LOWERLETTER)
+          .One(strings::Scanner::LETTER)
           .Any(strings::Scanner::LETTER_DIGIT_UNDERSCORE)
           .GetResult(&remaining, &capture)) {
     node_output = string(capture.data(), capture.size());

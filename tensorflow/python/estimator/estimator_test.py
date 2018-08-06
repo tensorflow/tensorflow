@@ -69,6 +69,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
@@ -1548,7 +1549,8 @@ class EstimatorPredictTest(test.TestCase):
       next(
           est.predict(
               dummy_input_fn,
-              checkpoint_path=saver.latest_checkpoint('fakedir')))
+              checkpoint_path=
+              checkpoint_management.latest_checkpoint('fakedir')))
 
   def test_tensor_predictions(self):
 

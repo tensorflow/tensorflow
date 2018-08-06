@@ -47,6 +47,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async),
+      env_(opts.env),
       use_send_tensor_rpc_(false) {
   InitDeviceMapAndAsync();
   if (opts.config.inter_op_parallelism_threads() > 0) {
@@ -57,34 +58,6 @@ EagerContext::EagerContext(const SessionOptions& opts,
     runner_ = [](std::function<void()> closure) { closure(); };
   }
 }
-
-#ifndef __ANDROID__
-EagerContext::EagerContext(
-    const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-    bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
-    std::unique_ptr<ServerInterface> server,
-    std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    std::unique_ptr<DeviceMgr> remote_device_manager,
-    const gtl::FlatMap<string, uint64>& remote_contexts)
-    : policy_(default_policy),
-      local_unowned_device_manager_(local_device_mgr),
-      devices_(local_unowned_device_manager_->ListDevices()),
-      rendezvous_(rendezvous),
-      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
-      pflr_(new ProcessFunctionLibraryRuntime(
-          local_unowned_device_manager_, opts.env, TF_GRAPH_DEF_VERSION,
-          &func_lib_def_, {}, thread_pool_.get())),
-      log_device_placement_(opts.config.log_device_placement()),
-      async_default_(async),
-      remote_device_manager_(std::move(remote_device_manager)),
-      server_(std::move(server)),
-      remote_eager_workers_(std::move(remote_eager_workers)),
-      remote_contexts_(remote_contexts),
-      use_send_tensor_rpc_(
-          ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", false)) {
-  InitDeviceMapAndAsync();
-}
-#endif
 
 void EagerContext::InitDeviceMapAndAsync() {
   if (async_default_) {
@@ -148,15 +121,8 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
   return policy_;
 }
 
-EagerContext::~EagerContext() {
 #ifndef __ANDROID__
-  if (server_) {
-    // TODO(nareshmodi): Fix this.
-    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "Servers don't support clean shutdown.";
-    server_.release();
-  }
-
+void EagerContext::CloseRemoteContexts() {
   // Close all remote contexts.
   std::vector<eager::CloseContextRequest> requests(remote_contexts_.size());
   std::vector<eager::CloseContextResponse> responses(remote_contexts_.size());
@@ -183,6 +149,19 @@ EagerContext::~EagerContext() {
   }
 
   counter.Wait();
+}
+#endif
+
+EagerContext::~EagerContext() {
+#ifndef __ANDROID__
+  if (server_) {
+    // TODO(nareshmodi): Fix this.
+    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                    "Servers don't support clean shutdown.";
+    server_.release();
+  }
+
+  CloseRemoteContexts();
 #endif
 
   executor_.WaitForAllPendingNodes().IgnoreError();
@@ -317,6 +296,55 @@ Status EagerContext::GetClientAndContextID(Device* device,
   device_to_client_cache_.insert({device, {*client, *context_id}});
 
   return Status::OK();
+}
+
+void EagerContext::InitializeRemote(
+    std::unique_ptr<ServerInterface> server,
+    std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+    std::unique_ptr<DeviceMgr> remote_device_manager,
+    const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
+    DeviceMgr* local_device_mgr) {
+  if (!remote_contexts_.empty()) {
+    CloseRemoteContexts();
+  }
+  remote_contexts_ = remote_contexts;
+
+  use_send_tensor_rpc_ =
+      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", false);
+
+  local_unowned_device_manager_ = local_device_mgr;
+  local_device_manager_ = nullptr;
+  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      {}, thread_pool_.get()));
+
+  devices_ = local_unowned_device_manager_->ListDevices();
+  devices_map_.clear();
+
+  if (rendezvous_ != nullptr) rendezvous_->Unref();
+  rendezvous_ = r;
+
+  // Memory leak!
+  if (server_ != nullptr) {
+    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                    "Servers don't support clean shutdown.";
+    server_.release();
+  }
+
+  server_ = std::move(server);
+  remote_eager_workers_ = std::move(remote_eager_workers);
+
+  active_remote_contexts_.clear();
+  for (const auto& remote_context : remote_contexts_) {
+    active_remote_contexts_.insert(remote_context.second);
+  }
+
+  device_to_client_cache_.clear();
+  remote_device_manager_ = std::move(remote_device_manager);
+
+  InitDeviceMapAndAsync();
+
+  ClearCaches();
 }
 #endif
 

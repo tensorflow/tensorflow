@@ -55,6 +55,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -78,7 +79,7 @@ def freeze_graph_with_def_protos(input_graph_def,
 
   # 'input_checkpoint' may be a prefix if we're using Saver V2 format
   if (not input_saved_model_dir and
-      not saver_lib.checkpoint_exists(input_checkpoint)):
+      not checkpoint_management.checkpoint_exists(input_checkpoint)):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 

@@ -81,16 +81,6 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
 
-// A tensorflow.ServerDef specifies remote workers (in addition to the current
-// workers name). Operations created on this context can then be executed on
-// any of these remote workers by setting an appropriate device.
-//
-// If the following is set, all servers identified by the
-// ServerDef must be up when the context is created.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetServerDef(
-    TFE_ContextOptions* options, const void* proto, size_t proto_len,
-    TF_Status* status);
-
 // Destroy an options object.
 TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
@@ -126,6 +116,17 @@ TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
                                                         unsigned char async,
                                                         TF_Status* status);
+
+// A tensorflow.ServerDef specifies remote workers (in addition to the current
+// workers name). Operations created on this context can then be executed on
+// any of these remote workers by setting an appropriate device.
+//
+// If the following is set, all servers identified by the
+// ServerDef must be up when the context is created.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
 
 // Causes the calling thread to block till all ops dispatched in async mode
 // have been executed. Note that "execution" here refers to kernel execution /

@@ -760,6 +760,46 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], gather_indices: s64[10,9,8,7,5
 
 )"
 },
+{
+"scatter",
+R"(HloModule StringifyScatter
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7,5], updates: f32[10,9,8,7,30,29,28,27,26]) -> f32[50,49,48,47,46] {
+  %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
+  ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, to_apply=%add_F32.v3
+}
+
+)"
+},
+{
+  "ConstantUnsignedNoUnderflow",
+  R"(HloModule ConstantUnsignedNoUnderflow_module
+
+ENTRY %ConstantUnsignedNoUnderflow () -> u64[] {
+  ROOT %constant = u64[] constant(1)
+}
+
+)"
+},
+
+{
+  "ConstantUnsignedNoOverflow",
+  R"(HloModule ConstantUnsignedNoOverflow_module
+
+ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
+  ROOT %constant = u64[] constant(9223372036854775807)
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -801,6 +841,32 @@ ENTRY ReduceR3ToR2.v3 {
   input = f32[8,16,256]{2,1,0} parameter(0)
   constant = f32[] constant(0)
   ROOT reduce = f32[8,16]{1,0} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+}
+
+)"
+},
+// tuple reduce
+{
+"TupleReduce",
+R"(HloModule TupleReduce
+
+max_argmax {
+  value = f32[] parameter(2)
+  prev_max = f32[] parameter(0)
+  is_next_larger = pred[] greater-than-or-equal-to(value, prev_max)
+  max = f32[] select(is_next_larger, value, prev_max)
+  index = s32[] parameter(3)
+  prev_argmax = s32[] parameter(1)
+  argmax = s32[] select(is_next_larger, index, prev_argmax)
+  ROOT pair = (f32[], s32[]) tuple(max, argmax)
+}
+
+ENTRY reduce_entry {
+  values = f32[1024]{0} parameter(0)
+  indices = f32[1024]{0} parameter(1)
+  init_value = f32[] constant(-inf)
+  init_index = s32[] constant(-1)
+  ROOT result = (f32[], s32[]) reduce(values, indices, init_value, init_index), dimensions={0}, to_apply=max_argmax
 }
 
 )"
@@ -1222,6 +1288,40 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
   EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type F16");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedUnderflow_module
+      ENTRY %ConstantUnsignedUnderflow () -> u64[] {
+        ROOT %constant = u64[] constant(-1)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U64");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedOverflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u32[] {
+        ROOT %constant = u32[] constant(4294967296)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U32");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u64[] {
+        ROOT %constant = u64[] constant(9223372036854775808)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, ConstantWithExp) {

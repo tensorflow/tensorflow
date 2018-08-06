@@ -812,4 +812,33 @@ REGISTER_OP("OptimizeDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("OptionalFromValue")
+    .Input("components: Toutput_types")
+    .Output("optional: variant")
+    .Attr("Toutput_types: list(type) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("OptionalNone")
+    .Output("optional: variant")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("OptionalHasValue")
+    .Input("optional: variant")
+    .Output("has_value: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("OptionalGetValue")
+    .Input("optional: variant")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(IteratorGetNextShapeFn);
+
+REGISTER_OP("IteratorGetNextAsOptional")
+    .Input("iterator: resource")
+    .Output("optional: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // namespace tensorflow

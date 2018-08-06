@@ -13,39 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/aot/runtime.h"
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace tfcompile {
-namespace runtime {
 namespace {
 
-TEST(Runtime, AlignmentValue) {
+TEST(XlaCompiledCpuFunctionTest, AlignmentValue) {
   // We've chosen 64 byte alignment for the tfcompile runtime to mimic the
   // regular tensorflow allocator, which was chosen to play nicely with Eigen.
   // The tfcompile runtime also has a requirement that comes from the xla
   // generated code, on the relation: buffer_size >= 16 ? 2 * sizeof(void*) : 8
   // So any value that we choose must abide by that constraint as well.
-  EXPECT_EQ(kAlign, Allocator::kAllocatorAlignment);
+  EXPECT_EQ(cpu_function_runtime::kAlign, Allocator::kAllocatorAlignment);
 }
 
-TEST(Runtime, AlignedBufferBytes) {
-  EXPECT_EQ(aligned_buffer_bytes(nullptr, 0), 0);
+TEST(XlaCompiledCpuFunctionTest, AlignedBufferBytes) {
+  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(nullptr, 0), 0);
 
   static constexpr intptr_t sizesA[1] = {-1};
-  EXPECT_EQ(aligned_buffer_bytes(sizesA, 1), 0);
+  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesA, 1), 0);
 
   static constexpr intptr_t sizesB[1] = {3};
-  EXPECT_EQ(aligned_buffer_bytes(sizesB, 1), 64);
+  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesB, 1), 64);
 
   static constexpr intptr_t sizesC[1] = {32};
-  EXPECT_EQ(aligned_buffer_bytes(sizesC, 1), 64);
+  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesC, 1), 64);
 
   static constexpr intptr_t sizesD[7] = {1, -1, 32, -1, 64, 2, 3};
-  EXPECT_EQ(aligned_buffer_bytes(sizesD, 7), 320);
+  EXPECT_EQ(cpu_function_runtime::AlignedBufferBytes(sizesD, 7), 320);
 }
 
 void* add_ptr(void* base, uintptr_t delta) {
@@ -56,48 +54,49 @@ void* add_ptr(void* base, uintptr_t delta) {
 // expected nullptrs, and write to each byte of allocated memory.  We rely on
 // the leak checker to tell us if there's an inconsistency between malloc and
 // free.  We also check the contiguous property.
-TEST(Runtime, MallocFreeContiguousBuffers) {
+TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
   // Test empty sizes.
-  void* base = MallocContiguousBuffers(nullptr, 0, nullptr, false);
+  void* base =
+      cpu_function_runtime::MallocContiguousBuffers(nullptr, 0, nullptr, false);
   EXPECT_EQ(base, nullptr);
-  FreeContiguous(base);
+  cpu_function_runtime::FreeContiguous(base);
 
   // Test non-empty sizes with 0 sum.
   static constexpr intptr_t sizesA[1] = {-1};
   void* bufA[1];
-  base = MallocContiguousBuffers(sizesA, 1, bufA, false);
+  base = cpu_function_runtime::MallocContiguousBuffers(sizesA, 1, bufA, false);
   EXPECT_EQ(base, nullptr);
   EXPECT_EQ(bufA[0], nullptr);
-  FreeContiguous(base);
+  cpu_function_runtime::FreeContiguous(base);
 
   // Test non-empty sizes with non-0 sum.
   static constexpr intptr_t sizesB[1] = {3};
   void* bufB[1];
-  base = MallocContiguousBuffers(sizesB, 1, bufB, false);
+  base = cpu_function_runtime::MallocContiguousBuffers(sizesB, 1, bufB, false);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufB[0], add_ptr(base, 0));
   char* bufB0_bytes = static_cast<char*>(bufB[0]);
   bufB0_bytes[0] = 'A';
   bufB0_bytes[1] = 'B';
   bufB0_bytes[2] = 'C';
-  FreeContiguous(base);
+  cpu_function_runtime::FreeContiguous(base);
 
   // Test non-empty sizes with non-0 sum, and annotate_initialized.
   static constexpr intptr_t sizesC[1] = {3};
   void* bufC[1];
-  base = MallocContiguousBuffers(sizesC, 1, bufC, true);
+  base = cpu_function_runtime::MallocContiguousBuffers(sizesC, 1, bufC, true);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufC[0], add_ptr(base, 0));
   char* bufC0_bytes = static_cast<char*>(bufC[0]);
   bufC0_bytes[0] = 'A';
   bufC0_bytes[1] = 'B';
   bufC0_bytes[2] = 'C';
-  FreeContiguous(base);
+  cpu_function_runtime::FreeContiguous(base);
 
   // Test mixed sizes.
   static constexpr intptr_t sizesD[7] = {1, -1, 32, -1, 64, 2, 3};
   void* bufD[7];
-  base = MallocContiguousBuffers(sizesD, 7, bufD, false);
+  base = cpu_function_runtime::MallocContiguousBuffers(sizesD, 7, bufD, false);
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufD[0], add_ptr(base, 0));
   EXPECT_EQ(bufD[1], nullptr);
@@ -115,10 +114,8 @@ TEST(Runtime, MallocFreeContiguousBuffers) {
       }
     }
   }
-  FreeContiguous(base);
+  cpu_function_runtime::FreeContiguous(base);
 }
 
 }  // namespace
-}  // namespace runtime
-}  // namespace tfcompile
 }  // namespace tensorflow

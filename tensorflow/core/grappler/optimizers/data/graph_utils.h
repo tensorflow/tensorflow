@@ -90,9 +90,14 @@ int FindGraphFunctionWithName(const string& name,
 // function node does not exist.
 int FindFunctionNodeWithName(const string& name, const FunctionDef& function);
 
-// Returns the index of a node with the given op or -1 if no such  node
+// Returns the index of the first node with the given op or -1 if no such  node
 // exists.
 int FindNodeWithOp(const string& op, const GraphDef& graph);
+
+// Returns the list of indices of all nodes with the given op or empty list if
+// no such node exists.
+std::vector<int> FindAllGraphNodesWithOp(const string& op,
+                                         const GraphDef& graph);
 
 // Sets the node name using `prefix` as a prefix while guaranteeing the name
 // is unique across the graph.

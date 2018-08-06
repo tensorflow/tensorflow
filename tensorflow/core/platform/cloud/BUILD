@@ -74,6 +74,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
+        ":compute_engine_zone_provider",
         ":curl_http_request",
         ":expiring_lru_cache",
         ":file_block_cache",

@@ -91,6 +91,7 @@ class _EagerContext(threading.local):
     self.summary_writer_resource = None
     self.scalar_cache = {}
     self.ones_rank_cache = _TensorCache()
+    self.zeros_cache = _TensorCache()
     self.execution_mode = None
 
 
@@ -225,6 +226,24 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
+  def _initialize_devices(self):
+    """Helper to initialize devices."""
+    # Store list of devices
+    self._context_devices = []
+    device_list = pywrap_tensorflow.TFE_ContextListDevices(
+        self._context_handle)
+    try:
+      self._num_gpus = 0
+      for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
+        dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
+        self._context_devices.append(pydev.canonical_name(dev_name))
+        dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
+        if dev_type == "GPU":
+          self._num_gpus += 1
+
+    finally:
+      pywrap_tensorflow.TF_DeleteDeviceList(device_list)
+
   def _initialize_handle_and_devices(self):
     """Initialize handle and devices."""
     with self._initialize_lock:
@@ -241,27 +260,48 @@ class Context(object):
               opts, self._device_policy)
         if self._execution_mode == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-        if self._server_def is not None:
-          server_def_str = self._server_def.SerializeToString()
-          pywrap_tensorflow.TFE_ContextOptionsSetServerDef(opts, server_def_str)
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
-      # Store list of devices
-      self._context_devices = []
-      device_list = pywrap_tensorflow.TFE_ContextListDevices(
-          self._context_handle)
-      try:
-        self._num_gpus = 0
-        for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
-          dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
-          self._context_devices.append(pydev.canonical_name(dev_name))
-          dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
-          if dev_type == "GPU":
-            self._num_gpus += 1
+      if self._server_def is not None:
+        server_def_str = self._server_def.SerializeToString()
+        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
+                                                  server_def_str)
 
-      finally:
-        pywrap_tensorflow.TF_DeleteDeviceList(device_list)
+      self._initialize_devices()
+
+  def _clear_caches(self):
+    self.scalar_cache().clear()
+    self.ones_rank_cache().flush()
+    self.zeros_cache().flush()
+
+  def set_server_def(self, server_def):
+    """Allow setting a server_def on the context.
+
+    When a server def is replaced, it effectively clears a bunch of caches
+    within the context. If you attempt to use a tensor object that was pointing
+    to a tensor on the remote device, it will raise an error.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto.
+        Enables execution on remote devices.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+    if not self._context_handle:
+      self._server_def = server_def
+    else:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
+                                                server_def_str)
+
+      # Clear all the caches in case there are remote tensors in them.
+      self._clear_caches()
+
+      self._initialize_devices()
 
   @property
   def _handle(self):
@@ -323,6 +363,10 @@ class Context(object):
   def ones_rank_cache(self):
     """Per-device cache for scalars."""
     return self._eager_context.ones_rank_cache
+
+  def zeros_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.zeros_cache
 
   @property
   def scope_name(self):
@@ -733,6 +777,10 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+def set_server_def(server_def):
+  context().set_server_def(server_def)
 
 
 # Not every user creates a Context via context.context()

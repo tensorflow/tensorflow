@@ -322,8 +322,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
           if (bias_data) {
             acc += bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
           }
-          acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-              acc, output_multiplier, kReverseShift * output_shift);
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              kReverseShift * output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -903,7 +903,8 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
     ++*output_shift;
   }
   TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits = __builtin_clz(input) - 1;
+  const unsigned max_left_shift_bits =
+      CountLeadingZeros(static_cast<uint32>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
   const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
   *output_shift -= left_shift_bit_pairs;
@@ -4190,8 +4191,8 @@ inline void RankOneSelect(const D* input_condition_data,
 }
 
 // For easy implementation, the indices is always a vector of size-4 vectors.
-template <typename T, typename I>
-inline void SparseToDense(const std::vector<std::vector<I>>& indices,
+template <typename T, typename TI>
+inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
                           const T* values, T default_value, T* output_data,
                           const Dims<4>& output_dims, bool value_is_scalar) {
   const int value_count = indices.size();
@@ -4206,7 +4207,7 @@ inline void SparseToDense(const std::vector<std::vector<I>>& indices,
   // condition within the loop every time.
   if (value_is_scalar) {
     for (int i = 0; i < value_count; ++i) {
-      const std::vector<I>& index = indices[i];
+      const std::vector<TI>& index = indices[i];
       TFLITE_DCHECK_EQ(index.size(), 4);
       const T value = *values;  // just use the first value.
       output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
@@ -4217,7 +4218,7 @@ inline void SparseToDense(const std::vector<std::vector<I>>& indices,
 
   // Go through the values and indices to fill the sparse values.
   for (int i = 0; i < value_count; ++i) {
-    const std::vector<I>& index = indices[i];
+    const std::vector<TI>& index = indices[i];
     TFLITE_DCHECK_EQ(index.size(), 4);
     const T value = values[i];
     output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
@@ -4271,6 +4272,33 @@ inline void BroadcastLogical(const bool* input1_data,
                              const Dims<4>& input2_dims, bool* output_data,
                              const Dims<4>& output_dims,
                              const std::function<bool(bool, bool)>& func) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              func(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                   input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+        }
+      }
+    }
+  }
+}
+
+// TODO(ycling): Refactoring. Remove BroadcastLogical and use the more
+// generalized and efficient BroadcastBinaryFunction.
+//
+// R: Result type. T1: Input 1 type. T2: Input 2 type.
+template <typename R, typename T1, typename T2>
+inline void BroadcastBinaryFunction(const T1* input1_data,
+                                    const Dims<4>& input1_dims,
+                                    const T2* input2_data,
+                                    const Dims<4>& input2_dims, R* output_data,
+                                    const Dims<4>& output_dims,
+                                    R (*func)(T1, T2)) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
