@@ -28,8 +28,9 @@ namespace tflite {
 // Given the min and max values of a float array, return
 // reasonable quantization parameters to use for this array.
 template <typename T>
-QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
-  const T qmin = std::numeric_limits<T>::min();
+QuantizationParams ChooseQuantizationParams(double rmin, double rmax,
+                                            bool narrow_range) {
+  const T qmin = std::numeric_limits<T>::min() + (narrow_range ? 1 : 0);
   const T qmax = std::numeric_limits<T>::max();
   const double qmin_double = qmin;
   const double qmax_double = qmax;
@@ -95,6 +96,11 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
   quantization_params.zero_point = nudged_zero_point;
   quantization_params.scale = scale;
   return quantization_params;
+}
+
+template <typename T>
+QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
+  return ChooseQuantizationParams<T>(rmin, rmax, false);
 }
 
 // Converts a floating-point number to an integer. For all inputs x where
@@ -167,9 +173,9 @@ IntOut SafeCast(FloatIn x) {
 // this is intended as a RIGHT-shift.
 //
 // Restricted to the case where the multiplier < 1 (and non-negative).
-void QuantizeMultiplierSmallerThanOne(double double_multiplier,
-                                      int32_t* quantized_multiplier,
-                                      int* right_shift);
+void QuantizeMultiplierSmallerThanOneExp(double double_multiplier,
+                                         int32_t* quantized_multiplier,
+                                         int* left_shift);
 
 // Decompose a double multiplier into a Q0.31 int32 representation of its
 // significand, and shift representation of its exponent.
@@ -197,11 +203,12 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
                               int input_integer_bits,
                               int32_t* quantized_multiplier, int* left_shift);
 // Like PreprocessSoftmaxScaling, but inverse scaling factors also calculated.
-void PreprocessLogSoftmaxScaling(double beta, double input_scale,
-                                 int input_integer_bits,
-                                 int32_t* quantized_multiplier, int* left_shift,
-                                 int32_t* reverse_scaling_divisor,
-                                 int* reverse_scaling_right_shift);
+void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
+                                    int input_integer_bits,
+                                    int32_t* quantized_multiplier,
+                                    int* left_shift,
+                                    int32_t* reverse_scaling_divisor,
+                                    int* reverse_scaling_left_shift);
 // Calculate the largest input that will result in a within-bounds intermediate
 // result within MultiplyByQuantizedMultiplierGreaterThanOne.  In other words,
 // it must not overflow before we reduce the value by multiplication by the
@@ -215,7 +222,20 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 // Outputs nudged_min, nudged_max, nudged_scale.
 void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
-                            float* nudged_min, float* nudged_max, float* scale);
+                            float* nudged_min, float* nudged_max,
+                            float* nudged_scale);
+
+// Fake quantizes (quantizes and dequantizes) input_data using the scale,
+// nudged_min, and nudged_max from NudgeQuantizationRange. This matches the code
+// in TensorFlow's FakeQuantizeWithMinMaxVarsFunctor.
+void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
+                       const float nudged_max, const float* input_data,
+                       float* output_data, const float size);
+
+// If x is approximately a power of two (with any positive or negative
+// exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
+// returns false.
+bool CheckedLog2(const float x, int* log2_result);
 
 }  // namespace tflite
 

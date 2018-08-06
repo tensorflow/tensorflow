@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -37,8 +37,8 @@ using xla::string;
 xla::XlaComputation Doubler() {
   xla::XlaBuilder builder("doubler");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
-  auto x = builder.Parameter(0, r0f32, "x");
-  builder.Mul(x, builder.ConstantR0<float>(2.0));
+  auto x = xla::Parameter(&builder, 0, r0f32, "x");
+  xla::Mul(x, xla::ConstantR0<float>(&builder, 2.0));
   return std::move(builder.Build().ValueOrDie());
 }
 
@@ -51,10 +51,10 @@ int main(int argc, char** argv) {
 
   xla::XlaBuilder builder("aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
-  auto opaque_param = builder.Parameter(0, opaque_shape, "x");
+  auto opaque_param = Parameter(&builder, 0, opaque_shape, "x");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
-  auto sum = builder.CustomCall("SumStructElements", {opaque_param}, r0f32);
-  builder.Call(Doubler(), {sum});
+  auto sum = CustomCall(&builder, "SumStructElements", {opaque_param}, r0f32);
+  Call(&builder, Doubler(), {sum});
 
   if (argc != 2) {
     LOG(FATAL) << "local_client_aot_test_helper TARGET_CPU";
@@ -92,9 +92,10 @@ int main(int argc, char** argv) {
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 1);
-  CHECK_EQ(result->buffer_sizes().size(), 2);
-  CHECK_EQ(result->buffer_sizes()[0], -1);             // param buffer
+  CHECK_EQ(result->buffer_sizes().size(), 3);
+  CHECK_EQ(result->buffer_sizes()[0], -2);             // param buffer
   CHECK_EQ(result->buffer_sizes()[1], sizeof(float));  // result buffer
+  CHECK_EQ(result->buffer_sizes()[2], -1);             // const buffer
   if (triple.isOSBinFormatELF()) {
     // Check the ELF magic.
     CHECK_EQ(result->object_file_data()[0], 0x7F);

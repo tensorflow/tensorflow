@@ -14,16 +14,34 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/profiling/time.h"
 
+#if defined(_MSC_VER)
+#include <chrono>  // NOLINT(build/c++11)
+#else
 #include <sys/time.h>
+#endif
 
 namespace tflite {
 namespace profiling {
 namespace time {
+
+#if defined(_MSC_VER)
+
+uint64_t NowMicros() {
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+#else
+
 uint64_t NowMicros() {
   struct timeval tv;
   gettimeofday(&tv, nullptr);
   return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
 }
+
+#endif  // defined(_MSC_VER)
+
 }  // namespace time
 }  // namespace profiling
 }  // namespace tflite

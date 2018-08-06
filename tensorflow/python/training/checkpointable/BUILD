@@ -42,12 +42,30 @@ py_test(
 )
 
 py_library(
-    name = "data_structures_base",
-    srcs = ["data_structures_base.py"],
+    name = "tracking",
+    srcs = ["tracking.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":data_structures",
     ],
+)
+
+py_test(
+    name = "tracking_test",
+    srcs = ["tracking_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+        ":tracking",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "layer_utils",
+    srcs = ["layer_utils.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -56,7 +74,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
-        ":data_structures_base",
+        ":layer_utils",
     ],
 )
 
@@ -83,6 +101,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":tracking",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -105,14 +124,18 @@ py_test(
     ],
     deps = [
         ":base",
+        ":tracking",
         ":util",
+        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:template",

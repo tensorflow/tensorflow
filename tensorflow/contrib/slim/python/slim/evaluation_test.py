@@ -33,7 +33,6 @@ from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -242,7 +241,7 @@ class SingleEvaluationTest(test.TestCase):
     checkpoint_path = os.path.join(self.get_temp_dir(),
                                    'this_file_doesnt_exist')
     log_dir = os.path.join(self.get_temp_dir(), 'error_raised')
-    with self.assertRaises(errors.NotFoundError):
+    with self.assertRaises(ValueError):
       evaluation.evaluate_once('', checkpoint_path, log_dir)
 
   def _prepareCheckpoint(self, checkpoint_path):

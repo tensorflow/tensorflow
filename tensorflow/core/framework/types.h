@@ -470,6 +470,10 @@ inline bool DataTypeIsUnsigned(DataType dt) {
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
 
+// Returns HOST_MEMORY if `dtype` is always on host or is a DT_INT32,
+// DEVICE_MEMORY otherwise.
+MemoryType MTypeFromDType(const DataType dtype);
+
 // Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
 // For DT_RESOURCE, the handle always sits on host (even if the underlying
 // object has device-allocated resources).

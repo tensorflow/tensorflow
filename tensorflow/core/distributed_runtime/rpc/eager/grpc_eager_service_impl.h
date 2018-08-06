@@ -20,16 +20,16 @@ limitations under the License.
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 
 namespace tensorflow {
 namespace eager {
 
 // This class is a wrapper that handles communication for gRPC.
-class GrpcEagerServiceImpl {
+class GrpcEagerServiceImpl : public AsyncServiceInterface {
  public:
   template <class RequestMessage, class ResponseMessage>
   using EagerCall = Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
@@ -39,13 +39,13 @@ class GrpcEagerServiceImpl {
                        ::grpc::ServerBuilder* server_builder);
   virtual ~GrpcEagerServiceImpl() {}
 
-  void Start();
-  void Stop();
+  void HandleRPCsLoop() override;
+  void Shutdown() override;
 
  private:
 #define HANDLER(method)                                                        \
   void method##Handler(EagerCall<method##Request, method##Response>* call) {   \
-    request_handler_threadpool_->Schedule([this, call]() {                     \
+    env_->compute_pool->Schedule([this, call]() {                              \
       call->SendResponse(                                                      \
           ToGrpcStatus(local_impl_.method(&call->request, &call->response)));  \
     });                                                                        \
@@ -62,18 +62,16 @@ class GrpcEagerServiceImpl {
   HANDLER(KeepAlive);
   HANDLER(CloseContext);
   HANDLER(RegisterFunction);
+  HANDLER(SendTensor);
 #undef HANDLER
 
+  const WorkerEnv* const env_;  // Not owned.
   EagerServiceImpl local_impl_;
-
-  void DriveCQ();
 
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   tensorflow::eager::grpc::EagerService::AsyncService service_;
-
-  std::unique_ptr<thread::ThreadPool> request_handler_threadpool_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcEagerServiceImpl);
 };

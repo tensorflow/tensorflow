@@ -57,6 +57,7 @@ class KernelAndDevice {
   // the FunctionLibraryRuntime is pushed on to the caller (see locking in
   // c_api.cc).
   static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+                     std::function<void(std::function<void()>)>* runner,
                      KernelAndDevice* out);
   // TODO(ashankar): Remove this
   static Status InitOp(Device* device, const NodeDef& ndef,
@@ -88,6 +89,8 @@ class KernelAndDevice {
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   Rendezvous* rendez_;
   DataTypeVector output_dtypes_;
+  std::function<void(std::function<void()>)>* runner_;
+  std::function<void(std::function<void()>)> default_runner_;
 };
 
 }  // namespace tensorflow

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -101,11 +101,11 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
     }
   };
   string node_name;
-  if (debug_options_.xla_hlo_tfgraph_device_scopes() &&
-      instruction->has_sharding() &&
-      instruction->sharding().HasUniqueDevice()) {
-    node_name = StrCat(
-        "dev", instruction->sharding().UniqueDevice().ConsumeValueOrDie());
+  if (debug_options_.xla_hlo_tfgraph_device_scopes()) {
+    auto device = instruction->sharding_unique_device();
+    if (device) {
+      node_name = StrCat("dev", *device);
+    }
   }
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
@@ -215,10 +215,10 @@ Status HloTfGraphBuilder::AddInstruction(const HloInstruction* instruction) {
   NodeDef* node_def = graph_def_.add_node();
   node_def->set_name(GetNodeNameForInstruction(instruction));
   node_def->set_op(GetOpDefName(instruction));
-  if (instruction->has_sharding() &&
-      instruction->sharding().HasUniqueDevice()) {
-    TF_ASSIGN_OR_RETURN(int64 device, instruction->sharding().UniqueDevice());
-    node_def->set_device(GetDeviceName(device));
+
+  auto device = instruction->sharding_unique_device();
+  if (device) {
+    node_def->set_device(GetDeviceName(*device));
   }
   SetNodeAttrs(instruction, node_def);
   if (instruction->opcode() == HloOpcode::kFusion) {

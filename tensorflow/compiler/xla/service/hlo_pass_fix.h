@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_FIX_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_FIX_H_
 
+#include <algorithm>
+
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,9 +36,19 @@ class HloPassFix : public Pass {
   StatusOr<bool> Run(HloModule* module) override {
     bool changed = false;
     bool changed_this_iteration = true;
+    int64 iteration_count = 0;
+    int64 limit =
+        std::max(static_cast<int64>(1000), module->instruction_count());
     while (changed_this_iteration) {
       TF_ASSIGN_OR_RETURN(changed_this_iteration, Pass::Run(module));
       changed |= changed_this_iteration;
+      ++iteration_count;
+      if (iteration_count == limit) {
+        LOG(ERROR)
+            << "Unexpectedly number of iterations in HLO passes ("
+            << iteration_count
+            << ")\nIf compilation hangs here, please file a bug with XLA.";
+      }
     }
     return changed;
   }

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -75,7 +75,7 @@ class XlaResource {
   const xla::XlaOp& initial_value() const { return initial_value_; }
 
   // A variable is initialized if it has a value.
-  bool initialized() const { return value_.builder() != nullptr; }
+  bool initialized() const { return value_.valid(); }
 
   // Sets the type and shape of the resource. The type and shape of a resource
   // must not change once the variable has been initialized.

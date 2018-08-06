@@ -152,8 +152,12 @@ class MklReshapeOp : public OpKernel {
     // If Tensorflow's data format and the underlying format maintained by
     // MKLDNN are equivalent (both are NHWC or both are NCHW), then we can
     // safely return true.
+    // @todo: Future do not force skip reorder for all blocked format. Use
+    // blocking_desc_is_equal() for checking all the stride arrays in
+    // mkl-dnn/blob/master/src/common/type_helpers.hpp
     auto input_mkl_md = mkl_shape_input.GetMklLayout();
-    if (mkl_shape_input.GetTfDataFormat() == input_mkl_md.data.format) {
+    if (mkl_shape_input.GetTfDataFormat() == input_mkl_md.data.format &&
+        mkl_shape_input.GetTfDataFormat() != memory::format::blocked) {
       ret = true;
     }
 
@@ -263,10 +267,7 @@ class MklReshapeOp : public OpKernel {
             // shape_from != shape_to), then we just copy input tensor to
             // output tensor with target shape (we cannot forward Mkl layout
             // in such case because shape has changed.)
-            std::vector<primitive> net;
-            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor,
-                                                   &net)) {
-              stream(stream::kind::eager).submit(net).wait();
+            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor)) {
             } else {
               OP_REQUIRES(
                   context, output_tensor->CopyFrom(input_tensor, shape_to),

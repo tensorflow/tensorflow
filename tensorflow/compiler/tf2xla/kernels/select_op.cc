@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
@@ -39,8 +40,6 @@ class SelectOp : public XlaOpKernel {
         errors::InvalidArgument(
             "'then' and 'else' must have the same size.  but received: ",
             then_shape.DebugString(), " vs. ", else_shape.DebugString()));
-
-    xla::XlaBuilder* builder = ctx->builder();
 
     auto cond_handle = ctx->Input(0);
     auto then_handle = ctx->Input(1);
@@ -69,14 +68,14 @@ class SelectOp : public XlaOpKernel {
       const auto dim_sizes = then_shape.dim_sizes();
       gtl::ArraySlice<int64> bdims = dim_sizes;
       bdims.pop_front();
-      cond_handle = builder->Broadcast(cond_handle, bdims);
+      cond_handle = xla::Broadcast(cond_handle, bdims);
 
       std::vector<int64> dim_order(then_shape.dims());
       dim_order[0] = then_shape.dims() - 1;
       std::iota(dim_order.begin() + 1, dim_order.end(), 0);
-      cond_handle = builder->Transpose(cond_handle, dim_order);
+      cond_handle = xla::Transpose(cond_handle, dim_order);
     }
-    ctx->SetOutput(0, builder->Select(cond_handle, then_handle, else_handle));
+    ctx->SetOutput(0, xla::Select(cond_handle, then_handle, else_handle));
   }
 
  private:

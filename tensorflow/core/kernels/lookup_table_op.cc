@@ -822,6 +822,7 @@ REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32, string);
 
 #undef REGISTER_KERNEL
 

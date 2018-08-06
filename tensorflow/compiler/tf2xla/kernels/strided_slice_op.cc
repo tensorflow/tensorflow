@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -92,12 +93,12 @@ class StridedSliceOp : public XlaOpKernel {
 
     xla::XlaOp slice = ctx->Input(0);
     if (!dimensions_to_reverse.empty()) {
-      slice = ctx->builder()->Rev(slice, dimensions_to_reverse);
+      slice = xla::Rev(slice, dimensions_to_reverse);
     }
 
-    slice = ctx->builder()->Slice(slice, slice_begin, slice_end, slice_strides);
+    slice = xla::Slice(slice, slice_begin, slice_end, slice_strides);
 
-    slice = ctx->builder()->Reshape(slice, final_shape.dim_sizes());
+    slice = xla::Reshape(slice, final_shape.dim_sizes());
     ctx->SetOutput(0, slice);
   }
 
@@ -171,7 +172,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     xla::XlaOp grad = ctx->Input(4);
 
     // Undo any new/shrink axes.
-    grad = ctx->builder()->Reshape(grad, processing_shape.dim_sizes());
+    grad = xla::Reshape(grad, processing_shape.dim_sizes());
 
     // Pad the input gradients.
     gtl::InlinedVector<int64, 4> dimensions_to_reverse;
@@ -204,9 +205,9 @@ class StridedSliceGradOp : public XlaOpKernel {
       }
     }
     if (!dimensions_to_reverse.empty()) {
-      grad = ctx->builder()->Rev(grad, dimensions_to_reverse);
+      grad = xla::Rev(grad, dimensions_to_reverse);
     }
-    grad = ctx->builder()->Pad(grad, zero, padding_config);
+    grad = xla::Pad(grad, zero, padding_config);
     ctx->SetOutput(0, grad);
   }
 
@@ -306,17 +307,17 @@ class StridedSliceAssignOp : public XlaOpKernel {
     }
 
     if (!dimensions_to_reverse.empty()) {
-      rhs = ctx->builder()->Rev(rhs, dimensions_to_reverse);
+      rhs = xla::Rev(rhs, dimensions_to_reverse);
     }
-    rhs = ctx->builder()->Reshape(rhs, slice_dims);
+    rhs = xla::Reshape(rhs, slice_dims);
 
     if (lhs_shape.dims() == 0) {
       // TODO(b/38323843): DynamicUpdateSlice crashes on rank 0 inputs. Fix
       // and remove this workaround.
       lhs = rhs;
     } else {
-      lhs = ctx->builder()->DynamicUpdateSlice(
-          lhs, rhs, ctx->builder()->ConstantR1<int64>(slice_begin));
+      lhs = xla::DynamicUpdateSlice(
+          lhs, rhs, xla::ConstantR1<int64>(ctx->builder(), slice_begin));
     }
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));

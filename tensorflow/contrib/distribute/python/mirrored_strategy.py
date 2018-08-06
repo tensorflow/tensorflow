@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import threading
-import six
 
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import shared_variable_creator
@@ -60,6 +59,225 @@ class _RequestedStop(Exception):
   pass
 
 
+# Make _call_for_each_tower and _reduce_non_distributed_value not members of
+# MirroredStrategy so that they are generally not allowed to use anything
+# specific to MirroredStrategy and thus can be shared with other distribution
+# strategies.
+
+
+# TODO(yuefengz): maybe create a common class for those who need to call this
+# _call_for_each_tower.
+def _call_for_each_tower(distribution, fn, *args, **kwargs):
+  """Run `fn` in separate threads, once per tower/worker device.
+
+  Args:
+    distribution: the DistributionStrategy object.
+    fn: function to run (will be run once per device, each in its own thread).
+    *args: positional arguments for `fn`
+    **kwargs: keyword arguments for `fn`.
+        `"run_concurrently"`: Boolean indicating whether executions of `fn`
+           can be run concurrently (under eager execution only), defaults to
+           `True`.
+
+  Returns:
+    Merged return value of `fn` across all towers.
+
+  Raises:
+    RuntimeError: If fn() calls get_tower_context().merge_call() a different
+        number of times from the available devices.
+  """
+  run_concurrently = kwargs.pop("run_concurrently", True)
+  if not context.executing_eagerly():
+    # Lots of TF library code isn't thread-safe in graph mode, and
+    # there is little to be gained by turning on multithreading when
+    # constructing a graph.
+    run_concurrently = False
+    # Needed for per-thread device, etc. contexts in graph mode.
+    ops.get_default_graph().switch_to_thread_local()
+  elif run_concurrently is None:
+    run_concurrently = True
+
+  coord = coordinator.Coordinator(clean_stop_exception_types=(_RequestedStop,))
+
+  shared_variable_store = {}
+
+  # TODO(isaprykin): Create these threads once instead of during every run()
+  # call.
+  threads = []
+  for index, d in enumerate(distribution.worker_devices):
+    variable_creator_fn = shared_variable_creator.make_fn(
+        shared_variable_store, index)
+    t = MirroredStrategy._MirroredTowerThread(  # pylint: disable=protected-access
+        distribution, coord, d, variable_creator_fn, fn,
+        *values.select_device(d, args), **values.select_device(d, kwargs))
+    threads.append(t)
+
+  for t in threads:
+    t.start()
+
+  # When `fn` starts `should_run` event is set on _MirroredTowerThread
+  # (`MTT`) threads. The execution waits until
+  # `MTT.has_paused` is set, which indicates that either `fn` is
+  # complete or a `get_tower_context().merge_call()` is called.  If `fn` is
+  # complete, then `MTT.done` is set to True.  Otherwise, arguments
+  # of `get_tower_context().merge_call` from all paused threads are grouped
+  # and the `merge_fn` is performed.  Results of the
+  # `get_tower_context().merge_call` are then set to `MTT.merge_result`.
+  # Each such `get_tower_context().merge_call` call returns the
+  # `MTT.merge_result` for that thread when `MTT.should_run` event
+  # is reset again. Execution of `fn` resumes.
+
+  try:
+    with coord.stop_on_exception():
+      all_done = False
+      while not all_done and not coord.should_stop():
+        done = []
+        if run_concurrently:
+          for t in threads:
+            t.should_run.set()
+          for t in threads:
+            t.has_paused.wait()
+            t.has_paused.clear()
+            if coord.should_stop():
+              return None
+            done.append(t.done)
+        else:
+          for t in threads:
+            t.should_run.set()
+            t.has_paused.wait()
+            t.has_paused.clear()
+            if coord.should_stop():
+              return None
+            done.append(t.done)
+        if coord.should_stop():
+          return None
+        all_done = all(done)
+        if not all_done:
+          if any(done):
+            raise RuntimeError("Some towers made a different number of "
+                               "tower_context().merge_call() calls.")
+          # get_tower_context().merge_call() case
+          merge_args = values.regroup({t.device: t.merge_args for t in threads})
+          merge_kwargs = values.regroup(
+              {t.device: t.merge_kwargs for t in threads})
+          # We capture the name_scope of the MTT when we call merge_fn
+          # to ensure that if we have opened a name scope in the MTT,
+          # it will be respected when executing the merge function. We only
+          # capture the name_scope from the first MTT and assume it is
+          # the same for all other MTTs.
+          mtt_captured_name_scope = threads[0].captured_name_scope
+          with ops.name_scope(mtt_captured_name_scope):
+            merge_result = threads[0].merge_fn(distribution, *merge_args,
+                                               **merge_kwargs)
+          for t in threads:
+            t.merge_result = values.select_device(t.device, merge_result)
+  finally:
+    for t in threads:
+      t.should_run.set()
+    coord.join(threads)
+
+  return values.regroup({t.device: t.main_result for t in threads})
+
+
+def _reduce_non_distributed_value(distribution, aggregation, value,
+                                  destinations):
+  """Reduce a non-DistributedValue `value` to `destinations`."""
+  if isinstance(value, values.DistributedValues):
+    raise ValueError("You are passing a `DistributedValue` to "
+                     "`_reduce_non_distributed_value`, which is not allowed.")
+
+  if value == 0:
+    return 0
+  if aggregation == variable_scope.VariableAggregation.MEAN:
+    return distribution.broadcast(value, destinations)
+
+  cross_tower_ops_lib.validate_destinations(destinations)
+  if (len(distribution.worker_devices) != 1 or
+      not cross_tower_ops_lib.check_destinations(destinations)):
+    raise ValueError("A non-DistributedValues value cannot be reduced with the "
+                     "given aggregation.")
+  # TODO(anjalisridhar): Moves these methods to a device utility file?
+  devices = cross_tower_ops_lib.get_devices_from(destinations)
+  if len(devices) == 1:
+    with ops.device(devices[0]):
+      return array_ops.identity(value)
+  else:
+    value_updates = {}
+    for d in devices:
+      with ops.device(d):
+        value_updates[d] = array_ops.identity(value)
+    return values.Mirrored(value_updates)
+
+
+def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs):  # pylint: disable=g-missing-docstring
+  # Figure out what collections this variable should be added to.
+  # We'll add the MirroredVariable to those collections instead.
+  collections = kwargs.pop("collections", None)
+  if collections is None:
+    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  kwargs["collections"] = []
+
+  # Get synchronization value
+  synchronization = kwargs.get("synchronization",
+                               variable_scope.VariableSynchronization.ON_WRITE)
+  if synchronization == variable_scope.VariableSynchronization.NONE:
+    raise ValueError("`NONE` variable synchronization mode is not "
+                     "supported with `Mirrored` distribution strategy. Please"
+                     " change the `synchronization` for variable: " +
+                     kwargs["name"])
+  elif synchronization == variable_scope.VariableSynchronization.ON_READ:
+    # Variables that are to be synced on read are tower local.
+    is_tower_local = True
+    kwargs["trainable"] = False
+  elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
+        synchronization == variable_scope.VariableSynchronization.AUTO):
+    # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
+    is_tower_local = False
+  else:
+    raise ValueError("Invalid variable synchronization mode: " +
+                     synchronization + " for variable: " + kwargs["name"])
+
+  # Get aggregation value
+  aggregation = kwargs.pop("aggregation",
+                           variable_scope.VariableAggregation.NONE)
+  if aggregation not in [
+      variable_scope.VariableAggregation.NONE,
+      variable_scope.VariableAggregation.SUM,
+      variable_scope.VariableAggregation.MEAN
+  ]:
+    raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                     " for variable: " + kwargs["name"])
+
+  # Ignore user-specified caching device, not needed for mirrored variables.
+  kwargs.pop("caching_device", None)
+
+  # TODO(josh11b,apassos): It would be better if variable initialization
+  # was never recorded on the tape instead of having to do this manually
+  # here.
+  with tape.stop_recording():
+    index = real_mirrored_creator(devices, *args, **kwargs)
+
+    if is_tower_local:
+      result = values.TowerLocalVariable(index, index[devices[0]], aggregation)
+    else:
+      result = values.MirroredVariable(index, index[devices[0]], aggregation)
+
+  if not context.executing_eagerly():
+    g = ops.get_default_graph()
+    # If "trainable" is True, next_creator() will add the member variables
+    # to the TRAINABLE_VARIABLES collection, so we manually remove
+    # them and replace with the MirroredVariable. We can't set
+    # "trainable" to False for next_creator() since that causes functions
+    # like implicit_gradients to skip those variables.
+    if kwargs.get("trainable", True):
+      collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+      for v in index.values():
+        l.remove(v)
+    g.add_to_collections(collections, result)
+  return result
+
+
 class MirroredStrategy(distribute_lib.DistributionStrategy):
   """Mirrors vars to distribute across multiple devices on a single machine.
 
@@ -94,24 +312,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
-    # Figure out what collections this variable should be added to.
-    # We'll add the MirroredVariable to those collections instead.
-    collections = kwargs.pop("collections", None)
-    if collections is None:
-      collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-    kwargs["collections"] = []
-
     colocate_with = kwargs.pop("colocate_with", None)
     devices = self._get_devices_from(colocate_with)
 
-    tower_local = kwargs.pop("tower_local_reduce_method", None)
-    if tower_local is not None:
-      kwargs["trainable"] = False
-
-    # TODO(josh11b,apassos): It would be better if variable initialization
-    # was never recorded on the tape instead of having to do this manually
-    # here.
-    with tape.stop_recording():
+    def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       index = {}
       for i, d in enumerate(devices):
         with ops.device(d):
@@ -135,27 +339,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)
           index[d] = v
+      return index
 
-      if tower_local is None:
-        result = values.MirroredVariable(index, index[devices[0]])
-      else:
-        result = values.TowerLocalVariable(
-            index, index[devices[0]], tower_local)
-
-    if not context.executing_eagerly():
-      g = ops.get_default_graph()
-      # If "trainable" is True, next_creator() will add the member variables
-      # to the TRAINABLE_VARIABLES collection, so we manually remove
-      # them and replace with the MirroredVariable. We can't set
-      # "trainable" to False for next_creator() since that causes functions
-      # like implicit_gradients to skip those variables.
-      if kwargs.get("trainable", True):
-        collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
-        l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-        for v in index.values():
-          l.remove(v)
-      g.add_to_collections(collections, result)
-    return result
+    return _create_mirrored_variable(devices, _real_mirrored_creator, *args,
+                                     **kwargs)
 
   def distribute_dataset(self, dataset_fn):
     return values.PerDeviceDataset(
@@ -168,122 +355,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                                                  self._devices)
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
-    """Run `fn` in separate threads, once per tower/worker device.
-
-    Args:
-      fn: function to run (will be run once per device, each in its own thread).
-      *args: positional arguments for `fn`
-      **kwargs: keyword arguments for `fn`.
-          `"run_concurrently"`: Boolean indicating whether executions of `fn`
-             can be run concurrently (under eager execution only), defaults to
-             `True`.
-
-    Returns:
-      Merged return value of `fn` across all towers.
-
-    Raises:
-      RuntimeError: If fn() calls get_tower_context().merge_call() a different
-          number of times for when called for different devices.
-    """
-    run_concurrently = kwargs.pop("run_concurrently", True)
-    if not context.executing_eagerly():
-      # Lots of TF library code isn't thread-safe in graph mode, and
-      # there is little to be gained by turning on multithreading when
-      # constructing a graph.
-      run_concurrently = False
-      # Needed for per-thread device, etc. contexts in graph mode.
-      ops.get_default_graph().switch_to_thread_local()
-    elif run_concurrently is None:
-      run_concurrently = True
-
-    coord = coordinator.Coordinator(
-        clean_stop_exception_types=(_RequestedStop,))
-
-    shared_variable_store = {}
-
-    # TODO(isaprykin): Create these threads once instead of during every run()
-    # call.
-    threads = []
-    for index, d in enumerate(self._devices):
-      variable_creator_fn = shared_variable_creator.make_fn(
-          shared_variable_store, index)
-      t = MirroredStrategy._MirroredTowerThread(
-          self, coord, d, variable_creator_fn, fn,
-          *values.select_device(d, args), **values.select_device(d, kwargs))
-      threads.append(t)
-
-    for t in threads:
-      t.start()
-
-    # When `fn` starts `should_run` event is set on _MirroredTowerThread
-    # (`MTT`) threads. The execution waits until
-    # `MTT.has_paused` is set, which indicates that either `fn` is
-    # complete or a `get_tower_context().merge_call()` is called.  If `fn` is
-    # complete, then `MTT.done` is set to True.  Otherwise, arguments
-    # of `get_tower_context().merge_call` from all paused threads are grouped
-    # and the `merge_fn` is performed.  Results of the
-    # `get_tower_context().merge_call` are then set to `MTT.merge_result`.
-    # Each such `get_tower_context().merge_call` call returns the
-    # `MTT.merge_result` for that thread when `MTT.should_run` event
-    # is reset again. Execution of `fn` resumes.
-
-    try:
-      with coord.stop_on_exception():
-        all_done = False
-        while not all_done and not coord.should_stop():
-          done = []
-          if run_concurrently:
-            for t in threads:
-              t.should_run.set()
-            for t in threads:
-              t.has_paused.wait()
-              t.has_paused.clear()
-              if coord.should_stop():
-                return None
-              done.append(t.done)
-          else:
-            for t in threads:
-              t.should_run.set()
-              t.has_paused.wait()
-              t.has_paused.clear()
-              if coord.should_stop():
-                return None
-              done.append(t.done)
-          if coord.should_stop():
-            return None
-          all_done = all(done)
-          if not all_done:
-            if any(done):
-              raise RuntimeError("Some towers made a different number of "
-                                 "tower_context().merge_call() calls.")
-            # get_tower_context().merge_call() case
-            merge_args = values.regroup(
-                {t.device: t.merge_args for t in threads})
-            merge_kwargs = values.regroup(
-                {t.device: t.merge_kwargs for t in threads})
-            # We capture the name_scope of the MTT when we call merge_fn
-            # to ensure that if we have opened a name scope in the MTT,
-            # it will be respected when executing the merge function. We only
-            # capture the name_scope from the first MTT and assume it is
-            # the same for all other MTTs.
-            mtt_captured_name_scope = threads[0].captured_name_scope
-            with ops.name_scope(mtt_captured_name_scope):
-              merge_result = threads[0].merge_fn(
-                  self, *merge_args, **merge_kwargs)
-            for t in threads:
-              t.merge_result = values.select_device(t.device, merge_result)
-    finally:
-      for t in threads:
-        t.should_run.set()
-      coord.join(threads)
-
-    return values.regroup({t.device: t.main_result for t in threads})
+    return _call_for_each_tower(self, fn, *args, **kwargs)
 
   def map(self, map_over, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
     index = {}
-    i = 0
-    for m in map_over:
+    for i, m in enumerate(map_over):
       d = self._devices[i % len(self._devices)]
       with ops.device(d):
         l = index.get(d, [])
@@ -306,27 +383,26 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps())
     return self._cross_tower_ops
 
-  def _reduce(self, method_string, value, destinations):
-    if len(self._devices) == 1 and not isinstance(value, values.PerDevice):
-      value = values.PerDevice({self._devices[0]: value})
-    assert isinstance(value, values.PerDevice)
-
+  def _reduce(self, aggregation, value, destinations):
+    assert not isinstance(value, values.Mirrored)
+    if not isinstance(value, values.DistributedValues):
+      return _reduce_non_distributed_value(self, aggregation, value,
+                                           destinations)
     return self._get_cross_tower_ops().reduce(
-        method_string, value, destinations=destinations)
+        aggregation, value, destinations=destinations)
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
-    return self._get_cross_tower_ops().batch_reduce(method_string,
+  def _batch_reduce(self, aggregation, value_destination_pairs):
+    return self._get_cross_tower_ops().batch_reduce(aggregation,
                                                     value_destination_pairs)
 
   def _update(self, var, fn, *args, **kwargs):
-    # TODO(josh11b): Also support TowerLocalVariables here? If so, args and
-    # kwargs don't need to be mirrored.
-    assert isinstance(var, values.MirroredVariable)
     # TODO(josh11b): In eager mode, use one thread per device.
+    assert isinstance(var, values.DistributedVariable)
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+        # If args and kwargs are not mirrored, the value is returned as is.
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
@@ -343,32 +419,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                         **values.select_device_mirrored(d, kwargs))
     return values.regroup(updates, values.Mirrored)
 
-  def _fetch(self, val, destination, fn):
-    """Return a copy of `val` or `fn(val)` on `destination`."""
-    if isinstance(val, values.TowerLocalVariable):
-      val = self.reduce(val.reduce_method, val, destinations=destination)
-      with ops.device(destination):
-        return fn(self.unwrap(val)[0])
-
-    assert isinstance(val, values.Mirrored), (
-        "val = %s (type %s)" % (val, val.__class__.__name__))
-    if val.on_device(destination):
-      with ops.device(destination):
-        # Use an identity here to make sure we are returning a tensor
-        # instead of e.g. a variable object.
-        return array_ops.identity(fn(val.get(destination)))
-    device = None
-    for d in self._devices:
-      if val.on_device(d):
-        device = d
-        break
-    assert device is not None, (
-        "Could not find destination %s in list of devices %s." %
-        (destination, val.devices))
-    with ops.device(device):
-      v = fn(val.get(device))
-    with ops.device(destination):
-      return array_ops.identity(v)
+  def read_var(self, tower_local_var):
+    """Read the aggregate value of a tower-local variable."""
+    if isinstance(tower_local_var, values.TowerLocalVariable):
+      return tower_local_var._get_cross_tower()  # pylint: disable=protected-access
+    assert isinstance(tower_local_var, values.Mirrored)
+    return array_ops.identity(tower_local_var.get())
 
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):
@@ -405,15 +461,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def _get_devices_from(self, colocate_with=None):
     if colocate_with is None:
       return self._devices
-    elif isinstance(colocate_with, values.DistributedValues):
-      # pylint: disable=protected-access
-      return list(colocate_with._index.keys())
-    elif isinstance(colocate_with, six.string_types):
-      return [device_util.resolve(colocate_with)]
-    elif isinstance(colocate_with, list):
-      return [device_util.resolve(d) for d in colocate_with]
     else:
-      return colocate_with
+      return cross_tower_ops_lib.get_devices_from(colocate_with)
 
   class _MirroredTowerThread(threading.Thread):
     """A thread that runs() a function on a device."""

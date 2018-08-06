@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 class MergeLayersTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_add(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
@@ -76,7 +76,7 @@ class MergeLayersTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.add([i1])
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_multiply(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
@@ -92,7 +92,7 @@ class MergeLayersTest(test.TestCase):
     self.assertEqual(out.shape, (2, 4, 5))
     self.assertAllClose(out, x1 * x2 * x3, atol=1e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_average(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
@@ -106,7 +106,7 @@ class MergeLayersTest(test.TestCase):
     self.assertEqual(out.shape, (2, 4, 5))
     self.assertAllClose(out, 0.5 * (x1 + x2), atol=1e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_maximum(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
@@ -120,7 +120,7 @@ class MergeLayersTest(test.TestCase):
     self.assertEqual(out.shape, (2, 4, 5))
     self.assertAllClose(out, np.maximum(x1, x2), atol=1e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_minimum(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
@@ -134,7 +134,7 @@ class MergeLayersTest(test.TestCase):
     self.assertEqual(out.shape, (2, 4, 5))
     self.assertAllClose(out, np.minimum(x1, x2), atol=1e-4)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_concatenate(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))
@@ -169,7 +169,7 @@ class MergeLayersTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'called on a list'):
       keras.layers.concatenate([i1], axis=-1)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_dot(self):
     i1 = keras.layers.Input(shape=(4,))
     i2 = keras.layers.Input(shape=(4,))
@@ -215,7 +215,7 @@ class MergeLayersTest(test.TestCase):
       dot = keras.layers.Dot(1)
       dot.compute_output_shape(1)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_merge_subtract(self):
     i1 = keras.layers.Input(shape=(4, 5))
     i2 = keras.layers.Input(shape=(4, 5))

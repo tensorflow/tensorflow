@@ -846,9 +846,19 @@ class SavedModelTest(test.TestCase):
   def testLegacyInitOpWithNonEmptyCollection(self):
     export_dir = self._get_export_dir(
         "test_legacy_init_op_with_non_empty_collection")
+    self._testInitOpsWithNonEmptyCollection(
+        export_dir, constants.LEGACY_INIT_OP_KEY)
+
+  def testMainOpWithNonEmptyCollection(self):
+    export_dir = self._get_export_dir(
+        "test_main_op_with_non_empty_collection")
+    self._testInitOpsWithNonEmptyCollection(export_dir, constants.MAIN_OP_KEY)
+
+  def _testInitOpsWithNonEmptyCollection(self, export_dir, key):
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    g = ops.Graph()
+    with self.test_session(graph=g) as sess:
       # Initialize variable `v1` to 1.
       v1 = variables.Variable(1, name="v1")
       ops.add_to_collection("v", v1)
@@ -857,19 +867,21 @@ class SavedModelTest(test.TestCase):
       v2 = variables.Variable(42, name="v2", trainable=False, collections=[])
       ops.add_to_collection("v", v2)
 
-      # Set up an assignment op to be run as part of the legacy_init_op.
+      # Set up an assignment op to be run as part of the init op.
       assign_v2 = state_ops.assign(v2, v1)
-      legacy_init_op = control_flow_ops.group(assign_v2, name="legacy_init_op")
+      init_op = control_flow_ops.group(assign_v2, name="init_op")
 
       sess.run(variables.global_variables_initializer())
 
-      ops.add_to_collection(constants.LEGACY_INIT_OP_KEY,
-                            control_flow_ops.no_op())
-      # AssertionError should be raised since the LEGACY_INIT_OP_KEY collection
+      ops.add_to_collection(key, control_flow_ops.no_op())
+      # ValueError should be raised since the LEGACY_INIT_OP_KEY collection
       # is not empty and we don't support multiple init ops.
-      with self.assertRaises(AssertionError):
+      with self.assertRaisesRegexp(ValueError, "Graph already contains"):
         builder.add_meta_graph_and_variables(
-            sess, ["foo"], legacy_init_op=legacy_init_op)
+            sess, ["foo"], legacy_init_op=init_op)
+      # We shouldn't be able to add as MAIN_OP, either.
+      with self.assertRaisesRegexp(ValueError, "Graph already contains"):
+        builder.add_meta_graph_and_variables(sess, ["foo"], main_op=init_op)
 
   def testTrainOp(self):
     export_dir = self._get_export_dir("test_train_op")
@@ -1196,6 +1208,59 @@ class SavedModelTest(test.TestCase):
     _validate_custom_saver("tag_0", "save/restore_all")
     _validate_custom_saver("tag_1", "save_1/restore_all")
     _validate_custom_saver("tag_2", "save_2/restore_all")
+
+  def testImportScope(self):
+    export_dir = self._get_export_dir("test_scoped_assets")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Build a SavedModel with a variable, an asset, and a constant tensor.
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      asset_collection = self._build_asset_collection("foo.txt", "content_foo",
+                                                      "asset_file_tensor")
+      constant_op.constant("constant value", name="constant_tensor_name")
+      builder.add_meta_graph_and_variables(
+          sess, ["tag_name"], assets_collection=asset_collection)
+
+      # Save the asset file path for later comparison.
+      asset_file_path = asset_collection[0].eval()
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      # Restore the SavedModel under an import_scope in a new graph/session.
+      graph_proto = loader.load(
+          sess, ["tag_name"], export_dir, import_scope="scope_name")
+
+      # The loaded variable tensor should be scoped, but its contents should be
+      # unchanged.
+      self.assertEqual(
+          "scope_name/v:0",
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].name)
+      self.assertEqual(
+          42,
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+      # The loaded asset tensor should be scoped, but the asset file path and
+      # contents should be unchanged.
+      asset_collection = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
+      self.assertEqual(1, len(asset_collection))
+      self.assertEqual(asset_file_path, asset_collection[0].eval())
+      self.assertEqual("scope_name/asset_file_tensor:0",
+                       asset_collection[0].name)
+      # The static asset data inside graph_proto.collection_def should not be
+      # scoped.
+      self._validate_asset_collection(export_dir, graph_proto.collection_def,
+                                      "foo.txt", "content_foo",
+                                      "asset_file_tensor:0")
+
+      # The constant tensor should be scoped, but its contents should be
+      # unchanged.
+      self.assertEqual(
+          compat.as_bytes("constant value"),
+          ops.get_default_graph().get_tensor_by_name(
+              "scope_name/constant_tensor_name:0").eval())
 
   def testClearDevices(self):
     export_dir = self._get_export_dir("test_clear_devices")

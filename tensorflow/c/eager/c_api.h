@@ -81,16 +81,6 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
 
-// A tensorflow.ServerDef specifies remote workers (in addition to the current
-// workers name). Operations created on this context can then be executed on
-// any of these remote workers by setting an appropriate device.
-//
-// If the following is set, all servers identified by the
-// ServerDef must be up when the context is created.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetServerDef(
-    TFE_ContextOptions* options, const void* proto, size_t proto_len,
-    TF_Status* status);
-
 // Destroy an options object.
 TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
@@ -102,8 +92,7 @@ typedef struct TFE_Context TFE_Context;
 
 TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(
     const TFE_ContextOptions* opts, TF_Status* status);
-TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx,
-                                             TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx);
 TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
                                                             TF_Status* status);
 
@@ -127,6 +116,17 @@ TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
                                                         unsigned char async,
                                                         TF_Status* status);
+
+// A tensorflow.ServerDef specifies remote workers (in addition to the current
+// workers name). Operations created on this context can then be executed on
+// any of these remote workers by setting an appropriate device.
+//
+// If the following is set, all servers identified by the
+// ServerDef must be up when the context is created.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
 
 // Causes the calling thread to block till all ops dispatched in async mode
 // have been executed. Note that "execution" here refers to kernel execution /
@@ -278,7 +278,8 @@ TF_CAPI_EXPORT extern TF_AttrType TFE_OpNameGetAttrType(
 
 TF_CAPI_EXPORT extern void TFE_OpSetAttrString(TFE_Op* op,
                                                const char* attr_name,
-                                               const char* value);
+                                               const void* value,
+                                               size_t length);
 TF_CAPI_EXPORT extern void TFE_OpSetAttrInt(TFE_Op* op, const char* attr_name,
                                             int64_t value);
 TF_CAPI_EXPORT extern void TFE_OpSetAttrFloat(TFE_Op* op, const char* attr_name,
@@ -305,7 +306,8 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunction(TFE_Op* op,
 
 TF_CAPI_EXPORT extern void TFE_OpSetAttrStringList(TFE_Op* op,
                                                    const char* attr_name,
-                                                   const char** value,
+                                                   const void* const* values,
+                                                   const size_t* lengths,
                                                    int num_values);
 TF_CAPI_EXPORT extern void TFE_OpSetAttrIntList(TFE_Op* op,
                                                 const char* attr_name,

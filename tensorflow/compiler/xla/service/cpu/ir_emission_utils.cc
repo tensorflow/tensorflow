@@ -64,8 +64,8 @@ bool PotentiallyImplementedAsEigenConvolution(
     return false;
   }
 
-  if (ShapeUtil::HasZeroElements(input_shape) ||
-      ShapeUtil::HasZeroElements(kernel_shape)) {
+  if (ShapeUtil::IsZeroElementArray(input_shape) ||
+      ShapeUtil::IsZeroElementArray(kernel_shape)) {
     return false;
   }
   // Make sure input and kernel has the same data type.

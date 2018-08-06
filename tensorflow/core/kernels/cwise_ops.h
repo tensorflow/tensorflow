@@ -616,6 +616,12 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
+
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
@@ -763,6 +769,10 @@ struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+
+template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
 
 template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};

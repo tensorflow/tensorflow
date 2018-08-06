@@ -50,13 +50,12 @@ class ProfilingListener : public BenchmarkListener {
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
-  BenchmarkTfLiteModel() : use_nnapi(false) {
-    AddListener(&profiling_listener_);
-  }
+  BenchmarkTfLiteModel();
+  BenchmarkTfLiteModel(BenchmarkParams params);
 
   std::vector<Flag> GetFlags() override;
-  void LogFlags() override;
-  bool ValidateFlags() override;
+  void LogParams() override;
+  bool ValidateParams() override;
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;
@@ -70,13 +69,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
  private:
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
-  std::string graph;
-  std::string input_layer_string;
-  std::string input_layer_type_string;
-  std::string input_layer_shape_string;
-  std::string input_layer_values_string;
   std::vector<InputLayerInfo> inputs;
-  bool use_nnapi;
   ProfilingListener profiling_listener_;
 };
 

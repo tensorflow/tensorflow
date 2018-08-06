@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -36,11 +36,11 @@ class CheckExecutionArityTest : public ClientLibraryTestBase {};
 
 TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   XlaBuilder builder("add_two_params");
-  auto param_literal = Literal::CreateR1<float>({1.1f, 2.2f});
+  auto param_literal = LiteralUtil::CreateR1<float>({1.1f, 2.2f});
 
-  auto p0 = builder.Parameter(0, param_literal->shape(), "param0");
-  auto p1 = builder.Parameter(1, param_literal->shape(), "param1");
-  auto add = builder.Add(p0, p1);
+  auto p0 = Parameter(&builder, 0, param_literal->shape(), "param0");
+  auto p1 = Parameter(&builder, 1, param_literal->shape(), "param1");
+  Add(p0, p1);
 
   auto param0_data =
       client_->TransferToServer(*param_literal).ConsumeValueOrDie();
@@ -77,20 +77,20 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
 XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   XlaBuilder builder("add_two_params");
 
-  auto p0 = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
-  auto p1 = builder.Parameter(1, ShapeUtil::MakeShape(F32, {4}), "param1");
-  auto add = builder.Mul(p0, p1);
+  auto p0 = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "param0");
+  auto p1 = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {4}), "param1");
+  Mul(p0, p1);
 
   auto computation_status = builder.Build();
   ASSERT_IS_OK(computation_status.status());
   auto computation = computation_status.ConsumeValueOrDie();
 
-  auto f32_literal = Literal::CreateR0<float>(1.1f);
+  auto f32_literal = LiteralUtil::CreateR0<float>(1.1f);
   auto f32_data = client_->TransferToServer(*f32_literal).ConsumeValueOrDie();
-  auto f32_4_literal = Literal::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  auto f32_4_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   auto f32_4_data =
       client_->TransferToServer(*f32_4_literal).ConsumeValueOrDie();
-  auto u8_4_literal = Literal::CreateR1U8("hola");
+  auto u8_4_literal = LiteralUtil::CreateR1U8("hola");
   auto u8_4_data = client_->TransferToServer(*u8_4_literal).ConsumeValueOrDie();
 
   // Match

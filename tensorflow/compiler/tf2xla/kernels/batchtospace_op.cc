@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -45,7 +46,6 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                               ", 2] instead of ",
                               xla::ShapeUtil::HumanString(crops.shape())));
 
-  xla::XlaBuilder* b = ctx->builder();
   const int64 batch_size = input_shape[0];
 
   // Compute the product of the block_shape values.
@@ -72,7 +72,7 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   reshaped_shape[block_rank] = batch_size / block_num_elems;
   std::copy(input_shape.begin() + 1, input_shape.end(),
             reshaped_shape.begin() + block_rank + 1);
-  xla::XlaOp reshaped = b->Reshape(input, reshaped_shape);
+  xla::XlaOp reshaped = xla::Reshape(input, reshaped_shape);
 
   // 2. Permute dimensions of `reshaped` to produce `permuted` of shape
   //      [batch / prod(block_shape),
@@ -90,7 +90,7 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   }
   std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
             1 + block_rank * 2);
-  xla::XlaOp permuted = b->Transpose(reshaped, permutation);
+  xla::XlaOp permuted = xla::Transpose(reshaped, permutation);
 
   // 3. Reshape `permuted` to produce `reshaped_permuted` of shape
   //      [batch / prod(block_shape),
@@ -110,7 +110,8 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   std::copy(remainder_shape.begin(), remainder_shape.end(),
             reshaped_permuted_shape.begin() + 1 + block_rank);
 
-  xla::XlaOp reshaped_permuted = b->Reshape(permuted, reshaped_permuted_shape);
+  xla::XlaOp reshaped_permuted =
+      xla::Reshape(permuted, reshaped_permuted_shape);
 
   // 4. Crop the start and end of dimensions `[1, ..., M]` of
   //    `reshaped_permuted` according to `crops` to produce the output of shape:
@@ -138,7 +139,7 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
             " end: ", crop_end, " size ", reshaped_permuted_shape[1 + i]));
   }
   xla::XlaOp output =
-      b->Slice(reshaped_permuted, start_indices, end_indices, strides);
+      xla::Slice(reshaped_permuted, start_indices, end_indices, strides);
   ctx->SetOutput(0, output);
 }
 

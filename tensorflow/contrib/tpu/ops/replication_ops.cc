@@ -44,6 +44,27 @@ REGISTER_OP("TPUReplicatedInput")
                                         " with other shapes.");
       }
       c->set_output(0, cur);
+
+      // If this is a resource, unify the resource shapes.
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+      if (dtype == DT_RESOURCE) {
+        const std::vector<shape_inference::ShapeAndType>* shapes_and_types =
+            nullptr;
+        for (int i = c->num_inputs() - 1; i >= 0; --i) {
+          if (shapes_and_types) {
+            // The return value of MergeInputHandleShapesAndTypes indicates
+            // the shape was refined, not that there was an error.
+            // TODO(phawkins): there seems to be no way to discover errors.
+            (void)c->MergeInputHandleShapesAndTypes(i, *shapes_and_types);
+          } else {
+            shapes_and_types = c->input_handle_shapes_and_types(i);
+          }
+        }
+        if (shapes_and_types) {
+          c->set_output_handle_shapes_and_types(0, *shapes_and_types);
+        }
+      }
       return Status::OK();
     })
     .Doc(

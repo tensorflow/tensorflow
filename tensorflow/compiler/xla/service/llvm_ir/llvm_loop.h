@@ -79,7 +79,7 @@ class ForLoop {
   //  loop.
   static std::unique_ptr<ForLoop> EmitForLoop(
       tensorflow::StringPiece prefix, llvm::Value* start_index,
-      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* ir_builder,
+      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* b,
       UnrollMode unroll_mode = llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
@@ -138,10 +138,10 @@ class ForLoop {
           UnrollMode unroll_mode, bool prevent_vectorization);
 
   // Emit the loop at the insert point of the builder.
-  void Emit(llvm::IRBuilder<>* ir_builder);
+  void Emit(llvm::IRBuilder<>* b);
 
   llvm::BasicBlock* CreateLoopBB(tensorflow::StringPiece name,
-                                 llvm::IRBuilder<>* ir_builder);
+                                 llvm::IRBuilder<>* b);
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
@@ -149,7 +149,7 @@ class ForLoop {
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
-  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* ir_builder);
+  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* b);
 
   string prefix_;
   string suffix_;
@@ -177,15 +177,20 @@ class ForLoop {
 // A simple class for constructing nested for-loops.
 class ForLoopNest {
  public:
-  explicit ForLoopNest(llvm::IRBuilder<>* ir_builder)
-      : ForLoopNest(/*name=*/"", ir_builder) {}
+  explicit ForLoopNest(llvm::IRBuilder<>* b, llvm::Type* index_ty = nullptr)
+      : ForLoopNest(/*name=*/"", b) {
+    SetIndexType(index_ty);
+  }
 
-  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder)
+  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* b,
+              llvm::Type* index_ty = nullptr)
       : name_(std::string(name)),
         outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),
-        ir_builder_(ir_builder) {}
+        b_(b) {
+    SetIndexType(index_ty);
+  }
 
   // Adds a loop to the nest. If no loop has been added yet then emit a loop at
   // the current insert point of the given builder. If one or more loops have
@@ -242,6 +247,17 @@ class ForLoopNest {
       const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::StringPiece suffix);
 
+  // Emits a series of nested loops for iterating over an operand array. Loops
+  // are constructed in major to minor dimension layout order. No loop is
+  // emitted for the given 'dimension_to_skip'. The function returns an IrArray
+  // index for the given operand_array containing the indvars of the loops. All
+  // dimensions of the index are filled except for 'dimension_to_skip'.
+  // name_suffix is the string to append to the names of LLVM constructs (eg,
+  // basic blocks) constructed by this method.
+  IrArray::Index EmitOperandArrayLoopNest(const llvm_ir::IrArray& operand_array,
+                                          int64 dimension_to_skip,
+                                          tensorflow::StringPiece name_suffix);
+
   // Convenience methods which return particular basic blocks of the outermost
   // or innermost loops. These methods return nullptr if no loops have been
   // added yet.
@@ -252,6 +268,14 @@ class ForLoopNest {
   llvm::BasicBlock* GetInnerLoopBodyBasicBlock() { return inner_loop_body_bb_; }
 
  private:
+  void SetIndexType(llvm::Type* index_ty) {
+    index_type_ = index_ty == nullptr ? b_->getInt64Ty() : index_ty;
+  }
+
+  llvm::Constant* GetConstantWithIndexType(int64 c) const {
+    return llvm::ConstantInt::get(index_type_, c);
+  }
+
   // Human-friendly name of the loop nest.
   string name_;
 
@@ -264,7 +288,9 @@ class ForLoopNest {
   // has been added yet.
   llvm::BasicBlock* inner_loop_body_bb_;
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
+
+  llvm::Type* index_type_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ForLoopNest);
 };

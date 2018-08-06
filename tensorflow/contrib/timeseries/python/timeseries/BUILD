@@ -157,9 +157,11 @@ py_library(
 
 py_test(
     name = "head_test",
+    size = "large",
     srcs = [
         "head_test.py",
     ],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip_gpu"],  # b/63391119
     deps = [
@@ -184,6 +186,7 @@ py_test(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

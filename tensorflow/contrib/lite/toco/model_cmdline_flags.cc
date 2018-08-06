@@ -74,10 +74,10 @@ bool ParseModelFlagsFromCommandLineFlags(
            "height, input array width, input array depth."),
       Flag("batch_size", parsed_flags.batch_size.bind(),
            parsed_flags.batch_size.default_value(),
-           "Batch size for the model. Replaces the first dimension of an "
-           "input size array if undefined. Use only with SavedModels when "
-           "--input_shapes flag is not specified. Always use --input_shapes "
-           "flag with frozen graphs."),
+           "Deprecated. Batch size for the model. Replaces the first dimension "
+           "of an input size array if undefined. Use only with SavedModels "
+           "when --input_shapes flag is not specified. Always use "
+           "--input_shapes flag with frozen graphs."),
       Flag("input_data_type", parsed_flags.input_data_type.bind(),
            parsed_flags.input_data_type.default_value(),
            "Deprecated: use --input_data_types instead. Input array type, if "
@@ -322,6 +322,10 @@ void ReadModelFlagsFromCommandLineFlags(
     for (int i = 0; i < input_shapes.size(); ++i) {
       auto* shape = model_flags->mutable_input_arrays(i)->mutable_shape();
       shape->clear_dims();
+      // Treat an empty input shape as a scalar.
+      if (input_shapes[i].empty()) {
+        continue;
+      }
       for (const auto& dim_str : absl::StrSplit(input_shapes[i], ',')) {
         int size;
         CHECK(absl::SimpleAtoi(dim_str, &size))

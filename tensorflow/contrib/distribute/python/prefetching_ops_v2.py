@@ -89,6 +89,9 @@ class _PrefetchToDeviceIterator(object):
       with ops.device(device):
         buffer_resource_handle = prefetching_ops.function_buffering_resource(
             f=_prefetch_fn,
+            output_types=data_nest.flatten(
+                sparse.as_dense_types(self._input_dataset.output_types,
+                                      self._input_dataset.output_classes)),
             target_device=target_device,
             string_arg=input_iterator_handle,
             buffer_size=buffer_size,

@@ -192,7 +192,7 @@ def _logspace_mean(log_values):
 
 def expectation(f, samples, log_prob=None, use_reparametrization=True,
                 axis=0, keep_dims=False, name=None):
-  """Computes the Monte-Carlo approximation of \\(E_p[f(X)]\\).
+  r"""Computes the Monte-Carlo approximation of \\(E_p[f(X)]\\).
 
   This function computes the Monte-Carlo approximation of an expectation, i.e.,
 

@@ -81,13 +81,25 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "cpu_function_runtime",
+    srcs = ["cpu_function_runtime.cc"],
+    hdrs = ["cpu_function_runtime.h"],
+    deps = [
+        # Keep dependencies to a minimum here; this library is used in every AOT
+        # binary produced by tfcompile.
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:framework_lite",
     ],
 )
 
@@ -99,9 +111,20 @@ cc_library(
     deps = [
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
-        "//tensorflow/compiler/aot:runtime",
+        ":cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_function_runtime_test",
+    srcs = ["cpu_function_runtime_test.cc"],
+    deps = [
+        ":cpu_function_runtime",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -119,6 +142,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/core:lib",
@@ -162,15 +186,19 @@ cc_library(
         ":sharding_util",
         ":tf2xla_util",
         "//tensorflow/compiler/tf2xla/lib:util",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:numeric",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -198,7 +226,7 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:core_cpu_internal",
@@ -281,10 +309,12 @@ tf_cc_test(
     deps = [
         ":tf2xla",
         ":tf2xla_proto",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -323,7 +353,7 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:client_library",
@@ -360,6 +390,7 @@ tf_cc_test(
     ],
     deps = [
         ":common",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -460,5 +491,15 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_op_registry_test",
+    srcs = ["xla_op_registry_test.cc"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

@@ -33,6 +33,7 @@ from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.ops.distributions import transformed_distribution as transformed_lib
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -42,6 +43,14 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def quadrature_scheme_lognormal_gauss_hermite(
     loc, scale, quadrature_size,
     validate_args=False, name=None):  # pylint: disable=unused-argument
@@ -85,6 +94,14 @@ def quadrature_scheme_lognormal_gauss_hermite(
     return grid, probs
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def quadrature_scheme_lognormal_quantiles(
     loc, scale, quadrature_size,
     validate_args=False, name=None):
@@ -214,6 +231,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
       validate_args=True)
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -417,6 +442,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
         axis=[-2, -1])
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def concat_vectors(*args):
   """Concatenates input vectors, statically if possible."""
   args_ = [distribution_util.static_value(x) for x in args]

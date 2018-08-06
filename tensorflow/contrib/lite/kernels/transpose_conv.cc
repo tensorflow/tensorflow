@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -119,10 +118,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Currently only support float32.
   switch (input->type) {
     case kTfLiteFloat32:
-      optimized_ops::TransposeConv(
+      reference_ops::TransposeConv(
           GetTensorData<float>(input), GetTensorDims(input),
           GetTensorData<float>(weights), GetTensorDims(weights), stride_width,
           stride_height, padding_size.width, padding_size.height,
+          GetTensorData<float>(output), GetTensorDims(output),
+          // Last two args specify im2col which reference_ops ignores.
+          // (Note this does not lead to a performance regression, as the
+          // previous optimized version was just a copy of the reference code.)
+          // TODO(b/110208176): Allocate im2col tensors and switch to
+          // optimized_ops.
           GetTensorData<float>(output), GetTensorDims(output));
       break;
     default:

@@ -372,12 +372,18 @@ class GrowTreeEnsembleOp : public OpKernel {
       return;
     }
 
+    // Get the max tree depth.
+    const Tensor* max_tree_depth_t;
+    OP_REQUIRES_OK(context,
+                   context->input("max_tree_depth", &max_tree_depth_t));
+    const int32 max_tree_depth = max_tree_depth_t->scalar<int32>()();
+
     // Update and retrieve the growable tree.
     // If the tree is fully built and dropout was applied, it also adjusts the
     // weights of dropped and the last tree.
     boosted_trees::trees::DecisionTreeConfig* const tree_config =
         UpdateAndRetrieveGrowableTree(ensemble_resource, learning_rate,
-                                      dropout_seed);
+                                      dropout_seed, max_tree_depth);
 
     // Split tree nodes.
     for (auto& split_entry : best_splits) {
@@ -494,7 +500,8 @@ class GrowTreeEnsembleOp : public OpKernel {
   boosted_trees::trees::DecisionTreeConfig* UpdateAndRetrieveGrowableTree(
       boosted_trees::models::DecisionTreeEnsembleResource* const
           ensemble_resource,
-      const float learning_rate, const uint64 dropout_seed) {
+      const float learning_rate, const uint64 dropout_seed,
+      const int32 max_tree_depth) {
     const auto num_trees = ensemble_resource->num_trees();
     if (num_trees <= 0 ||
         ensemble_resource->LastTreeMetadata()->is_finalized()) {
@@ -506,8 +513,7 @@ class GrowTreeEnsembleOp : public OpKernel {
       tree_config->add_nodes()->mutable_leaf();
       boosted_trees::trees::DecisionTreeMetadata* const tree_metadata =
           ensemble_resource->LastTreeMetadata();
-      tree_metadata->set_is_finalized(
-          learner_config_.constraints().max_tree_depth() <= 1);
+      tree_metadata->set_is_finalized(max_tree_depth <= 1);
       tree_metadata->set_num_tree_weight_updates(1);
     } else {
       // The growable tree is by definition the last tree in the ensemble.
@@ -518,8 +524,7 @@ class GrowTreeEnsembleOp : public OpKernel {
               << num_trees - 1 << " of ensemble of " << num_trees << " trees.";
       // Update growable tree metadata.
       tree_metadata->set_num_layers_grown(new_num_layers);
-      tree_metadata->set_is_finalized(
-          new_num_layers >= learner_config_.constraints().max_tree_depth());
+      tree_metadata->set_is_finalized(new_num_layers >= max_tree_depth);
     }
     UpdateTreeWeightsIfDropout(ensemble_resource, dropout_seed);
     return ensemble_resource->LastTree();
