@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -1669,17 +1670,19 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   shape = logits.get_shape()
   is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
 
-  if shape.ndims is 2 and is_last_dim:
-    return compute_op(logits, name=name)
-
-  # If dim is the last dimension, simply reshape the logits to a matrix and
-  # apply the internal softmax.
+  # TODO(phawkins): remove after 2018/8/27 and simplify this code.
+  softmax_accepts_r1_or_greater = compat.forward_compatible(2018, 8, 27)
+  reshape_required = (not softmax_accepts_r1_or_greater) and shape.ndims != 2
   if is_last_dim:
-    input_shape = array_ops.shape(logits)
-    logits = _flatten_outer_dims(logits)
-    output = compute_op(logits)
-    output = array_ops.reshape(output, input_shape, name=name)
-    return output
+    if reshape_required:
+      # If dim is the last dimension, simply reshape the logits to a matrix and
+      # apply the internal softmax.
+      input_shape = array_ops.shape(logits)
+      logits = _flatten_outer_dims(logits)
+      output = compute_op(logits)
+      output = array_ops.reshape(output, input_shape, name=name)
+      return output
+    return compute_op(logits, name=name)
 
   # If dim is not the last dimension, we have to do a reshape and transpose so
   # that we can still perform softmax on its last dimension.
@@ -1690,14 +1693,19 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
   shape_after_swap = array_ops.shape(logits)
 
-  # Reshape logits into a matrix.
-  logits = _flatten_outer_dims(logits)
+  if reshape_required:
+    # Reshape logits into a matrix.
+    logits = _flatten_outer_dims(logits)
 
-  # Do the actual softmax on its last dimension.
-  output = compute_op(logits)
+    # Do the actual softmax on its last dimension.
+    output = compute_op(logits)
 
-  # Transform back the output tensor.
-  output = array_ops.reshape(output, shape_after_swap)
+    # Transform back the output tensor.
+    output = array_ops.reshape(output, shape_after_swap)
+  else:
+    # Do the actual softmax on its last dimension.
+    output = compute_op(logits)
+
   output = _swap_axis(
       output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
