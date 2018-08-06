@@ -33,6 +33,11 @@ class GraphCompileIoMapTest : public HloTestBase {
   explicit GraphCompileIoMapTest(se::Platform* platform = nullptr)
       : HloTestBase() {}
   const OutputMap& GetMap(PoplarExecutable* e) { return e->output_map_; }
+
+  static std::unique_ptr<HloModule> CreateNewModuleWithConfig(
+      const HloModuleConfig& config, const string& name = TestName()) {
+    return MakeUnique<HloModule>(name, config);
+  }
 };
 
 namespace {
@@ -95,7 +100,9 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto config = GetModuleConfigForTest();
+  config.set_resource_update_count(1);
+  auto hlo_module = CreateNewModuleWithConfig(config);
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -140,7 +147,9 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto config = GetModuleConfigForTest();
+  config.set_resource_update_count(1);
+  auto hlo_module = CreateNewModuleWithConfig(config);
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =

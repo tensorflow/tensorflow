@@ -243,6 +243,15 @@ class EntryVisitor : public FullVisitor {
       }
     }
 
+    // Streamed inputs<->outputs cannot be inplace updates
+    if (!all_outputs_are_parameters) {
+      for (size_t o = 0; o < outputs.size(); o++) {
+        if (output_streamed[o]) {
+          output_map.erase(o);
+        }
+      }
+    }
+
     PrintTensorMapping(graph_, tensor_map);
     tensor_map.clear();
 
