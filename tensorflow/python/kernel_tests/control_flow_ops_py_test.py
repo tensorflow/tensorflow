@@ -3152,6 +3152,14 @@ class TupleTest(test.TestCase):
 class AssertTest(test.TestCase):
 
   def testGuardedAssertDoesNotCopyWhenTrue(self):
+
+    if test.is_built_with_rocm() :
+      # This test depends on the presence of nodes with names "MEMCPYDtoH"
+      # That name assignment currently only happens for tensorflow build with CUDA, 
+      # ROCm support for the same is still in the process of being implemented
+      # Disabling this test for ROCm for the time being
+      return
+    
     with self.test_session(use_gpu=True) as sess:
       with ops.device(test.gpu_device_name()):
         value = constant_op.constant(1.0)
