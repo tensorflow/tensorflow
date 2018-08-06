@@ -2471,27 +2471,27 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConcatV2, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter_with_bias,
-                      csinfo_.mkl_conv2d_grad_filter_with_bias, CopyAttrsConv2D,
+                      csinfo_.mkl_conv2d_grad_filter_with_bias, CopyAttrsConv,
                       AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv3d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d),
-                      CopyAttrsConv2D, AlwaysRewrite});  
+                      CopyAttrsConv, AlwaysRewrite});  
     rinfo_.push_back({csinfo_.conv3d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_filter),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv3d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_input),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -3101,7 +3101,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
-  static void CopyAttrsConv2D(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
@@ -3586,7 +3586,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
-void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
+void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node,
                                            NodeBuilder* nb) {
   DataType T;
   string data_format;
@@ -3907,7 +3907,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   nb.Input(succ_in[1].first, succ_in[1].second);  // In2 of BiasAdd
 
   // Copy attributes from Conv2D to Conv2DWithBias.
-  CopyAttrsConv2D(const_cast<const Node*>(pred), &nb);
+  CopyAttrsConv(const_cast<const Node*>(pred), &nb);
 
   // Copy the device assigned to old node to new node.
   nb.Device(succ->def().device());
@@ -4018,7 +4018,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   }
 
   // Copy attributes from Conv2DBackpropFilter.
-  CopyAttrsConv2D(const_cast<const Node*>(fltr), &nb);
+  CopyAttrsConv(const_cast<const Node*>(fltr), &nb);
 
   // Copy the device assigned to old node to new node.
   nb.Device(fltr->def().device());
