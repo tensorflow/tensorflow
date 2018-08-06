@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
+//This header file is part of MKL ML, need equivalent file in MKL DNN
 #ifndef DO_NOT_USE_ML
 #include "mkl_cblas.h"
 #else
@@ -160,11 +161,12 @@ class MklMatMulOp : public OpKernel {
     int index_transa = transa? 1 : 0 ;
     int index_transb = transb? 1 : 0 ;
     VLOG(2) << "MKL DNN SGEMM called";
-    //Using the fortran api of mkldnn
-    //Since TF is in row major layout,reversing the order of A and B
+    // MKL DNN only supports the Fortran api and requires column major while Tensorflow
+    // uses row major so we reverse the order A and B
     mkldnn_sgemm(ftrans[index_transb], ftrans[index_transa],
                 &n, &m, &k, &alpha, b, &ldb, a, &lda, &beta, c, &ldc);
 #else
+    // MKL ML binary uses CBLAS API
     cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
                 transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
                 ldb, beta, c, ldc);
