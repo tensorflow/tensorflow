@@ -57,7 +57,7 @@ class RandomOpsTest(xla_test.XLATestCase):
   def testRandomUniformIsNotConstant(self):
 
     def rng(dtype):
-      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=1000000)
+      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=10000)
 
     for dtype in self._random_types():
       self._testRngIsNotConstant(rng, dtype)
