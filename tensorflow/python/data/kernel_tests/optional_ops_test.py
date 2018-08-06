@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -114,6 +115,38 @@ class OptionalTest(test.TestCase):
     with self.assertRaises(TypeError):
       optional_ops.Optional.none_from_structure(
           dict_output_shapes, tuple_output_types, tuple_output_classes)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCopyToGPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with ops.device("/cpu:0"):
+      optional_with_value = optional_ops.Optional.from_value(
+          (constant_op.constant(37.0), constant_op.constant("Foo"),
+           constant_op.constant(42)))
+      optional_none = optional_ops.Optional.none_from_structure(
+          tensor_shape.scalar(), dtypes.float32, ops.Tensor)
+
+    with ops.device("/gpu:0"):
+      gpu_optional_with_value = optional_ops._OptionalImpl(
+          array_ops.identity(optional_with_value._variant_tensor),
+          optional_with_value.output_shapes, optional_with_value.output_types,
+          optional_with_value.output_classes)
+      gpu_optional_none = optional_ops._OptionalImpl(
+          array_ops.identity(optional_none._variant_tensor),
+          optional_none.output_shapes, optional_none.output_types,
+          optional_none.output_classes)
+
+      gpu_optional_with_value_has_value = gpu_optional_with_value.has_value()
+      gpu_optional_with_value_values = gpu_optional_with_value.get_value()
+
+      gpu_optional_none_has_value = gpu_optional_none.has_value()
+
+    self.assertTrue(self.evaluate(gpu_optional_with_value_has_value))
+    self.assertEqual((37.0, b"Foo", 42),
+                     self.evaluate(gpu_optional_with_value_values))
+    self.assertFalse(self.evaluate(gpu_optional_none_has_value))
 
   def testIteratorGetNextAsOptional(self):
     ds = dataset_ops.Dataset.range(3)

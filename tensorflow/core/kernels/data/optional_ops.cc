@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/optional_ops.h"
 
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 
 namespace tensorflow {
 namespace {
@@ -23,9 +25,6 @@ const char kOptionalVariantTypeName[] = "tensorflow::data::Optional";
 
 // An `OptionalVariant` can represent either an "actual value" (a tuple of
 // tensors) or "none", and may be stored in a DT_VARIANT tensor.
-//
-// TODO(b/111349762): Add registrations for copying `OptionalVariant` between
-// devices.
 class OptionalVariant {
  public:
   // Create an `OptionalVariant` with no actual value.
@@ -189,16 +188,59 @@ class OptionalGetValueOp : public OpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
-// TODO(b/111349762): Add registrations for other devices.
 REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_CPU),
                         OptionalNoneOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE_GPU),
+                        OptionalNoneOp);
 REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE_CPU),
+                        OptionalFromValueOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE_GPU),
                         OptionalFromValueOp);
 
 REGISTER_KERNEL_BUILDER(Name("OptionalHasValue").Device(DEVICE_CPU),
                         OptionalHasValueOp);
+REGISTER_KERNEL_BUILDER(
+    Name("OptionalHasValue").Device(DEVICE_GPU).HostMemory("has_value"),
+    OptionalHasValueOp);
 REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_CPU),
                         OptionalGetValueOp);
+REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE_GPU),
+                        OptionalGetValueOp);
+
+static Status OptionalDeviceCopy(
+    const OptionalVariant& from, OptionalVariant* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  if (from.has_value()) {
+    const std::vector<Tensor>& from_values = from.get_values();
+    std::vector<Tensor> to_values;
+    to_values.reserve(from_values.size());
+    for (const Tensor& t : from_values) {
+      if (DMAHelper::CanUseDMA(&t)) {
+        Tensor tmp(t.dtype());
+        TF_RETURN_IF_ERROR(copy(t, &tmp));
+        to_values.push_back(std::move(tmp));
+      } else {
+        to_values.push_back(t);
+      }
+    }
+    *to = OptionalVariant(std::move(to_values));
+  } else {
+    *to = from;
+  }
+  return Status::OK();
+}
+
+#define REGISTER_OPTIONAL_COPY(DIRECTION)                   \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(     \
+      OptionalVariant, DIRECTION, kOptionalVariantTypeName, \
+      OptionalDeviceCopy)
+
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(OptionalVariant,
+                                       kOptionalVariantTypeName);
 
 }  // namespace
 
@@ -206,8 +248,10 @@ Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
                                       std::vector<Tensor> value) {
   OptionalVariant v(std::move(value));
   Tensor* variant_t;
-  TF_RETURN_IF_ERROR(
-      ctx->allocate_output(output_index, TensorShape({}), &variant_t));
+  AllocatorAttributes cpu_alloc;
+  cpu_alloc.set_on_host(true);
+  TF_RETURN_IF_ERROR(ctx->allocate_output(output_index, TensorShape({}),
+                                          &variant_t, cpu_alloc));
   variant_t->scalar<Variant>()() = v;
   return Status::OK();
 }
@@ -215,8 +259,10 @@ Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
 Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
   OptionalVariant v;
   Tensor* variant_t;
-  TF_RETURN_IF_ERROR(
-      ctx->allocate_output(output_index, TensorShape({}), &variant_t));
+  AllocatorAttributes cpu_alloc;
+  cpu_alloc.set_on_host(true);
+  TF_RETURN_IF_ERROR(ctx->allocate_output(output_index, TensorShape({}),
+                                          &variant_t, cpu_alloc));
   variant_t->scalar<Variant>()() = v;
   return Status::OK();
 }
