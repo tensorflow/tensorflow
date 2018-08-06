@@ -4435,7 +4435,7 @@ gpu_py_test(
     tags = ["multi_gpu"],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "checkpoint_management_test",
     size = "small",
     srcs = [

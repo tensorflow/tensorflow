@@ -318,7 +318,7 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "iterator_ops_test",
     size = "small",
     srcs = ["iterator_ops_test.py"],
@@ -386,7 +386,7 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "optional_ops_test",
     size = "small",
     srcs = ["optional_ops_test.py"],
