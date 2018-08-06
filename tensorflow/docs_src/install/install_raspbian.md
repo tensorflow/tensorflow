@@ -60,7 +60,7 @@ If it gives the error "Command not found", then the package has not been
 installed yet. To install if for the first time, run:
 
 <pre>$ sudo apt-get install python3-pip # for Python 3.n
-sudo apt-get install python-pip # for Python 2.7</pre>
+$ sudo apt-get install python-pip # for Python 2.7</pre>
 
 You can find more help on installing and upgrading pip in
 [the Raspberry Pi documentation](https://www.raspberrypi.org/documentation/linux/software/python.md).
