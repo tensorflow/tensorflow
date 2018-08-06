@@ -19,6 +19,10 @@ limitations under the License.
 // structure.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 #ifndef USE_NEON
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #define USE_NEON
@@ -123,6 +127,12 @@ void PortableCopyVector(const float* vector, int v_size, float* result);
 
 // Fill vector with 0.f.
 void PortableZeroVector(float* vector, int v_size);
+
+// Multiply all elements of vector with a scalar.
+void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                                  float* result);
+void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                              float* result);
 
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);

@@ -124,6 +124,7 @@ class ConfigureGcsHook(training.SessionRunHook):
           self._credentials_placeholder)
     else:
       self._credentials_op = None
+
     if self._block_cache:
       self._block_cache_op = gen_gcs_config_ops.gcs_configure_block_cache(
           max_cache_size=self._block_cache.max_bytes,

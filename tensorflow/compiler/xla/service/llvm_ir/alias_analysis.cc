@@ -28,19 +28,20 @@ namespace llvm_ir {
 // Sentry allocation used to represent parameters of the entry computation in
 // alias_scope_metadata_ and noalias_metadata_.
 static const BufferAllocation* kParameterAllocation = new BufferAllocation(
-    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false,
-    LogicalBuffer::Color(0));
+    /*index=*/-1, /*size=*/0, LogicalBuffer::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
-                                                    llvm_ir::IrArray* array) {
+                                                    llvm_ir::IrArray* array,
+                                                    const ShapeIndex& index) {
   BufferAllocation::Slice buffer_slice;
-  if (hlo.opcode() == HloOpcode::kParameter) {
-    // Parameters may alias with each other but may not alias with our temporary
-    // buffers.
+  if (hlo.opcode() == HloOpcode::kParameter &&
+      hlo.parent() == hlo.parent()->parent()->entry_computation()) {
+    // Entry computation parameters may alias with each other but may not alias
+    // with our temporary buffers.
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
   } else {
     const std::set<BufferAllocation::Slice> slices =
-        assignment_.GetAllSlices(&hlo, /*index=*/{});
+        assignment_.GetAllSlices(&hlo, index);
     if (slices.empty() || slices.size() > 1) {
       // Skip HLOs which don't have a buffer assigned or for which the
       // buffer can't be determined statically. We cannot determine their
@@ -137,16 +138,18 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   // 2. Operands of users of the given hlo.
   // 3. Operands of the given hlo.
   //
-  // This set can be increased as we need. For now only consider top-level
-  // buffers (index = {}) not buffers nested within the instruction's
-  // operands/output which are not typically touched.
+  // This set can be increased as we need.
   std::vector<const LogicalBuffer*> worklist;
   auto add_buffers_to_worklist =
       [&worklist, &assignment](const HloInstruction* instruction) {
-        for (const LogicalBuffer* buffer :
-             assignment.GetSourceBuffers(instruction, /*index=*/{})) {
-          worklist.push_back(buffer);
-        }
+        ShapeUtil::ForEachSubshape(
+            instruction->shape(),
+            [&](const Shape& /*shape*/, const ShapeIndex& index) {
+              for (const LogicalBuffer* buffer :
+                   assignment.GetSourceBuffers(instruction, index)) {
+                worklist.push_back(buffer);
+              }
+            });
       };
 
   for (HloInstruction* user : hlo.users()) {

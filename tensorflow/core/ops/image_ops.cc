@@ -442,8 +442,9 @@ REGISTER_OP("DrawBoundingBoxes")
       if (c->ValueKnown(c->Dim(images, 3))) {
         int64 depth = c->Value(c->Dim(images, 3));
         if (!(depth == 1 || depth == 3 || depth == 4)) {
-          return errors::InvalidArgument("Channel depth should be either 1 (GRY), "
-                                         "3 (RGB), or 4 (RGBA)");
+          return errors::InvalidArgument(
+              "Channel depth should be either 1 (GRY), "
+              "3 (RGB), or 4 (RGBA)");
         }
       }
 
@@ -454,7 +455,9 @@ REGISTER_OP("DrawBoundingBoxes")
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 2), 4, &unused));
 
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+      // The rank of the input image (rank = 4) has already been restricted
+      // above, and the output is of the same shape as the input.
+      return shape_inference::UnchangedShape(c);
     });
 
 // --------------------------------------------------------------------------
@@ -702,6 +705,72 @@ REGISTER_OP("NonMaxSuppressionV3")
           c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
       // The boxes[1] is 4.
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionV4")
+    .Input("boxes: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .Output("valid_outputs: int32")
+    .Attr("pad_to_max_output_size: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      ShapeHandle iou_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+      ShapeHandle score_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      c->set_output(1, c->MakeShape({}));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionWithOverlaps")
+    .Input("overlaps: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Input("overlap_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle overlaps;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &overlaps));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      ShapeHandle overlap_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &overlap_threshold));
+      ShapeHandle score_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(overlaps, 1), &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();

@@ -23,24 +23,23 @@ namespace tflite {
 namespace profiling {
 namespace {
 
-using Detail = tensorflow::StatsCalculator::Detail;
-
 struct OperatorDetails {
-  string name;
-  std::vector<string> inputs;
-  std::vector<string> outputs;
+  std::string name;
+  std::vector<std::string> inputs;
+  std::vector<std::string> outputs;
 };
 
-string GetTensorName(const tflite::Interpreter& interpreter, int tensor_index) {
+std::string GetTensorName(const tflite::Interpreter& interpreter,
+                          int tensor_index) {
   const auto tensor = interpreter.tensor(tensor_index);
   if (tensor == nullptr || tensor->name == nullptr) {
     return "Unknown";
   }
   return tensor->name;
 }
-std::vector<string> GetTensorNames(const tflite::Interpreter& interpreter,
-                                   const TfLiteIntArray* tensor_indices) {
-  std::vector<string> tensors;
+std::vector<std::string> GetTensorNames(const tflite::Interpreter& interpreter,
+                                        const TfLiteIntArray* tensor_indices) {
+  std::vector<std::string> tensors;
   tensors.reserve(tensor_indices->size);
   for (int i = 0; i < tensor_indices->size; i++) {
     tensors.push_back(GetTensorName(interpreter, tensor_indices->data[i]));
@@ -48,7 +47,7 @@ std::vector<string> GetTensorNames(const tflite::Interpreter& interpreter,
   return tensors;
 }
 
-string ToString(const std::vector<string>& str_vector) {
+std::string ToString(const std::vector<std::string>& str_vector) {
   std::stringstream stream;
   stream << "[";
   bool first = true;
@@ -77,18 +76,30 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   } else {
     op_name = tflite::EnumNamesBuiltinOperator()[code];
   }
+  const char* profiling_string =
+      interpreter.OpProfilingString(node_reg->second, &node_reg->first);
   OperatorDetails details;
   details.name = op_name;
+  if (profiling_string) {
+    details.name += ":" + std::string(profiling_string);
+  }
   details.inputs = GetTensorNames(interpreter, inputs);
   details.outputs = GetTensorNames(interpreter, outputs);
   return details;
 }
 
+tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
+  auto options = tensorflow::StatSummarizerOptions();
+  options.show_summary = true;
+  options.show_memory = false;
+  return options;
+}
+
 }  // namespace
 
 ProfileSummarizer::ProfileSummarizer()
-    : stats_calculator_(new ::tensorflow::StatsCalculator(
-          tensorflow::StatSummarizerOptions())) {}
+    : stats_calculator_(
+          new ::tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {}
 
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,
@@ -112,28 +123,17 @@ void ProfileSummarizer::ProcessProfiles(
   int64_t base_start_us = events[0]->begin_timestamp_us;
   int node_num = 0;
   int64_t curr_total_us = 0;
-  std::map<std::string, Detail> details;
   for (auto event : events) {
     auto op_details = GetOperatorDetails(interpreter, event->event_metadata);
     auto node_name = ToString(op_details.outputs);
-    auto result = details.emplace(node_name, Detail());
-    Detail* detail = &(result.first->second);
-    detail->start_us.UpdateStat(event->begin_timestamp_us - base_start_us);
+    int64_t start_us = event->begin_timestamp_us - base_start_us;
     int64_t node_exec_time =
         event->end_timestamp_us - event->begin_timestamp_us;
-    detail->rel_end_us.UpdateStat(node_exec_time);
+    stats_calculator_->AddNodeStats(node_name, op_details.name, node_num,
+                                    start_us, node_exec_time, 0 /*memory */);
     curr_total_us += node_exec_time;
     ++node_num;
-
-    if (result.second) {
-      detail->name = node_name;
-      detail->type = op_details.name;
-      detail->run_order = node_num;
-      detail->times_called = 0;
-    }
-    ++detail->times_called;
   }
-  stats_calculator_->UpdateDetails(details);
   stats_calculator_->UpdateRunTotalUs(curr_total_us);
 }
 }  // namespace profiling

@@ -13,16 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
-
-// NB!  TODO(b/74360564): These tests do not test out of bounds behavior since
-// that hasn't been specced yet.
 
 namespace xla {
 namespace {
@@ -41,7 +39,7 @@ class GatherOperationTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            tools::Parse(hlo_text, config));
+                            ParseHloString(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };
@@ -62,8 +60,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -83,8 +82,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -104,9 +104,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 2}, {2, 1}});
+      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -126,9 +126,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -148,9 +148,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -170,11 +170,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -194,11 +194,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -218,8 +218,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({1, 1});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({1, 1});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -239,9 +240,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{2, 1}, {1, 1}});
+      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -260,18 +261,15 @@ ENTRY main {
       window_bounds={1, 0}
 }
 )";
-  std::unique_ptr<Literal> operand = Literal::CreateR2<int32>({{}, {}, {}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
 XLA_TEST_F(GatherOperationTest, OutOfBoundsIndex) {
   // Out of bounds indices must not crash, and the indices in range should
   // produce the same values across all backends.
-  //
-  // TODO(b/74360564): Once we have a well defined semantics for OOB accesses,
-  // we should get rid of the mask and check that backends produce the same
-  // value for OOB indices too.
 
   const string hlo_text = R"(
 HloModule BatchDynamicSlice
@@ -285,29 +283,45 @@ ENTRY main {
       gather_dims_to_operand_dims={0,1},
       index_vector_dim=1,
       window_bounds={1,1}
-  gather_reshaped = s32[6]{0} reshape(gather)
-  in_bounds_mask = s32[6]{0} parameter(2)
-  ROOT result = s32[6]{0} multiply(gather_reshaped, in_bounds_mask)
+  ROOT result = s32[6]{0} reshape(gather)
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR2<int32>(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
-  std::unique_ptr<Literal> in_bounds_mask =
-      Literal::CreateR1<int32>({0, 1, 1, 0, 0, 1});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
 
-  RunTest(hlo_text,
-          {operand.get(), gather_indices.get(), in_bounds_mask.get()});
+XLA_TEST_F(GatherOperationTest, OutOfBoundsUnsignedIndex) {
+  // Out of bounds indices must not crash, and the indices in range should
+  // produce the same values across all backends.
+
+  const string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = u32[6,2]{1,0} parameter(1)
+  gather = s32[6,1,1]{2,1,0} gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1}
+  ROOT result = s32[6]{0} reshape(gather)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<uint32>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483648u, 1}, {1, 2}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
 XLA_TEST_F(GatherOperationTest, NegativeIndex) {
   // Negative indices must not crash, and the indices in range should produce
   // the same values across all backends.
-  //
-  // TODO(b/74360564): Once we have a well defined semantics for negative
-  // accesses, we should get rid of the mask and check that backends produce the
-  // same value for negative indices too.
 
   const string hlo_text = R"(
 HloModule BatchDynamicSlice
@@ -321,20 +335,40 @@ ENTRY main {
       gather_dims_to_operand_dims={0,1},
       index_vector_dim=1,
       window_bounds={1,1}
-  gather_reshaped = s32[6]{0} reshape(gather)
-  in_bounds_mask = s32[6]{0} parameter(2)
-  ROOT result = s32[6]{0} multiply(gather_reshaped, in_bounds_mask)
+  ROOT result = s32[6]{0} reshape(gather)
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR2<int32>(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
       {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
-  std::unique_ptr<Literal> in_bounds_mask =
-      Literal::CreateR1<int32>({0, 1, 1, 0, 0, 1});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
 
-  RunTest(hlo_text,
-          {operand.get(), gather_indices.get(), in_bounds_mask.get()});
+XLA_TEST_F(GatherOperationTest, NegativeIndexIntoUnsignedOperand) {
+  // Negative indices must not crash, and the indices in range should produce
+  // the same values across all backends.
+
+  const string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = u32[3,3]{1,0} parameter(0)
+  indices = s32[6,2]{1,0} parameter(1)
+  gather = u32[6,1,1]{2,1,0} gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1}
+  ROOT result = u32[6]{0} reshape(gather)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<uint32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
+      {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
 XLA_TEST_F(GatherOperationTest, OneScalarIndex) {
@@ -352,9 +386,9 @@ ENTRY main {
       window_bounds={1,3,2}
 }
 )";
-  std::unique_ptr<Literal> operand = Literal::CreateR3<int32>(
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR3<int32>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR0<int32>(1);
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR0<int32>(1);
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -373,8 +407,8 @@ ENTRY main {
       window_bounds={1}
 }
 )";
-  std::unique_ptr<Literal> operand = Literal::CreateR1<int32>({1, 2, 3, 4});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR0<int32>(1);
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR0<int32>(1);
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -394,8 +428,8 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR1<int32>({});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -418,8 +452,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -442,9 +477,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 2}, {2, 1}});
+      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -467,9 +502,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -492,11 +527,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -520,11 +555,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -547,8 +582,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({1, 1});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({1, 1});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -571,9 +607,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{2, 1}, {1, 1}});
+      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -598,22 +634,23 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
   Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
 
-  auto operand = builder.Parameter(0, operand_shape, "operand");
-  auto indices = builder.Parameter(1, indices_shape, "indices");
+  auto operand = Parameter(&builder, 0, operand_shape, "operand");
+  auto indices = Parameter(&builder, 1, indices_shape, "indices");
   GatherDimensionNumbers dim_numbers;
   dim_numbers.add_output_window_dims(1);
   dim_numbers.add_elided_window_dims(0);
   dim_numbers.add_gather_dims_to_operand_dims(0);
   dim_numbers.set_index_vector_dim(1);
-  builder.Gather(operand, indices, dim_numbers, {1, 3});
+  Gather(operand, indices, dim_numbers, {1, 3});
 
   std::vector<int32> expected = {};
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> operand_arg,
-                          client_->TransferToServer(*Literal::CreateR2<int32>(
-                              {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> operand_arg,
+      client_->TransferToServer(
+          *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> indices_arg,
-      client_->TransferToServer(*Literal::CreateR1<int32>({0, 2})));
+      client_->TransferToServer(*LiteralUtil::CreateR1<int32>({0, 2})));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
@@ -629,8 +666,8 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
       client_->ExecuteParallel(computation_instances));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           client_->Transfer(*(result_data[0])));
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result_literal, *Literal::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}})));
+  LiteralTestUtil::ExpectR2Equal<int32>({{1, 2, 3}, {7, 8, 9}},
+                                        *result_literal);
 }
 }  // namespace
 }  // namespace xla

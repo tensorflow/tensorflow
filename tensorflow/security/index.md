@@ -4,7 +4,7 @@ We regularly publish security advisories about using TensorFlow.
 
 *Note*: In conjunction with these security advisories, we strongly encourage
 TensorFlow users to read and understand TensorFlow's security model as outlined
-in [https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md](SECURITY.md).
+in [SECURITY.md](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md).
 
 | Advisory Number | Type               | Versions affected | Reported by           | Additional Information      |
 |-----------------|--------------------|:-----------------:|-----------------------|-----------------------------|
@@ -14,5 +14,5 @@ in [https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md](SECURITY.m
 | [TFSA-2018-003](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2018-003.md)   | TensorFlow Lite TOCO FlatBuffer Parsing Vulnerability | <= 1.7 | Blade Team of Tencent |  |
 | [TFSA-2018-002](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2018-002.md)   | GIF File Parsing Null Pointer Dereference Error | <= 1.5 | Blade Team of Tencent |  |
 | [TFSA-2018-001](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2018-001.md)   | BMP File Parser Out-of-bounds Read | <= 1.6 | Blade Team of Tencent |  |
-| -               | Out Of Bounds Read |             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
+| -               | Out Of Bounds Read |             <= 1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
 

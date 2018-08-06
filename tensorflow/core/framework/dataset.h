@@ -459,6 +459,8 @@ class DatasetBase : public core::RefCounted {
 
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
+
+  friend class DatasetToGraphOp;  // For access to graph related members.
 };
 
 // Base-class for datasets that are built by ops.
@@ -496,28 +498,24 @@ class GraphDatasetBase : public DatasetBase {
 };
 
 // Represents an iterator that is associated with a particular parent dataset.
-template <class DatasetType>
-class DatasetIterator : public IteratorBase {
+class DatasetBaseIterator : public IteratorBase {
  public:
-  struct Params {
-    // Owns one reference on the shared dataset resource.
-    const DatasetType* dataset;
+  struct BaseParams {
+    // Owns one reference on the shared dataset object.
+    const DatasetBase* dataset;
 
     // Identifies the sequence of iterators leading up to this iterator.
     const string prefix;
   };
 
-  explicit DatasetIterator(const Params& params) : params_(params) {
+  explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
   }
 
-  ~DatasetIterator() override { params_.dataset->Unref(); }
-
-  // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return params_.dataset; }
+  ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
   // The sequence of iterators leading up to this iterator.
-  const string prefix() const { return params_.prefix; }
+  const string& prefix() const { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -543,7 +541,7 @@ class DatasetIterator : public IteratorBase {
   }
 
   Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(dataset()->Save(ctx, writer));
+    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
     return IteratorBase::Save(ctx, writer);
   }
 
@@ -554,11 +552,40 @@ class DatasetIterator : public IteratorBase {
                                  bool* end_of_sequence) = 0;
 
   string full_name(const string& name) const {
-    return strings::StrCat(prefix(), ":", name);
+    return strings::StrCat(params_.prefix, ":", name);
   }
 
  private:
-  Params params_;
+  BaseParams params_;
+};
+
+// Represents an iterator that is associated with a particular parent dataset
+// with a particular type.
+template <class DatasetType>
+class DatasetIterator : public DatasetBaseIterator {
+ public:
+  struct Params {
+    // Borrowed pointer to the parent dataset.
+    const DatasetType* dataset;
+
+    // Identifies the sequence of iterators leading up to this iterator.
+    const string prefix;
+  };
+
+  explicit DatasetIterator(const Params& params)
+      : DatasetBaseIterator({params.dataset, params.prefix}),
+        typed_dataset_(params.dataset) {}
+
+  // The dataset from which this iterator was created.
+  const DatasetType* dataset() const { return typed_dataset_; }
+
+ protected:
+  virtual Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) = 0;
+
+ private:
+  const DatasetType* const typed_dataset_;  // Not owned.
 };
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
@@ -582,6 +609,23 @@ class DatasetOpKernel : public OpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status ParseVectorArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name,
+                             std::vector<T>* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a vector");
+    }
+    int size = argument_t->vec<T>().size();
+    output->reserve(size);
+    for (int i = 0; i < size; ++i) {
+      output->push_back(argument_t->vec<T>()(i));
+    }
     return Status::OK();
   }
 };

@@ -31,6 +31,7 @@ namespace profiling {
 
 namespace {
 
+#ifdef TFLITE_PROFILING_ENABLED
 TfLiteStatus SimpleOpEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = tflite::GetInput(context, node, /*index=*/0);
   const TfLiteTensor* input2 = tflite::GetInput(context, node, /*index=*/1);
@@ -42,20 +43,35 @@ TfLiteStatus SimpleOpEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+const char* SimpleOpProfilingString(const TfLiteContext* context,
+                                    const TfLiteNode* node) {
+  return "Profile";
+}
+
 TfLiteRegistration* RegisterSimpleOp() {
+  static TfLiteRegistration registration = {
+      nullptr,        nullptr, nullptr,
+      SimpleOpEval,   nullptr, tflite::BuiltinOperator_CUSTOM,
+      "SimpleOpEval", 1};
+  return &registration;
+}
+
+TfLiteRegistration* RegisterSimpleOpWithProfilingDetails() {
   static TfLiteRegistration registration = {nullptr,
                                             nullptr,
                                             nullptr,
                                             SimpleOpEval,
+                                            SimpleOpProfilingString,
                                             tflite::BuiltinOperator_CUSTOM,
                                             "SimpleOpEval",
                                             1};
   return &registration;
 }
+#endif
 
 class SimpleOpModel : public SingleOpModel {
  public:
-  void Init();
+  void Init(const std::function<TfLiteRegistration*()>& registration);
   tflite::Interpreter* GetInterpreter() { return interpreter_.get(); }
   void SetInputs(int32_t x, int32_t y) {
     PopulateTensor(inputs_[0], {x});
@@ -68,11 +84,12 @@ class SimpleOpModel : public SingleOpModel {
   int output_;
 };
 
-void SimpleOpModel::Init() {
+void SimpleOpModel::Init(
+    const std::function<TfLiteRegistration*()>& registration) {
   inputs_[0] = AddInput({TensorType_INT32, {1}});
   inputs_[1] = AddInput({TensorType_INT32, {1}});
   output_ = AddOutput({TensorType_INT32, {}});
-  SetCustomOp("SimpleAdd", {}, RegisterSimpleOp);
+  SetCustomOp("SimpleAdd", {}, registration);
   BuildInterpreter({GetShape(inputs_[0]), GetShape(inputs_[1])});
 }
 
@@ -86,7 +103,7 @@ TEST(ProfileSummarizerTest, Empty) {
 TEST(ProfileSummarizerTest, Interpreter) {
   Profiler profiler;
   SimpleOpModel m;
-  m.Init();
+  m.Init(RegisterSimpleOp);
   auto interpreter = m.GetInterpreter();
   interpreter->SetProfiler(&profiler);
   profiler.StartProfiling();
@@ -101,8 +118,31 @@ TEST(ProfileSummarizerTest, Interpreter) {
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
-  ASSERT_TRUE(output.find("SimpleOp") != std::string::npos) << output;
+  ASSERT_TRUE(output.find("SimpleOpEval") != std::string::npos) << output;
 }
+
+TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
+  Profiler profiler;
+  SimpleOpModel m;
+  m.Init(RegisterSimpleOpWithProfilingDetails);
+  auto interpreter = m.GetInterpreter();
+  interpreter->SetProfiler(&profiler);
+  profiler.StartProfiling();
+  m.SetInputs(1, 2);
+  m.Invoke();
+  // 3 = 1 + 2
+  EXPECT_EQ(m.GetOutput(), 3);
+  profiler.StopProfiling();
+  ProfileSummarizer summarizer;
+  auto events = profiler.GetProfileEvents();
+  EXPECT_EQ(1, events.size());
+  summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
+  auto output = summarizer.GetOutputString();
+  // TODO(shashishekhar): Add a better test here.
+  ASSERT_TRUE(output.find("SimpleOpEval:Profile") != std::string::npos)
+      << output;
+}
+
 #endif
 
 }  // namespace

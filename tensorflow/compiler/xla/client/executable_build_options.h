@@ -65,6 +65,13 @@ class ExecutableBuildOptions {
       tensorflow::StringPiece dirpath);
   const tensorflow::gtl::optional<string>& dump_optimized_hlo_proto_to() const;
 
+  // If set, specifies a dirpath to dump the start-of-optimization-pipeline HLO
+  // protobuf to (as in DebugOptions).
+  ExecutableBuildOptions& set_dump_unoptimized_hlo_proto_to(
+      tensorflow::StringPiece dirpath);
+  const tensorflow::gtl::optional<string>& dump_unoptimized_hlo_proto_to()
+      const;
+
   // If set, specifies a dirpath to dump the per-pass-in-pipeline HLO protobufs
   // to (as in DebugOptions).
   ExecutableBuildOptions& set_dump_per_pass_hlo_proto_to(
@@ -95,6 +102,7 @@ class ExecutableBuildOptions {
   bool result_layout_set_ = false;
   tensorflow::gtl::optional<string> generate_hlo_graph_;
   tensorflow::gtl::optional<string> dump_optimized_hlo_proto_to_;
+  tensorflow::gtl::optional<string> dump_unoptimized_hlo_proto_to_;
   tensorflow::gtl::optional<string> dump_per_pass_hlo_proto_to_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
   std::vector<std::string> disabled_hlo_passes_;

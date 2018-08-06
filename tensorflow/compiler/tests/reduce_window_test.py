@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -28,7 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-class ReduceWindowTest(XLATestCase):
+class ReduceWindowTest(xla_test.XLATestCase):
   """Test cases for xla.reduce_window."""
 
   def _reduce_window(self, operand, init, reducer, **kwargs):

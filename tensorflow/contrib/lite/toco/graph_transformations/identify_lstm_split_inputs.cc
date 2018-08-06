@@ -33,9 +33,10 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  // Already an extended LstmCell with kExtendedLstmInputCount of inputs,
-  // do not need to split cell inputs.
-  if (curr_op->inputs.size() == kExtendedLstmInputCount) {
+  const auto* curr_lstm_op = static_cast<LstmCellOperator*>(curr_op);
+  // Already an extended LstmCell. Do not need to split cell inputs.
+  if (curr_lstm_op->kernel_type != LstmCellOperator::KERNEL_BASIC ||
+      curr_lstm_op->inputs.size() != LstmCellOperator::NUM_INPUTS) {
     return false;
   }
 
@@ -56,6 +57,7 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
 
   // Emplace a new LstmCell operator with extended inputs (kernel/lstm.cc).
   auto lstm_cell_op = absl::make_unique<LstmCellOperator>();
+  lstm_cell_op->kernel_type = LstmCellOperator::KERNEL_FULL;
   lstm_cell_op->inputs.resize(kExtendedLstmInputCount);
   int num_input = model->GetArray(curr_op->inputs[LstmCellOperator::DATA_INPUT])
                       .shape()
@@ -71,6 +73,12 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
   // Data input.
   lstm_cell_op->inputs[kInputTensor] =
       curr_op->inputs[LstmCellOperator::ACTIV_OUTPUT];
+
+  // Previous states.
+  lstm_cell_op->inputs[kInputActivationStateTensor] =
+      curr_op->inputs[LstmCellOperator::PREV_ACTIV_INPUT];
+  lstm_cell_op->inputs[kInputCellStateTensor] =
+      curr_op->inputs[LstmCellOperator::PREV_STATE_INPUT];
 
   // Get original weight tensor and decompose 1 tensor to 8 sub tensors.
   Array& kernel =
@@ -158,10 +166,6 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
   // Erase curr lstm op being replaced.
   DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT], model);
   DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::BIASES_INPUT], model);
-  DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::PREV_ACTIV_INPUT],
-                      model);
-  DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::PREV_STATE_INPUT],
-                      model);
   model->operators.erase(FindOp(*model, curr_op));
 
   return true;

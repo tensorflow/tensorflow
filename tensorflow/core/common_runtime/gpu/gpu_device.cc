@@ -36,11 +36,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_stream_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -201,7 +202,8 @@ class BaseGPUDevice::StreamGroupFactory {
   // This function is thread safe.
   BaseGPUDevice::StreamGroup* GetOrCreate(TfGpuId tf_gpu_id,
                                           int stream_group_within_gpu,
-                                          se::StreamExecutor* executor) {
+                                          se::StreamExecutor* executor,
+                                          const GPUOptions& options) {
     mutex_lock guard(lock_);
     StreamGroup* group =
         &streams_[key_type(tf_gpu_id.value(), stream_group_within_gpu)];
@@ -221,10 +223,22 @@ class BaseGPUDevice::StreamGroupFactory {
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_gpu
               << "] = " << group->device_to_host;
 
-      group->device_to_device = new se::Stream(executor);
-      group->device_to_device->Init();
-      VLOG(2) << "Created device_to_device_stream[" << stream_group_within_gpu
-              << "] = " << group->device_to_host;
+      int num_d2d_streams =
+          options.experimental().num_dev_to_dev_copy_streams();
+      if (num_d2d_streams == 0) num_d2d_streams = 1;
+      if (num_d2d_streams < 1 || num_d2d_streams > 4) {
+        LOG(ERROR)
+            << "Illegal GPUOptions.experimental.num_dev_to_dev_copy_streams="
+            << num_d2d_streams << " set to 1 instead.";
+        num_d2d_streams = 1;
+      }
+      for (int i = 0; i < num_d2d_streams; ++i) {
+        se::Stream* stream = new se::Stream(executor);
+        stream->Init();
+        group->device_to_device.push_back(stream);
+        VLOG(2) << "Created device_to_device_stream[" << stream_group_within_gpu
+                << "] = " << group->device_to_device.back();
+      }
     }
     return group;
   }
@@ -262,7 +276,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       tf_gpu_id_(tf_gpu_id),
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {
-  ProcessState::singleton()->EnableGPUDevice();
+  GPUProcessState::singleton()->EnableGPUDevice();
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
@@ -287,8 +301,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   // Create the specified number of GPU streams
   for (int i = 0; i < max_streams_; i++) {
-    streams_.push_back(
-        StreamGroupFactory::Global().GetOrCreate(tf_gpu_id_, i, executor_));
+    streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
+        tf_gpu_id_, i, executor_, options.config.gpu_options()));
 
     size_t scratch_buffer_size = Eigen::kCudaScratchSize + sizeof(unsigned int);
     void* scratch_buffer = gpu_allocator_->AllocateRaw(
@@ -844,7 +858,7 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
-      streams_[stream_id]->compute->implementation()->CudaStreamMemberHack());
+      streams_[stream_id]->compute->implementation()->GpuStreamMemberHack());
   concrete_device->Reinitialize(context, cuda_stream, tf_gpu_id_, allocator,
                                 scratch_[stream_id]);
 }
@@ -1060,7 +1074,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   se::StreamExecutor* se =
       GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
   const se::DeviceDescription& desc = se->GetDeviceDescription();
-  ProcessState* process_state = ProcessState::singleton();
+  GPUProcessState* process_state = GPUProcessState::singleton();
   Allocator* gpu_allocator = process_state->GetGPUAllocator(
       options.config.gpu_options(), tf_gpu_id, memory_limit);
   if (gpu_allocator == nullptr) {
@@ -1080,7 +1094,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   BaseGPUDevice* gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
       tf_gpu_id, GetShortDeviceDescription(cuda_gpu_id, desc), gpu_allocator,
-      process_state->GetCPUAllocator(numa_node));
+      ProcessState::singleton()->GetCPUAllocator(numa_node));
   LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
             << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
             << GetShortDeviceDescription(cuda_gpu_id, desc) << ")";

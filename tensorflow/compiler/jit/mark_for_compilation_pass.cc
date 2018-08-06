@@ -21,12 +21,15 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -40,9 +43,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-
-const char* const kXlaClusterAttr = "_XlaCluster";
-const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 
 namespace {
 
@@ -60,6 +60,14 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
       return false;
     }
   }
+
+  // XLA does not offer guaranteed aliasing between the input and output of the
+  // XLA cluster so it can't implement the forward-tensor-ref semantic.  Leave
+  // such nodes out of XLA clusters.
+  if (HasForwardedRefInput(node)) {
+    return false;
+  }
+
   return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
 }
 
@@ -165,16 +173,6 @@ bool IsCompilableCall(const NodeDef& call_def,
   return true;
 }
 
-// Returns the DeviceType corresponding to 'device'.
-Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
-  DeviceNameUtils::ParsedName parsed;
-  if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
-    return errors::Internal("Malformed assigned device '", device, "'");
-  }
-  *device_type = DeviceType(parsed.type);
-  return Status::OK();
-}
-
 // Tests whether `node` has a DT_RESOURCE typed input or output.
 bool HasResourceInputOrOutput(const Node& node) {
   return std::find(node.input_types().begin(), node.input_types().end(),
@@ -183,18 +181,11 @@ bool HasResourceInputOrOutput(const Node& node) {
                    DT_RESOURCE) != node.output_types().end();
 }
 
-struct NodeCompare {
-  bool operator()(const Node* a, const Node* b) const {
-    return a->id() < b->id();
-  }
-};
-using OrderedNodeSet = std::set<Node*, NodeCompare>;
-
 // Returns true if the op can be decomposed into XLA ops for which
 // there are fusable elemental implementations.
 //
-// TODO(hpucha): Consider a black list instead of a white list as
-// implemented below.
+// TODO(hpucha): Remove this code since this functionality is subsumed by
+// Grappler XlaFusionOptimizer.
 bool IsXlaFusable(const NodeDef& node) {
   static const std::unordered_set<std::string>* elementwise_ops =
       new std::unordered_set<std::string>(
@@ -364,7 +355,7 @@ Status FindCompilationCandidates(
   for (Node* node : graph.op_nodes()) {
     sorted_nodes.push_back(node);
   }
-  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeCompare());
+  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeComparatorID());
 
   for (Node* node : sorted_nodes) {
     VLOG(2) << "Fuel: " << fuel;
@@ -379,9 +370,13 @@ Status FindCompilationCandidates(
 
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
-        DeviceTypeOfDevice(node->assigned_device_name(), &device_type));
+        DeviceToDeviceType(node->assigned_device_name(), &device_type));
 
-    if (is_compilable_fn && !is_compilable_fn(node, device_type)) continue;
+    if (is_compilable_fn && !is_compilable_fn(node, device_type)) {
+      VLOG(2) << "Compilation rejected node: not compilable " << node->name()
+              << ": " << node->type_string();
+      continue;
+    }
 
     const XlaOpRegistry::DeviceRegistration* registration;
     CHECK(
@@ -430,46 +425,6 @@ struct Cluster {
   int representative = -1;
 };
 
-// Returns a string describing how an edge from src to dst would
-// create a cycle.
-string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
-                     int dst) {
-  int32 max_path_size = graph.num_node_ids() + 1;
-  std::vector<int32> path(max_path_size);
-  int32 path_size = cycles.FindPath(dst, src, max_path_size, path.data());
-  if (path_size == 0) {
-    return "";
-  }
-
-  auto node_name = [&cycles, &graph](int node_id) {
-    if (!FastBoundsCheck(node_id, graph.num_node_ids())) {
-      return string("(null)");
-    }
-    auto* node = graph.FindNodeId(node_id);
-    if (node == nullptr) {
-      return string("(null)");
-    }
-    return node->name();
-  };
-
-  string description;
-  strings::StrAppend(&description, "Edge from ", node_name(src), " to ",
-                     node_name(dst), " would create a cycle.\n");
-  path.resize(path_size);
-  for (int32 node_id : path) {
-    string ascii_art;
-    if (node_id == dst) {
-      ascii_art = "+-> ";
-    } else if (node_id != src) {
-      ascii_art = "|   ";
-    } else {
-      ascii_art = "+-- ";
-    }
-    strings::StrAppend(&description, ascii_art, node_name(node_id), "\n");
-  }
-  return description;
-}
-
 }  // anonymous namespace
 
 bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
@@ -507,19 +462,21 @@ Status MarkForCompilationPass::Run(
 
   VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
+  VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
-  auto is_compilable = [global_jit_level, cpu_global_jit, fusion_only, fld](
-                           const Node* node, const DeviceType& device_type) {
+  std::unique_ptr<DeadnessAnalysis> deadness;
+  {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
+    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(**options.graph, &deadness));
+  }
+
+  auto is_compilable = [&](const Node* node, const DeviceType& device_type) {
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
                                              &registration)) {
       return false;
     }
-
-    // Don't compile control trigger nodes. We won't preserve their deadness
-    // semantics correctly, so it's safest not to compile them.
-    if (node->IsControlTrigger()) return false;
 
     // If this device requires a JIT, we must say yes.
     if (registration->requires_compilation) return true;
@@ -531,6 +488,14 @@ Status MarkForCompilationPass::Run(
 
     status = fld->GetAttr(*node, kXlaCompileAttr, &compile);
     if (status.ok()) return compile;
+
+    // If inputs to `node` can have conflicting deadness (i.e. some are alive
+    // and some are dead) then don't compile it.  XLA cannot represent the
+    // deadness semantics of these nodes correctly and auto-clustering these
+    // nodes can cause deadness to propagate to nodes that should be live.
+    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
+      return false;
+    }
 
     // Check for fusable ops only if requested.
     if (global_jit_level > 0 && fusion_only && !IsXlaFusable(node->def())) {
@@ -575,84 +540,13 @@ Status MarkForCompilationPass::RunImpl(
                                            : Env::Default(),
       is_compilable_fn, &compilation_candidates));
 
+  if (compilation_candidates.empty()) {
+    VLOG(2) << "No compilable candidates";
+    return Status::OK();
+  }
+
   GraphCycles cycles;
-  for (int i = 0; i < graph->num_node_ids(); ++i) {
-    // We rely on the node IDs in the cycle detection graph being consecutive
-    // integers starting from 0.
-    CHECK_EQ(i, cycles.NewNode());
-  }
-
-  // Compute the loop structure of the graph.
-  std::vector<ControlFlowInfo> control_flow_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &control_flow_info));
-
-  // The clustering code must avoid adding cycles to the graph to prevent
-  // deadlock. However, the graph may contain loops, which would trigger the
-  // cycle detection code. To handle loops, we alter the structure of the cycle
-  // detection graph, disconnecting each loop from the enclosing graph.
-  // Specifically, we:
-  // * add a new "frame" node for each loop.
-  // * replace edges to "Enter" nodes, and edges from "Exit" nodes with edges
-  //   to/from the corresponding frame node. In essence, we collapse the loop
-  //   into a single node for the purpose of cycle detection in the enclosing
-  //   graph.
-  // * the body of the loop should now be disconnected from the rest of the
-  //   graph; we make it acyclic by breaking loop backedges (edges outgoing from
-  //   "NextIteration" nodes.
-
-  // Map from frame name strings to node IDs in the cycle detection graph.
-  std::unordered_map<string, int> frame_nodes;
-
-  // Get the cycle graph node ID for frame 'frame_name', or add one if none
-  // exists.
-  auto GetOrAddFrameNodeId = [&frame_nodes, &cycles](const string& frame_name) {
-    int& frame_id = frame_nodes.emplace(frame_name, -1).first->second;
-    if (frame_id < 0) {
-      // The emplace succeeded; we have not allocated a frame node yet.
-      frame_id = cycles.NewNode();
-    }
-    return frame_id;
-  };
-
-  for (Edge const* edge : graph->edges()) {
-    if (edge->dst()->IsEnter()) {
-      // Lift edges to an "Enter" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->dst()->id()].frame_name;
-      int dst = GetOrAddFrameNodeId(frame_name);
-      if (!cycles.InsertEdge(edge->src()->id(), dst)) {
-        return errors::Internal(
-            "Cycle detected when adding enter->frame edge: ",
-            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
-      }
-      continue;
-    }
-    if (edge->src()->IsExit()) {
-      // Lift edges from an "Exit" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->src()->id()].frame_name;
-      int src = GetOrAddFrameNodeId(frame_name);
-      if (!cycles.InsertEdge(src, edge->dst()->id())) {
-        return errors::Internal(
-            "Cycle detected when adding frame->exit edge: ",
-            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
-      }
-      // Drop the original edge.
-      continue;
-    }
-    if (edge->src()->IsNextIteration()) {
-      // Break loop back-edges.
-      continue;
-    }
-    if (!cycles.InsertEdge(edge->src()->id(), edge->dst()->id())) {
-      // This should never happen. All cycles in the graph should contain
-      // a control flow operator.
-      return errors::Internal(
-          "Found cycle in graph without control flow operator during XLA "
-          "compilation: ",
-          DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
-    }
-  }
+  TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(graph, &cycles));
 
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative
@@ -670,6 +564,9 @@ Status MarkForCompilationPass::RunImpl(
 
   // Repeatedly contract edges between clusters that are on the same device,
   // provided the contraction would not create a cycle.
+  //
+  // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
+  // example, from the Grappler fusion pass).
   while (!worklist.empty()) {
     int from = worklist.front()->Get().representative;
     worklist.pop_front();
@@ -778,7 +675,7 @@ Status MarkForCompilationPass::RunImpl(
     // compilation.
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
-        DeviceTypeOfDevice(n->assigned_device_name(), &device_type));
+        DeviceToDeviceType(n->assigned_device_name(), &device_type));
     const XlaOpRegistry::DeviceRegistration* registration;
     XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 

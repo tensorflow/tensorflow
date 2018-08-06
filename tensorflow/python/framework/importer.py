@@ -205,7 +205,7 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
     if input_src.startswith('^'):
-      src_name = compat.as_bytes(input_src[1:])
+      src_name = compat.as_str(input_src[1:])
       dst_op = input_dst._as_tf_output().oper  # pylint: disable=protected-access
       c_api.TF_ImportGraphDefOptionsRemapControlDependency(
           options, src_name, dst_op)
@@ -407,11 +407,11 @@ def import_graph_def(graph_def,
   _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                    return_elements)
 
-  # _ProcessNewOps mutates the new operations. _lock ensures a Session.run
-  # call cannot occur between creating the TF_Operations in the
+  # _ProcessNewOps mutates the new operations. _mutation_lock ensures a
+  # Session.run call cannot occur between creating the TF_Operations in the
   # TF_GraphImportGraphDefWithResults call and mutating the them in
   # _ProcessNewOps.
-  with graph._lock:  # pylint: disable=protected-access
+  with graph._mutation_lock():  # pylint: disable=protected-access
     with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
       try:
         results = c_api.TF_GraphImportGraphDefWithResults(

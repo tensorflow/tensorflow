@@ -18,7 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -457,8 +457,8 @@ class WhileBodyComputationMatcher : public MatcherBase {
         return InvalidArgument("Unexpected tuple index instruction : %s",
                                inst->name().c_str());
       } else if (tag == "loop_increment") {
-        // Parse the constant which represents the loop induction variable
-        // increment value.
+        // ParseHloString the constant which represents the loop induction
+        // variable increment value.
         TF_RETURN_IF_ERROR(ParseConstInteger(inst, &loop_increment_));
       } else if (tag == "param0" &&
                  inst != computation_->parameter_instruction(0)) {

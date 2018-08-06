@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_graph_util.h"
 
 #include <algorithm>
-#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/op.h"
@@ -1901,6 +1900,11 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 #else  // INTEL_MKL_ML
 
+// NOTE: Unit tests in this file rely on a topological sorted graph for
+// printing. But since sibling nodes of a node in the topologically sorted graph
+// can be printed in different orders, tests may fail if the order in which
+// sibling nodes are visited is changed.
+
 namespace {
 
 const char kCPUDevice[] = "/job:a/replica:0/task:0/device:CPU:0";
@@ -2572,9 +2576,9 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_Mkl) {
             "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"
             "F(_MklConv2D);G(Const);H(_MklConcat);I(Zeta)|A->E;A->I;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "B->E:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"
-            "D->F:1;DMT/_0->F:2;DMT/_1->F:3;DMT/_2->E:2;DMT/_3->E:3;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "B->E:1;C->F;C:control->DMT/_2:control;C:control->DMT/_3:control;"
+            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"
             "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"
             "G:control->DMT/_4:control;H->I:1");
 }
@@ -2681,9 +2685,9 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_Mkl) {
             "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"
             "F(_MklConv2D);G(Const);H(_MklConcatV2);I(Zeta)|A->E;A->I;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;B->E:1;C->F;"
-            "C:control->DMT/_0:control;C:control->DMT/_1:control;"
-            "D->F:1;DMT/_0->F:2;DMT/_1->F:3;DMT/_2->E:2;DMT/_3->E:3;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;B->E:1;C->F;"
+            "C:control->DMT/_2:control;C:control->DMT/_3:control;"
+            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"
             "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"
             "F:2->H:4;G->H:2;H->I:1");
 }
@@ -3010,12 +3014,8 @@ TEST_F(MklLayoutPassTest, LRN_Negative2) {
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(_MklLRNGrad);DMT/_0(Const);"
-            "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Zeta)|"
-            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "A:control->DMT/_4:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"
-            "DMT/_1->D:7;DMT/_2->D:4;DMT/_3->D:5;DMT/_4->D:6");
+            "A(Input);B(Input);C(Input);D(LRNGrad);"
+            "E(Zeta)|A->D;A->E;B->D:1;C->D:2;D->E:1");
 }
 
 /* Test LRN->LRNGrad negative case, where single LRN feeds
@@ -3053,15 +3053,11 @@ TEST_F(MklLayoutPassTest, LRN_Negative3) {
       " input: ['E', 'F'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(_MklLRN);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
-            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);DMT/_5(Const);"
-            "DMT/_6(Const);E(_MklLRNGrad);F(_MklLRNGrad);G(Zeta)|A->B;"
-            "A:control->DMT/_0:control;B->E:2;"
-            "B->F:1;B:1->E:3;B:2->E:6;B:2->F:5;B:3->E:7;C->E;C->F;"
-            "C:control->DMT/_1:control;C:control->DMT/_2:control;"
-            "C:control->DMT/_3:control;C:control->DMT/_4:control;"
-            "C:control->DMT/_5:control;C:control->DMT/_6:control;"
-            "D->E:1;D->F:2;DMT/_0->B:1;DMT/_1->F:3;DMT/_2->F:7;DMT/_3->F:4;"
-            "DMT/_4->F:6;DMT/_5->E:4;DMT/_6->E:5;E->G;F->G:1");
+            "DMT/_2(Const);E(_MklLRNGrad);F(LRNGrad);G(Zeta)|A->B;"
+            "A:control->DMT/_0:control;B->E:2;B->F:1;B:1->E:3;B:2->E:6;"
+            "B:3->E:7;C->E;C->F;C:control->DMT/_1:control;"
+            "C:control->DMT/_2:control;D->E:1;D->F:2;DMT/_0->B:1;"
+            "DMT/_1->E:4;DMT/_2->E:5;E->G;F->G:1");
 }
 
 /* Test MaxPool->MaxPoolGrad replacement by workspace+rewrite nodes. */
@@ -3132,12 +3128,8 @@ TEST_F(MklLayoutPassTest, NodeWorkspace_MaxPool_Negative2) {
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(_MklMaxPoolGrad);DMT/_0(Const);"
-            "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Zeta)|"
-            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "A:control->DMT/_4:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"
-            "DMT/_1->D:7;DMT/_2->D:4;DMT/_3->D:5;DMT/_4->D:6");
+            "A(Input);B(Input);C(Input);D(MaxPoolGrad);"
+            "E(Zeta)|A->D;A->E;B->D:1;C->D:2;D->E:1");
 }
 
 // Test MaxPool handling for batch-wise pooling (NCHW)

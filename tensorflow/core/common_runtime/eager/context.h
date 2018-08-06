@@ -29,12 +29,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#endif
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -66,30 +69,6 @@ class EagerContext {
                         ContextDevicePlacementPolicy default_policy, bool async,
                         std::unique_ptr<DeviceMgr> device_mgr,
                         Rendezvous* rendezvous);
-
-  // TODO(nareshmodi): Split this into 2 classes and hide functionality behind
-  // an interface. Alternatively, encapsulate remote state into a separate
-  // class/struct.
-  //
-  // Constructs an eager context that is able to communicate with remote
-  // workers.
-  //
-  // Additional remote-specific args are:
-  //  - server: A GrpcServer that exports the tensorflow.WorkerService. Note
-  //  that this class expects the server to already have been started.
-  //  - remote_eager_workers: A cache from which we can get "EagerClient"s to
-  //  communicate with remote eager services.
-  //  - remote_device_mgr: A DeviceMgr* which contains all remote devices
-  //  (should contain no local devices).
-  //  - remote_contexts: A map containing task name to remote context ID.
-  explicit EagerContext(
-      const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-      bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
-      std::unique_ptr<GrpcServer> server,
-      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-      std::unique_ptr<DeviceMgr> remote_device_manager,
-      const gtl::FlatMap<string, uint64>& remote_contexts);
-
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
@@ -101,6 +80,8 @@ class EagerContext {
   bool Async() const;
 
   EagerExecutor* Executor() { return &executor_; }
+
+  std::function<void(std::function<void()>)>* runner() { return &runner_; }
 
   // Sets whether this thread should run in synchronous or asynchronous mode.
   Status SetAsyncForThread(bool async);
@@ -174,11 +155,43 @@ class EagerContext {
 
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
+#ifndef __ANDROID__
   Status GetClientAndContextID(Device* device, eager::EagerClient** client,
                                uint64* context_id);
 
+  // TODO(nareshmodi): Encapsulate remote state into a separate
+  // class/struct.
+  //
+  // Enables the eager context to communicate with remote devices.
+  //
+  // - server: A ServerInterface that exports the tensorflow.WorkerService.
+  // Note that this class expects the server to already have been started.
+  // - remote_eager_workers: A cache from which we can get "EagerClient"s to
+  // communicate with remote eager services.
+  // - remote_device_mgr: A DeviceMgr* which contains all remote devices
+  // (should contain no local devices).
+  // - remote_contexts: A map containing task name to remote context ID.
+  void InitializeRemote(
+      std::unique_ptr<ServerInterface> server,
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      std::unique_ptr<DeviceMgr> remote_device_manager,
+      const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
+      DeviceMgr* local_device_mgr);
+
+  bool HasActiveRemoteContext(uint64 context_id) {
+    return active_remote_contexts_.find(context_id) !=
+           active_remote_contexts_.end();
+  }
+#endif
+
+  // If true, then tensors should be shipped across processes via the
+  // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
+  // instead (which in-turn use WorkerService.RecvTensor RPCs.
+  bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
  private:
   void InitDeviceMapAndAsync();
+  Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
 
   const ContextDevicePlacementPolicy policy_;
 
@@ -190,13 +203,13 @@ class EagerContext {
 
   // Only one of the below is set.
   std::unique_ptr<DeviceMgr> local_device_manager_;
-  const DeviceMgr* local_unowned_device_manager_;
+  DeviceMgr* local_unowned_device_manager_;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
   // All devices are not owned.
   gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
-  Rendezvous* const rendezvous_;
+  Rendezvous* rendezvous_;
 
   mutex functions_mu_;
   FunctionLibraryDefinition func_lib_def_ GUARDED_BY(functions_mu_){
@@ -207,7 +220,9 @@ class EagerContext {
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
-  const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+
+  std::function<void(std::function<void()>)> runner_;
 
   mutex cache_mu_;
   std::unordered_map<Fprint128, KernelAndDevice*, Fprint128Hasher> kernel_cache_
@@ -228,16 +243,25 @@ class EagerContext {
   std::unordered_map<std::thread::id, bool> thread_local_async_
       GUARDED_BY(async_map_mu_);
 
+  Env* const env_;
+
+#ifndef __ANDROID__
+  void CloseRemoteContexts();
+  std::unique_ptr<DeviceMgr> remote_device_manager_;
+
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
   // be).
-  std::unique_ptr<GrpcServer> server_;
-  const std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
-  const std::unique_ptr<DeviceMgr> remote_device_manager_;
+  std::unique_ptr<ServerInterface> server_;
+  std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
-  const gtl::FlatMap<string, uint64> remote_contexts_;
+  gtl::FlatMap<string, uint64> remote_contexts_;
+  gtl::FlatSet<uint64> active_remote_contexts_;
   gtl::FlatMap<Device*, std::pair<eager::EagerClient*, uint64>>
       device_to_client_cache_;
+#endif
+
+  bool use_send_tensor_rpc_;
 };
 
 }  // namespace tensorflow

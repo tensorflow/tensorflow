@@ -143,14 +143,10 @@ class ScatterNdUpdateOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
-      if (use_exclusive_lock_) {
-        Var* v;
-        OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-        mutex_lock m(*v->mu());
-        DoCompute(c);
-      } else {
-        DoCompute(c);
-      }
+      Var* v;
+      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      mutex_lock m(*v->mu());
+      DoCompute(c);
     } else if (use_exclusive_lock_) {
       // If we're here, it means the input type is a ref.
       DCHECK(IsRefType(c->input_dtype(0)));
@@ -176,13 +172,7 @@ class ScatterNdUpdateOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       Tensor* t = v->tensor();
-      if (!use_exclusive_lock_) {
-        // We're not holding the lock in the outer scope so need it here.
-        mutex_lock m(*v->mu());
-        OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
-      } else {
-        OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
-      }
+      OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
       params = *t;
       params_shape = params.shape();
     } else if (IsRefType(c->input_dtype(0))) {
@@ -260,7 +250,9 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingAdd", \
                                     scatter_nd_op::UpdateOp::ADD);        \
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",            \
-                                    scatter_nd_op::UpdateOp::SUB);
+                                    scatter_nd_op::UpdateOp::SUB);        \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);
 
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");
@@ -285,6 +277,9 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
 TF_CALL_string(REGISTER_SCATTER_ND_CPU);
+TF_CALL_bool(REGISTER_SCATTER_ND_ADD_SUB_CPU);
+TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_CPU);
+TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA
@@ -317,6 +312,7 @@ TF_CALL_complex128(REGISTER_SCATTER_ND_ALL_GPU);
 
 TF_CALL_int32(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_int32(REGISTER_SCATTER_ND_UPDATE_SYCL);
+TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
 #undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
@@ -545,11 +541,13 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
     }
   }
   if (bad_i >= 0) {
+    auto slice_shape = indices.shape();
+    slice_shape.RemoveLastDims(1);
     return errors::InvalidArgument(
-        "Invalid indices: ", SliceDebugString(indices.shape(), bad_i), " = [",
+        "indices", SliceDebugString(slice_shape, bad_i), " = [",
         str_util::Join(
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
-        "] does not index into ", shape.DebugString());
+        "] does not index into shape ", shape.DebugString());
   }
   return Status::OK();
 }

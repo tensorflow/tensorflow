@@ -24,9 +24,6 @@ namespace tflite {
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(Interpreter* interpreter);
 
-// Prints a dump of what tensors and what nodes are in the interpreter.
-TfLiteStatus ValidateInterpreterState(const Interpreter* interpreter);
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_

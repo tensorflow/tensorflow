@@ -19,7 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_REDUCTION_OPS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -64,6 +64,7 @@ class XlaReductionOp : public XlaOpKernel {
 
  protected:
   DataType reduction_type_;
+  xla::PrimitiveType xla_reduction_type_;
 };
 
 }  // namespace tensorflow

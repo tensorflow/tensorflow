@@ -18,12 +18,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -51,7 +51,7 @@ TEST_F(HloShardingTest, Replicate) {
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/2));
-  EXPECT_IS_NOT_OK(sharding.UniqueDevice());
+  EXPECT_FALSE(sharding.HasUniqueDevice());
 }
 
 TEST_F(HloShardingTest, DevicePlacement) {
@@ -60,7 +60,7 @@ TEST_F(HloShardingTest, DevicePlacement) {
   EXPECT_TRUE(sharding.IsTileMaximal());
   EXPECT_FALSE(sharding.UsesDevice(0));
   EXPECT_TRUE(sharding.UsesDevice(5));
-  EXPECT_EQ(5, sharding.UniqueDevice().ValueOrDie());
+  EXPECT_EQ(5, sharding.GetUniqueDevice());
 
   HloSharding other = HloSharding::Replicate();
   EXPECT_NE(other, sharding);
@@ -123,7 +123,7 @@ TEST_F(HloShardingTest, Tile) {
     EXPECT_EQ(sharding.TileOffsetForDevice(2), (std::vector<int64>{2, 0}));
     EXPECT_EQ(sharding.TileOffsetForDevice(1), (std::vector<int64>{2, 3}));
 
-    EXPECT_IS_NOT_OK(sharding.UniqueDevice());
+    EXPECT_FALSE(sharding.HasUniqueDevice());
   }
 }
 
@@ -311,18 +311,20 @@ TEST_F(HloShardingTest, OstreamTest) {
   EXPECT_EQ(oss.str(), "{f32[3,5,7,11] devices=[1,1,2,2]0,1,2,3}");
 }
 
-TEST_F(HloShardingTest, Parse) {
+TEST_F(HloShardingTest, ParseHloString) {
   auto check = [](const HloSharding& sharding) {
     TF_ASSERT_OK_AND_ASSIGN(auto parsed_sharding,
-                            tools::ParseSharding(sharding.ToString()));
+                            ParseSharding(sharding.ToString()));
     EXPECT_EQ(sharding, parsed_sharding);
   };
   check(HloSharding::Replicate());
   check(HloSharding::AssignDevice(2));
   check(HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 1, 3, 7}),
                           Array4D<int64>({{{{0}, {1}}}})));
-  // Empty tuple.
-  check(HloSharding::Tuple(ShapeUtil::MakeTupleShape({}), {}));
+  // Empty tuple. One sharding is required for empty tuples, as we need to be
+  // able to assign sharding to them, even though they have no leaves.
+  check(HloSharding::Tuple(ShapeUtil::MakeTupleShape({}),
+                           {HloSharding::Replicate()}));
   {
     // Non-nested tuple.
     auto tuple_shape =

@@ -16,7 +16,15 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+
+#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__)
+namespace std {
+double round(double x) { return ::round(x); }
+}  // namespace std
+#endif
 
 namespace toco {
 namespace port {
@@ -30,7 +38,8 @@ void CopyToBuffer(const Cord& src, char* dest) { src.CopyToArray(dest); }
 }  // namespace port
 }  // namespace toco
 
-#if defined(PLATFORM_GOOGLE) && !defined(__APPLE__) && !defined(__ANDROID__)
+#if defined(PLATFORM_GOOGLE) && !defined(__APPLE__) && \
+    !defined(__ANDROID__) && !defined(_WIN32)
 
 // Wrap Google file operations.
 
@@ -55,8 +64,12 @@ void CheckInitGoogleIsDone(const char* message) {
 namespace file {
 
 // Conversion to our wrapper Status.
-Status ToStatus(const ::util::Status& uts) {
-  return Status(uts.ok(), uts.error_message());
+tensorflow::Status ToStatus(const ::util::Status& uts) {
+  if (!uts.ok()) {
+    return tensorflow::Status(tensorflow::errors::Code(uts.error_code()),
+                              uts.error_message());
+  }
+  return tensorflow::Status::OK();
 }
 
 // Conversion to our wrapper Options.
@@ -65,7 +78,7 @@ toco::port::file::Options ToOptions(const ::file::Options& options) {
   return Options();
 }
 
-Status Writable(const string& filename) {
+tensorflow::Status Writable(const string& filename) {
   File* f = nullptr;
   const auto status = ::file::Open(filename, "w", &f, ::file::Defaults());
   if (f) {
@@ -74,22 +87,24 @@ Status Writable(const string& filename) {
   return ToStatus(status);
 }
 
-Status Readable(const string& filename, const file::Options& options) {
+tensorflow::Status Readable(const string& filename,
+                            const file::Options& options) {
   return ToStatus(::file::Readable(filename, ::file::Defaults()));
 }
 
-Status Exists(const string& filename, const file::Options& options) {
+tensorflow::Status Exists(const string& filename,
+                          const file::Options& options) {
   auto status = ::file::Exists(filename, ::file::Defaults());
   return ToStatus(status);
 }
 
-Status GetContents(const string& filename, string* contents,
-                   const file::Options& options) {
+tensorflow::Status GetContents(const string& filename, string* contents,
+                               const file::Options& options) {
   return ToStatus(::file::GetContents(filename, contents, ::file::Defaults()));
 }
 
-Status SetContents(const string& filename, const string& contents,
-                   const file::Options& options) {
+tensorflow::Status SetContents(const string& filename, const string& contents,
+                               const file::Options& options) {
   return ToStatus(::file::SetContents(filename, contents, ::file::Defaults()));
 }
 
@@ -101,9 +116,12 @@ string JoinPath(const string& a, const string& b) {
 }  // namespace port
 }  // namespace toco
 
-#else  // (__APPLE__ || __ANDROID__)
+#else  // !PLATFORM_GOOGLE || __APPLE__ || __ANDROID__ || _WIN32
 
 #include <fcntl.h>
+#if defined(_WIN32)
+#include <io.h>  // for _close, _open, _read
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -115,6 +133,19 @@ string JoinPath(const string& a, const string& b) {
 
 namespace toco {
 namespace port {
+
+#if defined(_WIN32)
+#define close _close
+#define open _open
+#define read _read
+#define O_RDONLY _O_RDONLY
+#define O_CREAT _O_CREAT
+#define O_WRONLY _O_WRONLY
+// Windows does not support the same set of file permissions as other platforms.
+constexpr int kFileCreateMode = _S_IREAD | _S_IWRITE;
+#else
+constexpr int kFileCreateMode = 0664;
+#endif  // _WIN32
 
 static bool port_initialized = false;
 
@@ -133,37 +164,42 @@ void CheckInitGoogleIsDone(const char* message) {
 
 namespace file {
 
-Status Writable(const string& filename) {
+tensorflow::Status Writable(const string& filename) {
   FILE* f = fopen(filename.c_str(), "w");
   if (f) {
     fclose(f);
-    return Status(true, "");
+    return tensorflow::Status::OK();
   }
-  return Status(false, "not writable");
+  return tensorflow::errors::NotFound("not writable");
 }
 
-Status Readable(const string& filename, const file::Options& options) {
+tensorflow::Status Readable(const string& filename,
+                            const file::Options& options) {
   FILE* f = fopen(filename.c_str(), "r");
   if (f) {
     fclose(f);
-    return Status(true, "");
+    return tensorflow::Status::OK();
   }
-  return Status(false, "not readable");
+  return tensorflow::errors::NotFound("not readable");
 }
 
-Status Exists(const string& filename, const file::Options& options) {
+tensorflow::Status Exists(const string& filename,
+                          const file::Options& options) {
   struct stat statbuf;
   int ret = stat(filename.c_str(), &statbuf);
-  return Status(ret != -1, "");
+  if (ret == -1) {
+    return tensorflow::errors::NotFound("file doesn't exist");
+  }
+  return tensorflow::Status::OK();
 }
 
-Status GetContents(const string& path, string* output,
-                   const file::Options& options) {
+tensorflow::Status GetContents(const string& path, string* output,
+                               const file::Options& options) {
   output->clear();
 
   int fd = open(path.c_str(), O_RDONLY);
   if (fd == -1) {
-    return Status(false, "can't open() for read");
+    return tensorflow::errors::NotFound("can't open() for read");
   }
 
   // Direct read, for speed.
@@ -174,25 +210,25 @@ Status GetContents(const string& path, string* output,
     if (size == 0) {
       // Done.
       close(fd);
-      return Status(true, "");
+      return tensorflow::Status::OK();
     } else if (size == -1) {
       // Error.
       close(fd);
-      return Status(false, "error during read()");
+      return tensorflow::errors::Internal("error during read()");
     } else {
       output->append(buffer, size);
     }
   }
 
   CHECK(0);
-  return Status(false, "internal error");
+  return tensorflow::errors::Internal("internal error");
 }
 
-Status SetContents(const string& filename, const string& contents,
-                   const file::Options& options) {
-  int fd = open(filename.c_str(), O_WRONLY | O_CREAT, 0664);
+tensorflow::Status SetContents(const string& filename, const string& contents,
+                               const file::Options& options) {
+  int fd = open(filename.c_str(), O_WRONLY | O_CREAT, kFileCreateMode);
   if (fd == -1) {
-    return Status(false, "can't open() for write");
+    return tensorflow::errors::Internal("can't open() for write");
   }
 
   size_t i = 0;
@@ -201,13 +237,13 @@ Status SetContents(const string& filename, const string& contents,
     ssize_t written = write(fd, &contents[i], to_write);
     if (written == -1) {
       close(fd);
-      return Status(false, "write() error");
+      return tensorflow::errors::Internal("write() error");
     }
     i += written;
   }
   close(fd);
 
-  return Status(true, "");
+  return tensorflow::Status::OK();
 }
 
 string JoinPath(const string& base, const string& filename) {
@@ -224,4 +260,4 @@ string JoinPath(const string& base, const string& filename) {
 }  // namespace port
 }  // namespace toco
 
-#endif  // (__APPLE || __ANDROID__)
+#endif  // !PLATFORM_GOOGLE || __APPLE || __ANDROID__ || _WIN32

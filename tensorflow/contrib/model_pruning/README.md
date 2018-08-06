@@ -42,7 +42,7 @@ The pruning library allows for specification of the following hyper parameters:
 | name | string | model_pruning | Name of the pruning specification. Used for adding summaries and ops under a common tensorflow name_scope |
 | begin_pruning_step | integer | 0 | The global step at which to begin pruning |
 | end_pruning_step   | integer | -1 | The global step at which to terminate pruning. Defaults to -1 implying that pruning continues till  the training stops |
-| do_not_prune | list of strings | [""] | list of layers names that are not pruned |
+| weight_sparsity_map | list of strings | [""] | list of weight variable name (or layer name):target sparsity pairs. Eg. [conv1:0.9,conv2/kernel:0.8]. For layers/weights not in this list, sparsity as specified by the target_sparsity hyperparameter is used. |
 | threshold_decay | float | 0.9 | The decay factor to use for exponential decay of the thresholds |
 | pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
 | nbins | integer | 256 | Number of bins to use for histogram computation |
@@ -66,10 +66,10 @@ is the sparsity_function_begin_step. In this equation, the
 sparsity_function_exponent is set to 3.
 ### Adding pruning ops to the training graph
 
-The final step involves adding ops to the training graph that monitors the
-distribution of the layer's weight magnitudes and determines the layer threshold
-such masking all the weights below this threshold achieves the sparsity level
-desired for the current training step. This can be achieved as follows:
+The final step involves adding ops to the training graph that monitor the
+distribution of the layer's weight magnitudes and determine the layer threshold,
+such that masking all the weights below this threshold achieves the sparsity
+level desired for the current training step. This can be achieved as follows:
 
 ```python
 tf.app.flags.DEFINE_string(
@@ -79,7 +79,7 @@ tf.app.flags.DEFINE_string(
 with tf.graph.as_default():
 
   # Create global step variable
-  global_step = tf.train.get_global_step()
+  global_step = tf.train.get_or_create_global_step()
 
   # Parse pruning hyperparameters
   pruning_hparams = pruning.get_pruning_hparams().parse(FLAGS.pruning_hparams)
@@ -103,6 +103,7 @@ with tf.graph.as_default():
     mon_sess.run(mask_update_op)
 
 ```
+Ensure that `global_step` is being [incremented](https://www.tensorflow.org/api_docs/python/tf/train/Optimizer#minimize), otherwise pruning will not work!
 
 ## Example: Pruning and training deep CNNs on the cifar10 dataset
 

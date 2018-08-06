@@ -22,9 +22,9 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -36,7 +36,7 @@ HloRunner::CreateModuleFromString(const tensorflow::StringPiece hlo_string,
                                   const DebugOptions& debug_options) {
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return tools::Parse(hlo_string, config);
+  return ParseHloString(hlo_string, config);
 }
 
 namespace {
@@ -80,7 +80,7 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
                                                   filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return tools::Parse(hlo_string, config);
+  return ParseHloString(hlo_string, config);
 }
 
 HloRunner::HloRunner(se::Platform* platform) {
@@ -98,8 +98,10 @@ StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
                       backend().transfer_manager()->AllocateScopedShapedBuffer(
                           literal.shape(), backend().memory_allocator(),
                           backend().default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-      backend().default_stream_executor(), literal, buffer));
+      stream.get(), literal, buffer));
   return std::move(buffer);
 }
 
@@ -127,8 +129,10 @@ StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::TransferLiteralFromDevice(
     const ShapedBuffer& buffer) {
-  return backend().transfer_manager()->TransferLiteralFromDevice(
-      backend().default_stream_executor(), buffer);
+  TF_ASSIGN_OR_RETURN(
+      auto stream, backend().BorrowStream(backend().default_stream_executor()));
+  return backend().transfer_manager()->TransferLiteralFromDevice(stream.get(),
+                                                                 buffer);
 }
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
@@ -176,8 +180,12 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  return executable->ExecuteOnStreamWrapper(&service_run_options,
-                                            /*profile=*/profile, arguments);
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer retval,
+      executable->ExecuteOnStreamWrapper(&service_run_options,
+                                         /*profile=*/profile, arguments));
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  return std::move(retval);
 }
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
@@ -237,7 +245,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
           backend().transfer_manager()->AllocateScopedShapedBuffer(
               argument->shape(), backend().memory_allocator(), device));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-          executor, *argument, argument_buffer));
+          streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
       argument_buffer_ptrs[index++] = &argument_buffers.back();
     }
@@ -305,9 +313,10 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
 
   std::vector<std::unique_ptr<Literal>> exec_results;
   for (int64 i = 0; i < options.num_replicas; ++i) {
+    TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
-                            streams[i]->parent(), results[i]));
+                            streams[i].get(), results[i]));
     exec_results.push_back(std::move(literal));
   }
   return std::move(exec_results);

@@ -19,9 +19,9 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -172,7 +172,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -202,7 +202,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -233,7 +233,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -282,7 +282,7 @@ class OpcodeFusionTest : public InstructionFusionTest {
         builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(F32, {}), "arg0"));
     HloInstruction* one = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
     return module->AddEmbeddedComputation(builder.Build());
@@ -501,8 +501,8 @@ TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
 
   HloInstruction* exp = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
-  builder.AddInstruction(HloInstruction::CreateMap(
-      shape, {exp}, CreateAdderToOne(module.get()), /*static_operands=*/{}));
+  builder.AddInstruction(
+      HloInstruction::CreateMap(shape, {exp}, CreateAdderToOne(module.get())));
 
   module->AddEntryComputation(builder.Build());
 
@@ -525,8 +525,8 @@ TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
   HloInstruction* exp1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kExp, param1));
 
-  builder.AddInstruction(HloInstruction::CreateMap(
-      shape, {exp0, exp1}, CreateMax(module.get()), /*static_operands=*/{}));
+  builder.AddInstruction(
+      HloInstruction::CreateMap(shape, {exp0, exp1}, CreateMax(module.get())));
 
   module->AddEntryComputation(builder.Build());
 
@@ -595,7 +595,7 @@ TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
   auto pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(S32, {5}), idx_choice,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0(0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0))),
       padding_config));
 
   auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -775,7 +775,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   string hlo_string = tensorflow::strings::StrCat(
       "HloModule ", spec.test_name, "\n\n", spec.hlo_computation_text);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),

@@ -35,9 +35,9 @@ class UniqueNameTracker(data_structures.CheckpointableDataStructure):
       self.slotdeps = tf.contrib.checkpoint.UniqueNameTracker()
       slotdeps = self.slotdeps
       slots = []
-      slots.append(slotdeps.track(tfe.Variable(3.), "x"))  # Named "x"
-      slots.append(slotdeps.track(tfe.Variable(4.), "y"))
-      slots.append(slotdeps.track(tfe.Variable(5.), "x"))  # Named "x_1"
+      slots.append(slotdeps.track(tf.Variable(3.), "x"))  # Named "x"
+      slots.append(slotdeps.track(tf.Variable(4.), "y"))
+      slots.append(slotdeps.track(tf.Variable(5.), "x"))  # Named "x_1"
   ```
   """
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -45,11 +46,13 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -326,6 +329,7 @@ TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
 }
 
 void TF_DeleteBuffer(TF_Buffer* buffer) {
+  if (buffer == nullptr) return;
   if (buffer->data_deallocator != nullptr) {
     (*buffer->data_deallocator)(const_cast<void*>(buffer->data),
                                 buffer->length);
@@ -355,6 +359,7 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
 
 void TF_DeleteDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
   status->status = Status::OK();
+  if (s == nullptr) return;
   delete s->session;
   delete s;
 }
@@ -390,64 +395,6 @@ void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
   status->status = Reset(opt->options, container_names);
 }
 
-// This traverses the specified nodes in topological order to verify there are
-// no cycles. Starting with inputless nodes, it visits nodes whose inputs have
-// all been visited, and counts the total number of visited nodes. If there is a
-// cycle, nodes in the cycle will never be visited, and the visited count will
-// be less than the total node count.
-Status ValidateNoCycles(const Graph& g) {
-  // TODO(nolivia): check this on a subset of the graph instead of all of it.
-  // A node is ready when all of its inputs have been visited.
-  std::vector<const Node*> ready;
-  std::vector<int> pending_count(g.num_node_ids(), 0);
-
-  for (int i = 0; i < g.num_node_ids(); ++i) {
-    const Node* n = g.FindNodeId(i);
-    if (n == nullptr) continue;
-    pending_count[i] = n->in_edges().size();
-    if (n->IsMerge()) {
-      // While-loop cycles are legal cycles so we manually adjust the
-      // pending_count to make sure that the loop is visited.
-      for (const Edge* e : n->in_edges()) {
-        if (!e->IsControlEdge() && e->src()->IsNextIteration()) {
-          pending_count[i]--;
-        }
-      }
-    }
-    if (pending_count[i] == 0) {
-      ready.push_back(n);
-    }
-  }
-
-  int processed = 0;
-  while (!ready.empty()) {
-    const Node* node = ready.back();
-    ready.pop_back();
-    ++processed;
-
-    for (const Edge* out : node->out_edges()) {
-      const int output_id = out->dst()->id();
-      pending_count[output_id]--;
-      if (pending_count[output_id] == 0) {
-        ready.push_back(out->dst());
-      }
-    }
-  }
-
-  if (processed < g.num_nodes()) {
-    std::vector<string> nodes_in_cycle;
-    for (int i = 0; i < pending_count.size() && nodes_in_cycle.size() < 3;
-         ++i) {
-      if (pending_count[i] != 0) {
-        nodes_in_cycle.push_back(g.FindNodeId(i)->name());
-      }
-    }
-    return errors::InvalidArgument(
-        "Graph is invalid, contains a cycle with ", g.num_nodes() - processed,
-        " nodes, including: ", str_util::Join(nodes_in_cycle, ", "));
-  }
-  return Status::OK();
-}
 }  // namespace
 }  // namespace tensorflow
 
@@ -631,7 +578,22 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
         "Failed to allocate memory to serialize message of type '",
         in.GetTypeName(), "' and size ", proto_size);
   }
-  in.SerializeToArray(buf, proto_size);
+  // SerializeToArray takes size as an int.
+  // This next 'if' is a workaround till we update to depend on a version
+  // of protocol buffers that includes
+  // https://github.com/google/protobuf/pull/4739
+  if (proto_size > std::numeric_limits<int>::max()) {
+    return InvalidArgument("Cannot serialize protocol buffer of type ",
+                           in.GetTypeName(), " as the serialized size (",
+                           proto_size,
+                           "bytes) would be larger than the limit (",
+                           std::numeric_limits<int>::max(), " bytes)");
+  }
+  if (!in.SerializeToArray(buf, proto_size)) {
+    return InvalidArgument("Unable to serialize ", in.GetTypeName(),
+                           " protocol buffer, perhaps the serialized size (",
+                           proto_size, " bytes) is too large?");
+  }
   out->data = buf;
   out->length = proto_size;
   out->data_deallocator = [](void* data, size_t length) {
@@ -731,7 +693,9 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
 
     const auto num_nodes = graph.num_node_ids();
     if (session->last_num_graph_nodes < num_nodes) {
-      status->status = tensorflow::ValidateNoCycles(session->graph->graph);
+      // TODO(nolivia): check this on a subset of the graph instead of all of
+      // it.
+      status->status = graph::ValidateGraphHasNoCycle(session->graph->graph);
       if (!status->status.ok()) {
         session->graph->mu.unlock();
         return false;
@@ -946,6 +910,7 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
 TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
 void TF_DeleteLibraryHandle(TF_Library* lib_handle) {
+  if (lib_handle == nullptr) return;
   tensorflow::port::Free(const_cast<void*>(lib_handle->op_list.data));
   delete lib_handle;
 }
@@ -1003,6 +968,7 @@ TF_DEVICELIST_METHOD(const char*, TF_DeviceListName, name().c_str(), nullptr);
 TF_DEVICELIST_METHOD(const char*, TF_DeviceListType, device_type().c_str(),
                      nullptr);
 TF_DEVICELIST_METHOD(int64_t, TF_DeviceListMemoryBytes, memory_limit(), -1);
+TF_DEVICELIST_METHOD(uint64_t, TF_DeviceListIncarnation, incarnation(), 0);
 
 #undef TF_DEVICELIST_METHOD
 
@@ -1892,6 +1858,7 @@ TF_Graph::TF_Graph()
 TF_Graph* TF_NewGraph() { return new TF_Graph; }
 
 void TF_DeleteGraph(TF_Graph* g) {
+  if (g == nullptr) return;
   g->mu.lock();
   g->delete_requested = true;
   const bool del = g->sessions.empty();
@@ -2108,7 +2075,8 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status) {
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data,
+                                       graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return nullptr;
   }
@@ -2138,7 +2106,8 @@ void TF_GraphImportGraphDefWithReturnOutputs(
     return;
   }
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data,
+                                       graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return;
   }
@@ -2421,6 +2390,12 @@ void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
 
 void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
                      TF_Output* dx, TF_Status* status, TF_Output* dy) {
+  TF_AddGradientsWithPrefix(g, nullptr, y, ny, x, nx, dx, status, dy);
+}
+
+void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
+                               int ny, TF_Output* x, int nx, TF_Output* dx,
+                               TF_Status* status, TF_Output* dy) {
 #ifdef __ANDROID__
   status->status = tensorflow::errors::Unimplemented(
       "Adding gradients is not supported in Android. File a bug at "
@@ -2437,9 +2412,29 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 
     const int first_new_node_id = g->graph.num_node_ids();
 
+    string prefix_cmp;
+    const char* child_scope_name;
+    if (prefix == nullptr) {
+      child_scope_name = "gradients";
+    } else {
+      prefix_cmp = string(prefix) + "/";
+      // The operation should fail if the provided name prefix has already been
+      // used in this graph
+      for (const auto& pair : g->name_map) {
+        const string& name = pair.first;
+        if (name.compare(prefix) == 0 ||
+            tensorflow::str_util::StartsWith(name, prefix_cmp)) {
+          status->status = InvalidArgument(
+              "prefix [", prefix,
+              "] conflicts with existing node in the graph named [", name, "]");
+          return;
+        }
+      }
+      child_scope_name = prefix;
+    }
     tensorflow::Scope scope =
         NewInternalScope(&g->graph, &status->status, &g->refiner)
-            .NewSubScope("gradients");
+            .NewSubScope(child_scope_name);
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg = OutputsFromTFOutputs(dx, ny);
@@ -2454,7 +2449,30 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
     for (int i = first_new_node_id; i < g->graph.num_node_ids(); ++i) {
       Node* n = g->graph.FindNodeId(i);
       if (n == nullptr) continue;
-      g->name_map[n->name()] = n;
+
+      // Adding the gradients to the graph can alter the prefix to prevent
+      // name collisions only if this prefix has not been provided explicitly
+      // by the user. If it was provided, assert that it remained intact.
+      if (prefix != nullptr &&
+          !tensorflow::str_util::StartsWith(n->name(), prefix_cmp)) {
+        status->status = tensorflow::errors::Internal(
+            "BUG: The gradients prefix have been unexpectedly altered when "
+            "adding the nodes to the graph. This is a bug. Please file an "
+            "issue at https://github.com/tensorflow/tensorflow/issues.");
+        return;
+      }
+      // We have a convoluted scheme here: Using the C++ graph construction API
+      // to add potentially many nodes to the graph without running the checks
+      // (such as uniqueness of the names of nodes) we run with other functions
+      // that add a node to the graph (like TF_FinishOperation).
+      if (!g->name_map.insert(std::make_pair(n->name(), n)).second) {
+        status->status = tensorflow::errors::Internal(
+            "BUG: The API allowed construction of a graph with duplicate node "
+            "names (",
+            n->name(),
+            "). This is a bug. Please file an issue at "
+            "https://github.com/tensorflow/tensorflow/issues.");
+      }
     }
   }
 
@@ -2554,6 +2572,7 @@ void TF_CloseSession(TF_Session* s, TF_Status* status) {
 
 void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   status->status = Status::OK();
+  if (s == nullptr) return;
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
     graph->mu.lock();
@@ -2752,7 +2771,34 @@ TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
 
   TF_Buffer* ret = TF_NewBuffer();
   status->status = MessageToBuffer(*api_def, ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
   return ret;
 #endif  // __ANDROID__
+}
+
+TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status) {
+  tensorflow::KernelList kernel_list = tensorflow::GetAllRegisteredKernels();
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(kernel_list, ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
+  return ret;
+}
+
+TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
+  tensorflow::KernelList kernel_list =
+      tensorflow::GetRegisteredKernelsForOp(name);
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(kernel_list, ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
+  return ret;
 }
 }  // end extern "C"

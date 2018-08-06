@@ -17,14 +17,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import googletest
 
 
-class FakeQuantWithMinMaxArgsTest(XLATestCase):
+class FakeQuantWithMinMaxArgsTest(xla_test.XLATestCase):
   """Test cases for FakeQuantWithMinMaxArgs operation."""
 
   # 8 bits, wide range.
@@ -122,7 +122,7 @@ class FakeQuantWithMinMaxArgsTest(XLATestCase):
           result, expected, rtol=1e-3, atol=1e-5, bfloat16_rtol=0.03)
 
 
-class FakeQuantWithMinMaxArgsGradientTest(XLATestCase):
+class FakeQuantWithMinMaxArgsGradientTest(xla_test.XLATestCase):
   """Test cases for FakeQuantWithMinMaxArgsGradient operation."""
 
   # 8 bits, wide range.
@@ -223,7 +223,7 @@ class FakeQuantWithMinMaxArgsGradientTest(XLATestCase):
           bfloat16_rtol=0.03)
 
 
-class FakeQuantWithMinMaxVarsTest(XLATestCase):
+class FakeQuantWithMinMaxVarsTest(xla_test.XLATestCase):
   """Test cases for FakeQuantWithMinMaxVars operation."""
 
   # 8 bits, wide range.
@@ -328,7 +328,7 @@ class FakeQuantWithMinMaxVarsTest(XLATestCase):
           result, expected, rtol=1e-3, atol=1e-5, bfloat16_rtol=0.03)
 
 
-class FakeQuantWithMinMaxVarsGradientTest(XLATestCase):
+class FakeQuantWithMinMaxVarsGradientTest(xla_test.XLATestCase):
   """Test cases for FakeQuantWithMinMaxVarsGradient operation."""
 
   # 8 bits, wide range.

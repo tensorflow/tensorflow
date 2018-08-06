@@ -295,7 +295,7 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":training_py",
-        "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
+        "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",

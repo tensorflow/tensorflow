@@ -61,7 +61,7 @@ class DotOpEmitter {
       const HloInstruction& dot, const llvm_ir::IrArray& target_array,
       const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
       const llvm_ir::IrArray* addend_array,
-      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
       const HloModuleConfig& hlo_module_config,
       const TargetMachineFeatures& target_machine_features);
 
@@ -70,8 +70,7 @@ class DotOpEmitter {
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
                const llvm_ir::IrArray* addend_array,
-               llvm::Value* executable_run_options_value,
-               llvm::IRBuilder<>* ir_builder,
+               llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
                const HloModuleConfig& hlo_module_config,
                const TargetMachineFeatures& target_machine_features);
 
@@ -88,17 +87,6 @@ class DotOpEmitter {
 
   // Emits a call to the CPU runtime to perform the matrix multiply.
   Status EmitCallToRuntime();
-
-  // Emits a series of nested loops for iterating over an operand array in the
-  // dot operation. Loops are constructed in major to minor dimension layout
-  // order. No loop is emitted for the given reduction_dimension. The function
-  // returns an IrArray index for the given operand_array containing the indvars
-  // of the loops. All dimensions of the index are filled except for the
-  // reduction dimension. name_suffix is the string to append to the names of
-  // LLVM constructs (eg, basic blocks) constructed by this method.
-  llvm_ir::IrArray::Index EmitOperandArrayLoopNest(
-      llvm_ir::ForLoopNest* loop_nest, const llvm_ir::IrArray& operand_array,
-      int64 reduction_dimension, tensorflow::StringPiece name_suffix);
 
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
@@ -143,6 +131,17 @@ class DotOpEmitter {
         .value_or(kDefaultTilingFactor);
   }
 
+  std::tuple<int64, int64, int64> GetGemmTileSize() const {
+    // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
+    //
+    // TODO(b/80093688): Tune for other architectures and centralize this
+    // information in one place.
+    const std::tuple<int64, int64, int64> kDefaultTileSize =
+        std::tuple<int64, int64, int64>(11, 9, 1);
+    return options::LlvmIrGemmTileSize(hlo_module_config_)
+        .value_or(kDefaultTileSize);
+  }
+
   // Returns true if we should use an experimental implementation of GEMM
   // (general matrix matrix multiplication) if possible.
   bool EnableExperimentalLlvmIrGemm() const {
@@ -160,7 +159,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& rhs_array_;
   const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   const HloModuleConfig& hlo_module_config_;
   const TargetMachineFeatures& target_machine_features_;
 };

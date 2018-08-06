@@ -22,6 +22,7 @@ import importlib
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -254,6 +255,18 @@ class LaplaceTest(test.TestCase):
           rtol=0.05,
           atol=0.)
       self.assertTrue(self._kstest(loc_v, scale_v, sample_values))
+
+  def testLaplaceFullyReparameterized(self):
+    loc = constant_op.constant(4.0)
+    scale = constant_op.constant(3.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(loc)
+      tape.watch(scale)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      samples = laplace.sample(100)
+    grad_loc, grad_scale = tape.gradient(samples, [loc, scale])
+    self.assertIsNotNone(grad_loc)
+    self.assertIsNotNone(grad_scale)
 
   def testLaplaceSampleMultiDimensional(self):
     with session.Session():

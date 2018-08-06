@@ -196,21 +196,21 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");
 }
 
-TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOne) {
+TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOneExp) {
   auto quantize = [](double d) {
     int32_t q;
     int s;
-    QuantizeMultiplierSmallerThanOne(d, &q, &s);
+    QuantizeMultiplierSmallerThanOneExp(d, &q, &s);
     return std::pair<int32_t, int>{q, s};
   };
 
   EXPECT_DEATH(quantize(-0.1), "");
   EXPECT_DEATH(quantize(0.0), "");
-  EXPECT_THAT(quantize(0.25), Pair(1073741824, 1));
+  EXPECT_THAT(quantize(0.25), Pair(1073741824, -1));
 
   // Around 0.5 we can see the change in exponent and how we try hard to
   // void hitting max int32.
-  EXPECT_THAT(quantize(0.50 - 5e-9), Pair(2147483627, 1));
+  EXPECT_THAT(quantize(0.50 - 5e-9), Pair(2147483627, -1));
   EXPECT_THAT(quantize(0.50 - 1e-10), Pair(1073741824, 0));
   EXPECT_THAT(quantize(0.50), Pair(1073741824, 0));
 

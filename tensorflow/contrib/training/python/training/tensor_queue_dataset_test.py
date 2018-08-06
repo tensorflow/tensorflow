@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.contrib.training.python.training import tensor_queue_dataset as tqd
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes

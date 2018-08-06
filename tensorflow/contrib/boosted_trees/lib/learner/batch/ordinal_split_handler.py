@@ -99,6 +99,7 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
                hessian_shape,
                multiclass_strategy,
                init_stamp_token=0,
+               loss_uses_sum_reduction=False,
                name=None):
     """Initialize the internal state for this split handler.
 
@@ -117,6 +118,8 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
       multiclass_strategy: Strategy describing how to treat multiclass problems.
       init_stamp_token: A tensor containing an scalar for initial stamp of the
          stamped objects.
+      loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
+          SUM or MEAN reduction was used for the loss.
       name: An optional handler name.
     """
     super(InequalitySplitHandler, self).__init__(
@@ -128,7 +131,8 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
         feature_column_group_id=feature_column_group_id,
         gradient_shape=gradient_shape,
         hessian_shape=hessian_shape,
-        multiclass_strategy=multiclass_strategy)
+        multiclass_strategy=multiclass_strategy,
+        loss_uses_sum_reduction=loss_uses_sum_reduction)
     self._stats_accumulator = stats_accumulator_ops.StatsAccumulator(
         init_stamp_token,
         gradient_shape,
@@ -160,6 +164,7 @@ class DenseSplitHandler(InequalitySplitHandler):
                hessian_shape,
                multiclass_strategy,
                init_stamp_token=0,
+               loss_uses_sum_reduction=False,
                name=None):
     """Initialize the internal state for this split handler.
 
@@ -179,6 +184,8 @@ class DenseSplitHandler(InequalitySplitHandler):
       multiclass_strategy: Strategy describing how to treat multiclass problems.
       init_stamp_token: A tensor containing an scalar for initial stamp of the
          stamped objects.
+      loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
+          SUM or MEAN reduction was used for the loss.
       name: An optional handler name.
     """
     super(DenseSplitHandler, self).__init__(
@@ -193,7 +200,8 @@ class DenseSplitHandler(InequalitySplitHandler):
         name=name,
         gradient_shape=gradient_shape,
         hessian_shape=hessian_shape,
-        multiclass_strategy=multiclass_strategy)
+        multiclass_strategy=multiclass_strategy,
+        loss_uses_sum_reduction=loss_uses_sum_reduction)
     self._dense_float_column = dense_float_column
     # Register dense_make_stats_update function as an Op to the graph.
     g = ops.get_default_graph()
@@ -255,15 +263,15 @@ class DenseSplitHandler(InequalitySplitHandler):
                 next_stamp_token, self._multiclass_strategy, class_id,
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,
-                self._min_node_weight))
+                self._min_node_weight, self._loss_uses_sum_reduction))
     return are_splits_ready, partition_ids, gains, split_infos
 
 
-def _make_dense_split(quantile_accumulator_handle, stats_accumulator_handle,
-                      stamp_token, next_stamp_token, multiclass_strategy,
-                      class_id, feature_column_id, l1_regularization,
-                      l2_regularization, tree_complexity_regularization,
-                      min_node_weight, is_multi_dimentional):
+def _make_dense_split(
+    quantile_accumulator_handle, stats_accumulator_handle, stamp_token,
+    next_stamp_token, multiclass_strategy, class_id, feature_column_id,
+    l1_regularization, l2_regularization, tree_complexity_regularization,
+    min_node_weight, is_multi_dimentional, loss_uses_sum_reduction):
   """Function that builds splits for a dense feature column."""
   # Get the bucket boundaries
   are_splits_ready, buckets = (
@@ -291,7 +299,10 @@ def _make_dense_split(quantile_accumulator_handle, stats_accumulator_handle,
     num_minibatches, partition_ids, bucket_ids, gradients, hessians = (
         gen_stats_accumulator_ops.stats_accumulator_scalar_flush(
             stats_accumulator_handle, stamp_token, next_stamp_token))
-
+  # For sum_reduction, we don't need to divide by number of minibatches.
+  num_minibatches = control_flow_ops.cond(loss_uses_sum_reduction,
+                                          lambda: math_ops.to_int64(1),
+                                          lambda: num_minibatches)
   # Put quantile and stats accumulator flushing in the dependency path.
   with ops.control_dependencies([flush_quantiles, partition_ids]):
     are_splits_ready = array_ops.identity(are_splits_ready)
@@ -329,6 +340,7 @@ class SparseSplitHandler(InequalitySplitHandler):
                hessian_shape,
                multiclass_strategy,
                init_stamp_token=0,
+               loss_uses_sum_reduction=False,
                name=None):
     """Initialize the internal state for this split handler.
 
@@ -348,6 +360,8 @@ class SparseSplitHandler(InequalitySplitHandler):
       multiclass_strategy: Strategy describing how to treat multiclass problems.
       init_stamp_token: A tensor containing an scalar for initial stamp of the
          stamped objects.
+      loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
+          SUM or MEAN reduction was used for the loss.
       name: An optional handler name.
     """
     super(SparseSplitHandler, self).__init__(
@@ -362,6 +376,7 @@ class SparseSplitHandler(InequalitySplitHandler):
         hessian_shape=hessian_shape,
         multiclass_strategy=multiclass_strategy,
         init_stamp_token=init_stamp_token,
+        loss_uses_sum_reduction=loss_uses_sum_reduction,
         name=name)
     self._sparse_float_column = sparse_float_column
 
@@ -424,15 +439,15 @@ class SparseSplitHandler(InequalitySplitHandler):
                 next_stamp_token, self._multiclass_strategy, class_id,
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,
-                self._min_node_weight))
+                self._min_node_weight, self._loss_uses_sum_reduction))
     return are_splits_ready, partition_ids, gains, split_infos
 
 
-def _make_sparse_split(quantile_accumulator_handle, stats_accumulator_handle,
-                       stamp_token, next_stamp_token, multiclass_strategy,
-                       class_id, feature_column_id, l1_regularization,
-                       l2_regularization, tree_complexity_regularization,
-                       min_node_weight, is_multi_dimentional):
+def _make_sparse_split(
+    quantile_accumulator_handle, stats_accumulator_handle, stamp_token,
+    next_stamp_token, multiclass_strategy, class_id, feature_column_id,
+    l1_regularization, l2_regularization, tree_complexity_regularization,
+    min_node_weight, is_multi_dimentional, loss_uses_sum_reduction):
   """Function that builds splits for a sparse feature column."""
   # Get the bucket boundaries
   are_splits_ready, buckets = (
@@ -460,7 +475,9 @@ def _make_sparse_split(quantile_accumulator_handle, stats_accumulator_handle,
     num_minibatches, partition_ids, bucket_ids, gradients, hessians = (
         gen_stats_accumulator_ops.stats_accumulator_scalar_flush(
             stats_accumulator_handle, stamp_token, next_stamp_token))
-
+  num_minibatches = control_flow_ops.cond(loss_uses_sum_reduction,
+                                          lambda: math_ops.to_int64(1),
+                                          lambda: num_minibatches)
   # Put quantile and stats accumulator flushing in the dependency path.
   with ops.control_dependencies([flush_quantiles, partition_ids]):
     are_splits_ready = array_ops.identity(are_splits_ready)
@@ -498,17 +515,18 @@ def _specialize_make_split(func, is_multi_dimentional):
       dtypes.float32,
       dtypes.float32,
       dtypes.float32,
+      dtypes.bool,
       noinline=True)
   def f(quantile_accumulator_handle, stats_accumulator_handle, stamp_token,
         next_stamp_token, multiclass_strategy, class_id, feature_column_id,
         l1_regularization, l2_regularization, tree_complexity_regularization,
-        min_node_weight):
+        min_node_weight, loss_uses_sum_reduction):
     """Function that builds splits for a sparse feature column."""
-    return func(
-        quantile_accumulator_handle, stats_accumulator_handle, stamp_token,
-        next_stamp_token, multiclass_strategy, class_id, feature_column_id,
-        l1_regularization, l2_regularization, tree_complexity_regularization,
-        min_node_weight, is_multi_dimentional)
+    return func(quantile_accumulator_handle, stats_accumulator_handle,
+                stamp_token, next_stamp_token, multiclass_strategy, class_id,
+                feature_column_id, l1_regularization, l2_regularization,
+                tree_complexity_regularization, min_node_weight,
+                is_multi_dimentional, loss_uses_sum_reduction)
 
   return f
 

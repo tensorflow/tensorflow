@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import unique
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
@@ -77,19 +76,6 @@ class UniqueDatasetTest(test.TestCase):
         (["hello", "world"], ["hello", "world"]),
         (["foo", "bar", "baz", "baz", "bar", "foo"], ["foo", "bar", "baz"]),
     ])
-
-
-class UniqueSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def testUnique(self):
-
-    def build_dataset(num_elements, unique_elem_range):
-      return dataset_ops.Dataset.range(num_elements).map(
-          lambda x: x % unique_elem_range).apply(unique.unique())
-
-    self.run_core_tests(lambda: build_dataset(200, 100),
-                        lambda: build_dataset(40, 100), 100)
 
 
 if __name__ == "__main__":

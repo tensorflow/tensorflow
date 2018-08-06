@@ -44,6 +44,7 @@ END
   summary: "Quantizes then dequantizes a tensor."
   description: <<END
 This op simulates the precision loss from the quantized forward pass by:
+
 1. Quantizing the tensor to fixed point numbers, which should match the target
    quantization method when it is used in inference.
 2. Dequantizing it back to floating point numbers for the following ops, most
@@ -85,9 +86,9 @@ e.g.
     10.0]: it would use a scale_factor of 127 / 10.0 = 12.7 In this case, it
     would update input_min to be 128.0 / 12.7 = -10.07874
 *   if the output is unsigned, input_min is forced to be 0, and only the
-    specifide input_max is used.
+    specified input_max is used.
 
-After determining the scale_factor and updating the input tange, it applies the
+After determining the scale_factor and updating the input range, it applies the
 following to each value in the 'input' tensor.
 
 output = round(clamp(value, input_min, input_max) * scale_factor) / scale_factor.
