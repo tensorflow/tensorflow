@@ -521,7 +521,7 @@ class HParams(object):
       del self._hparam_types[name]
 
   def parse(self, values):
-    """Override hyperparameter values, parsing new values from a string.
+    """Override existing hyperparameter values, parsing new values from a string.
 
     See parse_values for more detail on the allowed format for values.
 
