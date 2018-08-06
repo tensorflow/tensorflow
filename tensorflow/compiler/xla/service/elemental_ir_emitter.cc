@@ -1302,6 +1302,7 @@ int32 GetNumberOfElementsPerPhiloxRngSample(PrimitiveType elem_prim_ty) {
     case F16:
       return 4;
     case U64:
+    case S64:
     case F64:
       return 2;
     default:
