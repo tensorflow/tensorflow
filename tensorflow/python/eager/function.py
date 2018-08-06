@@ -24,6 +24,7 @@ import functools
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -35,6 +36,7 @@ from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -43,6 +45,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def capture_value(tensor_map, value, dtype, name):
@@ -659,43 +662,68 @@ class GraphModeFunction(object):
     return ret
 
 
-def _get_defun_inputs(args):
-  """Maps the inputs args to graph inputs."""
-  ret = []
-  flat_args = nest.flatten(args)
-  for a in flat_args:
-    if isinstance(a, ops.Tensor):
-      ret.append(graph_placeholder(a.dtype, a.shape))
-    else:
-      ret.append(a)
-  return nest.pack_sequence_as(args, ret)
+def _get_defun_inputs_from_signature(signature):
+  """Maps a signature to graph-construction inputs."""
+  function_inputs = [
+      graph_placeholder(spec.dtype, spec.shape)
+      for spec in nest.flatten(signature)
+  ]
+  return nest.pack_sequence_as(signature, function_inputs)
 
 
-def _deterministic_dict_values(kwds):
-  return tuple(kwds[key] for key in sorted(kwds))
+def _get_defun_inputs_from_args(args):
+  """Maps python function args to graph-construction inputs."""
+  function_inputs = [
+      graph_placeholder(arg.dtype, arg.shape) if isinstance(arg, ops.Tensor)
+      else arg for arg in nest.flatten(args)
+  ]
+  return nest.pack_sequence_as(args, function_inputs)
 
 
-def _trace_and_define_function(name, func, compiled, args, kwds):
-  """Defines and returns graph-mode version of func."""
+def _trace_and_define_function(name, python_func, compiled, args, kwds,
+                               signature=None):
+  """Defines and returns graph-mode version of `python_func`.
+
+  Args:
+    name: an identifier for the function.
+    python_func: the Python function to trace.
+    compiled: whether the graph function should be compiled through XLA.
+    args: the positional args with which the Python function should be called;
+      ignored if a signature is provided.
+    kwds: the keyword args with which the Python function should be called;
+      ignored if a signature is provided.
+    signature: a possibly nested sequence of `TensorSpecs` specifying the shapes
+      and dtypes of the arguments. When a signature is provided, `args` and
+      `kwds` are ignored, and `python_func` is traced with Tensors conforming
+      to `signature`. If `None`, the shapes and dtypes are inferred from the
+      inputs.
+
+  Returns:
+    A GraphModeFunction.
+  """
   graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  tmp_graph = CapturingGraph()
+  func_graph = CapturingGraph()
   # Inherit the graph key, since this is used for matching variables in
   # optimizers.
-  tmp_graph._graph_key = graph_key  # pylint: disable=protected-access
+  func_graph._graph_key = graph_key  # pylint: disable=protected-access
   # Copy the graph collections to ensure summaries and other things work. This
   # lets the function access (but not mutate) collections of the containing
   # graph, such as the global step and the summary writer collections.
   curr_graph = ops.get_default_graph()
   for collection in curr_graph.collections:
-    tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
+    func_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
         collection)
   if context.executing_eagerly():
-    tmp_graph.seed = context.global_seed()
+    func_graph.seed = context.global_seed()
   else:
-    tmp_graph.seed = curr_graph.seed
-  with tmp_graph.as_default(), AutomaticControlDependencies() as a:
-    func_args = _get_defun_inputs(args)
-    func_kwds = _get_defun_inputs(kwds)
+    func_graph.seed = curr_graph.seed
+  with func_graph.as_default(), AutomaticControlDependencies() as a:
+    if signature is None:
+      func_args = _get_defun_inputs_from_args(args)
+      func_kwds = _get_defun_inputs_from_args(kwds)
+    else:
+      func_args = _get_defun_inputs_from_signature(signature)
+      func_kwds = {}
 
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
@@ -711,7 +739,7 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
 
     this_tape = tape.push_new_tape()
     try:
-      func_outputs = func(*func_args, **func_kwds)
+      func_outputs = python_func(*func_args, **func_kwds)
       func_outputs = nest.map_structure(convert, func_outputs)
 
       def check_mutation(n1, n2):
@@ -740,11 +768,11 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
     # call to convert_to_tensor, so we manually capture all such tensors.
     outputs_list = _flatten(func_outputs)
     func_def_outputs = [
-        tmp_graph.capture(x) for x in outputs_list
+        func_graph.capture(x) for x in outputs_list
         if x is not None
     ]
 
-    captures = tmp_graph.captures
+    captures = func_graph.captures
     ids = list(sorted(captures.keys()))
     if ids:
       extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
@@ -755,20 +783,20 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
         x.shape if isinstance(x, ops.Tensor) else None
         for x in func_def_outputs)
 
-  func_kwds_values = _deterministic_dict_values(func_kwds)
+  # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
   flat_inputs = [
-      x for x in nest.flatten(func_args) + nest.flatten(func_kwds_values)
+      x for x in nest.flatten(func_args) + nest.flatten(func_kwds)
       if isinstance(x, ops.Tensor)
   ]
   all_inputs = flat_inputs + list(extra_placeholders)
   all_ignored_ops = frozenset(x.op for x in all_inputs)
   fname = _inference_name(name)
-  operations = tuple(x for x in tmp_graph.get_operations()
+  operations = tuple(x for x in func_graph.get_operations()
                      if x not in all_ignored_ops)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
   if context.executing_eagerly():
-    for f in tmp_graph._functions.values():  # pylint: disable=protected-access
+    for f in func_graph._functions.values():  # pylint: disable=protected-access
       # TODO(ashankar): What about the gradient registry?
       _register(f._c_func.func)  # pylint: disable=protected-access
 
@@ -777,41 +805,55 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
     attrs[_xla_compile_attr] = attr_value_pb2.AttrValue(b=True)
 
   return GraphModeFunction(
-      fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
+      fname, all_inputs, extra_inputs, func_graph, operations, func_def_outputs,
       func_outputs, output_shapes, variables, attrs)
 
 
-# Defun uses this instead of Tensor as a cache key. Using dtype because
-# TensorFlow graphs are not parametric wrt dtypes, and using shapes for
-# performance reasons, as much TensorFlow code specializes on known shapes to
-# produce slimmer graphs.
-_TensorDtype = collections.namedtuple("_TensorDtype", ["dtype", "shape"])
-_ZeroDtype = collections.namedtuple("_ZeroDtype", ["dtype", "shape"])
+_TensorType = collections.namedtuple("_TensorType", ["dtype", "shape"])
 
 
-def _cache_key(x):
-  """Cache key for tfe functions."""
-  if isinstance(x, ops.Tensor):
-    return _TensorDtype(x.dtype, x._shape_tuple())  # pylint: disable=protected-access
-  if isinstance(x, ops.IndexedSlices):
-    if x.dense_shape is not None:
+def _encode_arg(arg):
+  """A canonical representation for this argument, for use in a cache key."""
+
+  # `defun` uses dtypes and shapes instead of `Tensors` as cache keys. Dtypes
+  # are used because TensorFlow graphs are not parametric w.r.t. dtypes. Shapes
+  # are used for both performance reasons, as much TensorFlow code specializes
+  # on known shapes to produce slimmer graphs, and correctness, as some
+  # high-level APIs require shapes to be fully-known.
+  #
+  # TODO(akshayka): Add support for sparse tensors.
+  #
+  # pylint: disable=protected-access
+  if isinstance(arg, ops.Tensor):
+    return _TensorType(arg.dtype, arg._shape_tuple())
+  elif isinstance(arg, ops.IndexedSlices):
+    if arg.dense_shape is not None:
       return tuple([
-          _TensorDtype(x.values.dtype, x.values._shape_tuple()),  # pylint: disable=protected-access
-          _TensorDtype(x.indices.dtype, x.indices._shape_tuple()),  # pylint: disable=protected-access
-          _TensorDtype(x.dense_shape.dtype, x.dense_shape._shape_tuple())  # pylint: disable=protected-access
+          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
+          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
+          _TensorType(arg.dense_shape.dtype, arg.dense_shape._shape_tuple()),
       ])
     else:
       return tuple([
-          _TensorDtype(x.values.dtype, x.values._shape_tuple()),  # pylint: disable=protected-access
-          _TensorDtype(x.indices.dtype, x.indices._shape_tuple())  # pylint: disable=protected-access
+          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
+          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
       ])
-  if isinstance(x, np.ndarray):
-    return ("array", x.shape, tuple(x.reshape(-1)))
-  if isinstance(x, (list, tuple)):
-    return tuple([_cache_key(a) for a in x])
-  if isinstance(x, dict):
-    return tuple(tuple([_cache_key(k), _cache_key(v)]) for k, v in x.items())
-  return x
+  # pylint: enable=protected-access
+  elif isinstance(arg, np.ndarray):
+    # TODO(akshayka): Consider instead converting this NumPy array to a Tensor
+    # and encoding it with a _TensorType.
+    return ("array", arg.shape, tuple(arg.reshape(-1)))
+  elif isinstance(arg, (list, tuple)):
+    return tuple([_encode_arg(elem) for elem in arg])
+  elif isinstance(arg, dict):
+    return tuple(
+        (_encode_arg(key), _encode_arg(arg[key])) for key in sorted(arg))
+  else:
+    return arg
+
+
+def _deterministic_dict_values(dictionary):
+  return tuple(dictionary[key] for key in sorted(dictionary))
 
 
 class _PolymorphicFunction(object):
@@ -826,22 +868,72 @@ class _PolymorphicFunction(object):
   synchronization is necessary.
   """
 
-  def __init__(self, python_function, name, compiled=False):
+  def __init__(self,
+               python_function,
+               name,
+               input_signature=None,
+               compiled=False):
     """Initializes a polymorphic function.
 
     Args:
       python_function: the function to be wrapped.
       name: the name given to it.
+      input_signature: a possibly nested sequence of `TensorSpec` objects
+        specifying the input signature of this function. If `None`, a separate
+        function is instantiated for each inferred input signature.
       compiled: if True, the framework will attempt to compile func with XLA.
+
+    Raises:
+      ValueError: if `input_signature` is not None and the `python_function`'s
+        argspec has keyword arguments.
+      TypeError: if `input_signature` contains anything other than
+        `TensorSpec` objects, or (if not None) is anything other than a tuple or
+        list.
     """
 
-    self._python_function = python_function
+    if isinstance(python_function, functools.partial):
+      self._python_function = python_function.func
+      self._args_to_prepend = python_function.args or tuple()
+      self._kwds_to_include = python_function.keywords or {}
+    else:
+      self._python_function = python_function
+      self._args_to_prepend = tuple()
+      self._kwds_to_include = {}
     self._name = name
     self._compiled = compiled
     self._arguments_to_functions = {}
     self._variables = []
 
     self._lock = threading.Lock()
+
+    fullargspec = tf_inspect.getfullargspec(self._python_function)
+    # A cache mapping from argument name to index, for canonicalizing
+    # arguments that are called in a keyword-like fashion.
+    self._args_to_indices = {arg: i for i, arg in enumerate(fullargspec.args)}
+    # A cache mapping from arg index to default value, for canonicalization.
+    offset = len(fullargspec.args) - len(fullargspec.defaults or [])
+    self._arg_indices_to_default_values = {
+        offset + index: default
+        for index, default in enumerate(fullargspec.defaults or [])
+    }
+    if input_signature is None:
+      self._input_signature = None
+    else:
+      if fullargspec.varkw is not None or fullargspec.kwonlyargs:
+        raise ValueError("Cannot define a TensorFlow function from a Python "
+                         "function with keyword arguments when "
+                         "input_signature is provided.")
+
+      if not isinstance(input_signature, (tuple, list)):
+        raise TypeError("input_signature must be either a tuple or a "
+                        "list, received " + str(type(input_signature)))
+
+      self._input_signature = tuple(input_signature)
+      self._flat_input_signature = tuple(nest.flatten(input_signature))
+      if any(not isinstance(arg, tensor_spec.TensorSpec)
+             for arg in self._flat_input_signature):
+        raise TypeError("Invalid input_signature %s; input_signature must be "
+                        "a possibly nested sequence of TensorSpec objects.")
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
@@ -861,36 +953,119 @@ class _PolymorphicFunction(object):
     # then `instance` will be `foo` (and `owner` will be `Foo`).
     return functools.partial(self.__call__, instance)
 
+  def _cache_key(self, args, kwds):
+    """Computes the cache key given inputs."""
+    if self._input_signature is None:
+      inputs = (args, kwds) if kwds else args
+      cache_key = tuple(_encode_arg(arg) for arg in inputs)
+    else:
+      del args, kwds
+      cache_key = self._flat_input_signature
+    # The graph, or whether we're executing eagerly, should be a part of the
+    # cache key so we don't improperly capture tensors such as variables.
+    return cache_key + (context.executing_eagerly() or ops.get_default_graph(),)
+
+  def _canonicalize_function_inputs(self, *args, **kwds):
+    """Canonicalizes `args` and `kwds`.
+
+    Canonicalize the inputs to the Python function using its fullargspec. In
+    particular, we parse the varags and kwargs that this
+    `_PolymorphicFunction` was called with into a tuple corresponding to the
+    Python function's positional (named) arguments and a dictionary
+    corresponding to its kwargs.
+
+    Args:
+      *args: The varargs this object was called with.
+      **kwds: The keyword args this function was called with.
+
+    Returns:
+      A canonicalized ordering of the inputs.
+
+    Raises:
+      ValueError: If a keyword in `kwds` cannot be matched with a positional
+        argument when an input signature is specified, or when the inputs
+        do not conform to the input signature.
+    """
+    args = self._args_to_prepend + args
+    kwds = dict(kwds, **self._kwds_to_include)
+    # Maps from index of arg to its corresponding value, according to `args`
+    # and `kwds`; seeded with the default values for the named args that aren't
+    # in `args`.
+    arg_indices_to_values = {
+        index: default
+        for index, default in six.iteritems(self._arg_indices_to_default_values)
+        if index >= len(args)
+    }
+    consumed_args = []
+    for arg, value in six.iteritems(kwds):
+      index = self._args_to_indices.get(arg, None)
+      if index is not None:
+        arg_indices_to_values[index] = value
+        consumed_args.append(arg)
+      elif self._input_signature is not None:
+        raise ValueError("Cannot define a TensorFlow function from a Python "
+                         "function with keyword arguments when "
+                         "input_signature is provided.")
+    for arg in consumed_args:
+      # After this loop, `kwds` will only contain true keyword arguments, as
+      # opposed to named arguments called in a keyword-like fashion.
+      kwds.pop(arg)
+    inputs = args + _deterministic_dict_values(arg_indices_to_values)
+    if self._input_signature is None:
+      return inputs, kwds
+    else:
+      assert not kwds
+      try:
+        nest.assert_same_structure(self._input_signature, inputs)
+      except (ValueError, TypeError):
+        raise ValueError("Structure of Python function inputs does not match "
+                         "input_signature.")
+      flat_inputs = nest.flatten(inputs)
+      if any(not isinstance(arg, ops.Tensor) for arg in flat_inputs):
+        raise ValueError("When input_signature is provided, all inputs to "
+                         "the Python function must be Tensors.")
+      tensor_specs = [tensor_spec.TensorSpec.from_tensor(tensor)
+                      for tensor in flat_inputs]
+      if any(not spec.is_compatible_with(other)
+             for spec, other in zip(self._flat_input_signature, tensor_specs)):
+        raise ValueError("Python inputs incompatible with input_signature: "
+                         "inputs (%s), input_signature (%s)" %
+                         (str(inputs), str(self._input_signature)))
+      return inputs, {}
+
   def _maybe_define_function(self, *args, **kwds):
     """Gets a function for these inputs, defining it if necessary.
 
     Args:
-      *args: args for the Python function; used to compute the signature
-      **kwds: kwds for the Python function; used to compute the signature
+      *args: args for the Python function.
+      **kwds: keywords for the Python function.
 
     Returns:
       A graph function corresponding to the input signature implied by args and
       kwds, as well as the inputs that the object should be called with.
+
+    Raises:
+      ValueError: If inputs are incompatible with the input signature.
+      TypeError: If the function inputs include non-hashable objects
     """
 
-    # TODO(apassos): Better error messages for non-hashable arguments.
-    kwd_values = _deterministic_dict_values(kwds)
-    inputs = args + kwd_values
-    signature = tuple(_cache_key(x) for x in inputs)
-    # The graph, or whether we're executing eagerly, should be a part of the
-    # signature so we don't improperly capture tensors such as variables.
-    signature += tuple([context.executing_eagerly() or ops.get_default_graph()])
-
+    args, kwds = self._canonicalize_function_inputs(*args, **kwds)
+    cache_key = self._cache_key(args, kwds)
     with self._lock:
-      if signature not in self._arguments_to_functions:
+      try:
+        graph_function = self._arguments_to_functions.get(cache_key, None)
+      except TypeError:
+        raise TypeError("Arguments supplied to `defun`-generated functions "
+                        "must be hashable.")
+
+      if graph_function is None:
         graph_function = _trace_and_define_function(
-            self._name, self._python_function, self._compiled, args, kwds)
-        self._arguments_to_functions[signature] = graph_function
+            self._name, self._python_function, self._compiled, args, kwds,
+            self._input_signature)
         self._variables.extend(
             [v for v in graph_function.variables if v not in self._variables])
-        return graph_function, inputs
-      else:
-        return self._arguments_to_functions[signature], inputs
+        self._arguments_to_functions[cache_key] = graph_function
+      return graph_function, (args, kwds)
 
   def __call__(self, *args, **kwds):
     """Calls a graph function specialized for this input signature."""
@@ -910,7 +1085,7 @@ class _PolymorphicFunction(object):
 # TODO(akshayka): Remove the `compiled` flag and create a separate
 # API for xla compilation (`defun` is already complicated enough
 # as it is, and the keyword argument makes 'compiled' an overloaded concept)
-def defun(func=None, compiled=False):
+def defun(func=None, input_signature=None, compiled=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") trace-compiles a Python function
@@ -1165,6 +1340,13 @@ def defun(func=None, compiled=False):
         def foo(...):
           ...
 
+    input_signature: A possibly nested sequence of
+      `tf.contrib.eager.TensorSpec` objects specifying the shapes and dtypes of
+      the Tensors that will be supplied to this function. If `None`, a separate
+      function is instantiated for each inferred input signature.  If a
+      signature is specified, every input to `func` must be a `Tensor`, and
+      `func` cannot accept `**kwargs`.
+
     compiled: If True, an attempt to compile `func` with XLA will be made.
       If it fails, function will be run normally. Experimental.  Currently
       supported only for execution on TPUs. For the vast majority of users,
@@ -1183,7 +1365,9 @@ def defun(func=None, compiled=False):
     except AttributeError:
       name = "function"
     return tf_decorator.make_decorator(
-        function, _PolymorphicFunction(function, name, compiled=compiled))
+        function,
+        _PolymorphicFunction(
+            function, name, input_signature=input_signature, compiled=compiled))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:

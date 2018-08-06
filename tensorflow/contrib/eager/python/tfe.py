@@ -71,6 +71,8 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@run_test_in_graph_and_eager_modes
 @@run_all_tests_in_graph_and_eager_modes
 
+@@TensorSpec
+
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
 @@DEVICE_PLACEMENT_SILENT
@@ -114,6 +116,7 @@ from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import enable_eager_execution_internal as enable_remote_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
