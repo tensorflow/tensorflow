@@ -14,7 +14,10 @@ EXTRA_EIGEN_COPTS = select({
         "-Wno-error=invalid-partial-specialization",
         "-Wno-error=reorder",
     ],
-    "//tensorflow:windows": [],
+    "//tensorflow:windows": [
+        "/DEIGEN_HAS_C99_MATH",
+        "/DEIGEN_AVOID_STL_ARRAY",
+    ],
     "//conditions:default": ["-Wno-error=reorder"],
 })
 
