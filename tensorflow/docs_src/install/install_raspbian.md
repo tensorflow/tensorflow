@@ -78,7 +78,7 @@ your system, run the following command:
 Assuming the prerequisite software is installed on your Pi, install TensorFlow
 by invoking **one** of the following commands:
 
-<pre> $ <b>pip3 install tensorflow</b>     # Python 3.n
+<pre>$ <b>pip3 install tensorflow</b>     # Python 3.n
 $ <b>pip install tensorflow</b>      # Python 2.7</pre>
 
 This can take some time on certain platforms like the Pi Zero, where some Python
