@@ -664,13 +664,25 @@ void ConvertAddNOperator(const Model& model, const AddNOperator& src_op,
 
 void ConvertMulOperator(const Model& model, const MulOperator& src_op,
                         GraphDef* tensorflow_graph) {
-  tensorflow::NodeDef* add_op = tensorflow_graph->add_node();
-  add_op->set_op("Mul");
-  add_op->set_name(src_op.outputs[0]);
+  tensorflow::NodeDef* mul_op = tensorflow_graph->add_node();
+  mul_op->set_op("Mul");
+  mul_op->set_name(src_op.outputs[0]);
   CHECK_EQ(src_op.inputs.size(), 2);
-  *add_op->add_input() = src_op.inputs[0];
-  *add_op->add_input() = src_op.inputs[1];
-  (*add_op->mutable_attr())["T"].set_type(
+  *mul_op->add_input() = src_op.inputs[0];
+  *mul_op->add_input() = src_op.inputs[1];
+  (*mul_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+}
+
+void ConvertDivOperator(const Model& model, const DivOperator& src_op,
+                        GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* div_op = tensorflow_graph->add_node();
+  div_op->set_op("Div");
+  div_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *div_op->add_input() = src_op.inputs[0];
+  *div_op->add_input() = src_op.inputs[1];
+  (*div_op->mutable_attr())["T"].set_type(
       GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
@@ -1989,6 +2001,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kMul) {
     ConvertMulOperator(model, static_cast<const MulOperator&>(src_op),
+                       tensorflow_graph);
+  } else if (src_op.type == OperatorType::kDiv) {
+    ConvertDivOperator(model, static_cast<const DivOperator&>(src_op),
                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kRelu) {
     ConvertReluOperator(model, static_cast<const ReluOperator&>(src_op),
