@@ -53,9 +53,6 @@ _summary_type_map = {
 }
 
 
-# TODO(joelshor): For now, this only supports 1:1 generator:discriminator
-# training sequentially. Find a nice way to expose options to the user without
-# exposing internals.
 class GANEstimator(estimator.Estimator):
   """An estimator for Generative Adversarial Networks (GANs).
 
