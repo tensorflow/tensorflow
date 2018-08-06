@@ -293,7 +293,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
   TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
-      [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
+      [&buffer_allocations, &buffers_in_result, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
         // The points-to set is unambiguous so the set should be a

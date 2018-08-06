@@ -328,7 +328,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   if (linker.linkInModule(
           std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
           [](Module& M, const StringSet<>& GVS) {
-            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+            internalizeModule(M, [&GVS](const GlobalValue& GV) {
               return !GV.hasName() || (GVS.count(GV.getName()) == 0);
             });
           })) {
