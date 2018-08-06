@@ -494,6 +494,7 @@ class HParams(object):
       value: New value of the hyperparameter.
 
     Raises:
+      KeyError: If the hyperparameter doesn't exist.
       ValueError: If there is a type mismatch.
     """
     param_type, is_list = self._hparam_types[name]
@@ -510,7 +511,7 @@ class HParams(object):
       setattr(self, name, _cast_to_type_if_compatible(name, param_type, value))
 
   def del_hparam(self, name):
-    """Removes the hyperparameter with key 'name'.
+    """Removes the hyperparameter with key 'name'. Does nothing if it isn't present.
 
     Args:
       name: Name of the hyperparameter.
@@ -532,7 +533,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
-      ValueError: If `values` cannot be parsed.
+      ValueError: If `values` cannot be parsed or a hyperparameter in `values` doesn't exist.
     """
     type_map = dict()
     for name, t in self._hparam_types.items():
@@ -543,7 +544,7 @@ class HParams(object):
     return self.override_from_dict(values_map)
 
   def override_from_dict(self, values_dict):
-    """Override hyperparameter values, parsing new values from a dictionary.
+    """Override existing hyperparameter values, parsing new values from a dictionary.
 
     Args:
       values_dict: Dictionary of name:value pairs.
@@ -552,6 +553,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
+      KeyError: If a hyperparameter in `values_dict` doesn't exist.
       ValueError: If `values_dict` cannot be parsed.
     """
     for name, value in values_dict.items():
@@ -591,7 +593,7 @@ class HParams(object):
         sort_keys=sort_keys)
 
   def parse_json(self, values_json):
-    """Override hyperparameter values, parsing new values from a json object.
+    """Override existing hyperparameter values, parsing new values from a json object.
 
     Args:
       values_json: String containing a json object of name:value pairs.
@@ -600,6 +602,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
+      KeyError: If a hyperparameter in `values_json` doesn't exist.
       ValueError: If `values_json` cannot be parsed.
     """
     values_map = json.loads(values_json)
