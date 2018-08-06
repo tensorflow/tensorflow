@@ -596,8 +596,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     };
 
     auto comma_list_to_int64s =
-        [&s,
-         string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
+        [string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
       std::vector<int64> results;
       for (const string& piece : tensorflow::str_util::Split(input, ',')) {
         TF_ASSIGN_OR_RETURN(int64 element, string_to_int64(piece));
