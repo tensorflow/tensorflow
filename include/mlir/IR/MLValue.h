@@ -34,7 +34,7 @@ class ForStmt;
 /// function.  This should be kept as a proper subtype of SSAValueKind,
 /// including having all of the values of the enumerators align.
 enum class MLValueKind {
-  FnArgument = (int)SSAValueKind::FnArgument,
+  MLFuncArgument = (int)SSAValueKind::MLFuncArgument,
   StmtResult = (int)SSAValueKind::StmtResult,
   ForStmt = (int)SSAValueKind::ForStmt,
 };
@@ -47,7 +47,7 @@ class MLValue : public SSAValueImpl<StmtOperand, MLValueKind> {
 public:
   static bool classof(const SSAValue *value) {
     switch (value->getKind()) {
-    case SSAValueKind::FnArgument:
+    case SSAValueKind::MLFuncArgument:
     case SSAValueKind::StmtResult:
     case SSAValueKind::ForStmt:
       return true;
@@ -63,10 +63,10 @@ protected:
 };
 
 /// This is the value defined by an argument of an ML function.
-class FnArgument : public MLValue {
+class MLFuncArgument : public MLValue {
 public:
   static bool classof(const SSAValue *value) {
-    return value->getKind() == SSAValueKind::FnArgument;
+    return value->getKind() == SSAValueKind::MLFuncArgument;
   }
 
   MLFunction *getOwner() { return owner; }
@@ -74,8 +74,8 @@ public:
 
 private:
   friend class MLFunction; // For access to private constructor.
-  FnArgument(Type *type, MLFunction *owner)
-      : MLValue(MLValueKind::FnArgument, type), owner(owner) {}
+  MLFuncArgument(Type *type, MLFunction *owner)
+      : MLValue(MLValueKind::MLFuncArgument, type), owner(owner) {}
 
   /// The owner of this operand.
   /// TODO: can encode this more efficiently to avoid the space hit of this

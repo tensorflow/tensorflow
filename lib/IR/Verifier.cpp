@@ -332,7 +332,8 @@ bool MLFuncVerifier::verifyDominance() {
   HashTable::ScopeTy topScope(liveValues);
 
   // All of the arguments to the function are live for the whole function.
-  // TODO: Add arguments when they are supported.
+  for (auto *arg : fn.getArguments())
+    liveValues.insert(arg, true);
 
   // This recursive function walks the statement list pushing scopes onto the
   // stack as it goes, and popping them to remove them from the table.

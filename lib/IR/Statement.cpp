@@ -221,14 +221,6 @@ MLIRContext *OperationStmt::getContext() const {
   return findFunction()->getContext();
 }
 
-/// This drops all operand uses from this statement, which is an essential
-/// step in breaking cyclic dependences between references when they are to
-/// be deleted.
-void OperationStmt::dropAllReferences() {
-  for (auto &op : getStmtOperands())
-    op.drop();
-}
-
 //===----------------------------------------------------------------------===//
 // ForStmt
 //===----------------------------------------------------------------------===//

@@ -36,7 +36,7 @@ void Function::destroy() {
     delete cast<ExtFunction>(this);
     break;
   case Kind::MLFunc:
-    delete cast<MLFunction>(this);
+    cast<MLFunction>(this)->destroy();
     break;
   case Kind::CFGFunc:
     delete cast<CFGFunction>(this);
@@ -118,13 +118,37 @@ CFGFunction::~CFGFunction() {
 // MLFunction implementation.
 //===----------------------------------------------------------------------===//
 
+/// Create a new MLFunction with the specific fields.
+MLFunction *MLFunction::create(StringRef name, FunctionType *type) {
+  const auto &argTypes = type->getInputs();
+  auto byteSize = totalSizeToAlloc<MLFuncArgument>(argTypes.size());
+  void *rawMem = malloc(byteSize);
+
+  // Initialize the MLFunction part of the function object.
+  auto function = ::new (rawMem) MLFunction(name, type);
+
+  // Initialize the arguments.
+  auto arguments = function->getArgumentsInternal();
+  for (unsigned i = 0, e = argTypes.size(); i != e; ++i)
+    new (&arguments[i]) MLFuncArgument(argTypes[i], function);
+  return function;
+}
+
 MLFunction::MLFunction(StringRef name, FunctionType *type)
     : Function(name, type, Kind::MLFunc), StmtBlock(StmtBlockKind::MLFunc) {}
 
 MLFunction::~MLFunction() {
-  struct DropReferencesPass : public StmtWalker<DropReferencesPass> {
-    void visitOperationStmt(OperationStmt *stmt) { stmt->dropAllReferences(); }
-  };
-  DropReferencesPass pass;
-  pass.walk(const_cast<MLFunction *>(this));
+  // Explicitly erase statements instead of relying of 'StmtBlock' destructor
+  // since child statements need to be destroyed before function arguments
+  // are destroyed.
+  clear();
+
+  // Explicitly run the destructors for the function arguments.
+  for (auto &arg : getArgumentsInternal())
+    arg.~MLFuncArgument();
+}
+
+void MLFunction::destroy() {
+  this->~MLFunction();
+  free(this);
 }

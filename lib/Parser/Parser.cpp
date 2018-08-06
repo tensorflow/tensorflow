@@ -2371,7 +2371,7 @@ ModuleParser::parseMLArgumentList(SmallVectorImpl<Type *> &argTypes,
     if (getToken().isNot(Token::percent_identifier))
       return emitError("expected SSA identifier");
 
-    StringRef name = getTokenSpelling().drop_front();
+    StringRef name = getTokenSpelling();
     consumeToken(Token::percent_identifier);
     argNames.push_back(name);
 
@@ -2474,16 +2474,24 @@ ParseResult ModuleParser::parseMLFunc() {
   StringRef name;
   FunctionType *type = nullptr;
   SmallVector<StringRef, 4> argNames;
-  // FIXME: Parse ML function signature (args + types)
-  // by passing pointer to SmallVector<identifier> into parseFunctionSignature
 
+  auto loc = getToken().getLoc();
   if (parseFunctionSignature(name, type, &argNames))
     return ParseFailure;
 
   // Okay, the ML function signature was parsed correctly, create the function.
-  auto function = new MLFunction(name, type);
+  auto function = MLFunction::create(name, type);
 
-  return MLFunctionParser(getState(), function).parseFunctionBody();
+  // Create the parser.
+  auto parser = MLFunctionParser(getState(), function);
+
+  // Add definitions of the function arguments.
+  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
+    if (parser.addDefinition({argNames[i], 0, loc}, function->getArgument(i)))
+      return ParseFailure;
+  }
+
+  return parser.parseFunctionBody();
 }
 
 /// This is the top-level module parser.

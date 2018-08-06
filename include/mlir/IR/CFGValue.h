@@ -49,7 +49,7 @@ public:
     case SSAValueKind::InstResult:
       return true;
 
-    case SSAValueKind::FnArgument:
+    case SSAValueKind::MLFuncArgument:
     case SSAValueKind::StmtResult:
     case SSAValueKind::ForStmt:
       return false;

@@ -107,8 +107,15 @@ mlfunc @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_args(f16) {
-mlfunc @mlfunc_with_args(%a : f16) {
+// CHECK-LABEL: mlfunc @mlfunc_with_one_arg(%arg0 : i1) {
+mlfunc @mlfunc_with_one_arg(%c : i1) {
+  // CHECK: %0 = "foo"(%arg0) : (i1) -> i2
+  %b = "foo"(%c) : (i1) -> (i2)
+  return     // CHECK: return
+}
+
+// CHECK-LABEL: mlfunc @mlfunc_with_args(%arg0 : f16, %arg1 : i8) {
+mlfunc @mlfunc_with_args(%a : f16, %b : i8) {
   return  %a  // CHECK: return
 }
 

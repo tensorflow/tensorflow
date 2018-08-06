@@ -101,7 +101,7 @@ mlfunc @loop_nest_body_def_use() {
 
 
 // Imperfect loop nest. Unrolling innermost here yields a perfect nest.
-// CHECK-LABEL: mlfunc @loop_nest_seq_imperfect(memref<128x128xf32>) {
+// CHECK-LABEL: mlfunc @loop_nest_seq_imperfect(%arg0 : memref<128x128xf32>) {
 mlfunc @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
   // CHECK: %c1_i32 = constant 1 : i32
   // CHECK-NEXT: %c2_i32 = constant 2 : i32
