@@ -177,6 +177,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "filter_by_component_dataset_op",
+    srcs = ["filter_by_component_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "map_dataset_op",
     srcs = ["map_dataset_op.cc"],
     deps = [
@@ -636,6 +649,7 @@ tf_kernel_library(
         ":dataset",
         ":dataset_ops",
         ":dense_to_sparse_batch_dataset_op",
+        ":filter_by_component_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":generator_dataset_op",
