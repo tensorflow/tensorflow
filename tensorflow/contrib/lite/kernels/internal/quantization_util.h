@@ -195,6 +195,17 @@ void QuantizeMultiplierGreaterThanOne(double double_multiplier,
 void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
                         int* shift);
 
+// Break a double input value into a returned fraction, and a shift value from
+// the exponent, using only bitwise and integer operations to support
+// microcontrollers and other environments without floating-point support.
+//
+// This is designed to be a replacement for how std::frexp() is used within the
+// QuantizeMultiplier() function, and so has a different signature than the
+// standard version, returning a 64-bit integer rather than a double. This result
+// has a maximum value of 1<<31, with the fraction expressed as a proportion of
+// that maximum.
+int64_t IntegerFrExp(double input, int* shift);
+
 // This first creates a multiplier in a double equivalent of
 // Q(input_integer_bits).(31-input_integer_bits) representation, with extra
 // precision in the double's fractional bits.  It then splits the result into

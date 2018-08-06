@@ -30,8 +30,7 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
     *shift = 0;
     return;
   }
-  const double q = std::frexp(double_multiplier, shift);
-  auto q_fixed = static_cast<int64_t>(TfLiteRound(q * (1ll << 31)));
+  int64_t q_fixed = IntegerFrExp(double_multiplier, shift);
   TFLITE_CHECK(q_fixed <= (1ll << 31));
   if (q_fixed == (1ll << 31)) {
     q_fixed /= 2;
@@ -39,6 +38,76 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
   }
   TFLITE_CHECK_LE(q_fixed, std::numeric_limits<int32_t>::max());
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
+}
+
+int64_t IntegerFrExp(double input, int* shift) {
+  // Double-precision floating point format is:
+  // Bit |  63  |  62-52   |   51-0   |
+  //     | Sign | Exponent | Fraction |
+  // To avoid 64-bit integers as much as possible, I break this into high and
+  // low 32-bit chunks. High is:
+  // Bit |  31  |  30-20   |      19-0     |
+  //     | Sign | Exponent | High Fraction |
+  // Low is:
+  // Bit |     31-0     |
+  //     | Low Fraction |
+  // We then access the components through logical bit-wise operations to 
+  // extract the parts needed, with the positions and masks derived from the
+  // layout shown above.
+  const uint32_t sign_mask = 0x80000000;
+  const uint32_t exponent_mask = 0x7ff00000;
+  const int32_t exponent_shift = 20;
+  const int32_t exponent_bias = 1023;
+  const uint32_t fraction_mask_high = 0x000fffff;
+  const uint32_t fraction_shift_high = 10;
+  const uint32_t fraction_mask_low = 0xffc00000;
+  const uint32_t fraction_rounding_mask = 0x003fffff;
+  const uint32_t fraction_rounding_threshold = 0x00200000;
+  const uint32_t fraction_shift_low = 22;
+
+  // We want to access the bits of the input double value directly, which is
+  // tricky to do safely, so use a union to handle the casting.
+  union {
+    double double_value;
+    uint32_t double_as_uints[2];
+  } cast_union;
+  cast_union.double_value = input;
+  const uint32_t u_low = cast_union.double_as_uints[0];
+  const uint32_t u_high = cast_union.double_as_uints[1];
+
+  // If the bitfield is all zeros, this is a normalized zero value, so return
+  // standard values for this special case.
+  if ((u_low == 0) && (u_high == 0)) {
+    *shift = 0;
+    return 0;
+  }
+  
+  // The shift is fairly easy to extract from the high bits of the double value,
+  // just by masking it out and applying a bias. The std::frexp() implementation
+  // always returns values between 0.5 and 1.0 though, whereas the exponent
+  // assumes 1.0 to 2.0 is the standard range, so I add on one to match that
+  // interface.
+  *shift = (((u_high & exponent_mask) >> exponent_shift) - exponent_bias) + 1;
+
+  // There's an implicit high bit in the double format definition, so make sure
+  // we include that at the top, and then reconstruct the rest of the fractional
+  // value from the upper and lower fragments.
+  int64_t fraction = 0x40000000 + 
+    (((u_high & fraction_mask_high) << fraction_shift_high) |
+     ((u_low & fraction_mask_low) >> fraction_shift_low));
+  // We're cutting off some bits at the bottom, so to exactly match the standard
+  // frexp implementation here we'll apply rounding by adding one to the least
+  // significant bit of the result if the discarded portion is over half of the
+  // maximum.
+  if ((u_low & fraction_rounding_mask) > fraction_rounding_threshold) {
+    fraction += 1;
+  }
+  // Negate the fraction if the sign bit was set.
+  if (u_high & sign_mask) {
+    fraction *= -1;
+  }
+
+  return fraction;
 }
 
 void QuantizeMultiplierGreaterThanOne(double double_multiplier,
