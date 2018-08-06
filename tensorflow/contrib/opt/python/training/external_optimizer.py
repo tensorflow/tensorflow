@@ -526,8 +526,7 @@ class SklearnRidgeInterface:
 
     initial_values = [session.run(self.X, feed_dict=feed_dict), session.run(self.y, feed_dict=feed_dict)]
 
-    var_vals = self._minimize(
-        initial_values)
+    var_vals = self._minimize(initial_values)
 
     session.run(
         self._var_updates,
