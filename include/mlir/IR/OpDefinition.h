@@ -114,8 +114,8 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute *value, MLIRContext *context) {
-    state->setAttr(name, value, context);
+  void setAttr(Identifier name, Attribute *value) {
+    state->setAttr(name, value);
   }
 
 protected:

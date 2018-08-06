@@ -37,7 +37,10 @@
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OperationSet.h"
+#include "mlir/IR/Statements.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
@@ -121,6 +124,9 @@ public:
 } // end anonymous namespace
 
 bool CFGFuncVerifier::verify() {
+  llvm::PrettyStackTraceFormat fmt("MLIR Verifier: cfgfunc @%s",
+                                   fn.getName().c_str());
+
   // TODO: Lots to be done here, including verifying dominance information when
   // we have uses and defs.
   // TODO: Verify the first block has no predecessors.
@@ -304,11 +310,84 @@ public:
       : Verifier(errorResult), fn(fn) {}
 
   bool verify() {
-    // TODO.
-    return false;
+    llvm::PrettyStackTraceFormat fmt("MLIR Verifier: mlfunc @%s",
+                                     fn.getName().c_str());
+
+    // TODO: check basic structural properties.
+
+    return verifyDominance();
   }
+
+  /// Walk all of the code in this MLFunc and verify that the operands of any
+  /// operations are properly dominated by their definitions.
+  bool verifyDominance();
 };
 } // end anonymous namespace
+
+/// Walk all of the code in this MLFunc and verify that the operands of any
+/// operations are properly dominated by their definitions.
+bool MLFuncVerifier::verifyDominance() {
+  using HashTable = llvm::ScopedHashTable<const SSAValue *, bool>;
+  HashTable liveValues;
+  HashTable::ScopeTy topScope(liveValues);
+
+  // All of the arguments to the function are live for the whole function.
+  // TODO: Add arguments when they are supported.
+
+  // This recursive function walks the statement list pushing scopes onto the
+  // stack as it goes, and popping them to remove them from the table.
+  std::function<bool(const StmtBlock &block)> walkBlock;
+  walkBlock = [&](const StmtBlock &block) -> bool {
+    HashTable::ScopeTy blockScope(liveValues);
+
+    // The induction variable of a for statement is live within its body.
+    if (auto *forStmt = dyn_cast<ForStmt>(&block))
+      liveValues.insert(forStmt, true);
+
+    for (auto &stmt : block) {
+      // TODO: For and If will eventually have operands, we need to check them.
+      // When this happens, Statement should have a general getOperands() method
+      // we can use here first.
+      if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+        // Verify that each of the operands are live.
+        unsigned operandNo = 0;
+        for (auto *opValue : opStmt->getOperands()) {
+          if (!liveValues.count(opValue)) {
+            opStmt->emitError("operand #" + Twine(operandNo) +
+                              " does not dominate this use");
+            if (auto *useStmt = opValue->getDefiningStmt())
+              useStmt->emitNote("operand defined here");
+            return true;
+          }
+          ++operandNo;
+        }
+
+        // Operations define values, add them to the hash table.
+        for (auto *result : opStmt->getResults())
+          liveValues.insert(result, true);
+        continue;
+      }
+
+      // If this is an if or for, recursively walk the block they contain.
+      if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
+        if (walkBlock(*ifStmt->getThenClause()))
+          return true;
+
+        if (auto *elseClause = ifStmt->getElseClause())
+          if (walkBlock(*elseClause))
+            return true;
+      }
+      if (auto *forStmt = dyn_cast<ForStmt>(&stmt))
+        if (walkBlock(*forStmt))
+          return true;
+    }
+
+    return false;
+  };
+
+  // Check the whole function out.
+  return walkBlock(fn);
+}
 
 //===----------------------------------------------------------------------===//
 // Entrypoints

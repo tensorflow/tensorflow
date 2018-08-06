@@ -131,7 +131,7 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute *value, MLIRContext *context);
+  void setAttr(Identifier name, Attribute *value);
 
   enum class RemoveResult {
     Removed, NotFound
@@ -139,17 +139,21 @@ public:
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
-  RemoveResult removeAttr(Identifier name, MLIRContext *context);
-
-  /// Emit a warning about this operation, reporting up to any diagnostic
-  /// handlers that may be listening.
-  void emitWarning(const Twine &message) const;
+  RemoveResult removeAttr(Identifier name);
 
   /// Emit an error about fatal conditions with this operation, reporting up to
   /// any diagnostic handlers that may be listening.  NOTE: This may terminate
   /// the containing application, only use when the IR is in an inconsistent
   /// state.
   void emitError(const Twine &message) const;
+
+  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitWarning(const Twine &message) const;
+
+  /// Emit a note about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitNote(const Twine &message) const;
 
   /// If this operation has a registered operation description in the
   /// OperationSet, return it.  Otherwise return null.

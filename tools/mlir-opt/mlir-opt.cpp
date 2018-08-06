@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -32,6 +33,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -160,10 +162,10 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
   for (auto &subbuffer : sourceBuffers) {
     SourceMgr sourceMgr;
     // Tell sourceMgr about this buffer, which is what the parser will pick up.
-    sourceMgr.AddNewSourceBuffer(MemoryBuffer::getMemBufferCopy(subbuffer),
-                                 SMLoc());
+    auto bufferId = sourceMgr.AddNewSourceBuffer(
+        MemoryBuffer::getMemBufferCopy(subbuffer), SMLoc());
 
-    // Extracing the expected errors.
+    // Extract the expected errors.
     llvm::Regex expected("expected-error(@[+-][0-9]+)? *{{(.*)}}");
     SmallVector<ExpectedError, 2> expectedErrors;
     SmallVector<StringRef, 100> lines;
@@ -212,6 +214,30 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
     // Parse the input file.
     MLIRContext context;
     initializeMLIRContext(context);
+
+    // TODO: refactor into initializeMLIRContext so the normal parser pass
+    // gets to use this.
+    context.registerDiagnosticHandler([&](Attribute *location,
+                                          StringRef message,
+                                          MLIRContext::DiagnosticKind kind) {
+      auto offset = cast<IntegerAttr>(location)->getValue();
+      auto ptr = sourceMgr.getMemoryBuffer(bufferId)->getBufferStart() + offset;
+      SourceMgr::DiagKind diagKind;
+      switch (kind) {
+      case MLIRContext::DiagnosticKind::Error:
+        diagKind = SourceMgr::DK_Error;
+        break;
+      case MLIRContext::DiagnosticKind::Warning:
+        diagKind = SourceMgr::DK_Warning;
+        break;
+      case MLIRContext::DiagnosticKind::Note:
+        diagKind = SourceMgr::DK_Note;
+        break;
+      }
+      checker(
+          sourceMgr.GetMessage(SMLoc::getFromPointer(ptr), diagKind, message));
+    });
+
     std::unique_ptr<Module> module(
         parseSourceFile(sourceMgr, &context, checker));
 
@@ -235,7 +261,8 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
 }
 
 int main(int argc, char **argv) {
-  InitLLVM x(argc, argv);
+  llvm::PrettyStackTraceProgram x(argc, argv);
+  InitLLVM y(argc, argv);
 
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 

@@ -97,12 +97,12 @@ ArrayRef<NamedAttribute> Operation::getAttrs() const {
 
 /// If an attribute exists with the specified name, change it to the new
 /// value.  Otherwise, add a new attribute with the specified name/value.
-void Operation::setAttr(Identifier name, Attribute *value,
-                        MLIRContext *context) {
+void Operation::setAttr(Identifier name, Attribute *value) {
   assert(value && "attributes may never be null");
   auto origAttrs = getAttrs();
 
   SmallVector<NamedAttribute, 8> newAttrs(origAttrs.begin(), origAttrs.end());
+  auto *context = getContext();
 
   // If we already have this attribute, replace it.
   for (auto &elt : newAttrs)
@@ -119,8 +119,7 @@ void Operation::setAttr(Identifier name, Attribute *value,
 
 /// Remove the attribute with the specified name if it exists.  The return
 /// value indicates whether the attribute was present or not.
-auto Operation::removeAttr(Identifier name, MLIRContext *context)
-    -> RemoveResult {
+auto Operation::removeAttr(Identifier name) -> RemoveResult {
   auto origAttrs = getAttrs();
   for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
     if (origAttrs[i].first == name) {
@@ -128,26 +127,25 @@ auto Operation::removeAttr(Identifier name, MLIRContext *context)
       newAttrs.reserve(origAttrs.size() - 1);
       newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
       newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
-      attrs = AttributeListStorage::get(newAttrs, context);
+      attrs = AttributeListStorage::get(newAttrs, getContext());
       return RemoveResult::Removed;
     }
   }
   return RemoveResult::NotFound;
 }
 
+/// Emit a note about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void Operation::emitNote(const Twine &message) const {
+  getContext()->emitDiagnostic(getAttr(":location"), message,
+                               MLIRContext::DiagnosticKind::Note);
+}
+
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Operation::emitWarning(const Twine &message) const {
-  // Get the location information for this operation.
-  auto *loc = getAttr("location");
-
-  // If that fails, fall back to the internal location which is used in
-  // testcases.
-  if (!loc)
-    loc = getAttr(":location");
-
-  auto *context = getContext();
-  context->emitDiagnostic(loc, message, /*isError=*/false);
+  getContext()->emitDiagnostic(getAttr(":location"), message,
+                               MLIRContext::DiagnosticKind::Warning);
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
@@ -155,14 +153,6 @@ void Operation::emitWarning(const Twine &message) const {
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
 void Operation::emitError(const Twine &message) const {
-  // Get the location information for this operation.
-  auto *loc = getAttr("location");
-
-  // If that fails, fall back to the internal location which is used in
-  // testcases.
-  if (!loc)
-    loc = getAttr(":location");
-
-  auto *context = getContext();
-  context->emitDiagnostic(loc, message, /*isError=*/true);
+  getContext()->emitDiagnostic(getAttr(":location"), message,
+                               MLIRContext::DiagnosticKind::Error);
 }

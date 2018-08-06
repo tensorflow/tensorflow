@@ -46,28 +46,33 @@ public:
   // MLIRContextImpl type.
   MLIRContextImpl &getImpl() const { return *impl.get(); }
 
+  // This is the interpretation of a diagnostic that is emitted to the
+  // diagnostic handler below.
+  enum class DiagnosticKind { Note, Warning, Error };
+
   // Diagnostic handler registration and use.  MLIR supports the ability for the
   // IR to carry arbitrary metadata about operation location information.  If an
-  // error or warning is detected in the compiler, the pass in question can
-  // invoke the emitError/emitWarning method on an operation and have it
-  // reported through this interface.
+  // problem is detected by the compiler, it can invoke the emitError /
+  // emitWarning / emitNote method on an Operation and have it get reported
+  // through this interface.
   //
   // Tools using MLIR are encouraged to register error handlers and define a
-  // schema for their location information.  If they don't, then warnings will
-  // be dropped and errors will terminate the process with exit(1).
+  // schema for their location information.  If they don't, then warnings and
+  // notes will be dropped and errors will terminate the process with exit(1).
+
+  using DiagnosticHandlerTy = std::function<void(
+      Attribute *location, StringRef message, DiagnosticKind kind)>;
 
   /// Register a diagnostic handler with this LLVM context.  The handler is
   /// passed location information if present (nullptr if not) along with a
   /// message and a boolean that indicates whether this is an error or warning.
-  void registerDiagnosticHandler(
-      const std::function<void(Attribute *location, StringRef message,
-                               bool isError)> &handler);
+  void registerDiagnosticHandler(const DiagnosticHandlerTy &handler);
 
   /// This emits an diagnostic using the registered issue handle if present, or
   /// with the default behavior if not.  The MLIR compiler should not generally
   /// interact with this, it should use methods on Operation instead.
   void emitDiagnostic(Attribute *location, const Twine &message,
-                      bool isError) const;
+                      DiagnosticKind kind) const;
 };
 } // end namespace mlir
 

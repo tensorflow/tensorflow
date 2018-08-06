@@ -290,3 +290,12 @@ mlfunc @duplicate_induction_var() {
   }
   return
 }
+
+// -----
+
+mlfunc @duplicate_induction_var() {  // expected-error {{}}
+  for %i = 1 to 10 {
+  }
+  "xxx"(%i) : (affineint)->()   // expected-error {{operand #0 does not dominate this use}}
+  return
+}

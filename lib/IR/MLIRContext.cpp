@@ -186,9 +186,9 @@ public:
   /// This is the set of all operations that are registered with the system.
   OperationSet operationSet;
 
-  /// This is the handler to use to report issues, or null if not registered.
-  std::function<void(Attribute *location, StringRef message, bool isError)>
-      issueHandler;
+  /// This is the handler to use to report diagnostics, or null if not
+  /// registered.
+  MLIRContext::DiagnosticHandlerTy diagnosticHandler;
 
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
@@ -278,9 +278,8 @@ MLIRContext::~MLIRContext() {}
 /// passed location information if present (nullptr if not) along with a
 /// message and a boolean that indicates whether this is an error or warning.
 void MLIRContext::registerDiagnosticHandler(
-    const std::function<void(Attribute *location, StringRef message,
-                             bool isError)> &handler) {
-  getImpl().issueHandler = handler;
+    const DiagnosticHandlerTy &handler) {
+  getImpl().diagnosticHandler = handler;
 }
 
 /// This emits a diagnostic using the registered issue handle if present, or
@@ -288,14 +287,14 @@ void MLIRContext::registerDiagnosticHandler(
 /// interact with this, it should use methods on Operation instead.
 void MLIRContext::emitDiagnostic(Attribute *location,
                                  const llvm::Twine &message,
-                                 bool isError) const {
+                                 DiagnosticKind kind) const {
   // If we had a handler registered, emit the diagnostic using it.
-  auto handler = getImpl().issueHandler;
-  if (handler)
-    return handler(location, message.str(), isError);
+  auto handler = getImpl().diagnosticHandler;
+  if (handler && location)
+    return handler(location, message.str(), kind);
 
-  // The default behavior for warnings is to ignore them.
-  if (!isError)
+  // The default behavior for notes and warnings is to ignore them.
+  if (kind != DiagnosticKind::Error)
     return;
 
   // The default behavior for errors is to emit them to stderr and exit.

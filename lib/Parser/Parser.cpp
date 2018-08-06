@@ -105,6 +105,7 @@ public:
   MLIRContext *getContext() const { return state.context; }
   Module *getModule() { return state.module; }
   OperationSet &getOperationSet() const { return state.operationSet; }
+  llvm::SourceMgr &getSourceMgr() { return state.lex.getSourceMgr(); }
 
   /// Return the current token the parser is inspecting.
   const Token &getToken() const { return state.curToken; }
@@ -1552,6 +1553,19 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   // If parsing of the basic operation failed, then this whole thing fails.
   if (!op)
     return ParseFailure;
+
+  // Apply location information to the instruction.
+  // TODO(clattner): make this more principled.  We shouldn't overwrite existing
+  // location info, we should use a better serialized form, and we shouldn't
+  // be using the :location attribute.  This is also pretty inefficient.
+  {
+    auto &sourceMgr = getSourceMgr();
+    auto fileID = sourceMgr.FindBufferContainingLoc(loc);
+    auto *srcBuffer = sourceMgr.getMemoryBuffer(fileID);
+    unsigned locationEncoding = loc.getPointer() - srcBuffer->getBufferStart();
+    op->setAttr(builder.getIdentifier(":location"),
+                builder.getIntegerAttr(locationEncoding));
+  }
 
   // We just parsed an operation.  If it is a recognized one, verify that it
   // is structurally as we expect.  If not, produce an error with a reasonable
