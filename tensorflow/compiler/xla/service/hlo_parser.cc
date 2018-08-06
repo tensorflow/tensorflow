@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -117,6 +119,7 @@ class HloParser {
 
   // Types of attributes.
   enum class AttrTy {
+    kBool,
     kInt64,
     kInt32,
     kFloat,
@@ -327,22 +330,15 @@ bool HloParser::ParseComputations() {
     // set the layouts to what the hlo text says.
     for (int p = 0; p < computation->num_parameters(); p++) {
       const Shape& param_shape = computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module_->mutable_host_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
-      TF_CHECK_OK(module_->mutable_device_entry_computation_layout()
+      TF_CHECK_OK(module_->mutable_entry_computation_layout()
                       ->mutable_parameter_layout(p)
                       ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = computation->root_instruction()->shape();
-    TF_CHECK_OK(module_->mutable_host_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
-    TF_CHECK_OK(module_->mutable_device_entry_computation_layout()
+    TF_CHECK_OK(module_->mutable_entry_computation_layout()
                     ->mutable_result_layout()
                     ->CopyLayoutFromShape(result_shape));
   }
-
   return true;
 }
 
@@ -496,6 +492,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateConstant(std::move(literal)));
       break;
     }
+    case HloOpcode::kIota: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateIota(shape));
+      break;
+    }
     // Unary ops.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -516,7 +520,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
-    case HloOpcode::kSort:
     case HloOpcode::kTanh: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -545,6 +548,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kRemainder:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical: {
@@ -558,7 +562,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     // Ternary ops.
     case HloOpcode::kClamp:
-    case HloOpcode::kSelect: {
+    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect: {
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -588,13 +593,30 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     case HloOpcode::kCrossReplicaSum: {
       optional<HloComputation*> to_apply;
+      optional<std::vector<int64>> replica_group_ids;
+      optional<string> barrier;
+      optional<int64> all_reduce_id;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      attrs["replica_group_ids"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &replica_group_ids};
+      attrs["barrier"] = {/*required=*/false, AttrTy::kString, &barrier};
+      attrs["all_reduce_id"] = {/*required=*/false, AttrTy::kInt64,
+                                &all_reduce_id};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateCrossReplicaSum(shape, operands, *to_apply));
+      if (replica_group_ids) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
+                shape, operands, *to_apply, *replica_group_ids,
+                barrier ? *barrier : "", all_reduce_id));
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
+                shape, operands, *to_apply, {}, barrier ? *barrier : "",
+                all_reduce_id));
+      }
       break;
     }
     case HloOpcode::kReshape: {
@@ -606,12 +628,42 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateReshape(shape, operands[0]));
       break;
     }
-    case HloOpcode::kGenerateToken: {
+    case HloOpcode::kAfterAll: {
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateGenerateToken(operands));
+      if (operands.empty()) {
+        instruction = builder->AddInstruction(HloInstruction::CreateToken());
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+      }
+      break;
+    }
+    case HloOpcode::kSort: {
+      auto loc = lexer_.GetLoc();
+
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+          dimensions->size() != 1) {
+        return false;
+      }
+      switch (operands.size()) {
+        case 1:
+          instruction = builder->AddInstruction(HloInstruction::CreateSort(
+              shape, dimensions->at(0), /*keys=*/operands[0]));
+          break;
+        case 2:
+          instruction = builder->AddInstruction(HloInstruction::CreateSort(
+              shape, dimensions->at(0),
+              /*keys=*/operands[0], /*values=*/operands[1]));
+          break;
+        default:
+          return Error(loc, StrCat("expects either 1 or 2 operands, but has ",
+                                   operands.size(), " operands"));
+      }
       break;
     }
     case HloOpcode::kTuple: {
@@ -638,18 +690,27 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     case HloOpcode::kRecv: {
       optional<tensorflow::int64> channel_id;
+      // If the is_host_transfer attribute is not present then default to false.
+      optional<bool> is_host_transfer = false;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+      attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
+                                   &is_host_transfer};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateRecv(shape.tuple_shapes(0), *channel_id));
+      // If the is_host_transfer attribute is not present then default to false.
+      instruction = builder->AddInstruction(HloInstruction::CreateRecv(
+          shape.tuple_shapes(0), operands[0], *channel_id, *is_host_transfer));
       break;
     }
     case HloOpcode::kRecvDone: {
       optional<tensorflow::int64> channel_id;
+      // If the is_host_transfer attribute is not present then default to false.
+      optional<bool> is_host_transfer = false;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
+                                   &is_host_transfer};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -657,24 +718,32 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (channel_id != operands[0]->channel_id()) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateRecvDone(operands[0]));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateRecvDone(operands[0], *is_host_transfer));
       break;
     }
     case HloOpcode::kSend: {
       optional<tensorflow::int64> channel_id;
+      // If the is_host_transfer attribute is not present then default to false.
+      optional<bool> is_host_transfer = false;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+      attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
+                                   &is_host_transfer};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateSend(operands[0], *channel_id));
+      instruction = builder->AddInstruction(HloInstruction::CreateSend(
+          operands[0], operands[1], *channel_id, *is_host_transfer));
       break;
     }
     case HloOpcode::kSendDone: {
       optional<tensorflow::int64> channel_id;
+      // If the is_host_transfer attribute is not present then default to false.
+      optional<bool> is_host_transfer = false;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
+                                   &is_host_transfer};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -682,8 +751,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (channel_id != operands[0]->channel_id()) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateSendDone(operands[0]));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateSendDone(operands[0], *is_host_transfer));
       break;
     }
     case HloOpcode::kGetTupleElement: {
@@ -796,18 +865,28 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kReduce: {
+      auto loc = lexer_.GetLoc();
+
       optional<HloComputation*> reduce_computation;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
       optional<std::vector<tensorflow::int64>> dimensions_to_reduce;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions_to_reduce};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
+      if (operands.size() % 2) {
+        return Error(loc, StrCat("expects an even number of operands, but has ",
+                                 operands.size(), " operands"));
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateReduce(
-          shape, /*operand=*/operands[0], /*init_value=*/operands[1],
+          shape, /*operands=*/
+          tensorflow::gtl::ArraySlice<HloInstruction*>(operands, 0,
+                                                       operands.size() / 2),
+          /*init_values=*/
+          tensorflow::gtl::ArraySlice<HloInstruction*>(
+              operands, operands.size() / 2, operands.size()),
           *dimensions_to_reduce, *reduce_computation));
       break;
     }
@@ -967,23 +1046,53 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed: {
       optional<string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateInfeed(shape, config ? *config : ""));
+      // We need to know the infeed data shape to construct the infeed
+      // instruction. This is the zero-th element of the tuple-shaped output of
+      // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
+      // if the shape is not a non-empty tuple, so add guard so an error message
+      // can be emitted instead of a check fail
+      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+        return Error(lexer_.GetLoc(),
+                     "infeed must have a non-empty tuple shape");
+      }
+
+      if (operands.empty()) {
+        // TODO(b/80000000): Remove this when all uses of infeed are
+        // converted to take tokens.
+        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
+            ShapeUtil::GetTupleElementShape(shape, 0), config ? *config : ""));
+      } else if (operands.size() == 1) {
+        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
+            ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
+            config ? *config : ""));
+      } else {
+        return Error(lexer_.GetLoc(),
+                     "infeed must have exactly zero or one operands");
+      }
       break;
     }
     case HloOpcode::kOutfeed: {
       optional<string> config;
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-          operands[0]->shape(), operands[0], config ? *config : ""));
+      if (operands.size() == 1) {
+        // TODO(b/80000000): Remove this when all uses of outfeed are
+        // converted to take tokens.
+        instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+            operands[0]->shape(), operands[0], config ? *config : ""));
+      } else if (operands.size() == 2) {
+        instruction = builder->AddInstruction(
+            HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
+                                          operands[1], config ? *config : ""));
+      } else {
+        return Error(lexer_.GetLoc(),
+                     "outfeed must have exactly one or two operands");
+      }
       break;
     }
     case HloOpcode::kRng: {
@@ -1033,13 +1142,24 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     case HloOpcode::kCustomCall: {
       optional<string> custom_call_target;
+      optional<Window> window;
+      optional<ConvolutionDimensionNumbers> dnums;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
+      attrs["dim_labels"] = {/*required=*/false,
+                             AttrTy::kConvolutionDimensionNumbers, &dnums};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
           shape, operands, *custom_call_target));
+      if (window.has_value()) {
+        instruction->set_window(*window);
+      }
+      if (dnums.has_value()) {
+        instruction->set_convolution_dimension_numbers(*dnums);
+      }
       break;
     }
     case HloOpcode::kHostCompute: {
@@ -1120,15 +1240,52 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
 
-      GatherDimensionNumbers dim_numbers = HloInstruction::MakeGatherDimNumbers(
-          /*output_window_dims=*/*output_window_dims,
-          /*elided_window_dims=*/*elided_window_dims,
-          /*gather_dims_to_operand_dims=*/*gather_dims_to_operand_dims,
-          /*index_vector_dim=*/*index_vector_dim);
+      GatherDimensionNumbers dim_numbers =
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*output_window_dims=*/*output_window_dims,
+              /*elided_window_dims=*/*elided_window_dims,
+              /*gather_dims_to_operand_dims=*/*gather_dims_to_operand_dims,
+              /*index_vector_dim=*/*index_vector_dim);
 
       instruction = builder->AddInstruction(HloInstruction::CreateGather(
           shape, /*operand=*/operands[0], /*gather_indices=*/operands[1],
           dim_numbers, *window_bounds));
+      break;
+    }
+    case HloOpcode::kScatter: {
+      optional<std::vector<tensorflow::int64>> update_window_dims;
+      attrs["update_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &update_window_dims};
+      optional<std::vector<tensorflow::int64>> inserted_window_dims;
+      attrs["inserted_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &inserted_window_dims};
+      optional<std::vector<tensorflow::int64>> scatter_dims_to_operand_dims;
+      attrs["scatter_dims_to_operand_dims"] = {/*required=*/true,
+                                               AttrTy::kBracedInt64List,
+                                               &scatter_dims_to_operand_dims};
+      optional<tensorflow::int64> index_vector_dim;
+      attrs["index_vector_dim"] = {/*required=*/true, AttrTy::kInt64,
+                                   &index_vector_dim};
+
+      optional<HloComputation*> update_computation;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &update_computation};
+
+      if (!ParseOperands(&operands, /*expected_size=*/3) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+
+      ScatterDimensionNumbers dim_numbers =
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/*update_window_dims,
+              /*inserted_window_dims=*/*inserted_window_dims,
+              /*scatter_dims_to_operand_dims=*/*scatter_dims_to_operand_dims,
+              /*index_vector_dim=*/*index_vector_dim);
+
+      instruction = builder->AddInstruction(HloInstruction::CreateScatter(
+          shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
+          /*updates=*/operands[2], *update_computation, dim_numbers));
       break;
     }
     case HloOpcode::kDomain: {
@@ -1139,8 +1296,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateDomain(
-          shape, operands[0], std::move(domain.entry_metadata),
-          std::move(domain.exit_metadata)));
+          shape, operands[0], std::move(domain.exit_metadata),
+          std::move(domain.entry_metadata)));
       break;
     }
     case HloOpcode::kTrace:
@@ -1479,6 +1636,24 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
           "value ", value, " is out of range for literal's primitive type ",
           PrimitiveType_Name(literal->shape().element_type())));
     }
+  } else if (std::is_unsigned<LiteralNativeT>::value) {
+    CHECK((std::is_same<ParsedElemT, tensorflow::int64>::value ||
+           std::is_same<ParsedElemT, bool>::value))
+        << "Unimplemented checking for ParsedElemT";
+
+    ParsedElemT upper_bound;
+    if (sizeof(LiteralNativeT) >= sizeof(ParsedElemT)) {
+      upper_bound = std::numeric_limits<ParsedElemT>::max();
+    } else {
+      upper_bound =
+          static_cast<ParsedElemT>(std::numeric_limits<LiteralNativeT>::max());
+    }
+    if (value > upper_bound || value < 0) {
+      // Value is out of range for LiteralNativeT.
+      return TokenError(StrCat(
+          "value ", value, " is out of range for literal's primitive type ",
+          PrimitiveType_Name(literal->shape().element_type())));
+    }
   } else if (value > static_cast<ParsedElemT>(
                          std::numeric_limits<LiteralNativeT>::max()) ||
              value < static_cast<ParsedElemT>(
@@ -1547,7 +1722,7 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
       }
     }
   }
-  *literal = Literal::MakeTupleOwned(std::move(elements));
+  *literal = LiteralUtil::MakeTupleOwned(std::move(elements));
   return ParseToken(TokKind::kRparen,
                     StrCat("expects ')' at the end of the tuple with ",
                            ShapeUtil::TupleElementCount(shape), "elements"));
@@ -1575,8 +1750,8 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
   }
 
   // Create a literal with the given shape in default layout.
-  *literal = Literal::CreateFromDimensions(shape.element_type(),
-                                           AsInt64Slice(shape.dimensions()));
+  *literal = LiteralUtil::CreateFromDimensions(
+      shape.element_type(), AsInt64Slice(shape.dimensions()));
   tensorflow::int64 nest_level = 0;
   tensorflow::int64 linear_index = 0;
   // elems_seen_per_dim[i] is how many elements or sub-arrays we have seen for
@@ -1969,6 +2144,14 @@ bool HloParser::ParseAttributeHelper(
   bool success = [&] {
     LocTy attr_loc = lexer_.GetLoc();
     switch (attr_type) {
+      case AttrTy::kBool: {
+        bool result;
+        if (!ParseBool(&result)) {
+          return false;
+        }
+        static_cast<optional<bool>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kInt64: {
         tensorflow::int64 result;
         if (!ParseInt64(&result)) {

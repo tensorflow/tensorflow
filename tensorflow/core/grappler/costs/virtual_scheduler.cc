@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -652,39 +653,42 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
   CHECK(!initialized_) << "GetNodeStateOrCreateIt is called after Init().";
 
   auto it = node_map_.find(node);
-  if (it == node_map_.end()) {
-    // Not found; create a NodeState for this node.
-    it = node_map_.emplace(node, NodeState()).first;
-    auto& node_state = it->second;
-    node_state.input_properties =
-        graph_properties_.GetInputProperties(node->name());
-    node_state.output_properties =
-        graph_properties_.GetOutputProperties(node->name());
-
-    // Some ops may need further processing to the input / output properties:
-    // _Send and _Recv.
-    MaybeUpdateInputOutput(node);
-
-    if (!IsSend(*node)) {
-      node_state.device_name = DeviceName(node);
-      // For _Send op, device_name will be set to Channel in CreateSendRecv().
-    }
-
-    // Initialize output port related data:
-    // Assume the size of OutputProperties represents the number of output ports
-    // of this node.
-    for (size_t i = 0; i < node_state.output_properties.size(); ++i) {
-      node_state.time_no_references[i] = Costs::Duration::max();
-      node_state.num_outputs_executed[i] = 0;
-      // Populate an empty vector for each port. The caller will add nodes
-      // that use this port as input.
-      node_state.outputs[i] = {};
-    }
-    // Port_num -1 is for control dependency.
-    node_state.time_no_references[-1] = Costs::Duration::max();
-    node_state.num_outputs_executed[-1] = 0;
-    node_state.outputs[-1] = {};
+  if (it != node_map_.end()) {
+    return it->second;
   }
+
+  // Not found; create a NodeState for this node.
+  it = node_map_.emplace(node, NodeState()).first;
+  auto& node_state = it->second;
+  node_state.input_properties =
+      graph_properties_.GetInputProperties(node->name());
+  node_state.output_properties =
+      graph_properties_.GetOutputProperties(node->name());
+
+  // Some ops may need further processing to the input / output properties:
+  // _Send and _Recv.
+  MaybeUpdateInputOutput(node);
+
+  if (!IsSend(*node)) {
+    node_state.device_name = DeviceName(node);
+    // For _Send op, device_name will be set to Channel in CreateSendRecv().
+  }
+
+  // Initialize output port related data:
+  // Assume the size of OutputProperties represents the number of output ports
+  // of this node.
+  for (size_t i = 0; i < node_state.output_properties.size(); ++i) {
+    node_state.time_no_references[i] = Costs::Duration::max();
+    node_state.num_outputs_executed[i] = 0;
+    // Populate an empty vector for each port. The caller will add nodes
+    // that use this port as input.
+    node_state.outputs[i] = {};
+  }
+  // Port_num -1 is for control dependency.
+  node_state.time_no_references[-1] = Costs::Duration::max();
+  node_state.num_outputs_executed[-1] = 0;
+  node_state.outputs[-1] = {};
+
   return it->second;
 }
 
@@ -858,8 +862,10 @@ Costs VirtualScheduler::Summary() const {
     const auto& memory_cost = op_cost_pair.second.memory_time.count();
     const bool is_op_cost_accurate = !op_cost_pair.second.inaccurate;
     if (cost) {  // Skip printing out zero-cost ops.
-      VLOG(1) << " + " << op << " : " << (is_op_cost_accurate ? "" : "~")
-              << cost << " / " << compute_cost << " / " << memory_cost;
+      VLOG(1) << strings::Printf(
+          " + %30s : %c %10lld / %10lld / %10lld", op.c_str(),
+          (is_op_cost_accurate ? ' ' : '~'), static_cast<int64>(cost),
+          static_cast<int64>(compute_cost), static_cast<int64>(memory_cost));
     }
   }
 
@@ -900,7 +906,7 @@ Costs VirtualScheduler::Summary() const {
             << ", at the end: "
             << strings::HumanReadableNumBytes(state.memory_usage);
 
-    VLOG(1) << "Per-op execution time compute time / memory time "
+    VLOG(1) << "Per-op execution time / compute time / memory time "
                "(and memory usage at peak memory usage):";
 
     // Profile non-persistent op memory usage.
@@ -934,9 +940,13 @@ Costs VirtualScheduler::Summary() const {
                                : 0.0;
       if (cost || mem_usage_percent > 1.0) {
         // Print out only non-zero cost ops or ops with > 1% memory usage.
-        VLOG(1) << " + " << op << " : " << (is_op_cost_accurate ? "" : "~")
-                << cost << " / " << compute_cost << " / " << memory_cost << " ("
-                << strings::HumanReadableNumBytes(op_mem_usage) << " ["
+        VLOG(1) << strings::Printf(" + %30s : %c %10lld / %10lld / %10lld",
+                                   op.c_str(),
+                                   (is_op_cost_accurate ? ' ' : '~'),
+                                   static_cast<int64>(cost),
+                                   static_cast<int64>(compute_cost),
+                                   static_cast<int64>(memory_cost))
+                << " (" << strings::HumanReadableNumBytes(op_mem_usage) << " ["
                 << mem_usage_percent << "%] "
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
@@ -974,55 +984,59 @@ Costs VirtualScheduler::Summary() const {
 }
 
 Costs VirtualScheduler::Summary(RunMetadata* metadata) {
-  if (metadata != nullptr) {
-    StepStats* stepstats = metadata->mutable_step_stats();
-    for (const auto& device : device_) {
-      GraphDef* device_partition_graph = metadata->add_partition_graphs();
-      DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
-      device_stepstats->set_device(device.first);
-      for (const auto& node_def : device.second.nodes_executed) {
-        const NodeState& nodestate = node_map_.at(node_def);
-        NodeExecStats* node_stats = device_stepstats->add_node_stats();
-        uint64 total_output_size = 0;
-        for (int slot = 0; slot < nodestate.output_properties.size(); slot++) {
-          const auto& properties = nodestate.output_properties[slot];
-          NodeOutput* no = node_stats->add_output();
-          no->set_slot(slot);
-          TensorDescription* tensor_descr = no->mutable_tensor_description();
-          tensor_descr->set_dtype(properties.dtype());
-          *tensor_descr->mutable_shape() = properties.shape();
-          // Optional allocation description.
-          const auto tensor_size =
-              CalculateOutputSize(nodestate.output_properties, slot);
-          total_output_size += tensor_size;
-          tensor_descr->mutable_allocation_description()->set_requested_bytes(
-              tensor_size);
-          tensor_descr->mutable_allocation_description()->set_allocated_bytes(
-              tensor_size);
-        }
-        node_stats->set_timeline_label(node_def->op());
-        node_stats->set_node_name(node_def->name());
-        node_stats->set_op_start_rel_micros(0);
-        node_stats->set_all_start_micros(
-            nodestate.time_scheduled.asMicroSeconds().count());
-        node_stats->set_op_end_rel_micros(
-            nodestate.time_finished.asMicroSeconds().count() -
-            nodestate.time_scheduled.asMicroSeconds().count());
-        node_stats->set_all_end_rel_micros(
-            nodestate.time_finished.asMicroSeconds().count() -
-            nodestate.time_scheduled.asMicroSeconds().count());
-        auto* mem_stats = node_stats->mutable_memory_stats();
-        // VirtualScheduler does not specify scratch pad memory usage.
-        mem_stats->set_temp_memory_size(0);
-        int64 persistent_memory_size = 0;
-        if (IsPersistentNode(node_def)) {
-          persistent_memory_size = total_output_size;
-        }
-        mem_stats->set_persistent_memory_size(persistent_memory_size);
-        *device_partition_graph->add_node() = *node_def;
+  if (!metadata) {
+    return Summary();
+  }
+
+  // Fill RunMetadata.
+  StepStats* stepstats = metadata->mutable_step_stats();
+  for (const auto& device : device_) {
+    GraphDef* device_partition_graph = metadata->add_partition_graphs();
+    DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
+    device_stepstats->set_device(device.first);
+    for (const auto& node_def : device.second.nodes_executed) {
+      const NodeState& nodestate = node_map_.at(node_def);
+      NodeExecStats* node_stats = device_stepstats->add_node_stats();
+      uint64 total_output_size = 0;
+      for (int slot = 0; slot < nodestate.output_properties.size(); slot++) {
+        const auto& properties = nodestate.output_properties[slot];
+        NodeOutput* no = node_stats->add_output();
+        no->set_slot(slot);
+        TensorDescription* tensor_descr = no->mutable_tensor_description();
+        tensor_descr->set_dtype(properties.dtype());
+        *tensor_descr->mutable_shape() = properties.shape();
+        // Optional allocation description.
+        const auto tensor_size =
+            CalculateOutputSize(nodestate.output_properties, slot);
+        total_output_size += tensor_size;
+        tensor_descr->mutable_allocation_description()->set_requested_bytes(
+            tensor_size);
+        tensor_descr->mutable_allocation_description()->set_allocated_bytes(
+            tensor_size);
       }
+      node_stats->set_timeline_label(node_def->op());
+      node_stats->set_node_name(node_def->name());
+      node_stats->set_op_start_rel_micros(0);
+      node_stats->set_all_start_micros(
+          nodestate.time_scheduled.asMicroSeconds().count());
+      node_stats->set_op_end_rel_micros(
+          nodestate.time_finished.asMicroSeconds().count() -
+          nodestate.time_scheduled.asMicroSeconds().count());
+      node_stats->set_all_end_rel_micros(
+          nodestate.time_finished.asMicroSeconds().count() -
+          nodestate.time_scheduled.asMicroSeconds().count());
+      auto* mem_stats = node_stats->mutable_memory_stats();
+      // VirtualScheduler does not specify scratch pad memory usage.
+      mem_stats->set_temp_memory_size(0);
+      int64 persistent_memory_size = 0;
+      if (IsPersistentNode(node_def)) {
+        persistent_memory_size = total_output_size;
+      }
+      mem_stats->set_persistent_memory_size(persistent_memory_size);
+      *device_partition_graph->add_node() = *node_def;
     }
   }
+
   return Summary();
 }
 

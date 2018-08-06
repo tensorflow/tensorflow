@@ -22,7 +22,7 @@ import functools
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -68,7 +68,7 @@ def _NumpyUpdate(indices, updates, shape):
   return _NumpyScatterNd(ref, indices, updates, lambda p, u: u)
 
 
-class ScatterNdTest(XLATestCase):
+class ScatterNdTest(xla_test.XLATestCase):
 
   def _VariableRankTest(self,
                         np_scatter,

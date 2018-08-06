@@ -42,6 +42,20 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
+  // Different backends can have very different ways to do fusion, so we give
+  // backends the flexibility to decide whether an fusion instruction can share
+  // buffer with it's operands. If this is not specified, a default strategy
+  // will be used; if this is specified, it will be applied *in addition* to the
+  // default strategy.
+  //
+  // The first parameter of the function should be the fusion instruction, the
+  // second parameter should be an operand of the fusion instruction.
+  //
+  // TODO(b/80315712): Find a better way to tell whether a fusion can share
+  // buffer.
+  using FusionCanShareBufferFunction = std::function<bool(
+      const HloInstruction* fusion, const HloInstruction* operand)>;
+
   // Run dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -61,7 +75,10 @@ class HloDataflowAnalysis {
   //     value of its operand.
   static StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
-      bool bitcast_defines_value = false);
+      bool bitcast_defines_value = false,
+      const FusionCanShareBufferFunction& fusion_can_share_buffer = nullptr);
+
+  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -136,8 +153,10 @@ class HloDataflowAnalysis {
                                      const ShapeIndex& user_index) const;
 
  protected:
-  HloDataflowAnalysis(const HloModule& module, bool ssa_form,
-                      bool bitcast_defines_value = false);
+  HloDataflowAnalysis(
+      const HloModule& module, bool ssa_form,
+      bool bitcast_defines_value = false,
+      const FusionCanShareBufferFunction& fusion_can_share_buffer = nullptr);
 
   // Returns a new HloValue defined at the given instruction and shape index.
   HloValue* NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
@@ -166,10 +185,11 @@ class HloDataflowAnalysis {
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
+  bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
-  bool UpdateSelectValueSet(HloInstruction* select);
+  bool UpdateTupleSelectValueSet(HloInstruction* select);
   bool UpdateSendValueSet(HloInstruction* send);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
@@ -221,6 +241,10 @@ class HloDataflowAnalysis {
 
   // The Id to use for the next HloValue.
   HloValue::Id next_value_id_ = 0;
+
+  // Backend specific function that decides whether a fusion can share buffer
+  // with its operand.
+  FusionCanShareBufferFunction fusion_can_share_buffer_ = nullptr;
 };
 
 }  // namespace xla

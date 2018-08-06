@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -48,15 +49,15 @@ void QuantizeMultiplierGreaterThanOne(double double_multiplier,
   TFLITE_CHECK_GE(*left_shift, 0);
 }
 
-void QuantizeMultiplierSmallerThanOne(double double_multiplier,
-                                      int32_t* quantized_multiplier,
-                                      int* right_shift) {
+void QuantizeMultiplierSmallerThanOneExp(double double_multiplier,
+                                         int32_t* quantized_multiplier,
+                                         int* left_shift) {
   TFLITE_CHECK_LT(double_multiplier, 1.);
   TFLITE_CHECK_GT(double_multiplier, 0.);
   int shift;
   QuantizeMultiplier(double_multiplier, quantized_multiplier, &shift);
   TFLITE_CHECK_LE(shift, 0);
-  *right_shift = -shift;
+  *left_shift = shift;
 }
 
 void PreprocessSoftmaxScaling(double beta, double input_scale,
@@ -78,20 +79,21 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
                                    quantized_multiplier, left_shift);
 }
 
-void PreprocessLogSoftmaxScaling(double beta, double input_scale,
-                                 int input_integer_bits,
-                                 int32_t* quantized_multiplier, int* left_shift,
-                                 int32_t* reverse_scaling_divisor,
-                                 int* reverse_scaling_right_shift) {
+void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
+                                    int input_integer_bits,
+                                    int32_t* quantized_multiplier,
+                                    int* left_shift,
+                                    int32_t* reverse_scaling_divisor,
+                                    int* reverse_scaling_left_shift) {
   PreprocessSoftmaxScaling(beta, input_scale, input_integer_bits,
                            quantized_multiplier, left_shift);
 
   // Also calculate what amounts to the inverse scaling factor for the input.
   const double real_reverse_scaling_divisor =
       (1 << (31 - *left_shift)) / static_cast<double>(*quantized_multiplier);
-  tflite::QuantizeMultiplierSmallerThanOne(real_reverse_scaling_divisor,
-                                           reverse_scaling_divisor,
-                                           reverse_scaling_right_shift);
+  tflite::QuantizeMultiplierSmallerThanOneExp(real_reverse_scaling_divisor,
+                                              reverse_scaling_divisor,
+                                              reverse_scaling_left_shift);
 }
 
 int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
@@ -107,12 +109,12 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
 void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
                             float* nudged_min, float* nudged_max,
-                            float* scale) {
+                            float* nudged_scale) {
   // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
   const float quant_min_float = static_cast<float>(quant_min);
   const float quant_max_float = static_cast<float>(quant_max);
-  *scale = (max - min) / (quant_max_float - quant_min_float);
-  const float zero_point_from_min = quant_min_float - min / *scale;
+  *nudged_scale = (max - min) / (quant_max_float - quant_min_float);
+  const float zero_point_from_min = quant_min_float - min / *nudged_scale;
   uint16 nudged_zero_point;
   if (zero_point_from_min < quant_min_float) {
     nudged_zero_point = static_cast<uint16>(quant_min);
@@ -121,8 +123,37 @@ void NudgeQuantizationRange(const float min, const float max,
   } else {
     nudged_zero_point = static_cast<uint16>(TfLiteRound(zero_point_from_min));
   }
-  *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
-  *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
+  *nudged_min = (quant_min_float - nudged_zero_point) * (*nudged_scale);
+  *nudged_max = (quant_max_float - nudged_zero_point) * (*nudged_scale);
+}
+
+void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
+                       const float nudged_max, const float* input_data,
+                       float* output_data, const float size) {
+  // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
+  const float inv_nudged_scale = 1.0f / nudged_scale;
+
+  for (int i = 0; i < size; i++) {
+    const float src_val = input_data[i];
+    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
+    const float clamped_shifted = clamped - nudged_min;
+    const float dst_val =
+        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
+        nudged_min;
+    output_data[i] = dst_val;
+  }
+}
+
+bool CheckedLog2(const float x, int* log2_result) {
+  // Using TfLiteRound instead of std::round and std::log instead of
+  // std::log2 to work around these fuctions being missing in a toolchain
+  // used in some TensorFlow tests as of May 2018.
+  const float x_log2 = std::log(x) * (1.0f / std::log(2.0f));
+  const float x_log2_rounded = TfLiteRound(x_log2);
+  const float x_log2_fracpart = x_log2 - x_log2_rounded;
+
+  *log2_result = static_cast<int>(x_log2_rounded);
+  return std::abs(x_log2_fracpart) < 1e-3;
 }
 
 }  // namespace tflite

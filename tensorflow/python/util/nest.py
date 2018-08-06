@@ -73,7 +73,7 @@ def _sequence_like(instance, args):
   Returns:
     `args` with the type of `instance`.
   """
-  if isinstance(instance, dict):
+  if isinstance(instance, (dict, _collections.Mapping)):
     # Pack dictionaries in a deterministic order by sorting the keys.
     # Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -89,7 +89,7 @@ def _sequence_like(instance, args):
 
 
 def _yield_value(iterable):
-  if isinstance(iterable, dict):
+  if isinstance(iterable, (dict, _collections.Mapping)):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -167,11 +167,14 @@ def assert_same_structure(nest1, nest2, check_types=True):
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
-    check_types: if `True` (default) types of sequences are checked as
-        well, including the keys of dictionaries. If set to `False`, for example
-        a list and a tuple of objects will look the same if they have the same
+    check_types: if `True` (default) types of sequences are checked as well,
+        including the keys of dictionaries. If set to `False`, for example a
+        list and a tuple of objects will look the same if they have the same
         size. Note that namedtuples with identical name and fields are always
-        considered to have the same shallow structure.
+        considered to have the same shallow structure. Two types will also be
+        considered the same if they are both list subtypes (which allows "list"
+        and "_ListWrapper" from checkpointable dependency tracking to compare
+        equal).
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -212,7 +215,7 @@ def flatten_dict_items(dictionary):
     ValueError: If any key and value have not the same structure, or if keys are
       not unique.
   """
-  if not isinstance(dictionary, dict):
+  if not isinstance(dictionary, (dict, _collections.Mapping)):
     raise TypeError("input must be a dictionary")
   flat_dictionary = {}
   for i, v in _six.iteritems(dictionary):
@@ -374,6 +377,62 @@ def map_structure(func, *structure, **check_types_dict):
       structure[0], [func(*x) for x in entries])
 
 
+def map_structure_with_paths(func, *structure, **kwargs):
+  """Applies `func` to each entry in `structure` and returns a new structure.
+
+  Applies `func(path, x[0], x[1], ..., **kwargs)` where x[i] is an entry in
+  `structure[i]` and `path` is the common path to x[i] in the structures.  All
+  structures in `structure` must have the same arity, and the return value will
+  contain the results in the same structure. Special kwarg `check_types`
+  determines whether the types of iterables within the structure must be the
+  same-- see **kwargs definition below.
+
+  Args:
+    func: A callable with the signature func(path, *values, **kwargs) that is
+      evaluated on the leaves of the structure.
+    *structure: A variable number of compatible structures to process.
+    **kwargs: Optional kwargs to be passed through to func. Special kwarg
+      `check_types` is not passed to func, but instead determines whether the
+      types of iterables within the structures have to be same (e.g.,
+      `map_structure(func, [1], (1,))` raises a `TypeError` exception). By
+      default, the types must match. To allow iteration over structures of
+      different types (but common arity), set this kwarg to `False`.
+
+  Returns:
+    A structure of the same form as the input structures whose leaves are the
+    result of evaluating func on corresponding leaves of the input structures.
+
+  Raises:
+    TypeError: If `func` is not callable or if the structures do not match
+      each other by depth tree.
+    TypeError: If `check_types` is not `False` and the two structures differ in
+      the type of sequence in any of their substructures.
+    ValueError: If no structures are provided.
+  """
+  if not callable(func):
+    raise TypeError("func must be callable, got: %s" % func)
+  if not structure:
+    raise ValueError("Must provide at least one structure")
+
+  check_types = kwargs.pop("check_types", True)
+  for other in structure[1:]:
+    assert_same_structure(structure[0], other, check_types=check_types)
+
+  # First set paths_and_values to:
+  # [[(p11, v11), ... (p1n, v1n)], ... [(pm1, vm1), ... (pmn, vmn)]]
+  paths_and_values = [flatten_with_joined_string_paths(s) for s in structure]
+
+  # Now zip(*paths_and_values) would be:
+  # [((p11, v11), ... (pm1, vm1)), ... ((p1n, v1n), ... (pmn, vmn))]
+  # so grouped_by_path is set to:
+  # [[(p11, ... pm1), (v11, ... vm1)], ... [(p1n, ... pmn), (v1n, ... vmn)]]
+  # Note that p1i, ... pmi must all be equal since the structures are the same.
+  grouped_by_path = [zip(*p_v) for p_v in zip(*paths_and_values)]
+
+  return pack_sequence_as(structure[0], [
+      func(paths[0], *values, **kwargs) for paths, values in grouped_by_path])
+
+
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
   if is_sequence(shallow_tree):
@@ -452,7 +511,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
 
-    if check_types and isinstance(shallow_tree, dict):
+    if check_types and isinstance(shallow_tree, (dict, _collections.Mapping)):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
             "The two structures don't have the same keys. Input "
@@ -713,7 +772,7 @@ def yield_flat_paths(nest):
 
   # The _maybe_add_final_path_element function is used below in order to avoid
   # adding trailing slashes when the sub-element recursed into is a leaf.
-  if isinstance(nest, dict):
+  if isinstance(nest, (dict, _collections.Mapping)):
     for key in _sorted(nest):
       value = nest[key]
       for sub_path in yield_flat_paths(value):
@@ -757,3 +816,4 @@ def flatten_with_joined_string_paths(structure, separator="/"):
 
 
 _pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
+_pywrap_tensorflow.RegisterMappingClass(_collections.Mapping)

@@ -2549,14 +2549,16 @@ REGISTER_OP("ExtractImagePatches")
 REGISTER_OP("Bitcast")
     .Input("input: T")
     .Output("output: type")
-    // All supported dtypes are listed here to include qint16 and quint16.
+    // All supported dtypes are listed here to include qint16, quint16, uint32,
+    // and uint64.
     .Attr(
-        "T: {bfloat16, half, float, double, int64, int32, uint8, uint16, int8, "
-        "int16, complex64, complex128, qint8, quint8, qint16, quint16, qint32}")
+        "T: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
+        "uint32, uint64, int8, int16, complex64, complex128, qint8, quint8, "
+        "qint16, quint16, qint32}")
     .Attr(
         "type: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
-        "int8, int16, complex64, complex128, qint8, quint8, qint16, quint16, "
-        "qint32}")
+        "uint32, uint64, int8, int16, complex64, complex128, qint8, quint8, "
+        "qint16, quint16, qint32}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {
@@ -2879,7 +2881,7 @@ REGISTER_OP("ScatterNdNonAliasingAdd")
     .Input("indices: Tindices")
     .Input("updates: T")
     .Output("output: T")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 

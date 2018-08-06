@@ -18,7 +18,7 @@ limitations under the License.
 namespace xla {
 
 HloReachabilityMap::HloReachabilityMap(
-    const std::list<HloInstruction*>& instructions)
+    tensorflow::gtl::ArraySlice<const HloInstruction*> instructions)
     : size_(instructions.size()) {
   bit_vectors_.reserve(size_);
   for (const HloInstruction* hlo : instructions) {

@@ -109,7 +109,7 @@ limitations under the License.
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -199,6 +199,20 @@ tensorflow::ImportNumpy();
     SWIG_fail;
   }
 }
+
+%typemap(out) StatusOr<xla::swig::LocalShapedBufferTuple*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::LocalShapedBufferTuple*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
 
 %typemap(out) StatusOr< std::unique_ptr<Literal> > {
   if ($1.ok()) {
@@ -905,6 +919,9 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
+%unignore xla::swig::LocalShapedBufferTuple;
+%unignore xla::swig::LocalShapedBufferTuple::Release;
+%unignore xla::swig::LocalShapedBufferTuple::size;
 %unignore xla::swig::CompiledLocalComputation;
 %unignore xla::swig::CompiledLocalComputation::Execute;
 %unignore xla::swig::CompiledLocalComputation::ExecuteWithShapedBuffers;
@@ -940,6 +957,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Tuple;
 %unignore xla::swig::LocalComputationBuilder::GetTupleElement;
 %unignore xla::swig::LocalComputationBuilder::ConvertElementType;
+%unignore xla::swig::LocalComputationBuilder::BitcastConvertType;
 %unignore xla::swig::LocalComputationBuilder::Call;
 %unignore xla::swig::LocalComputationBuilder::Transpose;
 %unignore xla::swig::LocalComputationBuilder::Rev;
@@ -971,6 +989,10 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Min;
 %unignore xla::swig::LocalComputationBuilder::And;
 %unignore xla::swig::LocalComputationBuilder::Or;
+%unignore xla::swig::LocalComputationBuilder::Xor;
+%unignore xla::swig::LocalComputationBuilder::ShiftLeft;
+%unignore xla::swig::LocalComputationBuilder::ShiftRightArithmetic;
+%unignore xla::swig::LocalComputationBuilder::ShiftRightLogical;
 %unignore xla::swig::LocalComputationBuilder::Not;
 %unignore xla::swig::LocalComputationBuilder::Abs;
 %unignore xla::swig::LocalComputationBuilder::Exp;
@@ -984,13 +1006,34 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Cos;
 %unignore xla::swig::LocalComputationBuilder::Sin;
 %unignore xla::swig::LocalComputationBuilder::Tanh;
-%unignore xla::swig::LocalComputationBuilder::SqrtF32;
-%unignore xla::swig::LocalComputationBuilder::SquareF32;
-%unignore xla::swig::LocalComputationBuilder::Pow;
+%unignore xla::swig::LocalComputationBuilder::Atan2;
 %unignore xla::swig::LocalComputationBuilder::IsFinite;
-%unignore xla::swig::LocalComputationBuilder::ReciprocalF32;
+%unignore xla::swig::LocalComputationBuilder::Pow;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
+%unignore xla::swig::LocalComputationBuilder::Sqrt;
+%unignore xla::swig::LocalComputationBuilder::Rsqrt;
+%unignore xla::swig::LocalComputationBuilder::Square;
+%unignore xla::swig::LocalComputationBuilder::Reciprocal;
+%unignore xla::swig::LocalComputationBuilder::Erfc;
+%unignore xla::swig::LocalComputationBuilder::Erf;
+%unignore xla::swig::LocalComputationBuilder::ErfInv;
+%unignore xla::swig::LocalComputationBuilder::Lgamma;
+%unignore xla::swig::LocalComputationBuilder::Digamma;
+%unignore xla::swig::LocalComputationBuilder::Acos;
+%unignore xla::swig::LocalComputationBuilder::Asin;
+%unignore xla::swig::LocalComputationBuilder::Atan;
+%unignore xla::swig::LocalComputationBuilder::Tan;
+%unignore xla::swig::LocalComputationBuilder::Acosh;
+%unignore xla::swig::LocalComputationBuilder::Asinh;
+%unignore xla::swig::LocalComputationBuilder::Atanh;
+%unignore xla::swig::LocalComputationBuilder::Cosh;
+%unignore xla::swig::LocalComputationBuilder::Sinh;
+%unignore xla::swig::LocalComputationBuilder::Real;
+%unignore xla::swig::LocalComputationBuilder::Imag;
+%unignore xla::swig::LocalComputationBuilder::Conj;
+%unignore xla::swig::LocalComputationBuilder::Complex;
+%unignore xla::swig::DestructureLocalShapedBufferTuple;
 %unignore xla::swig::DeleteLocalShapedBuffer;
 %unignore xla::swig::DeleteLocalComputation;
 %unignore xla::swig::DeleteCompiledLocalComputation;

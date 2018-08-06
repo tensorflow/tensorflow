@@ -76,7 +76,7 @@ bool UnrollBatchMatMul::Run(Model* model, std::size_t op_index) {
   AddMessageF("Unrolling BatchMatMul %s %d times", LogName(*batch_op),
               batch_count);
   auto tail_it = batch_op_it;
-  std::vector<string> stack_inputs;
+  std::vector<string> pack_inputs;
   for (int batch = 0; batch < batch_count; ++batch) {
     std::string batch_name =
         std::string(batch_op->outputs[0]) + "_b" + std::to_string(batch);
@@ -146,15 +146,15 @@ bool UnrollBatchMatMul::Run(Model* model, std::size_t op_index) {
     tail_it = model->operators.emplace(tail_it, matmul_op) + 1;
 
     // Add to stack.
-    stack_inputs.push_back(matmul_op->outputs[0]);
+    pack_inputs.push_back(matmul_op->outputs[0]);
   }
 
-  // The stack that will join all the individual matmul results together.
-  auto* stack_op = new StackOperator;
-  stack_op->inputs = stack_inputs;
-  stack_op->outputs = {batch_op->outputs[0]};
-  stack_op->axis = 0;
-  model->operators.emplace(tail_it, stack_op);
+  // The pack that will join all the individual matmul results together.
+  auto* pack_op = new PackOperator;
+  pack_op->inputs = pack_inputs;
+  pack_op->outputs = {batch_op->outputs[0]};
+  pack_op->axis = 0;
+  model->operators.emplace(tail_it, pack_op);
 
   // Remove the old batch matmul now that we've unrolled.
   batch_op_it = model->operators.begin();

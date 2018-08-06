@@ -241,6 +241,11 @@ class CreateQuantileAccumulatorOp : public OpKernel {
     // other exceptions. If one already exists, it unrefs the new one.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
+    // An epsilon value of zero could cause perfoamance issues and is therefore,
+    // disallowed.
+    OP_REQUIRES(
+        context, epsilon_ > 0,
+        errors::InvalidArgument("An epsilon value of zero is not allowed."));
     auto result = new QuantileStreamResource(epsilon_, num_quantiles_,
                                              max_elements_, generate_quantiles_,
                                              stamp_token_t->scalar<int64>()());

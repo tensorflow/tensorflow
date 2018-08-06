@@ -124,8 +124,9 @@ void ImportOperators(
       new_op = ops_by_name.at(effective_opname)
                    ->Deserialize(input_op->builtin_options(),
                                  input_op->custom_options());
-      if (TensorFlowUnsupportedOperator* unsupported_op =
-              dynamic_cast<TensorFlowUnsupportedOperator*>(new_op.get())) {
+      if (new_op->type == OperatorType::kUnsupported) {
+        auto* unsupported_op =
+            static_cast<TensorFlowUnsupportedOperator*>(new_op.get());
         unsupported_op->tensorflow_op = opname;
         // TODO(b/109932940): Remove this when quantized is removed.
         // For now, we assume all ops are quantized.
@@ -219,6 +220,8 @@ std::unique_ptr<Model> Import(const ModelFlags& model_flags,
   ImportOperators(*input_model, ops_by_name, tensors_table, operators_table,
                   model.get());
   ImportIOTensors(*input_model, tensors_table, model.get());
+
+  UndoWeightsShuffling(model.get());
 
   return model;
 }

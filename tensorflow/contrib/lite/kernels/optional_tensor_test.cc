@@ -95,6 +95,12 @@ class LSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
+    // Adding the 2 input state tensors.
+    input_activation_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}}, true);
+    input_cell_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}}, true);
+
     output_state_ = AddOutput(TensorType_FLOAT32);
     cell_state_ = AddOutput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
@@ -228,6 +234,8 @@ class LSTMOpModel : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
+  int input_activation_state_;
+  int input_cell_state_;
 
   int output_;
   int output_state_;

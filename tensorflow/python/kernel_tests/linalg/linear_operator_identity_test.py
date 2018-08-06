@@ -43,7 +43,7 @@ class LinearOperatorIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
@@ -54,13 +54,7 @@ class LinearOperatorIdentityTest(
         num_rows, batch_shape=batch_shape, dtype=dtype)
     mat = linalg_ops.eye(num_rows, batch_shape=batch_shape, dtype=dtype)
 
-    # Nothing to feed since LinearOperatorIdentity takes no Tensor args.
-    if use_placeholder:
-      feed_dict = {}
-    else:
-      feed_dict = None
-
-    return operator, mat, feed_dict
+    return operator, mat
 
   def test_assert_positive_definite(self):
     with self.test_session():
@@ -261,7 +255,7 @@ class LinearOperatorScaledIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
@@ -274,24 +268,23 @@ class LinearOperatorScaledIdentityTest(
     multiplier = linear_operator_test_util.random_sign_uniform(
         shape=batch_shape, minval=1., maxval=2., dtype=dtype)
 
-    operator = linalg_lib.LinearOperatorScaledIdentity(num_rows, multiplier)
 
     # Nothing to feed since LinearOperatorScaledIdentity takes no Tensor args.
+    lin_op_multiplier = multiplier
+
     if use_placeholder:
-      multiplier_ph = array_ops.placeholder(dtype=dtype)
-      multiplier = multiplier.eval()
-      operator = linalg_lib.LinearOperatorScaledIdentity(
-          num_rows, multiplier_ph)
-      feed_dict = {multiplier_ph: multiplier}
-    else:
-      feed_dict = None
+      lin_op_multiplier = array_ops.placeholder_with_default(
+          multiplier, shape=None)
+
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows, lin_op_multiplier)
 
     multiplier_matrix = array_ops.expand_dims(
         array_ops.expand_dims(multiplier, -1), -1)
-    mat = multiplier_matrix * linalg_ops.eye(
+    matrix = multiplier_matrix * linalg_ops.eye(
         num_rows, batch_shape=batch_shape, dtype=dtype)
 
-    return operator, mat, feed_dict
+    return operator, matrix
 
   def test_assert_positive_definite_does_not_raise_when_positive(self):
     with self.test_session():

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -57,11 +58,15 @@ xla::StatusOr<std::vector<intptr_t>> ComputeTempSizes(
   std::vector<intptr_t> temp_sizes;
   temp_sizes.reserve(allocations.size());
   for (const xla::BufferAllocation& allocation : allocations) {
-    // Callers don't allocate temporary buffers for parameters. Nor for
-    // thread-local buffers, which are lowered to alloca.
-    if (allocation.is_entry_computation_parameter() ||
-        allocation.is_thread_local()) {
+    if (allocation.is_constant() || allocation.is_thread_local()) {
+      // Constants are lowered to globals.  Thread locals are lowered to
+      // allocas.
       temp_sizes.push_back(-1);
+    } else if (allocation.is_entry_computation_parameter()) {
+      // Entry computation parameters need some preprocessing in
+      // XlaCompiledCpuFunction::Run.  See the comment on
+      // XlaCompiledCpuFunction::StaticData::temp_sizes.
+      temp_sizes.push_back(-allocation.parameter_number() - 2);
     } else {
       temp_sizes.push_back(allocation.size());
     }

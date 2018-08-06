@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -120,7 +121,7 @@ TEST(HloGraphDumperTest, NestedFusion) {
 TEST(HloGraphDumperTest, Constant) {
   HloComputation::Builder b("b");
   auto instruction = b.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(-42)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-42)));
   instruction->SetAndSanitizeName("i_am_a_constant_root_instruction");
   HloModuleConfig config;
   HloModule m(TestName(), config);

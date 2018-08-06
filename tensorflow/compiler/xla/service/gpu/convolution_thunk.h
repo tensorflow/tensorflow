@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -66,7 +67,8 @@ class ConvolutionThunk : public Thunk {
 
   // Does the convolution for the thunk on "stream".
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
   class ScratchAllocator;

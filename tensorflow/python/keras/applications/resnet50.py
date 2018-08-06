@@ -34,7 +34,6 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras.applications.imagenet_utils import preprocess_input
-from tensorflow.python.keras.engine.network import get_source_inputs
 from tensorflow.python.keras.layers import Activation
 from tensorflow.python.keras.layers import AveragePooling2D
 from tensorflow.python.keras.layers import BatchNormalization
@@ -277,7 +276,7 @@ def ResNet50(include_top=True,
   # Ensure that the model takes into account
   # any potential predecessors of `input_tensor`.
   if input_tensor is not None:
-    inputs = get_source_inputs(input_tensor)
+    inputs = layer_utils.get_source_inputs(input_tensor)
   else:
     inputs = img_input
   # Create model.

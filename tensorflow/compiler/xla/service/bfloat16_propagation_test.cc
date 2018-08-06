@@ -133,9 +133,9 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   array_b.FillUnique(10.0f);
 
   HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateFromArray(array_a)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateFromArray(array_a)));
   HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateFromArray(array_b)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateFromArray(array_b)));
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kDot, a, b));
 
@@ -150,11 +150,11 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      dot->operand(0)->literal(),
-      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_a))));
+      *LiteralUtil::ConvertF32ToBF16(*LiteralUtil::CreateFromArray(array_a)),
+      dot->operand(0)->literal()));
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      dot->operand(1)->literal(),
-      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_b))));
+      *LiteralUtil::ConvertF32ToBF16(*LiteralUtil::CreateFromArray(array_b)),
+      dot->operand(1)->literal()));
 }
 
 // Tests that BF16 can be propagated through nested tuples.
@@ -240,12 +240,10 @@ TEST_F(BFloat16PropagationTest, SameValueReferencedTwice) {
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
-  EXPECT_TRUE(OutputsBF16(add0));
   EXPECT_TRUE(OutputsBF16(add1));
   EXPECT_TRUE(OutputsBF16(lhs));
-  // rhs is a get-tuple-element, which does not define a buffer, but its shape
-  // should also be adjusted accordingly.
-  EXPECT_TRUE(OutputsBF16(rhs));
+
+  // add0 and rhs have been eliminated by simplification and DCE.
 }
 
 // Tests that a non-fusion computation's root should not be changed.
@@ -434,7 +432,7 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
   HloInstruction* tuple1 =
       builder.AddInstruction(HloInstruction::CreateTuple({param, add1}));
   HloInstruction* sel = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kSelect, pred, tuple0, tuple1));
+      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, sel, 0));
   HloInstruction* gte1 = builder.AddInstruction(
@@ -510,6 +508,63 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSimpleWhile) {
   EXPECT_FALSE(OutputsBF16(dot));
 }
 
+// Tests that if the while condition prevents using BF16, no changes should be
+// made to the while body and thus the fusion node inside it.
+TEST_F(BFloat16PropagationTest,
+       ConditionPreventsPropagationForFusionInsideWhile) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+
+  auto builder_cond = HloComputation::Builder("cond");
+  auto cond_param = builder_cond.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "cond_param"));
+  builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt,
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_param, {0, 0}, {1, 1}, {1, 1})),
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_param, {1, 1}, {2, 2}, {1, 1}))));
+  auto cond = module->AddEmbeddedComputation(builder_cond.Build());
+
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "body_param"));
+  auto body_transpose = builder_body.AddInstruction(
+      HloInstruction::CreateTranspose(shape, body_param, {0, 1}));
+
+  auto builder_f = HloComputation::Builder("fusion");
+  HloInstruction* a_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  builder_f.AddInstruction(HloInstruction::CreateTranspose(shape, a_f, {0, 1}));
+  auto comp_f = module->AddEmbeddedComputation(builder_f.Build());
+  auto body_fusion = builder_body.AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kCustom, {body_transpose}, comp_f));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while_hlo = builder.AddInstruction(
+      HloInstruction::CreateWhile(shape, cond, body, add));
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, while_hlo, while_hlo));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_FALSE(OutputsBF16(add));
+  EXPECT_FALSE(OutputsBF16(body_fusion));
+  EXPECT_FALSE(OutputsBF16(body_param));
+  EXPECT_FALSE(OutputsBF16(body_transpose));
+  EXPECT_FALSE(OutputsBF16(a_f));
+}
+
 // Tests that BF16 is propagated properly through while computations with
 // tuple-shaped input/output.
 TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
@@ -555,10 +610,14 @@ TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
       HloInstruction::CreateGetTupleElement(shape, body_param, 0));
   auto body_rhs = builder_body.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, body_param, 1));
-  auto body_dot = builder_body.AddInstruction(
+  auto body_dot1 = builder_body.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kDot, body_lhs, body_rhs));
+  auto body_dot2 = builder_body.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, body_rhs, body_lhs));
+  auto body_transpose = builder_body.AddInstruction(
+      HloInstruction::CreateTranspose(shape, body_dot2, {0, 1}));
   builder_body.AddInstruction(
-      HloInstruction::CreateTuple({body_dot, body_rhs}));
+      HloInstruction::CreateTuple({body_dot1, body_transpose}));
   auto body = module->AddEmbeddedComputation(builder_body.Build());
 
   auto while_hlo = builder.AddInstruction(
@@ -577,9 +636,11 @@ TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
   EXPECT_EQ(computation->root_instruction(), dot);
   EXPECT_TRUE(OutputsBF16(lhs));
   EXPECT_FALSE(OutputsBF16(rhs));
-  EXPECT_TRUE(OutputsBF16(body_dot));
+  EXPECT_TRUE(OutputsBF16(body_dot1));
   EXPECT_TRUE(OutputsBF16(body_lhs));
   EXPECT_FALSE(OutputsBF16(body_rhs));
+  EXPECT_FALSE(OutputsBF16(body_dot2));
+  EXPECT_FALSE(OutputsBF16(body_transpose));
   EXPECT_TRUE(OutputsBF16(cond_lhs));
   EXPECT_FALSE(OutputsBF16(cond_rhs));
   EXPECT_TRUE(OutputsBF16(add0));
@@ -734,12 +795,95 @@ TEST_F(BFloat16PropagationTest, NoopConversionRemoved) {
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), add2);
-  EXPECT_EQ(add2->operand(0), gte0);
-  EXPECT_EQ(add2->operand(1), gte1);
-  EXPECT_EQ(gte0->shape().element_type(), BF16);
-  EXPECT_EQ(gte1->shape().element_type(), BF16);
+  EXPECT_EQ(add2->operand(0), add0);
+  EXPECT_EQ(add2->operand(1), add1);
   EXPECT_EQ(add0->shape().element_type(), BF16);
   EXPECT_EQ(add1->shape().element_type(), BF16);
+}
+
+TEST_F(BFloat16PropagationTest, TupleDomain) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* a_trans =
+      builder.AddInstruction(HloInstruction::CreateTranspose(shape, a, {0, 1}));
+  HloInstruction* b_trans =
+      builder.AddInstruction(HloInstruction::CreateTranspose(shape, b, {0, 1}));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({a_trans, b_trans}));
+  HloInstruction* domain = builder.AddInstruction(
+      HloInstruction::CreateDomain(tuple->shape(), tuple, nullptr, nullptr));
+  HloInstruction* a_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 0));
+  HloInstruction* b_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 1));
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, a_gte, b_gte));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+  EXPECT_EQ(computation->root_instruction(), root);
+
+  // test BF16 propagated through domain
+  EXPECT_EQ(ShapeUtil::GetTupleElementShape(domain->shape(), 0).element_type(),
+            BF16);
+  EXPECT_EQ(ShapeUtil::GetTupleElementShape(domain->shape(), 1).element_type(),
+            BF16);
+
+  EXPECT_TRUE(OutputsBF16(a_trans));
+  EXPECT_TRUE(OutputsBF16(b_trans));
+  EXPECT_TRUE(OutputsBF16(a_gte));
+  EXPECT_TRUE(OutputsBF16(b_gte));
+  EXPECT_FALSE(OutputsBF16(a));
+  EXPECT_FALSE(OutputsBF16(b));
+}
+
+// Tests that bf16 is not propagated through a domain in case its input cannot
+// be propagated. In the case below the input of the domain is the parameter
+// tuple which cannot be propagated, so the domain instruction is not propagated
+// either.
+TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "param"));
+  HloInstruction* domain = builder.AddInstruction(
+      HloInstruction::CreateDomain(param->shape(), param, nullptr, nullptr));
+  HloInstruction* a_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 0));
+  HloInstruction* b_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 1));
+  HloInstruction* a_trans = builder.AddInstruction(
+      HloInstruction::CreateTranspose(shape, a_gte, {0, 1}));
+  HloInstruction* b_trans = builder.AddInstruction(
+      HloInstruction::CreateTranspose(shape, b_gte, {0, 1}));
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, a_trans, b_trans));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), root);
+  EXPECT_TRUE(OutputsBF16(a_trans));
+  EXPECT_TRUE(OutputsBF16(b_trans));
+  EXPECT_FALSE(OutputsBF16(a_gte));
+  EXPECT_FALSE(OutputsBF16(b_gte));
+  EXPECT_FALSE(OutputsBF16(domain));
+  EXPECT_FALSE(OutputsBF16(param));
 }
 
 }  // namespace xla

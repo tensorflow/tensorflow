@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
 
 Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   se::Stream* stream) {
+                                   se::Stream* stream,
+                                   HloExecutionProfiler* profiler) {
   std::vector<void*> tuple_element_buffer_addresses;
   for (BufferAllocation::Slice tuple_element_buffer : tuple_element_buffers_) {
     tuple_element_buffer_addresses.push_back(
@@ -31,6 +33,7 @@ Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       buffer_allocations.GetDeviceAddress(dest_buffer_));
 
   auto host_size = tuple_element_buffer_addresses.size() * sizeof(void*);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (!stream
            ->ThenMemcpy(&dest_buffer_address,
                         tuple_element_buffer_addresses.data(), host_size)

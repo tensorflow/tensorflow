@@ -52,6 +52,10 @@ tf_module {
     name: "LinearOperatorScaledIdentity"
     mtype: "<class \'abc.ABCMeta\'>"
   }
+  member {
+    name: "LinearOperatorZeros"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
   member_method {
     name: "adjoint"
     argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -67,6 +71,10 @@ tf_module {
   member_method {
     name: "cholesky_solve"
     argspec: "args=[\'chol\', \'rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "cross"
+    argspec: "args=[\'a\', \'b\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "det"
@@ -139,6 +147,14 @@ tf_module {
   member_method {
     name: "svd"
     argspec: "args=[\'tensor\', \'full_matrices\', \'compute_uv\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "tensor_diag"
+    argspec: "args=[\'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_diag_part"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "tensordot"

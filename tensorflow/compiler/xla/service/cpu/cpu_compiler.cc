@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -269,6 +269,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_strength_reduction=*/false);
+    pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -296,22 +297,24 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
 
-  pipeline.AddPass<GatherExpander>();
-
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_device_entry_computation_layout(),
-      &target_machine_features);
+      module->mutable_entry_computation_layout(), &target_machine_features);
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      /*is_layout_sensitive=*/true,
-      [](const Shape&, const Shape&) { return true; },
-      /*enable_dot_strength_reduction=*/false);
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  {
+    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+        "after layout assignement");
+    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        /*is_layout_sensitive=*/true,
+        [](const Shape&, const Shape&) { return true; },
+        /*enable_dot_strength_reduction=*/false);
+    pass.AddPass<HloDCE>();
+    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }
   pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
@@ -549,8 +552,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(
       SequentialHloOrdering::HloModuleSequence module_sequence,
-      CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+      ScheduleComputationsInModule(*module, BufferSizeBytesFunction(),
+                                   DFSMemoryScheduler));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
@@ -559,7 +562,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-          BufferSizeBytesFunction(), memory_alignment));
+          BufferSizeBytesFunction(), memory_alignment,
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
   XLA_VLOG_LINES(2, assignment->ToString());
@@ -579,7 +584,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
-                       &target_machine_features, jit->external_constant_pool());
+                       &target_machine_features);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
   for (auto embedded_computation :
        entry_computation->MakeEmbeddedComputationsList()) {
@@ -602,7 +609,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                  /*is_top_level_computation=*/true,
                                  &module_sequence.at(entry_computation)));
 
-  string function_name = llvm_ir::AsString(entry_function->getName());
+  string function_name = [&]() {
+    llvm::SmallVector<char, 40> function_name_vector;
+    llvm::Mangler::getNameWithPrefix(
+        function_name_vector, entry_function->getName(), jit->data_layout());
+    return string(function_name_vector.begin(), function_name_vector.end());
+  }();
+
   string ir_module_string;
   if (embed_ir_in_executable) {
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
@@ -729,7 +742,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
+        ScheduleComputationsInModule(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -738,7 +751,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         BufferAssigner::Run(
             module,
             xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
-            BufferSizeBytesFunction(), memory_alignment));
+            BufferSizeBytesFunction(), memory_alignment,
+            /*allow_input_output_aliasing=*/false,
+            /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -766,8 +781,10 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
-                         &target_machine_features,
-                         /*external_constant_pool=*/nullptr);
+                         &target_machine_features);
+
+    TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -823,17 +840,29 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     BufferSizes buffer_sizes;
     for (const BufferAllocation& allocation : assignment->Allocations()) {
-      // Callers don't need to allocate temporary buffers for parameters.
-      if (allocation.is_entry_computation_parameter()) {
-        buffer_sizes.push_back(-1);
-        continue;
-      }
       // Callers don't need to allocate anything for thread-local temporary
       // buffers.  They are lowered to allocas.
       if (allocation.is_thread_local()) {
         buffer_sizes.push_back(-1);
         continue;
       }
+
+      // Callers don't need to allocate anything for constant buffers.  They are
+      // lowered to globals.
+      if (allocation.is_constant()) {
+        buffer_sizes.push_back(-1);
+        continue;
+      }
+
+      // Callers don't need to allocate anything for entry computation buffers,
+      // but they do need to stash the pointer to the entry computation buffer
+      // in the temp buffer table.  See the comment on
+      // XlaCompiledCpuFunction::StaticData::temp_sizes.
+      if (allocation.is_entry_computation_parameter()) {
+        buffer_sizes.push_back(-allocation.parameter_number() - 2);
+        continue;
+      }
+
       buffer_sizes.push_back(allocation.size());
     }
 

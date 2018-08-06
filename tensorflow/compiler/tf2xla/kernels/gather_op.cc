@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -75,8 +76,8 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
     out_shape.AppendShape(indices_shape_no_index_vectors);
     out_shape.AppendShape(input_shape_post_axis);
 
-    *gather_output = builder->Broadcast(XlaHelpers::Zero(builder, dtype),
-                                        out_shape.dim_sizes());
+    *gather_output =
+        xla::Broadcast(XlaHelpers::Zero(builder, dtype), out_shape.dim_sizes());
     return Status::OK();
   }
 
@@ -142,7 +143,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
     dim_numbers.add_gather_dims_to_operand_dims(i);
   }
 
-  *gather_output = builder->Gather(input, indices, dim_numbers, window_bounds);
+  *gather_output = xla::Gather(input, indices, dim_numbers, window_bounds);
   return Status::OK();
 }
 

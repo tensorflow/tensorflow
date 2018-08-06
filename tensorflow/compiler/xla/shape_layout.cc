@@ -67,6 +67,14 @@ void ShapeLayout::ResetLayout(const Layout& layout) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
 }
 
+void ShapeLayout::ResetLayout(const Layout& layout,
+                              ShapeIndexView shape_index) {
+  CHECK(ShapeUtil::IsTuple(shape_));
+  *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
+      layout;
+  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
+}
+
 bool ShapeLayout::operator==(const ShapeLayout& other) const {
   return ShapeUtil::Equal(shape_, other.shape_);
 }

@@ -52,12 +52,22 @@ class FloatMulOpModel : public BaseMulOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+class IntegerMulOpModel : public BaseMulOpModel {
+ public:
+  using BaseMulOpModel::BaseMulOpModel;
+
+  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
 // For quantized Mul, the error shouldn't exceed (2*step + step^2).
 // The param min=-1.0 & max=1.0 is used in the following tests.
 // The tolerance value is ~0.0157.
 const float kQuantizedStep = 2.0 / 255.0;
 const float kQuantizedTolerance =
     2.0 * kQuantizedStep + kQuantizedStep * kQuantizedStep;
+const float kQuantizedStepInt16 = 2.0 / 32767.0;
+const float kQuantizedToleranceInt16 =
+    2.0 * kQuantizedStepInt16 + kQuantizedStepInt16 * kQuantizedStepInt16;
 
 class QuantizedMulOpModel : public BaseMulOpModel {
  public:
@@ -65,6 +75,11 @@ class QuantizedMulOpModel : public BaseMulOpModel {
 
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+
+  std::vector<float> GetDequantizedOutputInt16() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
                                GetScale(output_), GetZeroPoint(output_));
   }
 };
@@ -125,6 +140,57 @@ TEST(FloatMulOpTest, WithBroadcast) {
   }
 }
 
+TEST(IntegerMulOpTest, NoActivation) {
+  IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
+}
+
+TEST(IntegerMulOpTest, ActivationRELU_N1_TO_1) {
+  IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
+}
+
+TEST(IntegerMulOpTest, VariousInputShapes) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5, 11, 1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40, 121, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerMulOpTest, WithBroadcast) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}},  // always a scalar
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear({-20, 2, 7, 8, 11, 20})))
+        << "With shape number " << i;
+  }
+}
+
 TEST(QuantizedMulOpTest, NoActivation) {
   QuantizedMulOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                         {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
@@ -132,6 +198,38 @@ TEST(QuantizedMulOpTest, NoActivation) {
                         ActivationFunctionType_NONE);
   m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
   m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.6, 0.4, 0.9, 0.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
+                                              kQuantizedTolerance)));
+}
+
+TEST(QuantizedMulOpTest, NoActivationInt16) {
+  const float kMin = -1.f;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedMulOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                        {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                        {TensorType_INT16, {}, kMin, kMax},
+                        ActivationFunctionType_NONE);
+  m.QuantizeAndPopulate<int16_t>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
+  m.QuantizeAndPopulate<int16_t>(m.input2(), {0.6, 0.4, 0.9, 0.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutputInt16(),
+              ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
+                                              kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedMulOpTest, NoActivationInt16WithUint8Output) {
+  const float kMinInt16 = -1.f;
+  const float kMaxInt16 = 32767.f / 32768.f;
+  const float kMinUint8 = -1.f;
+  const float kMaxUint8 = 127.f / 128.f;
+  QuantizedMulOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMinInt16, kMaxInt16},
+                        {TensorType_INT16, {1, 2, 2, 1}, kMinInt16, kMaxInt16},
+                        {TensorType_UINT8, {}, kMinUint8, kMaxUint8},
+                        ActivationFunctionType_NONE);
+  m.QuantizeAndPopulate<int16_t>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
+  m.QuantizeAndPopulate<int16_t>(m.input2(), {0.6, 0.4, 0.9, 0.8});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},

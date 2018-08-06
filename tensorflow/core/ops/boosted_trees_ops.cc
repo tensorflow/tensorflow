@@ -203,6 +203,30 @@ REGISTER_OP("BoostedTreesPredict")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesExampleDebugOutputs")
+    .Input("tree_ensemble_handle: resource")
+    .Input("bucketized_features: num_bucketized_features * int32")
+    .Attr("num_bucketized_features: int >= 1")  // Inferred.
+    .Attr("logits_dimension: int")
+    .Output("examples_debug_outputs_serialized: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle feature_shape;
+      int num_bucketized_features;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("num_bucketized_features", &num_bucketized_features));
+      shape_inference::ShapeHandle unused_input;
+      for (int i = 0; i < num_bucketized_features; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 1), 1, &feature_shape));
+        // Check that the shapes of all bucketized features are the same.
+        TF_RETURN_IF_ERROR(c->Merge(c->input(1), feature_shape, &unused_input));
+      }
+
+      // Multi-class will be supported by modifying the proto.
+      auto batch_size = c->MakeShape({c->Dim(feature_shape, 0)});
+      c->set_output(0, batch_size);
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesSerializeEnsemble")
     .Input("tree_ensemble_handle: resource")
     .Output("stamp_token: int64")
@@ -304,6 +328,29 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
         TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
                                     shape_rank_2, &shape_handle));
       }
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesCenterBias")
+    .Input("tree_ensemble_handle: resource")
+    .Input("mean_gradients: float")
+    .Input("mean_hessians: float")
+    // Regularization-related.
+    .Input("l1: float")
+    .Input("l2: float")
+    .Output("continue_centering: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle gradients_shape;
+      shape_inference::ShapeHandle hessians_shape;
+      shape_inference::ShapeHandle unused_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &gradients_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &hessians_shape));
+      TF_RETURN_IF_ERROR(
+          c->Merge(gradients_shape, hessians_shape, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+
+      c->set_output(0, c->Scalar());
       return Status::OK();
     });
 

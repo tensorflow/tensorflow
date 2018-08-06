@@ -50,7 +50,7 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
 #define CASE(type)                  \
   case DataTypeToEnum<type>::value: \
     return DoParallelConcatUpdate<CPUDevice, type>(d, value, loc, output);
-    TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_POD_TYPES(CASE);
     TF_CALL_string(CASE);
     TF_CALL_variant(CASE);
 #undef CASE

@@ -95,6 +95,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":evaluation_utils",
         ":graph_optimizer",
         ":symbolic_shapes",
         "//tensorflow/core:framework",
@@ -171,6 +172,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],
@@ -210,8 +212,7 @@ cc_library(
     hdrs = ["graph_optimizer_stage.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
@@ -225,6 +226,7 @@ tf_cuda_cc_test(
     deps = [
         ":graph_optimizer_stage",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
@@ -602,7 +604,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":constant_folding",
+        ":evaluation_utils",
         ":graph_optimizer",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -623,6 +627,7 @@ tf_cuda_cc_test(
         ":loop_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
@@ -679,6 +684,7 @@ cc_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -792,9 +798,6 @@ tf_cc_test(
     name = "scoped_allocator_optimizer_test",
     size = "small",
     srcs = ["scoped_allocator_optimizer_test.cc"],
-    tags = [
-        "nomsan",
-    ],
     deps = [
         ":scoped_allocator_optimizer",
         "//tensorflow/cc:cc_ops",
@@ -809,5 +812,41 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
+    name = "evaluation_utils",
+    srcs = ["evaluation_utils.cc"],
+    hdrs = [
+        "evaluation_utils.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:graph_properties",
+    ],
+)
+
+tf_cc_test(
+    name = "evaluation_utils_test",
+    srcs = ["evaluation_utils_test.cc"],
+    deps = [
+        ":evaluation_utils",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
     ],
 )
