@@ -386,7 +386,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "optional_ops_test",
     size = "small",
     srcs = ["optional_ops_test.py"],
@@ -395,6 +395,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
