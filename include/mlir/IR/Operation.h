@@ -157,8 +157,6 @@ public:
 
   /// If this operation has a registered operation description in the
   /// OperationSet, return it.  Otherwise return null.
-  /// TODO: Shouldn't have to pass a Context here, Operation should eventually
-  /// be able to get to its own parent.
   const AbstractOperation *getAbstractOperation() const;
 
   /// The getAs methods perform a dynamic cast from an Operation (like

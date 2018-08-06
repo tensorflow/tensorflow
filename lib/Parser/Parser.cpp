@@ -1581,7 +1581,8 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
       return emitError(loc, "cannot name an operation with no results");
 
     for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-      addDefinition({resultID, i, loc}, op->getResult(i));
+      if (addDefinition({resultID, i, loc}, op->getResult(i)))
+        return ParseFailure;
   }
 
   return ParseSuccess;
@@ -1901,7 +1902,7 @@ ParseResult CFGFunctionParser::parseOptionalBasicBlockArgList(
     auto type = parseSSADefOrUseAndType<Type *>(
         [&](SSAUseInfo useInfo, Type *type) -> Type * {
           BBArgument *arg = owner->addArgument(type);
-          if (addDefinition(useInfo, arg) == ParseFailure)
+          if (addDefinition(useInfo, arg))
             return nullptr;
           return type;
         });
@@ -2174,7 +2175,8 @@ ParseResult MLFunctionParser::parseForStmt() {
   ForStmt *forStmt = builder.createFor(lowerBound, upperBound, step);
 
   // Create SSA value definition for the induction variable.
-  addDefinition({inductionVariableName, 0, loc}, forStmt);
+  if (addDefinition({inductionVariableName, 0, loc}, forStmt))
+    return ParseFailure;
 
   // If parsing of the for statement body fails,
   // MLIR contains for statement with those nested statements that have been
