@@ -687,12 +687,20 @@ def make_relu6_tests(zip_path):
 def make_prelu_tests(zip_path):
   """Make a set of tests to do PReLU."""
 
-  test_parameters = [{
-      # The canonical case for image processing is having a 4D `input` (NHWC)
-      # and `shared_axes`=[1, 2], so the alpha parameter is per channel.
-      "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
-      "shared_axes": [[1, 2], [1]],
-  }]
+  test_parameters = [
+      {
+          # The canonical case for image processing is having a 4D `input`
+          # (NHWC)and `shared_axes`=[1, 2], so the alpha parameter is per
+          # channel.
+          "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
+          "shared_axes": [[1, 2], [1]],
+      },
+      {
+          # 2D-3D example. Share the 2nd axis.
+          "input_shape": [[20, 20], [20, 20, 20]],
+          "shared_axes": [[1]],
+      }
+  ]
 
   def build_graph(parameters):
     """Build the graph for the test case."""

@@ -132,11 +132,23 @@ class CapturingGraph(ops.Graph):
       op_def=None,
       compute_shapes=True,
       compute_device=True):
-    # TODO(apassos) this should do some form of alias analysis as ops which
-    # forward the resources such as Identity and Switch can cause serialization
-    # to fail.
+    # This capturing logic interacts poorly with control flow contexts which
+    # want to replace inputs of ops far too late in the process. This can lead
+    # the context to get confused and try to create an Enter for an Enter. We
+    # can detect this here and skip the additional Enter which can confuse loop
+    # validation logic.
+    if op_type == "Enter" and inputs[0].op.type == "Enter":
+      if inputs[0].op.get_attr("frame_name") == attrs["frame_name"].s:
+        return inputs[0].op
+    # Calling AddValue on the control flow contexts to force creation of the
+    # backward accumulators in the original graph before we create placeholders
+    # to capture the inputs.
+    ctxt = ops.get_default_graph()._control_flow_context  # pylint: disable=protected-access
     for i, inp in enumerate(inputs):
-      inputs[i] = self.capture(inp)
+      if ctxt is not None and hasattr(ctxt, "AddValue"):
+        inp = ctxt.AddValue(inp)
+      inp = self.capture(inp)
+      inputs[i] = inp
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_device=compute_device)
@@ -457,7 +469,6 @@ class GraphModeFunction(object):
     self._func_name = name
     self._function_def = defined_function
     self._num_outputs = len(defined_function.signature.output_arg)
-    self._ops = operations
     self._python_func_outputs = python_func_outputs
     self._python_returns = [python_func_outputs] if isinstance(
         python_func_outputs,
@@ -500,9 +511,15 @@ class GraphModeFunction(object):
       extra_placeholders = []
 
     forward_name = _forward_name(self._func_name)
+    # Note: we cannot have placeholder ops in the graph or the TPU compilation
+    # pass fails.
+    placeholder_ops = set([y.op for y in self._input_placeholders])
+    function_ops = [x for x in self._graph.get_operations()
+                    if x not in placeholder_ops]
     self._forward_fdef = _EagerDefinedFunction(
-        forward_name, self._graph, self._ops, self._input_placeholders,
-        filtered_outputs + list(extra_inputs), self._attrs)
+        forward_name, self._graph, function_ops,
+        self._input_placeholders, filtered_outputs + list(extra_inputs),
+        self._attrs)
     all_inputs = self._out_grad_placeholders + list(extra_placeholders)
     # Excluding input ops from the body as we do not intend to execute these
     # operations when the function is executed.
@@ -680,6 +697,11 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
     func_args = _get_defun_inputs(args)
     func_kwds = _get_defun_inputs(kwds)
 
+    # Variables to help check whether mutation happens in calling the function
+    # Copy the recursive list, tuple and map structure, but not base objects
+    func_args_before = nest.pack_sequence_as(func_args, nest.flatten(func_args))
+    func_kwds_before = nest.pack_sequence_as(func_kwds, nest.flatten(func_kwds))
+
     def convert(x):
       if x is None:
         return None
@@ -691,6 +713,25 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
     try:
       func_outputs = func(*func_args, **func_kwds)
       func_outputs = nest.map_structure(convert, func_outputs)
+
+      def check_mutation(n1, n2):
+        """Check if two list of arguments are exactly the same."""
+        errmsg = ("Function to be traced should not modify structure of input "
+                  "arguments. Check if your function has list and dictionary "
+                  "operations that alter input arguments, "
+                  "such as `list.pop`, `list.append`")
+        try:
+          nest.assert_same_structure(n1, n2)
+        except ValueError:
+          raise ValueError(errmsg)
+
+        for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
+          if arg1 is not arg2:
+            raise ValueError(errmsg)
+
+      check_mutation(func_args_before, func_args)
+      check_mutation(func_kwds_before, func_kwds)
+
     finally:
       tape.pop_tape(this_tape)
     variables = this_tape.watched_variables()
@@ -894,8 +935,11 @@ def defun(func=None, compiled=False):
   `defun`-generated graphs.
 
   For a Python function to be compatible with `defun`, all of its arguments must
-  be hashable Python objects or lists thereof. Additionally, it must return zero
-  or more @{tf.Tensor} objects.
+  be hashable Python objects or lists thereof. The function itself may not
+  modify the list/map structure of its arguments. Additionally, it must return
+  zero or more @{tf.Tensor} objects. If the Python function returns
+  a @{tf.Variable}, its compiled version will return the value of that variable
+  as a @{tf.Tensor}.
 
   Executing a graph generated by `defun` respects device annotations (i.e.,
   all `with tf.device` directives present in a Python function will also be

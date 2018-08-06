@@ -206,7 +206,7 @@ TEST_F(SegmentTest, Multiple) {
   // Make add5 not a TRT candidate, and we expect two segments.
   auto without_add5 = all_adds - "add5";
   RunTest(&g, without_add5, without_add5, without_add5,
-          {{"add6", "add8"}, {"add0", "add1", "add2", "add3"}});
+          {{"add0", "add1", "add2", "add3"}, {"add6", "add8"}});
 
   // Make add8 not a candidate and add6 not an input candidate, then all direct
   // and indirect inputs of add6 will be removed from the segment.
@@ -252,7 +252,7 @@ TEST_F(SegmentTest, BigIfElse) {
   const std::set<string> all_adds = {"add0", "add1", "add2", "add3",
                                      "add4", "add5", "add6", "add7"};
   RunTest(&g, all_adds - "add2", all_adds, all_adds,
-          {{"add3", "add4", "add5", "add6", "add7"}, {"add0", "add1"}});
+          {{"add0", "add1"}, {"add3", "add4", "add5", "add6", "add7"}});
 }
 
 }  // namespace test

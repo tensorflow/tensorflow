@@ -35,7 +35,7 @@ RUN pip --no-cache-dir install \
         jupyter \
         matplotlib \
         mock \
-        numpy \
+        numpy==1.14.5 \
         scipy \
         sklearn \
         pandas \
@@ -76,7 +76,7 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 WORKDIR /tensorflow
-RUN git clone --branch=r1.9 --depth=1 https://github.com/tensorflow/tensorflow.git .
+RUN git clone --branch=r1.10 --depth=1 https://github.com/tensorflow/tensorflow.git .
 
 # TODO(craigcitro): Don't install the pip package, since it makes it
 # more difficult to experiment with local changes. Instead, just add

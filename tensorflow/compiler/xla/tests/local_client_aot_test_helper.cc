@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 1);
   CHECK_EQ(result->buffer_sizes().size(), 3);
-  CHECK_EQ(result->buffer_sizes()[0], -1);             // param buffer
+  CHECK_EQ(result->buffer_sizes()[0], -2);             // param buffer
   CHECK_EQ(result->buffer_sizes()[1], sizeof(float));  // result buffer
   CHECK_EQ(result->buffer_sizes()[2], -1);             // const buffer
   if (triple.isOSBinFormatELF()) {

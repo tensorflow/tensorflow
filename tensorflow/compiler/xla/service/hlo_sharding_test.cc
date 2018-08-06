@@ -51,7 +51,7 @@ TEST_F(HloShardingTest, Replicate) {
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/2));
-  EXPECT_IS_NOT_OK(sharding.UniqueDevice());
+  EXPECT_FALSE(sharding.HasUniqueDevice());
 }
 
 TEST_F(HloShardingTest, DevicePlacement) {
@@ -60,7 +60,7 @@ TEST_F(HloShardingTest, DevicePlacement) {
   EXPECT_TRUE(sharding.IsTileMaximal());
   EXPECT_FALSE(sharding.UsesDevice(0));
   EXPECT_TRUE(sharding.UsesDevice(5));
-  EXPECT_EQ(5, sharding.UniqueDevice().ValueOrDie());
+  EXPECT_EQ(5, sharding.GetUniqueDevice());
 
   HloSharding other = HloSharding::Replicate();
   EXPECT_NE(other, sharding);
@@ -123,7 +123,7 @@ TEST_F(HloShardingTest, Tile) {
     EXPECT_EQ(sharding.TileOffsetForDevice(2), (std::vector<int64>{2, 0}));
     EXPECT_EQ(sharding.TileOffsetForDevice(1), (std::vector<int64>{2, 3}));
 
-    EXPECT_IS_NOT_OK(sharding.UniqueDevice());
+    EXPECT_FALSE(sharding.HasUniqueDevice());
   }
 }
 

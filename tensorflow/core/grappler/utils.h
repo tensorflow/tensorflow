@@ -239,6 +239,9 @@ class SimpleGraphView {
 
   const GraphDef* graph() const { return graph_; }
   inline int num_nodes() const { return index_to_name_.size(); }
+  inline bool has_node(const string& node_name) const {
+    return name_to_index_.find(node_name) != name_to_index_.end();
+  }
   inline const int index(const string& node_name) const {
     const auto& it = name_to_index_.find(node_name);
     DCHECK(it != name_to_index_.end());

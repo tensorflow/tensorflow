@@ -261,6 +261,16 @@ def _FindLayersToQuantize(graph):
 
   layer_output_pattern = graph_matcher.OneofPattern(
       [batch_to_space_pattern, layer_pattern])
+
+  # For separable convolutions, we are looking for a conv, followed by a conv
+  # with no activations between the two.
+  sep_conv_pattern = graph_matcher.OpTypePattern(
+      '|'.join(_QUANTIZABLE_TYPES),
+      inputs=[
+          graph_matcher.OneofPattern([layer_output_pattern]),
+          graph_matcher.OpTypePattern('*')
+      ],
+      ordered_inputs=False)
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
       'Mul',
       inputs=[graph_matcher.OpTypePattern('*'), layer_output_pattern],
@@ -388,6 +398,17 @@ def _FindLayersToQuantize(graph):
     activation_op = match_result.get_op(bias_add_pattern)
     if activation_op is None:
       activation_op = match_result.get_op(folded_bias_add_pattern)
+    if layer_op not in matched_layer_set:
+      matched_layer_set.add(layer_op)
+      layer_matches.append(
+          _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
+
+  # Look for separable convolutions here
+  sep_conv_matcher = graph_matcher.GraphMatcher(sep_conv_pattern)
+  for match_result in sep_conv_matcher.match_graph(graph):
+    layer_op = match_result.get_op(layer_pattern)
+    weight_tensor = match_result.get_tensor(weight_identity_pattern)
+    activation_op = match_result.get_op(layer_pattern)
     if layer_op not in matched_layer_set:
       matched_layer_set.add(layer_op)
       layer_matches.append(

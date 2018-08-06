@@ -70,6 +70,26 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "latency_all_edges",
+    srcs = ["latency_all_edges.cc"],
+    hdrs = [
+        "latency_all_edges.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+cc_library(
     name = "map_and_batch_fusion",
     srcs = ["map_and_batch_fusion.cc"],
     hdrs = [
@@ -213,10 +233,25 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":function_rename",
+        ":latency_all_edges",
         ":map_and_batch_fusion",
         ":map_fusion",
         ":noop_elimination",
         ":shuffle_and_repeat_fusion",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "latency_all_edges_test",
+    srcs = ["latency_all_edges_test.cc"],
+    deps = [
+        ":graph_utils",
+        ":latency_all_edges",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
 )

@@ -66,7 +66,7 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
         gdef=g.as_graph_def(),
         input_names=[input_name, w1_name, w2_name],
         input_dims=[input_dims, w1_dims, w2_dims],
-        num_expected_engines=1,
+        expected_engines=["my_trt_op_0"],
         expected_output_dims=(12, 5, 8, 7),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)

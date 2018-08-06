@@ -53,6 +53,7 @@ from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import evaluation
@@ -268,7 +269,7 @@ class Estimator(object):
       found.
     """
     with context.graph_mode():
-      return saver.latest_checkpoint(self.model_dir)
+      return checkpoint_management.latest_checkpoint(self.model_dir)
 
   def train(self,
             input_fn,
@@ -417,7 +418,7 @@ class Estimator(object):
 
       # Check that model has been trained (if nothing has been set explicitly).
       if not checkpoint_path:
-        latest_path = saver.latest_checkpoint(self._model_dir)
+        latest_path = checkpoint_management.latest_checkpoint(self._model_dir)
         if not latest_path:
           logging.info('Could not find trained model in model_dir: {}, running '
                        'initialization to evaluate.'.format(self._model_dir))
@@ -504,7 +505,8 @@ class Estimator(object):
       hooks = _check_hooks_type(hooks)
       # Check that model has been trained.
       if not checkpoint_path:
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            self._model_dir)
       if not checkpoint_path:
         logging.info('Could not find trained model in model_dir: {}, running '
                      'initialization to predict.'.format(self._model_dir))
@@ -769,7 +771,8 @@ class Estimator(object):
     with context.graph_mode():
       if not checkpoint_path:
         # Locate the latest checkpoint
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            self._model_dir)
       if not checkpoint_path:
         raise ValueError("Couldn't find trained model at %s." % self._model_dir)
 
@@ -1258,28 +1261,24 @@ class Estimator(object):
         training_chief_hooks = get_hooks_from_the_first_device(
             grouped_estimator_spec.training_chief_hooks)
 
-        # TODO(sourabhbajaj): Merge the two code paths once we can
-        # handle per device variables correctly in reduce and can output
-        # the loss scaler.
+        # TODO(sourabhbajaj): Merge the two code paths and clean up the code
         if is_tpu_strategy:
-          loss = self._train_distribution.unwrap(
-              self._train_distribution.reduce(
-                  distribute_lib.get_loss_reduction(), tpu_result)[0])[0]
+          distributed_loss = tpu_result
           worker_hooks.append(
               estimator_util.StrategyInitFinalizeHook(
                   self._train_distribution.get_initialization_ops,
                   self._train_distribution.get_finalize_ops))
         else:
-          loss = self._train_distribution.unwrap(
-              self._train_distribution.reduce(
-                  distribute_lib.get_loss_reduction(),
-                  grouped_estimator_spec.loss,
-                  destinations='/device:CPU:0'))[0]
+          distributed_loss = grouped_estimator_spec.loss
           distributed_train_op = grouped_estimator_spec.train_op
 
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
-            loss=loss,
+            loss=self._train_distribution.unwrap(
+                self._train_distribution.reduce(
+                    distribute_lib.get_loss_reduction(),
+                    distributed_loss,
+                    destinations='/device:CPU:0'))[0],
             train_op=self._train_distribution.group(distributed_train_op),
             training_hooks=training_hooks,
             training_chief_hooks=training_chief_hooks,
@@ -1630,7 +1629,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
 
 
 def _check_checkpoint_available(model_dir):
-  latest_path = saver.latest_checkpoint(model_dir)
+  latest_path = checkpoint_management.latest_checkpoint(model_dir)
   if not latest_path:
     raise ValueError(
         'Could not find trained model in model_dir: {}.'.format(model_dir))

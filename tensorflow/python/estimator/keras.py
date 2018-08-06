@@ -42,6 +42,7 @@ from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
@@ -442,7 +443,7 @@ def _save_first_checkpoint(keras_model, custom_objects, config):
   # save checkpoint into subdirectory to allow warm start
   keras_model_dir = os.path.join(config.model_dir, 'keras')
   # Load weights and save to checkpoint if there is no checkpoint
-  latest_path = saver_lib.latest_checkpoint(keras_model_dir)
+  latest_path = checkpoint_management.latest_checkpoint(keras_model_dir)
   if not latest_path:
     keras_weights = None
     if _any_weight_initialized(keras_model):

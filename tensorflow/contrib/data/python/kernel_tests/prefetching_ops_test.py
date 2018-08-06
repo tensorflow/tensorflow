@@ -907,6 +907,42 @@ class CopyToDeviceTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  def testIteratorGetNextAsOptionalOnGPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(3)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.copy_to_device("/gpu:0"))
+    with ops.device("/gpu:0"):
+      iterator = device_dataset.make_initializable_iterator()
+      next_elem = iterator_ops.get_next_as_optional(iterator)
+      elem_has_value_t = next_elem.has_value()
+      elem_value_t = next_elem.get_value()
+
+    with self.test_session() as sess:
+      # Before initializing the iterator, evaluating the optional fails with
+      # a FailedPreconditionError.
+      with self.assertRaises(errors.FailedPreconditionError):
+        sess.run(elem_has_value_t)
+      with self.assertRaises(errors.FailedPreconditionError):
+        sess.run(elem_value_t)
+
+      # For each element of the dataset, assert that the optional evaluates to
+      # the expected value.
+      sess.run(iterator.initializer)
+      for i in range(3):
+        elem_has_value, elem_value = sess.run([elem_has_value_t, elem_value_t])
+        self.assertTrue(elem_has_value)
+        self.assertEqual(i, elem_value)
+
+      # After exhausting the iterator, `next_elem.has_value()` will evaluate to
+      # false, and attempting to get the value will fail.
+      for _ in range(2):
+        self.assertFalse(sess.run(elem_has_value_t))
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(elem_value_t)
+
 
 class MultiDeviceIteratorTest(test.TestCase):
 

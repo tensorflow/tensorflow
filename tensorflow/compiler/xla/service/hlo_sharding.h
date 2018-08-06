@@ -158,12 +158,17 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   std::vector<int64> TileLimitForDevice(int64 device) const;
 
-  // Returns the single device this op operates on.
-  // REQUIRES: !IsTuple&& !Replicated() && IsTileMaximal()
-  StatusOr<int64> UniqueDevice() const;
+  // Returns the single device this op operates on. If the sharding does not
+  // span a single device, the return value will be empty.
+  // In order for a sharding to span a single device, every leaf sharding must
+  // be maximal and not replicated, and the used device must match.
+  tensorflow::gtl::optional<int64> UniqueDevice() const;
+
+  // Retrieves the unique device or fails with a CHECK.
+  int64 GetUniqueDevice() const;
 
   // Returns true if this op only uses a single device.
-  bool HasUniqueDevice() const;
+  bool HasUniqueDevice() const { return UniqueDevice().has_value(); }
 
   // Returns the ShapeTree containing the shardings for each element of this
   // tuple, if IsTuple, or a ShapeTree with a single element containing this

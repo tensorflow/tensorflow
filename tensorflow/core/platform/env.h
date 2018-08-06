@@ -232,8 +232,11 @@ class Env {
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
+  /// \brief Returns the number of nano-seconds since the Unix epoch.
+  virtual uint64 NowNanos() { return envTime->NowNanos(); }
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() { return envTime->NowMicros(); };
+  virtual uint64 NowMicros() { return envTime->NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64 NowSeconds() { return envTime->NowSeconds(); }

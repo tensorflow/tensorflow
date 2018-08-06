@@ -782,7 +782,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
     prefix = "quantize_and_dequantize_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":cwise_op"],
 )
 
 tf_kernel_library(
