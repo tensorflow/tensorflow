@@ -541,33 +541,35 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
-  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
-  # Modify Dockerfile for Python3.5 | Python3.6 build
-  TMP_DIR=$(mktemp -d)
-  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
+if [[ "${DO_DOCKER}" == "1" ]]; then
+  if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+    [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+    # Modify Dockerfile for Python3.5 | Python3.6 build
+    TMP_DIR=$(mktemp -d)
+    echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
-  # Copy the files required for the docker build
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
-      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
+    # Copy the files required for the docker build
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
+        die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
 
-  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
-  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
-  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    cp "${DOCKERFILE}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
+    DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
-  # Replace a line in the Dockerfile
-  if sed -i \
-      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
-      "${DOCKERFILE}"
-  then
-    echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
-  else
-    die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    # Replace a line in the Dockerfile
+    if sed -i \
+        "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
+        "${DOCKERFILE}"
+    then
+      echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
+    else
+      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    fi
+
+    DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
   fi
-
-  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
 fi
 
 chmod +x ${TMP_SCRIPT}

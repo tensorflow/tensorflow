@@ -33,6 +33,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import weights_broadcast_ops
 
 
 def _map_nested(data, func):
@@ -577,15 +578,25 @@ def weighted_masked_objective(fn):
       #  to the number of unmasked samples.
       score_array /= K.mean(mask)
 
-    # apply sample weighting
+    # Apply sample weighting.
     if weights is not None:
-      # reduce score_array to same ndim as weight array
-      ndim = K.ndim(score_array)
-      weight_ndim = K.ndim(weights)
-      score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
-      score_array *= weights
-      score_array /= K.mean(
-          math_ops.cast(math_ops.not_equal(weights, 0), K.floatx()))
+
+      # Update dimensions of weights to match with values if possible.
+      score_array, _, weights = metrics_module.squeeze_or_expand_dimensions(
+          score_array, None, weights)
+      try:
+        # Broadcast weights if possible.
+        weights = weights_broadcast_ops.broadcast_weights(weights, score_array)
+      except ValueError:
+        # Reduce values to same ndim as weight array.
+        ndim = K.ndim(score_array)
+        weight_ndim = K.ndim(weights)
+        score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
+
+      score_array = math_ops.multiply(score_array, weights)
+      score_array = math_ops.reduce_sum(score_array)
+      weights = math_ops.reduce_sum(weights)
+      score_array = metrics_module.safe_div(score_array, weights)
     return K.mean(score_array)
 
   return weighted
@@ -777,6 +788,9 @@ def add_metric_name(model, metric_name, index):
         user. For example: 'acc'
     index: The index of the model output for which the metric name is being
         added.
+
+  Returns:
+    string, name of the model's unique metric name
   """
   if len(model.output_names) > 1:
     metric_name = '%s_%s' % (model.output_names[index], metric_name)
@@ -786,6 +800,7 @@ def add_metric_name(model, metric_name, index):
     metric_name = '%s_%d' % (base_metric_name, j)
     j += 1
   model.metrics_names.append(metric_name)
+  return metric_name
 
 
 def validate_iterator_input(x, y, sample_weight, validation_split=None):
@@ -904,8 +919,66 @@ def get_output_sample_weight_and_mode(skip_target_weighing_indices,
     default_value = [1.]
     shape = [None]
     mode = None
-  weight = array_ops.placeholder_with_default(
-      constant_op.constant(default_value, dtype=K.floatx()),
-      shape=shape,
-      name=output_name + '_sample_weights')
+  if context.executing_eagerly():
+    weight = None
+  else:
+    weight = array_ops.placeholder_with_default(
+        constant_op.constant(default_value, dtype=K.floatx()),
+        shape=shape,
+        name=output_name + '_sample_weights')
   return weight, mode
+
+
+def prepare_sample_weights(output_names, sample_weight_mode,
+                           skip_target_weighing_indices):
+  """Prepares sample weights for the model.
+
+  Args:
+    output_names: List of model output names.
+    sample_weight_mode: sample weight mode user input passed from compile API.
+    skip_target_weighing_indices: Indices of output for which sample weights
+      should be skipped.
+
+  Returns:
+    A pair of list of sample weights and sample weight modes
+      (one for each output).
+
+  Raises:
+    ValueError: In case of invalid `sample_weight_mode` input.
+  """
+  sample_weights = []
+  sample_weight_modes = []
+  if isinstance(sample_weight_mode, dict):
+    unknown_output = set(sample_weight_mode.keys()) - set(output_names)
+    if unknown_output:
+      raise ValueError('Unknown entry in '
+                       'sample_weight_mode dictionary: "' + unknown_output +
+                       '". Only expected the following keys: ' +
+                       str(output_names))
+    for i, name in enumerate(output_names):
+      if (i not in skip_target_weighing_indices and
+          name not in sample_weight_mode):
+        raise ValueError('Output missing from sample_weight_modes dictionary')
+      weight, mode = get_output_sample_weight_and_mode(
+          skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
+      sample_weights.append(weight)
+      sample_weight_modes.append(mode)
+  elif isinstance(sample_weight_mode, list):
+    if len(sample_weight_mode) != len(output_names):
+      raise ValueError('When passing a list as sample_weight_mode, '
+                       'it should have one entry per model output. '
+                       'The model has ' + str(len(output_names)) +
+                       ' outputs, but you passed ' +
+                       str(len(sample_weight_mode)) + 'sample_weight_modes')
+    for i, name in enumerate(output_names):
+      weight, mode = get_output_sample_weight_and_mode(
+          skip_target_weighing_indices, sample_weight_mode[i], name, i)
+      sample_weights.append(weight)
+      sample_weight_modes.append(mode)
+  else:
+    for i, name in enumerate(output_names):
+      weight, mode = get_output_sample_weight_and_mode(
+          skip_target_weighing_indices, sample_weight_mode, name, i)
+      sample_weights.append(weight)
+      sample_weight_modes.append(mode)
+  return sample_weights, sample_weight_modes

@@ -110,6 +110,33 @@ TfLiteRegistration* Register_PACK();
 TfLiteRegistration* Register_ONE_HOT();
 TfLiteRegistration* Register_LOGICAL_OR();
 
+TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
+  context->ReportError(
+      context,
+      "Regular TensorFlow ops are not supported by this interpreter. Make sure "
+      "you invoke the Eager delegate before inference.");
+  return kTfLiteError;
+}
+
+const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
+                                                    int version) const {
+  return MutableOpResolver::FindOp(op, version);
+}
+
+const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
+                                                    int version) const {
+  // Return the NULL Op for all ops whose name start with "Eager:", allowing
+  // the interpreter to delegate their execution.
+  if (string(op).find("Eager:") == 0) {
+    static TfLiteRegistration null_op{
+        nullptr, nullptr, &UnsupportedTensorFlowOp,
+        nullptr, nullptr, BuiltinOperator_CUSTOM,
+        "Eager", 1};
+    return &null_op;
+  }
+  return MutableOpResolver::FindOp(op, version);
+}
+
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());

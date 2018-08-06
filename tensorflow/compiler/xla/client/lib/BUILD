@@ -137,6 +137,37 @@ cc_library(
 )
 
 cc_library(
+    name = "sorting",
+    srcs = ["sorting.cc"],
+    hdrs = ["sorting.h"],
+    deps = [
+        ":numeric",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "sorting_test",
+    srcs = ["sorting_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":sorting",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "testing",
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],

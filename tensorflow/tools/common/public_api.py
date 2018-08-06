@@ -50,6 +50,7 @@ class PublicAPIVisitor(object):
     # Each entry maps a module path to a name to ignore in traversal.
     self._do_not_descend_map = {
         'tf': [
+            'compiler',
             'core',
             'examples',
             'flags',  # Don't add flags

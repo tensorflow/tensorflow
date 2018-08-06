@@ -12466,6 +12466,7 @@ op {
     name: "else_branch"
     type: "func"
   }
+  is_stateful: true
 }
 op {
   name: "Igamma"
@@ -13274,6 +13275,30 @@ op {
   output_arg {
     name: "components"
     type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorGetNextAsOptional"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "optional"
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -17007,6 +17032,44 @@ op {
   }
 }
 op {
+  name: "NonMaxSuppressionV4"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "valid_outputs"
+    type: DT_INT32
+  }
+  attr {
+    name: "pad_to_max_output_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "NonMaxSuppressionWithOverlaps"
   input_arg {
     name: "overlaps"
@@ -17258,6 +17321,64 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "OptionalFromValue"
+  input_arg {
+    name: "components"
+    type_list_attr: "Toutput_types"
+  }
+  output_arg {
+    name: "optional"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "OptionalGetValue"
+  input_arg {
+    name: "optional"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "OptionalHasValue"
+  input_arg {
+    name: "optional"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "has_value"
+    type: DT_BOOL
+  }
+}
+op {
+  name: "OptionalNone"
+  output_arg {
+    name: "optional"
+    type: DT_VARIANT
   }
 }
 op {

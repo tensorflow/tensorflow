@@ -63,14 +63,14 @@ class SessionRef : public Session {
               std::vector<Tensor>* outputs) override;
 
   Status MakeCallable(const CallableOptions& callable_options,
-                      CallableHandle* out_handle);
+                      CallableHandle* out_handle) override;
 
   Status RunCallable(CallableHandle handle,
                      const std::vector<Tensor>& feed_tensors,
                      std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata);
+                     RunMetadata* run_metadata) override;
 
-  Status ReleaseCallable(CallableHandle handle);
+  Status ReleaseCallable(CallableHandle handle) override;
 
  private:
   mutex run_lock_;

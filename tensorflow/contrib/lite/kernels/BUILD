@@ -8,6 +8,16 @@ load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
+# Suppress warnings that are introduced by Eigen Tensor.
+EXTRA_EIGEN_COPTS = select({
+    "//tensorflow:ios": [
+        "-Wno-error=invalid-partial-specialization",
+        "-Wno-error=reorder",
+    ],
+    "//tensorflow:windows": [],
+    "//conditions:default": ["-Wno-error=reorder"],
+})
+
 tf_cc_test(
     name = "optional_tensor_test",
     size = "small",
@@ -49,13 +59,7 @@ cc_library(
     hdrs = [
         "eigen_support.h",
     ],
-    copts = tflite_copts() + [
-        "-Wno-error=reorder",
-    ] + select({
-        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
-        "//conditions:default": [
-        ],
-    }),
+    copts = tflite_copts() + EXTRA_EIGEN_COPTS,
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:arena_planner",
@@ -209,14 +213,7 @@ cc_library(
         "padding.h",
         "register.h",
     ],
-    # Suppress warnings that are introduced by Eigen Tensor.
-    copts = tflite_copts() + [
-        "-Wno-error=reorder",
-    ] + select({
-        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
-        "//conditions:default": [
-        ],
-    }),
+    copts = tflite_copts() + EXTRA_EIGEN_COPTS,
     deps = [
         ":activation_functor",
         ":eigen_support",

@@ -189,6 +189,27 @@ def get_nested_model_3(input_dim, num_classes):
 class ModelSubclassingTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  def test_custom_build(self):
+    class DummyModel(keras.Model):
+
+      def __init__(self):
+        super(DummyModel, self).__init__()
+        self.dense1 = keras.layers.Dense(32, activation='relu')
+        self.uses_custom_build = False
+
+      def call(self, inputs):
+        return self.dense1(inputs)
+
+      def build(self, input_shape):
+        self.uses_custom_build = True
+
+    test_model = DummyModel()
+    dummy_data = array_ops.ones((32, 50))
+    test_model(dummy_data)
+    self.assertTrue(test_model.uses_custom_build, 'Model should use user '
+                                                  'defined build when called.')
+
+  @test_util.run_in_graph_and_eager_modes
   def test_invalid_input_shape_build(self):
     num_classes = 2
     input_dim = 50

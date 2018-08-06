@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/deadness_analysis.h"
+#include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -151,7 +152,11 @@ class SymbolPredicate : public Predicate {
         tensor_id_(std::move(tensor_id)),
         must_be_true_(must_be_true) {}
 
-  string ToString() const override { return tensor_id_.ToString(); }
+  string ToString() const override {
+    return must_be_true() ? strings::StrCat("*", tensor_id_.ToString())
+                          : tensor_id_.ToString();
+  }
+
   Kind kind() const override { return Kind::kSymbol; }
 
   // If `must_be_true()` is true this SymbolPredicate represents the proposition
@@ -348,6 +353,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status Populate();
   bool HasInputsWithMismatchingDeadness(const Node& node) override;
   void Print() const override;
+  gtl::FlatMap<TensorId, string, TensorId::Hasher> PredicateMapAsString() const;
 
  private:
   enum class EdgeKind { kDataAndControl, kDataOnly, kControlOnly };
@@ -562,5 +568,25 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
   *result = std::move(analysis);
   return Status::OK();
 }
+
+gtl::FlatMap<TensorId, string, TensorId::Hasher>
+DeadnessAnalysisImpl::PredicateMapAsString() const {
+  gtl::FlatMap<TensorId, string, TensorId::Hasher> result;
+  std::vector<TensorId> tensor_ids;
+  for (const auto& kv_pair : predicate_map_) {
+    CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);
+  }
+  return result;
+}
+
+namespace deadness_analysis_internal {
+Status ComputePredicates(const Graph& graph,
+                         PredicateMapTy* out_predicate_map) {
+  DeadnessAnalysisImpl impl(&graph);
+  TF_RETURN_IF_ERROR(impl.Populate());
+  *out_predicate_map = impl.PredicateMapAsString();
+  return Status::OK();
+}
+}  // namespace deadness_analysis_internal
 
 }  // namespace tensorflow

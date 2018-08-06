@@ -193,6 +193,7 @@ class CApiFunctionTest : public ::testing::Test {
 
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
     ASSERT_NE(func_, nullptr);
+    ASSERT_EQ(std::string(func_name_), std::string(TF_FunctionName(func_)));
     TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   }

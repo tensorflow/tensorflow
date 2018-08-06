@@ -318,5 +318,40 @@ class TFRecordIteratorTest(TFCompressionTestCase):
       for _ in tf_record.tf_record_iterator(fn_truncated):
         pass
 
+
+class TFRecordWriterCloseAndFlushTests(test.TestCase):
+
+  def setUp(self, compression_type=TFRecordCompressionType.NONE):
+    super(TFRecordWriterCloseAndFlushTests, self).setUp()
+    self._fn = os.path.join(self.get_temp_dir(), "tf_record_writer_test.txt")
+    self._options = tf_record.TFRecordOptions(compression_type)
+    self._writer = tf_record.TFRecordWriter(self._fn, self._options)
+    self._num_records = 20
+
+  def _Record(self, r):
+    return compat.as_bytes("Record %d" % r)
+
+  def testWriteAndLeaveOpen(self):
+    records = list(map(self._Record, range(self._num_records)))
+    for record in records:
+      self._writer.write(record)
+
+    # Verify no segfault if writer isn't explicitly closed.
+
+
+class TFRecordWriterCloseAndFlushGzipTests(TFRecordWriterCloseAndFlushTests):
+
+  def setUp(self):
+    super(TFRecordWriterCloseAndFlushGzipTests,
+          self).setUp(TFRecordCompressionType.GZIP)
+
+
+class TFRecordWriterCloseAndFlushZlibTests(TFRecordWriterCloseAndFlushTests):
+
+  def setUp(self):
+    super(TFRecordWriterCloseAndFlushZlibTests,
+          self).setUp(TFRecordCompressionType.ZLIB)
+
+
 if __name__ == "__main__":
   test.main()

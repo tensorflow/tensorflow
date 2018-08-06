@@ -1236,6 +1236,35 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
       {param_value.get()}, ErrorSpec(4e-5));
 }
 
+TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
+  auto while_shape = ShapeUtil::MakeShape(S32, {});
+
+  XlaComputation condition;
+  {
+    XlaBuilder builder("condition");
+    Parameter(&builder, 0, while_shape, "state");
+    Infeed(&builder, ShapeUtil::MakeShape(PRED, {}));
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+  }
+
+  XlaComputation body;
+  {
+    XlaBuilder builder("body");
+    auto indvar = Parameter(&builder, 0, while_shape, "state");
+    Add(indvar, ConstantR0<int32>(&builder, 1));
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+  }
+
+  XlaBuilder builder(TestName());
+  While(condition, body, ConstantR0<int32>(&builder, 0));
+
+  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(false)));
+
+  ComputeAndCompareR0<int32>(&builder, 2, {});
+}
+
 void BM_WhileLoop(int num_iters) {
   // Benchmark a simple kernel to measure while loop overheads.
   tensorflow::testing::StopTiming();

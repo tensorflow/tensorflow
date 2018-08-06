@@ -93,12 +93,6 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        const gpu::LaunchDimensions* launch_dimensions) {
   const Shape& keys_shape = keys_array.GetShape();
 
-  // TODO(b/26783907): This case can probably be avoided with the Algebraic
-  // Simplifier.
-  if (ShapeUtil::IsScalar(keys_shape)) {
-    return Status::OK();
-  }
-
   // Create loop nests which loop through the operand dimensions. The sort
   // dimension is handled in the innermost loop which performs the sorting.
   ForLoopNest loop_nest(name, b);

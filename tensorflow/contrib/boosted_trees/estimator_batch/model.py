@@ -58,6 +58,10 @@ def model_builder(features,
       * weight_column_name: The name of weight column.
       * center_bias: Whether a separate tree should be created for first fitting
           the bias.
+      * override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This is particularly useful for hyper
+        parameter tuning, which can't recognize early stopping due to the number
+        of trees. If None, no override of global step will happen.
     config: `RunConfig` of the estimator.
     output_type: Whether to return ModelFnOps (old interface) or EstimatorSpec
       (new interface).
@@ -76,6 +80,7 @@ def model_builder(features,
   use_core_libs = params["use_core_libs"]
   logits_modifier_function = params["logits_modifier_function"]
   output_leaf_index = params["output_leaf_index"]
+  override_global_step_value = params.get("override_global_step_value", None)
 
   if features is None:
     raise ValueError("At least one feature must be specified.")
@@ -136,7 +141,8 @@ def model_builder(features,
     finalized_trees, attempted_trees = gbdt_model.get_number_of_trees_tensor()
     training_hooks.append(
         trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees))
+                                      finalized_trees,
+                                      override_global_step_value))
 
   if output_type == ModelBuilderOutputType.MODEL_FN_OPS:
     if use_core_libs and callable(create_estimator_spec_op):
@@ -206,6 +212,10 @@ def ranking_model_builder(features,
         for left and right part of the training pairs for ranking. For example,
         for an Example with features "a.f1" and "b.f1", the keys would be
         ("a", "b").
+      * override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This is particularly useful for hyper
+        parameter tuning, which can't recognize early stopping due to the number
+        of trees. If None, no override of global step will happen.
     config: `RunConfig` of the estimator.
     output_type: Whether to return ModelFnOps (old interface) or EstimatorSpec
       (new interface).
@@ -226,6 +236,7 @@ def ranking_model_builder(features,
   logits_modifier_function = params["logits_modifier_function"]
   output_leaf_index = params["output_leaf_index"]
   ranking_model_pair_keys = params["ranking_model_pair_keys"]
+  override_global_step_value = params.get("override_global_step_value", None)
 
   if features is None:
     raise ValueError("At least one feature must be specified.")
@@ -347,7 +358,8 @@ def ranking_model_builder(features,
         gbdt_model_main.get_number_of_trees_tensor())
     training_hooks.append(
         trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees))
+                                      finalized_trees,
+                                      override_global_step_value))
 
   if output_type == ModelBuilderOutputType.MODEL_FN_OPS:
     if use_core_libs and callable(create_estimator_spec_op):
