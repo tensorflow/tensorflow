@@ -26,6 +26,8 @@ class HloModule;
 
 namespace poplarplugin {
 
+class InplaceInstructions;
+
 // Extract elementwise ops into a called sub-graph
 // (must come after InplaceFinder)
 
@@ -42,7 +44,7 @@ class ExpressionOutliner : public HloMatcher {
  private:
   unsigned ReplaceNodes() override { return 0; };
 
-  const std::set<const HloInstruction*>& inplace_instructions;
+  const InplaceInstructions& inplace_instructions;
 };
 
 }  // namespace poplarplugin

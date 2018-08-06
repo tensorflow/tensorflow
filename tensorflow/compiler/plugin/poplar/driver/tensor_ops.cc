@@ -128,7 +128,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
 
   poplar::program::Sequence seq;
   if (!input.isParallelWriteable() ||
-      !res.annotations.inplace_instructions.count(inst)) {
+      !res.annotations.inplace_instructions.IsInPlace(inst)) {
     poplar::Tensor copy;
     TF_ASSIGN_OR_RETURN(
         copy, AddTensor(graph, std::make_pair(inst, 0),

@@ -258,7 +258,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       ok = ['host-exchange-local-copy-',
             'Cast/convert.*/Cast',
-            'add/add.*/Op/Add',
+            'add/add.*/AddTo',
             'Cast_1/convert.*/Cast']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 

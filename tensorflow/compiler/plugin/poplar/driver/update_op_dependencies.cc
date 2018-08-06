@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/update_op_dependencies.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -29,43 +30,84 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
   std::unique_ptr<HloReachabilityMap> reachability_map =
       entry_computation->ComputeReachability();
 
-  for (auto* inst : annotations_.inplace_instructions) {
-    // We only currently support inplace ops inside the entry computation
-    if (inst->parent() != module->entry_computation()) {
-      to_remove.push_back(inst);
-      continue;
-    }
+  bool changed = false;
 
-    for (auto* peer : inst->operand(0)->users()) {
-      if (peer == inst) {
+  for (const auto priority :
+       annotations_.inplace_instructions.GetPriorityOrder()) {
+    for (auto* inst :
+         annotations_.inplace_instructions.GetPrioritySet(priority)) {
+      // We only currently support inplace ops inside the entry computation
+      if (inst->parent() != module->entry_computation()) {
+        to_remove.push_back(inst);
         continue;
       }
+      // We do not allow parameter variables (non-streaming) which are not in
+      // High priority to be in-place, otherwise we would have to reload data
+      // which would perform poorly during inference
+      if (inst->operand(0)->opcode() == HloOpcode::kParameter) {
+        // Work out whether this parameter is streamed
+        auto num_streaming =
+            inst->parent()->num_parameters() - annotations_.num_resource_inputs;
+        if (inst->operand(0)->parameter_number() >= num_streaming &&
+            priority != InplaceInstructions::Priority::HIGH) {
+          to_remove.push_back(inst);
+          continue;
+        }
+      }
 
-      // If peer is a depenency of inst, remove inst from inplace list
-      if (reachability_map->IsReachable(inst, peer)) {
-        to_remove.push_back(inst);
-        break;
+      bool add_to_inplace = true;
+      std::vector<HloInstruction*> dependencies;
+      HloInstruction* laundered_inst;
+      TF_ASSIGN_OR_RETURN(laundered_inst,
+                          module->LaunderConstInstructionFromModule(inst));
+      for (auto* peer : inst->operand(0)->users()) {
+        if (peer == inst) {
+          continue;
+        }
+
+        // If peer is a depenency of inst, this can't be inplace
+        if (reachability_map->IsReachable(inst, peer)) {
+          add_to_inplace = false;
+          break;
+        } else {
+          // Add ctrl dep, and remove peer from list
+          HloInstruction* from;
+          TF_ASSIGN_OR_RETURN(from,
+                              module->LaunderConstInstructionFromModule(peer));
+
+          from->AddControlDependencyTo(laundered_inst);
+          dependencies.push_back(from);
+          entry_computation->UpdateReachabilityThroughInstruction(
+              inst, reachability_map.get());
+        }
+      }
+
+      if (add_to_inplace) {
+        // If we can add in place, then move this instruction to the high
+        // priority set
+        annotations_.inplace_instructions.MovePriority(
+            priority, InplaceInstructions::Priority::HIGH, inst);
       } else {
-        // Add ctrl dep, and remove peer from list
-        HloInstruction* from;
-        TF_ASSIGN_OR_RETURN(from,
-                            module->LaunderConstInstructionFromModule(peer));
-        HloInstruction* to;
-        TF_ASSIGN_OR_RETURN(to,
-                            module->LaunderConstInstructionFromModule(inst));
-        from->AddControlDependencyTo(to);
+        // otherwise remove it and undo any dependencies added
+        to_remove.push_back(inst);
+
+        for (auto* depenency : dependencies) {
+          depenency->RemoveControlDependencyTo(laundered_inst);
+        }
         entry_computation->UpdateReachabilityThroughInstruction(
             inst, reachability_map.get());
       }
+
+      changed |= add_to_inplace;
+    }
+
+    // remove instructions which are not actually in place anymore
+    for (auto* inst : to_remove) {
+      annotations_.inplace_instructions.RemoveFrom(priority, inst);
     }
   }
 
-  // remove instructions which are not actually in place anymore
-  for (auto* inst : to_remove) {
-    annotations_.inplace_instructions.erase(inst);
-  }
-
-  return true;
+  return changed;
 }  // namespace poplarplugin
 
 }  // namespace poplarplugin

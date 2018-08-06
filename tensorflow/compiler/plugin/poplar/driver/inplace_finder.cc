@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -118,11 +119,28 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
           case HloOpcode::kSubtract:
           case HloOpcode::kMultiply:
           case HloOpcode::kDynamicUpdateSlice:
-            inplace_instructions.insert(inst);
+            inplace_instructions.AddTo(InplaceInstructions::Priority::HIGH,
+                                       inst);
             break;
           default:
             break;
         }
+      }
+    }
+
+    for (auto* inst : comp->MakeInstructionPostOrder()) {
+      switch (inst->opcode()) {
+        case HloOpcode::kAdd:
+        case HloOpcode::kSubtract:
+        case HloOpcode::kMultiply:
+          if (!inplace_instructions.IsIn(InplaceInstructions::Priority::HIGH,
+                                         inst)) {
+            inplace_instructions.AddTo(InplaceInstructions::Priority::LOW,
+                                       inst);
+          }
+          break;
+        default:
+          break;
       }
     }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -101,7 +102,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   std::list<HloInstruction*> all_ops;
   for (auto* inst : comp->MakeInstructionPostOrder()) {
     if (IsPopopsElementwise(inst) && inst->user_count() == 1 &&
-        inplace_instructions.count(inst) == 0) {
+        !inplace_instructions.IsInPlace(inst)) {
       bool add_op = true;
       if (inst->IsElementwiseBinary()) {
         // for BinaryOps check the shapes of inputs match
@@ -184,7 +185,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
         bool ok_to_outline =
             (std::find(all_ops.begin(), all_ops.end(), op) != all_ops.end());
 
-        if (inplace_instructions.count(op) > 0) {
+        if (inplace_instructions.IsInPlace(op)) {
           ok_to_outline = false;
         }
 

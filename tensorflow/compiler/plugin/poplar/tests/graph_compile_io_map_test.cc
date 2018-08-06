@@ -278,7 +278,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  ASSERT_EQ(1, GetMap(e).size());
+  ASSERT_EQ(2, GetMap(e).size());
   EXPECT_EQ(2, GetMap(e).at(1));
 }
 

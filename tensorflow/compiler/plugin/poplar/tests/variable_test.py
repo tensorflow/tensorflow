@@ -234,7 +234,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call',
             'z1/Initializer/truncated_normal/mul',
-            'z1/Initializer/truncated_normal/add']
+            'z1/Initializer/truncated_normal/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testTruncatedNormalInitalizer(self):
@@ -265,7 +265,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call',
             'z1/Initializer/truncated_normal/mul',
-            'z1/Initializer/truncated_normal/add']
+            'z1/Initializer/truncated_normal/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 

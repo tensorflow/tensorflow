@@ -144,7 +144,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['host-exchange-local-copy-',
             'Conv2D/convolution.*.clone/Conv_1x1',
-            'add/add.*/Op/Add']
+            'add/add.*/AddTo']
 # TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
