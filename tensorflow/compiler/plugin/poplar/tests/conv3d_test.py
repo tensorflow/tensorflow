@@ -75,7 +75,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Copy_XLA_Args/arg1.*_weights_to_weightsRearranged',
             'convolution/convolution.*clone/Conv_3x3x3',
             'BiasAdd/call/addToChannel']
@@ -108,7 +109,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Conv3D/convolution.*clone/Conv_8x8x8_stride4x4x4',
             'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -140,7 +142,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Conv3D/convolution.*clone/Conv_1x1',
             'add/add.*/AddTo']
 # TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
@@ -173,7 +176,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Copy_XLA_Args/arg*_to_bwdWeights',
             'Copy_{<const>,bwdWeights}_to_weightsRearranged',
             'Copy_partialReduceOut_to_Conv3DBackpropInputV2/call',
@@ -211,7 +215,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Copy_partialReduceOut_to_Conv3DBackpropFilterV2/call_out',
             'Copy_{<const>,XLA_Args/arg0.*_input}_to_inRearranged',
             'Conv3DBackpropFilterV2/convolution.*clone/Conv_8x8x8']
