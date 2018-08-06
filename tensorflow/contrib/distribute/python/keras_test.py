@@ -246,6 +246,32 @@ class TestWithDistributionStrategy(test.TestCase):
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=dataset, validation_steps=2)
 
+  def test_raise_error_for_stateful_metrics(self):
+
+    class ExampleStatefulMetric(keras.layers.Layer):
+
+      def __init__(self, name='true_positives', **kwargs):
+        super(ExampleStatefulMetric, self).__init__(name=name, **kwargs)
+        self.stateful = True
+
+      def __call__(self, y_true, y_pred):
+        return y_pred - y_true
+
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae', ExampleStatefulMetric()]
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
+                                                     '/device:GPU:0'])
+      with self.assertRaisesRegexp(
+          NotImplementedError, 'Stateful metrics are not supported with '
+                               'DistributionStrategy.'):
+        model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
+
   def test_unsupported_features(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -268,8 +294,9 @@ class TestWithDistributionStrategy(test.TestCase):
 
       # Test with validation split
       with self.assertRaisesRegexp(
-          ValueError, '`validation_split` argument is not supported '
-                      'when input `x` is a dataset or a dataset iterator'):
+          ValueError, '`validation_split` argument is not '
+                      'supported when input `x` is a dataset or a '
+                      'dataset iterator.+'):
         model.fit(dataset,
                   epochs=1, steps_per_epoch=2, verbose=0,
                   validation_split=0.5, validation_steps=2)
@@ -277,8 +304,8 @@ class TestWithDistributionStrategy(test.TestCase):
       # Test with sample weight.
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
-          ValueError, 'sample_weight is currently not supported when using '
-                      'DistributionStrategy.'):
+          NotImplementedError, 'sample_weight is currently not supported when '
+                               'using DistributionStrategy.'):
         model.fit(
             dataset,
             epochs=1,
