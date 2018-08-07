@@ -122,6 +122,30 @@ xla_test(
 )
 
 cc_library(
+    name = "pooling",
+    srcs = ["pooling.cc"],
+    hdrs = ["pooling.h"],
+    deps = [
+        ":arithmetic",
+        ":constants",
+        "//tensorflow/compiler/tf2xla/lib:util",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "pooling_test",
+    srcs = ["pooling_test.cc"],
+    deps = [
+        ":pooling",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "prng",
     srcs = ["prng.cc"],
     hdrs = ["prng.h"],
