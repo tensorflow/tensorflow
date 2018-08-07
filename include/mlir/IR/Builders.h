@@ -152,34 +152,28 @@ public:
     setInsertionPoint(block, block->end());
   }
 
+  void insert(OperationInst *opInst) {
+    block->getOperations().insert(insertPoint, opInst);
+  }
+
   // Add new basic block and set the insertion point to the end of it.
   BasicBlock *createBlock();
-
-  // TODO(clattner): remove this.
-  /// Create an operation at the current insertion point.
-  OperationInst *createOperation(Identifier name, ArrayRef<CFGValue *> operands,
-                                 ArrayRef<Type *> resultTypes,
-                                 ArrayRef<NamedAttribute> attributes) {
-    auto op =
-        OperationInst::create(name, operands, resultTypes, attributes, context);
-    block->getOperations().insert(insertPoint, op);
-    return op;
-  }
 
   /// Create an operation given the fields represented as an OperationState.
   OperationInst *createOperation(const OperationState &state);
 
-  // TODO(clattner): rework build to return an OperationState so the
-  // implementations can moved out of line.
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Args... args) {
-    return OpTy::build(this, args...);
+    auto *inst = createOperation(OpTy::build(this, args...));
+    auto result = inst->template getAs<OpTy>();
+    assert(result && "Builder didn't return the right type");
+    return result;
   }
 
   OperationInst *cloneOperation(const OperationInst &srcOpInst) {
     auto *op = srcOpInst.clone();
-    block->getOperations().insert(insertPoint, op);
+    insert(op);
     return op;
   }
 
@@ -262,25 +256,16 @@ public:
   /// Get the current insertion point of the builder.
   StmtBlock::iterator getInsertionPoint() const { return insertPoint; }
 
-  // TODO(clattner): remove this.
-  OperationStmt *createOperation(Identifier name, ArrayRef<MLValue *> operands,
-                                 ArrayRef<Type *> resultTypes,
-                                 ArrayRef<NamedAttribute> attributes) {
-    auto *op =
-        OperationStmt::create(name, operands, resultTypes, attributes, context);
-    block->getStatements().insert(insertPoint, op);
-    return op;
-  }
-
   /// Create an operation given the fields represented as an OperationState.
   OperationStmt *createOperation(const OperationState &state);
 
-  // TODO(clattner): rework build to return an OperationState so the
-  // implementations can moved out of line.
-  // Create operation of specific op type at the current insertion point.
+  /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Args... args) {
-    return OpTy::build(this, args...);
+    auto stmt = createOperation(OpTy::build(this, args...));
+    auto result = stmt->template getAs<OpTy>();
+    assert(result && "Builder didn't return the right type");
+    return result;
   }
 
   Statement *clone(const Statement &stmt) {

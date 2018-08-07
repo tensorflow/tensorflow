@@ -227,12 +227,33 @@ const char *ConstantOp::verify() const {
   return "requires a result type that aligns with the 'value' attribute";
 }
 
-/// ConstantIntOp only matches values whose result type is an IntegerType or
-/// AffineInt.
+/// ConstantIntOp only matches values whose result type is an IntegerType.
 bool ConstantIntOp::isClassFor(const Operation *op) {
   return ConstantOp::isClassFor(op) &&
-         (isa<IntegerType>(op->getResult(0)->getType()) ||
-          op->getResult(0)->getType()->isAffineInt());
+         isa<IntegerType>(op->getResult(0)->getType());
+}
+
+OperationState ConstantIntOp::build(Builder *builder, int64_t value,
+                                    unsigned width) {
+  OperationState result(builder->getIdentifier("constant"));
+  result.attributes.push_back(
+      {builder->getIdentifier("value"), builder->getIntegerAttr(value)});
+  result.types.push_back(builder->getIntegerType(width));
+  return result;
+}
+
+/// ConstantAffineIntOp only matches values whose result type is AffineInt.
+bool ConstantAffineIntOp::isClassFor(const Operation *op) {
+  return ConstantOp::isClassFor(op) &&
+         op->getResult(0)->getType()->isAffineInt();
+}
+
+OperationState ConstantAffineIntOp::build(Builder *builder, int64_t value) {
+  OperationState result(builder->getIdentifier("constant"));
+  result.attributes.push_back(
+      {builder->getIdentifier("value"), builder->getIntegerAttr(value)});
+  result.types.push_back(builder->getAffineIntType());
+  return result;
 }
 
 void DimOp::print(OpAsmPrinter *p) const {

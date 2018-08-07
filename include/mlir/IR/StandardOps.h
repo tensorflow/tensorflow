@@ -28,6 +28,7 @@
 
 namespace mlir {
 class OperationSet;
+class Builder;
 
 /// The "addf" operation takes two operands and returns one result, each of
 /// these is required to be of the same type.  This type may be a floating point
@@ -165,16 +166,7 @@ protected:
 class ConstantIntOp : public ConstantOp {
 public:
   /// Build a constant int op producing an integer of the specified width.
-  template <class Builder>
-  static OpPointer<ConstantIntOp> build(Builder *builder, int64_t value,
-                                        unsigned width) {
-    std::pair<Identifier, Attribute *> namedAttr(
-        builder->getIdentifier("value"), builder->getIntegerAttr(value));
-    auto *type = builder->getIntegerType(width);
-
-    return OpPointer<ConstantIntOp>(ConstantIntOp(builder->createOperation(
-        builder->getIdentifier("constant"), {}, type, {namedAttr})));
-  }
+  static OperationState build(Builder *builder, int64_t value, unsigned width);
 
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value")->getValue();
@@ -195,16 +187,7 @@ private:
 class ConstantAffineIntOp : public ConstantOp {
 public:
   /// Build a constant int op producing an affineint.
-  template <class Builder>
-  static OpPointer<ConstantAffineIntOp> build(Builder *builder, int64_t value) {
-    std::pair<Identifier, Attribute *> namedAttr(
-        builder->getIdentifier("value"), builder->getIntegerAttr(value));
-    auto *type = builder->getAffineIntType();
-
-    return OpPointer<ConstantAffineIntOp>(
-        ConstantAffineIntOp(builder->createOperation(
-            builder->getIdentifier("constant"), {}, type, {namedAttr})));
-  }
+  static OperationState build(Builder *builder, int64_t value);
 
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value")->getValue();

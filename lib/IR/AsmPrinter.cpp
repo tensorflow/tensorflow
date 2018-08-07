@@ -607,10 +607,10 @@ protected:
         if (intOp->getType()->isInteger(1)) {
           specialName << (intOp->getValue() ? "true" : "false");
         } else {
-          specialName << 'c' << intOp->getValue();
-          if (!intOp->getType()->isAffineInt())
-            specialName << '_' << *intOp->getType();
+          specialName << 'c' << intOp->getValue() << '_' << *intOp->getType();
         }
+      } else if (auto intOp = op->getAs<ConstantAffineIntOp>()) {
+        specialName << 'c' << intOp->getValue();
       }
     }
 
