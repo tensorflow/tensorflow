@@ -19,9 +19,11 @@ set -e
 set -x
 
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+LT_JOBS=$(nvidia-smi --query-gpu=gpu_name --format=csv,noheader | wc -l)
 
 echo ""
 echo "Bazel will use ${N_JOBS} concurrent job(s)."
+echo "Bazel will use ${LT_JOBS} local test job(s)."
 echo ""
 
 # Run configure.
@@ -36,7 +38,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=cuda --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test -k \
     --test_lang_filters=py --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-    --build_tests_only --test_output=errors --local_test_jobs=8 --config=opt \
+    --build_tests_only --test_output=errors --local_test_jobs=${LT_JOBS} --config=opt \
     --test_size_filters=small,medium \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...
