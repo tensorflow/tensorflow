@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV HOME /home/rocm-user
 
 # install packages needed for this image
-RUN sudo apt-get update && sudo apt-get install -y --allow-unauthenticated python rpm git mercurial libxml2 libxml2-dev miopengemm
+RUN sudo apt-get update && sudo apt-get install -y python rpm git mercurial libxml2 libxml2-dev libssl-dev
 
 # Workaround : build HCC from source using the commit that is known to have fix for issue812
 RUN cd $HOME && git clone --recursive https://github.com/RadeonOpenCompute/hcc.git
@@ -39,7 +39,7 @@ RUN cd $HOME/miopen && mkdir build && cd build && \
     -DCMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" \
     -DCMAKE_BUILD_TYPE=Release \
     .. && \
-    sudo make package -j$(nproc) && sudo dpkg -i *.deb
+    sudo make package -j$(nproc)
 
 ###########################
 # Stage 2 : do the TF build
