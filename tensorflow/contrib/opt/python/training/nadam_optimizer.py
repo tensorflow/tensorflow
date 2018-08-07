@@ -93,6 +93,5 @@ class NadamOptimizer(adam.AdamOptimizer):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_t_slice = array_ops.gather(v_t, indices)
     v_sqrt = math_ops.sqrt(v_t_slice)
-    var_update = state_ops.scatter_sub(
-        var, indices, lr * m_bar / (v_sqrt + epsilon_t), use_locking=self._use_locking)
+    var_update = scatter_add(var, indices, -lr * m_bar / (v_sqrt + epsilon_t))
     return control_flow_ops.group(*[var_update, m_bar, v_t])
