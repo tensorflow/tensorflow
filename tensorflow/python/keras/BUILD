@@ -872,7 +872,7 @@ py_test(
 
 py_test(
     name = "models_test",
-    size = "small",
+    size = "medium",
     srcs = ["models_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67509773

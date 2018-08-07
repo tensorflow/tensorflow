@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -437,6 +438,29 @@ TEST(DeadnessAnalysisTest, RecvVsSwitch) {
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
   EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*logical_and.node()));
+}
+
+TEST(DeadnessAnalysisTest, RecvVsSwitchText) {
+  // Demonstrates why we need the must_be_true bit on SymbolP.
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output recv = ops::_Recv(root.WithOpName("recv"), DT_BOOL, "tensor", "sender",
+                           0, "receiver");
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_BOOL);
+  ops::Switch sw(root.WithOpName("switch"), value, recv);
+  Output logical_and =
+      ops::LogicalAnd(root.WithOpName("and"), recv, sw.output_true);
+
+  std::unique_ptr<DeadnessAnalysis> result;
+  TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+  deadness_analysis_internal::PredicateMapTy predicate_map;
+  TF_ASSERT_OK(deadness_analysis_internal::ComputePredicates(*root.graph(),
+                                                             &predicate_map));
+
+  TensorId logical_and_output_0 = {logical_and.node()->name(),
+                                   Graph::kControlSlot};
+  EXPECT_EQ(predicate_map[logical_and_output_0], "(recv:0 & *recv:0)");
 }
 
 }  // namespace

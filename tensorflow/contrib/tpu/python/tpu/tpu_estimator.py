@@ -2886,7 +2886,8 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       multi_tpu_predict_steps_on_single_shard,
       inputs=[],
       num_shards=num_cores,
-      outputs_from_all_shards=False)
+      outputs_from_all_shards=False,
+      device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
   return dummy_predict_op, host_calls, scaffold, captured_predict_hooks.get()

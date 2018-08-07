@@ -148,6 +148,9 @@ class TPUClusterResolver(ClusterResolver):
       else:
         tpu = self._envVarFallback()
 
+    if tpu is None:
+      raise ValueError('Please provide a TPU Name to connect to.')
+
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
     self._job_name = job_name
     self._credentials = credentials

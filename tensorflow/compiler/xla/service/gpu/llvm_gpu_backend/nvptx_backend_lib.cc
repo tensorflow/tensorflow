@@ -115,8 +115,6 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
 // we see an unrecognized compute capability, we return "sm_30".
 static string GetSmName(std::pair<int, int> compute_capability) {
   static auto* m = new std::map<std::pair<int, int>, int>({
-      {{2, 0}, 20},
-      {{2, 1}, 21},
       {{3, 0}, 30},
       {{3, 2}, 32},
       {{3, 5}, 35},
@@ -330,7 +328,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   if (linker.linkInModule(
           std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
           [](Module& M, const StringSet<>& GVS) {
-            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+            internalizeModule(M, [&GVS](const GlobalValue& GV) {
               return !GV.hasName() || (GVS.count(GV.getName()) == 0);
             });
           })) {

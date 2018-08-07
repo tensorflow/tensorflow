@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include <algorithm>
 #include <deque>
 #include <unordered_map>
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -82,6 +83,14 @@ Status ComputeTopologicalOrder(
   for (int i = 0; i < ready_nodes.size(); ++i) {
     (*topo_order)[&graph.node(ready_nodes[i])] = i;
   }
+  return Status::OK();
+}
+
+Status ReversedTopologicalSort(GraphDef* graph) {
+  std::vector<int> ready_nodes;
+  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, &ready_nodes, nullptr));
+  std::reverse(ready_nodes.begin(), ready_nodes.end());
+  PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
   return Status::OK();
 }
 

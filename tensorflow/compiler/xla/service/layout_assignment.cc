@@ -1228,7 +1228,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   const PointsToSet& points_to_set =
       constraints->points_to_analysis().GetPointsToSet(instruction);
   return points_to_set.ForEachElementWithStatus(
-      [this, &shape_layout, constraints](
+      [&shape_layout, constraints](
           const ShapeIndex& index,
           const PointsToSet::BufferList& buffers) -> Status {
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {

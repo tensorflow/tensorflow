@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 namespace tflite {
 namespace tensor_utils {
 
@@ -38,10 +42,8 @@ bool PortableIsZeroVector(const float* vector, int v_size) {
 }
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
-                                     int8_t* quantized_values,
-                                     float* __restrict__ min_value,
-                                     float* __restrict__ max_value,
-                                     float* __restrict__ scaling_factor) {
+                                     int8_t* quantized_values, float* min_value,
+                                     float* max_value, float* scaling_factor) {
   auto minmax = std::minmax_element(values, values + size);
   *min_value = *minmax.first;
   *max_value = *minmax.second;
@@ -93,9 +95,11 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     for (row = 0; row < m_rows; ++row, result += result_stride) {
       // Initialize the dot product sum for the row to 0.
       int32_t dotprod = 0;
+#if defined(__GNUC__)
       // Prefetch the row to cache.
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
                          3 /* temporal locality */);
+#endif
       // For every block of 16 8-bit elements (128-bit register) from each row.
       for (col = 0; col < m_cols; ++col, ++row_ptr) {
         dotprod += (*row_ptr) * (vectors[col]);

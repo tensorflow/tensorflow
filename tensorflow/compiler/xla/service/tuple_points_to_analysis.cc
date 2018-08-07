@@ -232,8 +232,7 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
   // Copy the points-to set (and tuple sources) at index {element_index} of the
   // operand to the points-to set for this GetTupleElement instruction.
   points_to_set.ForEachMutableElement(
-      [&, this](const ShapeIndex& target_index,
-                PointsToSet::BufferList* points_to) {
+      [&](const ShapeIndex& target_index, PointsToSet::BufferList* points_to) {
         // Construct an index into the operand by prepending element_index to
         // the index for the GetTupleElement instruction's points-to set.
         ShapeIndex src_index;
@@ -308,7 +307,7 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // Recursively copy the points to set of the operand tuple {0} to the output
   // element {0}.
   points_to_set.ForEachMutableElement(
-      [this, &points_to_set, &operand_points_to_set](
+      [&points_to_set, &operand_points_to_set](
           const ShapeIndex& index, PointsToSet::BufferList* buffers) {
         if (index.empty() || index[0] != 0) {
           return;
@@ -517,7 +516,7 @@ Status TuplePointsToAnalysis::GatherBuffersDefinedByInstruction(
     const HloInstruction* instruction,
     TuplePointsToAnalysis::BufferDefinitionVector* buffers) {
   GetPointsToSet(instruction)
-      .ForEachElement([this, buffers, instruction](
+      .ForEachElement([buffers, instruction](
                           const ShapeIndex& index,
                           const PointsToSet::BufferList& source_buffers) {
         // Add buffers which 'instruction' is the source of.
@@ -547,7 +546,7 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
   PointsToSet& dst_points_to_set = CreateEmptyPointsToSet(instruction);
   const PointsToSet& src_points_to_set = GetPointsToSet(src);
   dst_points_to_set.ForEachMutableElement(
-      [this, &dst_points_to_set, &src_points_to_set](
+      [&dst_points_to_set, &src_points_to_set](
           const ShapeIndex& index, PointsToSet::BufferList* buffers) {
         *buffers = src_points_to_set.element(index);
         for (auto& tuple_source : src_points_to_set.tuple_sources(index)) {

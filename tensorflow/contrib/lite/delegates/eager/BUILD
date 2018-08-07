@@ -39,6 +39,41 @@ cc_test(
 )
 
 cc_library(
+    name = "delegate",
+    srcs = [
+        "delegate.cc",
+    ],
+    hdrs = [
+        "delegate.h",
+    ],
+    deps = [
+        ":buffer_map",
+        ":delegate_data",
+        ":kernel",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:kernel_api",
+        "//tensorflow/contrib/lite:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "delegate_test",
+    size = "small",
+    srcs = ["delegate_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":delegate",
+        ":test_util",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "delegate_data",
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
@@ -96,10 +131,20 @@ cc_test(
     deps = [
         ":delegate_data",
         ":kernel",
-        "//tensorflow/contrib/lite/kernels:test_util",
-        "//tensorflow/contrib/lite/testing:util",
-        "@com_google_absl//absl/memory",
+        ":test_util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "test_util",
+    testonly = True,
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
 )
@@ -131,4 +176,9 @@ cc_test(
         "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
 )

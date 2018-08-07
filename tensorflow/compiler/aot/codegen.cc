@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
-#include "tensorflow/compiler/aot/runtime.h"
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/tf2xla/str_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -303,10 +303,10 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   const std::vector<intptr_t> iarg(arg_sizes.begin(), arg_sizes.end());
   const std::vector<intptr_t> itemp(temp_sizes.begin(), temp_sizes.end());
   const size_t arg_bytes_aligned =
-      runtime::aligned_buffer_bytes(iarg.data(), iarg.size());
+      cpu_function_runtime::AlignedBufferBytes(iarg.data(), iarg.size());
   const size_t arg_bytes_total = total_buffer_bytes(iarg.data(), iarg.size());
   const size_t temp_bytes_aligned =
-      runtime::aligned_buffer_bytes(itemp.data(), itemp.size());
+      cpu_function_runtime::AlignedBufferBytes(itemp.data(), itemp.size());
   const size_t temp_bytes_total =
       total_buffer_bytes(itemp.data(), itemp.size());
 

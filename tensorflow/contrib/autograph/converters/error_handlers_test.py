@@ -34,8 +34,10 @@ class ErrorHandlersTest(converter_testing.TestCase):
       raise ValueError()
 
     node, ctx = self.prepare(test_fn, {})
-    anno.setanno(node, anno.Basic.ORIGIN,
-                 origin_info.OriginInfo(None, None, None))
+    anno.setanno(
+        node, anno.Basic.ORIGIN,
+        origin_info.OriginInfo(None, 'test_function_name', 'test_code',
+                               'test_comment'))
     node = error_handlers.transform(node, ctx)
     with self.compiled(node, {}) as result:
       with self.assertRaises(errors.GraphConstructionError):
