@@ -842,6 +842,29 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEquals(0.5, self.evaluate(mirrored_var))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignMirroredVarTowerContextWithSingleValue(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(
+          1.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(1.0, self.evaluate(mirrored_var))
+
+      def model_fn():
+        return mirrored_var.assign(5.0)
+
+      self.evaluate(dist.unwrap(dist.call_for_each_tower(
+          model_fn, run_concurrently=False)))
+      self.assertEquals(5.0, self.evaluate(mirrored_var))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignAddMirroredVarCrossTowerContext(self):
     self._skip_eager_if_gpus_less_than(1)
     def var_fn():
@@ -884,6 +907,29 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEquals(1.5, self.evaluate(mirrored_var))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignAddMirroredVarTowerContextWithSingleValue(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(
+          1.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(1.0, self.evaluate(mirrored_var))
+
+      def model_fn():
+        return mirrored_var.assign_add(5.0)
+
+      self.evaluate(dist.unwrap(dist.call_for_each_tower(
+          model_fn, run_concurrently=False)))
+      self.assertEquals(6.0, self.evaluate(mirrored_var))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignSubMirroredVarCrossTowerContext(self):
     self._skip_eager_if_gpus_less_than(1)
     def var_fn():
@@ -924,6 +970,29 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.evaluate(dist.unwrap(dist.call_for_each_tower(
           model_fn, run_concurrently=False)))
       self.assertEquals(4.5, self.evaluate(mirrored_var))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignSubMirroredVarTowerContextWithSingleValue(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(
+          5.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(5.0, self.evaluate(mirrored_var))
+
+      def model_fn():
+        return mirrored_var.assign_sub(1.0)
+
+      self.evaluate(dist.unwrap(dist.call_for_each_tower(
+          model_fn, run_concurrently=False)))
+      self.assertEquals(4.0, self.evaluate(mirrored_var))
 
 
 class MirroredAndTowerLocalVariableInitializerTest(test.TestCase):
