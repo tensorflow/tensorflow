@@ -18,6 +18,11 @@
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2) -> (d2, d1, d0)
 #map4 = (d0, d1, d2) -> (d2, d1, d0)
 
+// CHECK-DAG: @@set0 = (d0)[s0] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0)
+@@set0 = (i)[N] : (i >= 0, -i + N >= 0, N - 5 == 0)
+
+// CHECK-DAG: @@set1 = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
+
 // CHECK: extfunc @foo(i32, i64) -> f32
 extfunc @foo(i32, i64) -> f32
 
@@ -165,17 +170,24 @@ mlfunc @complex_loops() {
   return                    // CHECK:   return
 }                           // CHECK: }
 
-
-// CHECK-LABEL: mlfunc @ifstmt() {
-mlfunc @ifstmt() {
+// CHECK-LABEL: mlfunc @ifstmt(%arg0 : i32) {
+mlfunc @ifstmt(%N: i32) {
   for %i = 1 to 10 {    // CHECK   for %i0 = 1 to 10 {
-    if () {             // CHECK     if () {
-    } else if () {      // CHECK     } else if () {
+    if (@@set0) {        // CHECK     if (@@set0) {
+      %x = constant 1 : i32
+       // CHECK: %c1_i32 = constant 1 : i32
+      %y = "add"(%x, %i) : (i32, affineint) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, affineint) -> i32
+      %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
+    } else if ((i)[N] : (i - 2 >= 0, 4 - i >= 0))  {      // CHECK     } else if (@@set1) {
+      %u = constant 1 : affineint // CHECK: %c1 = constant 1 : affineint
+      %w = affine_apply (d0,d1)[s0] -> (d0+d1+1) (%i, %i) [%u] // CHECK: %2 = affine_apply (d0, d1)[s0] -> (d0 + d1 + 1)(%i0, %i0)[%c1]
     } else {            // CHECK     } else {
-    }                   // CHECK     }
-  }                     // CHECK   }
-  return                // CHECK   return
-}                       // CHECK }
+      %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
+    }       // CHECK     }
+  }         // CHECK   }
+  return    // CHECK   return
+}           // CHECK }
+
 
 // CHECK-LABEL: cfgfunc @attributes() {
 cfgfunc @attributes() {

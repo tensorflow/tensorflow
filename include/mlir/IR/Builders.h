@@ -97,6 +97,11 @@ public:
   AffineExpr *getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs);
   AffineExpr *getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs);
 
+  // Integer set.
+  IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
+                            ArrayRef<AffineExpr *> constraints,
+                            ArrayRef<bool> isEq);
+
   // TODO: Helpers for affine map/exprs, etc.
 protected:
   MLIRContext *context;
@@ -279,8 +284,8 @@ public:
                      AffineConstantExpr *upperBound,
                      AffineConstantExpr *step = nullptr);
 
-  IfStmt *createIf() {
-    auto *stmt = new IfStmt();
+  IfStmt *createIf(IntegerSet *condition) {
+    auto *stmt = new IfStmt(condition);
     block->getStatements().insert(insertPoint, stmt);
     return stmt;
   }

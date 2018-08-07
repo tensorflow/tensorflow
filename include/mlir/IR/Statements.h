@@ -23,6 +23,7 @@
 #define MLIR_IR_STATEMENTS_H
 
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Statement.h"
@@ -267,9 +268,9 @@ private:
 /// If statement restricts execution to a subset of the loop iteration space.
 class IfStmt : public Statement {
 public:
-  explicit IfStmt()
-    : Statement(Kind::If), thenClause(new IfClause(this)),
-      elseClause(nullptr) {}
+  explicit IfStmt(IntegerSet *condition)
+      : Statement(Kind::If), thenClause(new IfClause(this)),
+        elseClause(nullptr), condition(condition) {}
 
   ~IfStmt();
 
@@ -278,6 +279,7 @@ public:
 
   IfClause *getThenClause() const { return thenClause; }
   IfClause *getElseClause() const { return elseClause; }
+  IntegerSet *getCondition() const { return condition; }
   bool hasElseClause() const { return elseClause != nullptr; }
   IfClause *createElseClause() { return (elseClause = new IfClause(this)); }
 
@@ -285,11 +287,15 @@ public:
   static bool classof(const Statement *stmt) {
     return stmt->getKind() == Kind::If;
   }
+
 private:
   IfClause *thenClause;
   IfClause *elseClause;
-  // TODO: Represent IntegerSet condition
+  // The integer set capturing the conditional guard.
+  IntegerSet *condition;
+  // TODO: arguments to integer set
+  ArrayRef<MLValue *> conditionArgs;
 };
-} //end namespace mlir
+} // end namespace mlir
 
 #endif  // MLIR_IR_STATEMENTS_H

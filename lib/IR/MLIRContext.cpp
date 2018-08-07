@@ -21,6 +21,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Types.h"
@@ -840,4 +841,28 @@ AffineConstantExpr *AffineConstantExpr::get(int64_t constant,
   // Initialize the memory using placement new.
   new (result) AffineConstantExpr(constant);
   return result;
+}
+
+//===----------------------------------------------------------------------===//
+// Integer Sets: these are allocated into the bump pointer, and are immutable.
+// But they aren't uniqued like AffineMap's; there isn't an advantage to.
+//===----------------------------------------------------------------------===//
+
+IntegerSet *IntegerSet::get(unsigned dimCount, unsigned symbolCount,
+                            ArrayRef<AffineExpr *> constraints,
+                            ArrayRef<bool> eqFlags, MLIRContext *context) {
+  assert(eqFlags.size() == constraints.size());
+
+  auto &impl = context->getImpl();
+
+  // Allocate them into the bump pointer.
+  auto *res = impl.allocator.Allocate<IntegerSet>();
+
+  // Copy the equalities and inequalities into the bump pointer.
+  constraints = impl.copyInto(ArrayRef<AffineExpr *>(constraints));
+  eqFlags = impl.copyInto(ArrayRef<bool>(eqFlags));
+
+  // Initialize the memory using placement new.
+  return new (res) IntegerSet(dimCount, symbolCount, constraints.size(),
+                              constraints.data(), eqFlags.data());
 }

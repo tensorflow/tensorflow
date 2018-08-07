@@ -164,6 +164,62 @@ mlfunc @non_statement() {
 
 // -----
 
+mlfunc @invalid_if_conditional1() {
+  for %i = 1 to 10 {
+    if () // expected-error {{expected '(' at start of dimensional identifiers list}}
+  }
+}
+
+// -----
+
+mlfunc @invalid_if_conditional2() {
+  for %i = 1 to 10 {
+    if ((i)[N] : (i >= ))  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+  }
+}
+
+// -----
+
+mlfunc @invalid_if_conditional3() {
+  for %i = 1 to 10 {
+    if ((i)[N] : (i == 1)) // expected-error {{expected '0' after '=='}}
+  }
+}
+
+// -----
+
+mlfunc @invalid_if_conditional4() {
+  for %i = 1 to 10 {
+    if ((i)[N] : (i >= 2)) // expected-error {{expected '0' after '>='}}
+  }
+}
+
+// -----
+
+mlfunc @invalid_if_conditional5() {
+  for %i = 1 to 10 {
+    if ((i)[N] : (i <= 0 )) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+  }
+}
+
+// -----
+
+mlfunc @invalid_if_conditional6() {
+  for %i = 1 to 10 {
+    if ((i) : (i)) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+  }
+}
+
+// -----
+// TODO (support if (1)?
+mlfunc @invalid_if_conditional7() {
+  for %i = 1 to 10 {
+    if ((i) : (1)) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+  }
+}
+
+// -----
+
 #map = (d0) -> (%  // expected-error {{invalid SSA name}}
 
 // -----

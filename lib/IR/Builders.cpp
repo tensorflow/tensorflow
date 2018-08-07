@@ -19,6 +19,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 using namespace mlir;
@@ -105,7 +106,7 @@ TypeAttr *Builder::getTypeAttr(Type *type) {
 }
 
 //===----------------------------------------------------------------------===//
-// Affine Expressions and Affine Map.
+// Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//
 
 AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
@@ -144,6 +145,12 @@ AffineExpr *Builder::getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
 
 AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
+}
+
+IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
+                                   ArrayRef<AffineExpr *> constraints,
+                                   ArrayRef<bool> isEq) {
+  return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
 }
 
 //===----------------------------------------------------------------------===//

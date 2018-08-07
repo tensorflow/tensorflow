@@ -295,6 +295,8 @@ IfStmt::~IfStmt() {
   delete thenClause;
   if (elseClause)
     delete elseClause;
+  // An IfStmt's IntegerSet 'condition' should not be deleted since it is
+  // allocated through MLIRContext's bump pointer allocator.
 }
 
 IfStmt *IfStmt::clone() const {

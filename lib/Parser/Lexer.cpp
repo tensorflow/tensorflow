@@ -111,7 +111,13 @@ Token Lexer::lexToken() {
       return lexComment();
     return emitError(tokStart, "unexpected character");
 
-  case '@': return lexAtIdentifier(tokStart);
+  case '@':
+    if (*curPtr == '@') {
+      ++curPtr;
+      return lexDoubleAtIdentifier(tokStart);
+    }
+    return lexAtIdentifier(tokStart);
+
   case '#':
     LLVM_FALLTHROUGH;
   case '%':
@@ -197,6 +203,20 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
   while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_')
     ++curPtr;
   return formToken(Token::at_identifier, tokStart);
+}
+
+/// Lex an '@@foo' identifier.
+///
+///   function-id ::= `@@` bare-id
+///
+Token Lexer::lexDoubleAtIdentifier(const char *tokStart) {
+  // These always start with a letter.
+  if (!isalpha(*curPtr++))
+    return emitError(curPtr - 1, "expected letter in @@ identifier");
+
+  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_')
+    ++curPtr;
+  return formToken(Token::double_at_identifier, tokStart);
 }
 
 /// Lex an identifier that starts with a prefix followed by suffix-id.

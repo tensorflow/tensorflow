@@ -50,10 +50,11 @@ TOK_MARKER(eof)
 TOK_MARKER(error)
 
 // Identifiers.
-TOK_IDENTIFIER(bare_identifier)    // foo
-TOK_IDENTIFIER(at_identifier)      // @foo
-TOK_IDENTIFIER(hash_identifier)    // #foo
-TOK_IDENTIFIER(percent_identifier) // %foo
+TOK_IDENTIFIER(bare_identifier)      // foo
+TOK_IDENTIFIER(at_identifier)        // @foo
+TOK_IDENTIFIER(double_at_identifier) // @@foo
+TOK_IDENTIFIER(hash_identifier)      // #foo
+TOK_IDENTIFIER(percent_identifier)   // %foo
 // TODO: @@foo, etc.
 
 // Literals
@@ -64,6 +65,7 @@ TOK_LITERAL(inttype)                    // i421
 
 // Punctuation.
 TOK_PUNCTUATION(arrow,            "->")
+TOK_PUNCTUATION(at,               "@")
 TOK_PUNCTUATION(colon,            ":")
 TOK_PUNCTUATION(comma,            ",")
 TOK_PUNCTUATION(question,         "?")
