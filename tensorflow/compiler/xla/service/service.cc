@@ -56,7 +56,6 @@ limitations under the License.
 
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrCat;
-using ::xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 

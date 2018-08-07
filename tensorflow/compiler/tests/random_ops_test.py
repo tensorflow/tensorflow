@@ -57,7 +57,8 @@ class RandomOpsTest(xla_test.XLATestCase):
   def testRandomUniformIsNotConstant(self):
 
     def rng(dtype):
-      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=1000000)
+      dtype = dtypes.as_dtype(dtype)
+      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=dtype.max)
 
     for dtype in self._random_types():
       self._testRngIsNotConstant(rng, dtype)
@@ -73,6 +74,11 @@ class RandomOpsTest(xla_test.XLATestCase):
 
   def testRandomUniformIsInRange(self):
     for dtype in self._random_types():
+      # TODO (b/112272078): enable bfloat16 for CPU and GPU when the bug is
+      # fixed.
+      if (self.device in ["XLA_GPU", "XLA_CPU"
+                         ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
+        continue
       with self.test_session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(
@@ -124,20 +130,29 @@ class RandomOpsTest(xla_test.XLATestCase):
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
         actual_mean = np.mean(y)
-        self.assertAllClose(actual_mean, expected_mean, atol=2e-4)
+        atol = 2e-4
+        if self.device in ["XLA_GPU", "XLA_CPU"]:
+          atol = 2.2e-4
+        self.assertAllClose(actual_mean, expected_mean, atol=atol)
 
         expected_median = mu + probit(
             (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma
         actual_median = np.median(y)
-        self.assertAllClose(actual_median, expected_median, atol=8e-4)
+        self.assertAllClose(actual_median, expected_median, atol=1e-3)
 
         expected_variance = sigma**2 * (1 + (
             (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
                 (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
         actual_variance = np.var(y)
-        self.assertAllClose(actual_variance, expected_variance, rtol=3e-4)
+        rtol = 1e-3
+        if self.device in ["XLA_GPU", "XLA_CPU"]:
+          rtol = 4e-4
+        self.assertAllClose(actual_variance, expected_variance, rtol=rtol)
 
   def testShuffle1d(self):
+    # TODO(b/26783907): this test requires the CPU backend to implement sort.
+    if self.device in ["XLA_CPU"]:
+      return
     with self.test_session() as sess:
       with self.test_scope():
         x = math_ops.range(1 << 16)

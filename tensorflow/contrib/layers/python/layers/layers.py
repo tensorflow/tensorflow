@@ -2660,7 +2660,7 @@ def separable_convolution2d(
     inputs,
     num_outputs,
     kernel_size,
-    depth_multiplier,
+    depth_multiplier=1,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,

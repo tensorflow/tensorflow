@@ -198,7 +198,7 @@ def _FindLayersToQuantize(graph):
             |
     [post_conv_correction]
             |
-     biasadd|folded_bias
+     [biasadd|folded_bias]
             |
          [bypass]
             |
@@ -320,6 +320,7 @@ def _FindLayersToQuantize(graph):
               folded_bias_add_pattern,
               batch_norm_identity,
               bypass_pattern,
+              layer_pattern,
           ])
       ])
 

@@ -903,7 +903,8 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
     ++*output_shift;
   }
   TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits = __builtin_clz(input) - 1;
+  const unsigned max_left_shift_bits =
+      CountLeadingZeros(static_cast<uint32>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
   const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
   *output_shift -= left_shift_bit_pairs;
@@ -3155,18 +3156,9 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
   float nudged_min, nudged_max, nudged_scale;
   NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
                          &nudged_max, &nudged_scale);
-  const float inv_nudged_scale = 1.0f / nudged_scale;
-
   const int flat_size = MatchingFlatSize(output_dims, input_dims);
-  for (int i = 0; i < flat_size; i++) {
-    const float src_val = input_data[i];
-    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
-    const float clamped_shifted = clamped - nudged_min;
-    const float dst_val =
-        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
-        nudged_min;
-    output_data[i] = dst_val;
-  }
+  FakeQuantizeArray(nudged_scale, nudged_min, nudged_max, input_data,
+                    output_data, flat_size);
 }
 
 template <typename SrcT, typename DstT>
@@ -4190,8 +4182,8 @@ inline void RankOneSelect(const D* input_condition_data,
 }
 
 // For easy implementation, the indices is always a vector of size-4 vectors.
-template <typename T, typename I>
-inline void SparseToDense(const std::vector<std::vector<I>>& indices,
+template <typename T, typename TI>
+inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
                           const T* values, T default_value, T* output_data,
                           const Dims<4>& output_dims, bool value_is_scalar) {
   const int value_count = indices.size();
@@ -4206,7 +4198,7 @@ inline void SparseToDense(const std::vector<std::vector<I>>& indices,
   // condition within the loop every time.
   if (value_is_scalar) {
     for (int i = 0; i < value_count; ++i) {
-      const std::vector<I>& index = indices[i];
+      const std::vector<TI>& index = indices[i];
       TFLITE_DCHECK_EQ(index.size(), 4);
       const T value = *values;  // just use the first value.
       output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
@@ -4217,7 +4209,7 @@ inline void SparseToDense(const std::vector<std::vector<I>>& indices,
 
   // Go through the values and indices to fill the sparse values.
   for (int i = 0; i < value_count; ++i) {
-    const std::vector<I>& index = indices[i];
+    const std::vector<TI>& index = indices[i];
     TFLITE_DCHECK_EQ(index.size(), 4);
     const T value = values[i];
     output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =

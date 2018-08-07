@@ -81,6 +81,8 @@ class EagerModelTest : public ::testing::Test {
   TestErrorReporter error_reporter_;
 
  private:
+  // Helper method to add a TensorFlow op. tflite_names needs to start with
+  // "Eager" in order to work with the Eager delegate.
   void AddTfOp(const char* tflite_name, const string& tf_name,
                const string& nodedef_str, const std::vector<int>& inputs,
                const std::vector<int>& outputs);

@@ -109,6 +109,8 @@ TfLiteRegistration* Register_FAKE_QUANT();
 TfLiteRegistration* Register_PACK();
 TfLiteRegistration* Register_ONE_HOT();
 TfLiteRegistration* Register_LOGICAL_OR();
+TfLiteRegistration* Register_LOGICAL_AND();
+TfLiteRegistration* Register_LOGICAL_NOT();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -228,6 +230,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_PACK, Register_PACK());
   AddBuiltin(BuiltinOperator_ONE_HOT, Register_ONE_HOT());
   AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
+  AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
+  AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

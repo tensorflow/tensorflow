@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import sys
 
 from tensorflow.core.protobuf import config_pb2
@@ -33,6 +34,7 @@ from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
@@ -50,6 +52,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 @test_util.with_c_shapes
@@ -243,6 +246,22 @@ class FunctionTest(test.TestCase):
       t.watch(x)
       y = f(x)
     self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
+
+  def testDefunNumpyArraysConvertedToTensors(self):
+
+    def f(x):
+      return x
+
+    x = random_ops.random_uniform([2, 2]).numpy()
+    defined = function.defun(f)
+    defined(x)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    x = random_ops.random_uniform([2, 2]).numpy()
+    defined(x)
+    # A NumPy array with different values but the same shape and dtype
+    # shouldn't trigger another function definition.
+    self.assertEqual(len(defined._arguments_to_functions), 1)
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -897,6 +916,237 @@ class FunctionTest(test.TestCase):
     _ = defined(x)  # ensure the variables list remains the same
     self.assertAllEqual(defined.variables, [v])
 
+  def testPythonFunctionWithDefaultArgs(self):
+
+    def func(foo, bar=1, baz=2):
+      del foo
+      del bar
+      del baz
+      return
+
+    defined = function.defun(func)
+    defined(0, baz=20)
+    # `True` corresponds to the fact that we're executing eagerly
+    self.assertIn((0, 1, 20, True), defined._arguments_to_functions)
+
+    defined(1)  # bar=1, baz=2
+    self.assertIn((1, 1, 2, True), defined._arguments_to_functions)
+
+    # This matches the previous call.
+    defined(foo=1)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    defined(1, 2, 3)
+    self.assertIn((1, 2, 3, True), defined._arguments_to_functions)
+
+    # This matches the previous call.
+    defined(1, bar=2, baz=3)
+    self.assertEqual(len(defined._arguments_to_functions), 3)
+
+    # This matches the previous call.
+    defined(1, baz=3, bar=2)
+    self.assertEqual(len(defined._arguments_to_functions), 3)
+
+  def testFunctoolsPartialUnwrappedCorrectly(self):
+
+    def full_function(a, b, c=3):
+      return a, b, c
+
+    partial = functools.partial(full_function, 1, c=3)
+    a, b, c = partial(2)
+
+    defined = function.defun(partial)
+    func_a, func_b, func_c = defined(2)
+    self.assertEqual(func_a.numpy(), a)
+    self.assertEqual(func_b.numpy(), b)
+    self.assertEqual(func_c.numpy(), c)
+
+  def testInputSignatureWithCompatibleInputs(self):
+
+    def foo(a):
+      self.assertEqual(a.shape, (2,))
+      return a
+
+    signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
+    defined = function.defun(foo, input_signature=signature)
+    a = array_ops.ones([2])
+    out = defined(a)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertAllEqual(out, a)
+
+    def bar(a):
+      self.assertEqual(a._shape_tuple(), (2, None))
+      return a
+
+    signature = [tensor_spec.TensorSpec((2, None), dtypes.float32)]
+    defined = function.defun(bar, input_signature=signature)
+    a = array_ops.ones([2, 1])
+    out = defined(a)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertAllEqual(out, a)
+
+    # Changing the second dimension shouldn't create a new function.
+    b = array_ops.ones([2, 3])
+    out = defined(b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertAllEqual(out, b)
+
+  def testNestedInputSignatures(self):
+
+    def foo(a, b):
+      self.assertEqual(a[0]._shape_tuple(), (2, None))
+      self.assertEqual(a[1]._shape_tuple(), (2, None))
+      self.assertEqual(b._shape_tuple(), (1,))
+      return [a, b]
+
+    signature = [[tensor_spec.TensorSpec((2, None), dtypes.float32)] * 2,
+                 tensor_spec.TensorSpec((1,), dtypes.float32)]
+    defined = function.defun(foo, input_signature=signature)
+    a = array_ops.ones([2, 1])
+    b = array_ops.ones([1])
+    out = defined([a, a], b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    nest.assert_same_structure(out, [[a, a], b])
+    self.assertAllEqual(out[0][0], a)
+    self.assertAllEqual(out[0][1], a)
+    self.assertAllEqual(out[1], b)
+
+    # Changing the unspecified dimensions shouldn't create a new function.
+    a = array_ops.ones([2, 3])
+    b = array_ops.ones([2, 5])
+    c = array_ops.ones([1])
+    out = defined([a, b], c)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    nest.assert_same_structure(out, [[a, b], c])
+    self.assertAllEqual(out[0][0], a)
+    self.assertAllEqual(out[0][1], b)
+    self.assertAllEqual(out[1], c)
+
+    def bar(a):
+      self.assertEqual(a['a']._shape_tuple(), (2, None))
+      self.assertEqual(a['b']._shape_tuple(), (2, None))
+      self.assertEqual(a['c']._shape_tuple(), (1,))
+      return a
+
+    signature = [{
+        'a': tensor_spec.TensorSpec((2, None), dtypes.float32),
+        'b': tensor_spec.TensorSpec((2, None), dtypes.float32),
+        'c': tensor_spec.TensorSpec((1,), dtypes.float32)
+    }]
+    a = array_ops.ones([2, 3])
+    b = array_ops.ones([1])
+    inputs = {'a': a, 'b': a, 'c': b}
+    defined = function.defun(bar, input_signature=signature)
+    out = defined(inputs)
+    nest.assert_same_structure(out, inputs)
+    self.assertAllEqual(out['a'], inputs['a'])
+    self.assertAllEqual(out['b'], inputs['b'])
+    self.assertAllEqual(out['c'], inputs['c'])
+
+  def testInputSignatureMustBeSequenceOfTensorSpecs(self):
+
+    def foo(a, b):
+      del a
+      del b
+
+    # Signatures must consist exclusively of `TensorSpec` objects.
+    signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
+    with self.assertRaisesRegexp(TypeError, 'Invalid input_signature.*'):
+      function.defun(foo, input_signature=signature)(1, 2)
+
+    # Signatures must be either lists or tuples on their outermost levels.
+    signature = {'t1': tensor_spec.TensorSpec([], dtypes.float32)}
+    with self.assertRaisesRegexp(TypeError, 'input_signature must be either a '
+                                 'tuple or a list.*'):
+      function.defun(foo, input_signature=signature)(1, 2)
+
+  def testInputsIncompatibleWithSignatureRaisesError(self):
+
+    def foo(a):
+      return a
+
+    signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
+    defined = function.defun(foo, input_signature=signature)
+
+    # Invalid shapes.
+    with self.assertRaisesRegexp(ValueError, 'Python inputs incompatible.*'):
+      defined(array_ops.ones([3]))
+
+    with self.assertRaisesRegexp(ValueError, 'Python inputs incompatible.*'):
+      defined(array_ops.ones([2, 1]))
+
+    # Wrong number of arguments.
+    with self.assertRaisesRegexp(ValueError,
+                                 'Structure of Python function inputs.*'):
+      defined(array_ops.ones([2]), array_ops.ones([2]))
+    with self.assertRaisesRegexp(ValueError,
+                                 'Structure of Python function inputs.*'):
+      defined()
+
+  def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
+
+    def foo(a, training=True):
+      if training:
+        return a
+      else:
+        return -1.0 * a
+
+    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    defined = function.defun(foo, input_signature=signature)
+    a = constant_op.constant(1.0)
+    with self.assertRaisesRegexp(
+        ValueError, 'When input_signature is provided, '
+        'all inputs to the Python function must be Tensors.'):
+      defined(a, training=True)
+
+  def testInputSignatureWithKeywordPositionalArgs(self):
+
+    @function.defun(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.int64)
+    ])
+    def foo(flt, integer):
+      return flt, integer
+
+    flt = constant_op.constant(1.0)
+    integer = constant_op.constant(2, dtypes.int64)
+
+    out1, out2 = foo(flt, integer)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+    out1, out2 = foo(flt=flt, integer=integer)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+    out1, out2 = foo(integer=integer, flt=flt)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+    out1, out2 = foo(flt, integer=integer)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+  def testInputSignatureWithKeywordArgsFails(self):
+
+    def foo(a, **kwargs):
+      del a
+      del kwargs
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Cannot define a TensorFlow function from a Python '
+        'function with keyword arguments when input_signature.*'):
+      function.defun(
+          foo,
+          input_signature=[
+              tensor_spec.TensorSpec([], dtypes.float32),
+              tensor_spec.TensorSpec([], dtypes.int64)
+          ])
+
   def testTensorKeywordArguments(self):
 
     def foo(a, b):
@@ -964,7 +1214,9 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
 
-  def testDecoratingInstanceMethod(self):
+  def testDefuningInstanceMethod(self):
+
+    integer = constant_op.constant(2, dtypes.int64)
 
     class Foo(object):
 
@@ -972,13 +1224,27 @@ class FunctionTest(test.TestCase):
         return tensor
 
       @function.defun
-      def two(self, tensor):
-        return self.one(tensor)
+      def two(self, tensor, other=integer):
+        return self.one(tensor), other
 
     foo = Foo()
     t = constant_op.constant(1.0)
-    out = foo.two(t)
-    self.assertEqual(float(out), 1.0)
+    one, two = foo.two(t)
+    self.assertEqual(one.numpy(), 1.0)
+    self.assertEqual(two.numpy(), 2)
+
+  def testDefuningInstanceMethodWithDefaultArgument(self):
+
+    integer = constant_op.constant(2, dtypes.int64)
+
+    class Foo(object):
+
+      @function.defun
+      def func(self, other=integer):
+        return other
+
+    foo = Foo()
+    self.assertEqual(foo.func().numpy(), int(integer))
 
   def testPythonCallWithSideEffects(self):
     state = []

@@ -312,6 +312,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       return [val.get(device=d) for d in sorted(val.devices)]
     return [val]
 
+  def value_container(self, val):
+    return values.value_container(val)
+
   def read_var(self, var):
     # No need to distinguish between normal variables and tower-local variables.
     return array_ops.identity(var)

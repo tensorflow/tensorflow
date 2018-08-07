@@ -35,8 +35,8 @@ std::vector<std::pair<string, AttrValue>> GetCommonAttributes() {
   return commonAttributes;
 }
 
-NodeDef *MakeUnaryNode(const std::string &node_type, int count,
-                       string input_node, MutableGraphView *graph) {
+NodeDef *MakeUnaryNode(StringPiece node_type, int count, string input_node,
+                       MutableGraphView *graph) {
   NodeDef *node_count = graph_utils::AddScalarConstNode<int64>(count, graph);
   return graph_utils::AddNode("", node_type,
                               {std::move(input_node), node_count->name()},
@@ -64,7 +64,7 @@ NodeDef *MakeRangeNode(MutableGraphView *graph) {
 }
 
 struct NoOpLastEliminationTest
-    : ::testing::TestWithParam<std::tuple<std::string, int, bool>> {};
+    : ::testing::TestWithParam<std::tuple<string, int, bool>> {};
 
 // This test checks whether the no-op elimination correctly handles
 // transformations at the end of the pipeline.
@@ -72,7 +72,7 @@ TEST_P(NoOpLastEliminationTest, EliminateLastNoOpNode) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  const std::string &node_type = std::get<0>(GetParam());
+  const string &node_type = std::get<0>(GetParam());
   const int node_count = std::get<1>(GetParam());
   const bool should_keep_node = std::get<2>(GetParam());
 
@@ -102,7 +102,7 @@ INSTANTIATE_TEST_CASE_P(
                       std::make_tuple("RepeatDataset", 2, true)));
 
 struct NoOpMiddleEliminationTest
-    : ::testing::TestWithParam<std::tuple<std::string, int, bool>> {};
+    : ::testing::TestWithParam<std::tuple<string, int, bool>> {};
 
 // This test checks whether the no-op elimination correctly handles
 // transformations int the middle of the pipeline.
@@ -110,7 +110,7 @@ TEST_P(NoOpMiddleEliminationTest, EliminateMiddleNoOpNode) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  const std::string &node_type = std::get<0>(GetParam());
+  const string &node_type = std::get<0>(GetParam());
   const int node_count = std::get<1>(GetParam());
   const bool should_keep_node = std::get<2>(GetParam());
 

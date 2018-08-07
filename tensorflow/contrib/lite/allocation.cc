@@ -28,6 +28,7 @@ limitations under the License.
 
 namespace tflite {
 
+#ifndef TFLITE_MCU
 FileCopyAllocation::FileCopyAllocation(const char* filename,
                                        ErrorReporter* error_reporter)
     : Allocation(error_reporter) {
@@ -71,6 +72,7 @@ const void* FileCopyAllocation::base() const { return copied_buffer_.get(); }
 size_t FileCopyAllocation::bytes() const { return buffer_size_bytes_; }
 
 bool FileCopyAllocation::valid() const { return copied_buffer_ != nullptr; }
+#endif
 
 MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
                                    ErrorReporter* error_reporter)

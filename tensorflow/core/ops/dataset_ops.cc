@@ -223,9 +223,12 @@ REGISTER_OP("MapAndBatchDataset")
       // so that to avoid guessing the length of "other_arguments".
       // batch_size, num_parallel_batches, and drop_remainder are 0-D scalars.
       shape_inference::ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 3), 0, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 2), 0, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
 
       return shape_inference::ScalarShape(c);
     });
@@ -246,9 +249,12 @@ REGISTER_OP("MapAndBatchDatasetV2")
       // so that to avoid guessing the length of "other_arguments".
       // batch_size, num_parallel_calls, and drop_remainder are 0-D scalars.
       shape_inference::ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 3), 0, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 2), 0, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
 
       return shape_inference::ScalarShape(c);
     });
@@ -358,6 +364,13 @@ REGISTER_OP("FilterDataset")
     .Output("handle: variant")
     .Attr("predicate: func")
     .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("FilterByLastComponentDataset")
+    .Input("input_dataset: variant")
+    .Output("output: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
