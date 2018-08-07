@@ -258,6 +258,13 @@ class KerasMetricsTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(m.total), 57.5, 2)  # 55.5 + 1 + 1
     self.assertAlmostEqual(self.evaluate(m.count), 5.1, 2)  # 3.9 + 1.2
 
+    # check values reduced to the dimensions of weight
+    result_t = m([[[1., 2.], [3., 2.], [0.5, 4.]]], sample_weight=[0.5])
+    result = np.round(self.evaluate(result_t), decimals=2)  # 58.5 / 5.6
+    self.assertEqual(result, 10.45)
+    self.assertEqual(np.round(self.evaluate(m.total), decimals=2), 58.54)
+    self.assertEqual(np.round(self.evaluate(m.count), decimals=2), 5.6)
+
   def test_mean_graph_with_placeholder(self):
     with context.graph_mode(), self.test_session() as sess:
       m = metrics.Mean()

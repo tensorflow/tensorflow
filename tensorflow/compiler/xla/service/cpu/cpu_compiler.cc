@@ -840,18 +840,29 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     BufferSizes buffer_sizes;
     for (const BufferAllocation& allocation : assignment->Allocations()) {
-      // Callers don't need to allocate temporary buffers for parameters.
-      if (allocation.is_entry_computation_parameter() ||
-          allocation.is_constant()) {
-        buffer_sizes.push_back(-1);
-        continue;
-      }
       // Callers don't need to allocate anything for thread-local temporary
       // buffers.  They are lowered to allocas.
       if (allocation.is_thread_local()) {
         buffer_sizes.push_back(-1);
         continue;
       }
+
+      // Callers don't need to allocate anything for constant buffers.  They are
+      // lowered to globals.
+      if (allocation.is_constant()) {
+        buffer_sizes.push_back(-1);
+        continue;
+      }
+
+      // Callers don't need to allocate anything for entry computation buffers,
+      // but they do need to stash the pointer to the entry computation buffer
+      // in the temp buffer table.  See the comment on
+      // XlaCompiledCpuFunction::StaticData::temp_sizes.
+      if (allocation.is_entry_computation_parameter()) {
+        buffer_sizes.push_back(-allocation.parameter_number() - 2);
+        continue;
+      }
+
       buffer_sizes.push_back(allocation.size());
     }
 

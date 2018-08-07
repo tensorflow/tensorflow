@@ -209,7 +209,9 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  build_options.set_device_ordinal(client_->default_device_ordinal());
+  build_options.set_device_ordinal(options.device_ordinal != -1
+                                       ? options.device_ordinal
+                                       : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
 
@@ -256,6 +258,7 @@ Status XlaCompilationCache::CompileImpl(
     xla::LocalExecutable** executable,
     const XlaCompiler::CompileOptions* compile_options,
     bool compile_single_op) {
+  CHECK_NE(executable, nullptr);
   VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
@@ -293,7 +296,7 @@ Status XlaCompilationCache::CompileImpl(
   // protect the contents of the cache entry.
   Entry* entry;
   {
-    mutex_lock lock(mu_);
+    mutex_lock lock(compile_cache_mu_);
     // Find or create a cache entry.
     std::unique_ptr<Entry>& e = cache_[signature];
     if (!e) {
@@ -309,6 +312,8 @@ Status XlaCompilationCache::CompileImpl(
   if (!entry->compiled) {
     VLOG(1) << "Compilation cache miss for signature: "
             << SignatureDebugString(signature);
+    tensorflow::Env* env = tensorflow::Env::Default();
+    const uint64 compile_start_us = env->NowMicros();
     // Do the actual JIT compilation without holding the lock (it can take
     // a long time.)
     std::vector<XlaCompiler::Argument> args;
@@ -327,18 +332,35 @@ Status XlaCompilationCache::CompileImpl(
           compile_options ? *compile_options : XlaCompiler::CompileOptions(),
           function, args, &entry->compilation_result);
     }
-  }
-  *compilation_result = &entry->compilation_result;
-  if (entry->compilation_status.ok() && executable) {
-    if (entry->executable == nullptr) {
-      entry->compilation_status = BuildExecutable(
-          options, entry->compilation_result, &entry->executable);
-    }
-    *executable = entry->executable.get();
-  }
+    TF_RETURN_IF_ERROR(entry->compilation_status);
+    CHECK_EQ(entry->executable.get(), nullptr);
+    entry->compilation_status =
+        BuildExecutable(options, entry->compilation_result, &entry->executable);
 
-  Status status = entry->compilation_status;
-  return status;
+    const uint64 compile_end_us = env->NowMicros();
+    const uint64 compile_time_us = compile_end_us - compile_start_us;
+    {
+      mutex_lock lock(compile_stats_mu_);
+      auto it = compile_stats_.emplace(function.name(), CompileStats{}).first;
+      it->second.compile_count++;
+      it->second.cumulative_compile_time_us += compile_time_us;
+      VLOG(1) << "compiled " << function.name() << " "
+              << it->second.compile_count
+              << " times, compile time: " << compile_time_us
+              << " us, cumulative: " << it->second.cumulative_compile_time_us
+              << " us ("
+              << tensorflow::strings::HumanReadableElapsedTime(compile_time_us /
+                                                               1.0e6)
+              << " / "
+              << tensorflow::strings::HumanReadableElapsedTime(
+                     it->second.cumulative_compile_time_us / 1.0e6)
+              << ")";
+    }
+  }
+  TF_RETURN_IF_ERROR(entry->compilation_status);
+  *compilation_result = &entry->compilation_result;
+  *executable = entry->executable.get();
+  return Status::OK();
 }
 
 }  // namespace tensorflow

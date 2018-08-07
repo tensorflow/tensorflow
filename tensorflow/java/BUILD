@@ -292,6 +292,32 @@ tf_java_test(
     ],
 )
 
+tf_java_test(
+    name = "GradientsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/GradientsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.GradientsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
+    name = "ZerosTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/ZerosTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.ZerosTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
 filegroup(
     name = "processor_test_resources",
     srcs = glob([

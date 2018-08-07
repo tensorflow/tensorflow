@@ -22,3 +22,6 @@ bazel build -c opt --cxxopt=--std=c++11 \
   --cpu=armeabi-v7a \
   //tensorflow/contrib/lite/experimental/c:libtensorflowlite_c.so
 ```
+
+If you encounter issues with native plugin discovery on Mac ("Darwin")
+platforms, try renaming `libtensorflowlite_c.so` to `tensorflowlite_c.bundle`.

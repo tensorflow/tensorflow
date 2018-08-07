@@ -37,7 +37,8 @@ class ErrorRewritingTransformer(converter.Base):
   def visit_FunctionDef(self, node):
     node = self.generic_visit(node)
 
-    if anno.hasanno(node, anno.Basic.ORIGIN):
+    if (anno.hasanno(node, anno.Basic.ORIGIN) and
+        len(self.enclosing_entities) <= 1):
       template = """
         try:
           body

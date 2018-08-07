@@ -141,7 +141,7 @@ def result_wrapper(result_fn):
   return tf_decorator.make_decorator(result_fn, decorated)
 
 
-def _safe_div(numerator, denominator):
+def safe_div(numerator, denominator):
   """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
 
   Args:
@@ -158,7 +158,7 @@ def _safe_div(numerator, denominator):
   return array_ops.where(condition, t, zero)
 
 
-def _squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
+def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
   """Squeeze or expand last dimension if needed.
 
   1. Squeezes last dim of `y_pred` or `y_true` if their rank differs by 1
@@ -275,7 +275,7 @@ class Metric(Layer):
     def update_state(self, y_true, y_pred, sample_weight=None):
       y_true = math_ops.cast(y_true, dtypes.bool)
       y_pred = math_ops.cast(y_pred, dtypes.bool)
-      y_pred, y_true, sample_weight = _squeeze_or_expand_dimensions(
+      y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
           y_pred, y_true, sample_weight)
 
       values = math_ops.logical_and(
@@ -420,11 +420,20 @@ class Mean(Metric):
     else:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
 
-      # Update dimensions of weights to match with values.
-      values, _, sample_weight = _squeeze_or_expand_dimensions(
+      # Update dimensions of weights to match with values if possible.
+      values, _, sample_weight = squeeze_or_expand_dimensions(
           values, None, sample_weight)
-      sample_weight = weights_broadcast_ops.broadcast_weights(
-          sample_weight, values)
+      try:
+        # Broadcast weights if possible.
+        sample_weight = weights_broadcast_ops.broadcast_weights(
+            sample_weight, values)
+      except ValueError:
+        # Reduce values to same ndim as weight array
+        ndim = K.ndim(values)
+        weight_ndim = K.ndim(sample_weight)
+        values = math_ops.reduce_mean(
+            values, axis=list(range(weight_ndim, ndim)))
+
       num_values = math_ops.reduce_sum(sample_weight)
       values = math_ops.multiply(values, sample_weight)
     values = math_ops.reduce_sum(values)
@@ -434,7 +443,7 @@ class Mean(Metric):
     state_ops.assign_add(self.count, num_values)
 
   def result(self):
-    return _safe_div(self.total, self.count)
+    return safe_div(self.total, self.count)
 
 
 class MeanMetricWrapper(Mean):
@@ -468,7 +477,7 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = _squeeze_or_expand_dimensions(
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
         y_pred, y_true, sample_weight)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)

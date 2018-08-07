@@ -372,6 +372,22 @@ Status ConjGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Conj", ConjGrad);
 
+Status CastGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: SrcT", "dy: DstT"},
+      // Ret val defs
+      {"dx: SrcT"},
+      // Attr defs
+      {{"SrcT: type"}, {"DstT: type"}},
+      // Nodes
+      {{{"dx"}, "Cast", {"dy"}, {{"SrcT", "$DstT"}, {"DstT", "$SrcT"}}}});
+  return Status::OK();
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Cast", CastGrad);
+
 // Cwise binary ops
 //
 // TODO(zhifengc): This can be arrange as a function in the standard

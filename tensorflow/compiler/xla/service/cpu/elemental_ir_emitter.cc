@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -117,9 +119,8 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
                                 ElementwiseSourceIndex(index, *hlo, i)));
         operands.push_back(operand_value);
       }
-      return ir_emitter_->EmitScalarCall(hlo->shape().element_type(),
-                                         hlo->to_apply(), operands,
-                                         llvm_ir::IrName(hlo));
+      return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),
+                                           operands, llvm_ir::IrName(hlo));
     };
   }
   return ElementalIrEmitter::MakeElementGenerator(hlo, operand_to_generator);

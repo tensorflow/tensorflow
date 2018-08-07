@@ -624,6 +624,8 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_PACK:
       case tflite::BuiltinOperator_LOGICAL_OR:
       case tflite::BuiltinOperator_ONE_HOT:
+      case tflite::BuiltinOperator_LOGICAL_AND:
+      case tflite::BuiltinOperator_LOGICAL_NOT:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;
@@ -788,5 +790,7 @@ TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
 
   return kTfLiteOk;
 }
+
+bool NNAPIDelegate::IsSupported() { return NNAPIExists(); }
 
 }  // namespace tflite

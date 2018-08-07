@@ -31,6 +31,8 @@ from tensorflow.python.util import tf_export
 API_ATTRS = tf_export.API_ATTRS
 API_ATTRS_V1 = tf_export.API_ATTRS_V1
 
+_API_VERSIONS = [1, 2]
+_COMPAT_MODULE_TEMPLATE = 'compat.v%d'
 _DEFAULT_PACKAGE = 'tensorflow.python'
 _GENFILES_DIR_SUFFIX = 'genfiles/'
 _SYMBOLS_TO_SKIP_EXPLICITLY = {
@@ -81,8 +83,9 @@ def format_import(source_module_name, source_name, dest_name):
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self):
-    self.module_imports = collections.defaultdict(
+  def __init__(self, output_package):
+    self._output_package = output_package
+    self._module_imports = collections.defaultdict(
         lambda: collections.defaultdict(set))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
@@ -124,7 +127,30 @@ class _ModuleInitCodeBuilder(object):
     # The same symbol can be available in multiple modules.
     # We store all possible ways of importing this symbol and later pick just
     # one.
-    self.module_imports[dest_module_name][full_api_name].add(import_str)
+    self._module_imports[dest_module_name][full_api_name].add(import_str)
+
+  def _import_submodules(self):
+    """Add imports for all destination modules in self._module_imports."""
+    # Import all required modules in their parent modules.
+    # For e.g. if we import 'foo.bar.Value'. Then, we also
+    # import 'bar' in 'foo'.
+    imported_modules = set(self._module_imports.keys())
+    for module in imported_modules:
+      if not module:
+        continue
+      module_split = module.split('.')
+      parent_module = ''  # we import submodules in their parent_module
+
+      for submodule_index in range(len(module_split)):
+        if submodule_index > 0:
+          submodule = module_split[submodule_index-1]
+          parent_module += '.' + submodule if parent_module else submodule
+        import_from = self._output_package
+        if submodule_index > 0:
+          import_from += '.' + '.'.join(module_split[:submodule_index])
+        self.add_import(
+            -1, parent_module, import_from,
+            module_split[submodule_index], module_split[submodule_index])
 
   def build(self):
     """Get a map from destination module to __init__.py code for that module.
@@ -135,8 +161,9 @@ class _ModuleInitCodeBuilder(object):
         value: (string) text that should be in __init__.py files for
           corresponding modules.
     """
+    self._import_submodules()
     module_text_map = {}
-    for dest_module, dest_name_to_imports in self.module_imports.items():
+    for dest_module, dest_name_to_imports in self._module_imports.items():
       # Sort all possible imports for a symbol and pick the first one.
       imports_list = [
           sorted(imports)[0]
@@ -160,7 +187,83 @@ __all__.remove('print_function')
     return module_text_map
 
 
-def get_api_init_text(package, output_package, api_name, api_version):
+def _get_name_and_module(full_name):
+  """Split full_name into module and short name.
+
+  Args:
+    full_name: Full name of symbol that includes module.
+
+  Returns:
+    Full module name and short symbol name.
+  """
+  name_segments = full_name.split('.')
+  return '.'.join(name_segments[:-1]), name_segments[-1]
+
+
+def _join_modules(module1, module2):
+  """Concatenate 2 module components.
+
+  Args:
+    module1: First module to join.
+    module2: Second module to join.
+
+  Returns:
+    Given two modules aaa.bbb and ccc.ddd, returns a joined
+    module aaa.bbb.ccc.ddd.
+  """
+  if not module1:
+    return module2
+  if not module2:
+    return module1
+  return '%s.%s' % (module1, module2)
+
+
+def add_imports_for_symbol(
+    module_code_builder,
+    symbol,
+    source_module_name,
+    source_name,
+    api_name,
+    api_version,
+    output_module_prefix=''):
+  """Add imports for the given symbol to `module_code_builder`.
+
+  Args:
+    module_code_builder: `_ModuleInitCodeBuilder` instance.
+    symbol: A symbol.
+    source_module_name: Module that we can import the symbol from.
+    source_name: Name we can import the symbol with.
+    api_name: API name. Currently, must be either `tensorflow` or `estimator`.
+    api_version: API version.
+    output_module_prefix: Prefix to prepend to destination module.
+  """
+  if api_version == 1:
+    names_attr = API_ATTRS_V1[api_name].names
+    constants_attr = API_ATTRS_V1[api_name].constants
+  else:
+    names_attr = API_ATTRS[api_name].names
+    constants_attr = API_ATTRS[api_name].constants
+
+  # If symbol is _tf_api_constants attribute, then add the constants.
+  if source_name == constants_attr:
+    for exports, name in symbol:
+      for export in exports:
+        dest_module, dest_name = _get_name_and_module(export)
+        dest_module = _join_modules(output_module_prefix, dest_module)
+        module_code_builder.add_import(
+            -1, dest_module, source_module_name, name, dest_name)
+
+  # If symbol has _tf_api_names attribute, then add import for it.
+  if (hasattr(symbol, '__dict__') and names_attr in symbol.__dict__):
+    for export in getattr(symbol, names_attr):  # pylint: disable=protected-access
+      dest_module, dest_name = _get_name_and_module(export)
+      dest_module = _join_modules(output_module_prefix, dest_module)
+      module_code_builder.add_import(
+          id(symbol), dest_module, source_module_name, source_name, dest_name)
+
+
+def get_api_init_text(
+    package, output_package, api_name, api_version, compat_api_versions=None):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
@@ -169,7 +272,9 @@ def get_api_init_text(package, output_package, api_name, api_version):
     output_package: Base output python package where generated API will
       be added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
-    api_version: API version you want to generate (`v1` or `v2`).
+    api_version: API version you want to generate (1 or 2).
+    compat_api_versions: Additional API versions to generate under compat/
+      directory.
 
   Returns:
     A dictionary where
@@ -177,14 +282,9 @@ def get_api_init_text(package, output_package, api_name, api_version):
       value: (string) text that should be in __init__.py files for
         corresponding modules.
   """
-  if api_version == 1:
-    names_attr = API_ATTRS_V1[api_name].names
-    constants_attr = API_ATTRS_V1[api_name].constants
-  else:
-    names_attr = API_ATTRS[api_name].names
-    constants_attr = API_ATTRS[api_name].constants
-  module_code_builder = _ModuleInitCodeBuilder()
-
+  if compat_api_versions is None:
+    compat_api_versions = []
+  module_code_builder = _ModuleInitCodeBuilder(output_package)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
   for module in list(sys.modules.values()):
@@ -201,48 +301,16 @@ def get_api_init_text(package, output_package, api_name, api_version):
           in _SYMBOLS_TO_SKIP_EXPLICITLY):
         continue
       attr = getattr(module, module_contents_name)
-
-      # If attr is _tf_api_constants attribute, then add the constants.
-      if module_contents_name == constants_attr:
-        for exports, value in attr:
-          for export in exports:
-            names = export.split('.')
-            dest_module = '.'.join(names[:-1])
-            module_code_builder.add_import(
-                -1, dest_module, module.__name__, value, names[-1])
-        continue
-
       _, attr = tf_decorator.unwrap(attr)
-      # If attr is a symbol with _tf_api_names attribute, then
-      # add import for it.
-      if (hasattr(attr, '__dict__') and names_attr in attr.__dict__):
-        for export in getattr(attr, names_attr):  # pylint: disable=protected-access
-          names = export.split('.')
-          dest_module = '.'.join(names[:-1])
-          module_code_builder.add_import(
-              id(attr), dest_module, module.__name__, module_contents_name,
-              names[-1])
 
-  # Import all required modules in their parent modules.
-  # For e.g. if we import 'foo.bar.Value'. Then, we also
-  # import 'bar' in 'foo'.
-  imported_modules = set(module_code_builder.module_imports.keys())
-  for module in imported_modules:
-    if not module:
-      continue
-    module_split = module.split('.')
-    parent_module = ''  # we import submodules in their parent_module
-
-    for submodule_index in range(len(module_split)):
-      if submodule_index > 0:
-        parent_module += ('.' + module_split[submodule_index-1] if parent_module
-                          else module_split[submodule_index-1])
-      import_from = output_package
-      if submodule_index > 0:
-        import_from += '.' + '.'.join(module_split[:submodule_index])
-      module_code_builder.add_import(
-          -1, parent_module, import_from,
-          module_split[submodule_index], module_split[submodule_index])
+      add_imports_for_symbol(
+          module_code_builder, attr, module.__name__, module_contents_name,
+          api_name, api_version)
+      for compat_api_version in compat_api_versions:
+        add_imports_for_symbol(
+            module_code_builder, attr, module.__name__, module_contents_name,
+            api_name, compat_api_version,
+            _COMPAT_MODULE_TEMPLATE % compat_api_version)
 
   return module_code_builder.build()
 
@@ -284,6 +352,13 @@ def get_module_docstring(module_name, package, api_name):
   Returns:
     One-line docstring to describe the module.
   """
+  # Get the same module doc strings for any version. That is, for module
+  # 'compat.v1.foo' we can get docstring from module 'foo'.
+  for version in _API_VERSIONS:
+    compat_prefix = _COMPAT_MODULE_TEMPLATE % version
+    if module_name.startswith(compat_prefix):
+      module_name = module_name[len(compat_prefix):].strip('.')
+
   # Module under base package to get a docstring from.
   docstring_module_name = module_name
 
@@ -305,26 +380,32 @@ def get_module_docstring(module_name, package, api_name):
 
 
 def create_api_files(
-    output_files, package, root_init_template, output_dir, output_package,
-    api_name, api_version):
+    output_files,
+    package,
+    root_init_template,
+    output_dir,
+    output_package,
+    api_name,
+    api_version,
+    compat_api_versions):
   """Creates __init__.py files for the Python API.
 
   Args:
     output_files: List of __init__.py file paths to create.
-      Each file must be under api/ directory.
     package: Base python package containing python with target tf_export
       decorators.
     root_init_template: Template for top-level __init__.py file.
-      "#API IMPORTS PLACEHOLDER" comment in the template file will be replaced
+      "# API IMPORTS PLACEHOLDER" comment in the template file will be replaced
       with imports.
     output_dir: output API root directory.
     output_package: Base output package where generated API will be added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
     api_version: API version to generate (`v1` or `v2`).
+    compat_api_versions: Additional API versions to generate in compat/
+      subdirectory.
 
   Raises:
-    ValueError: if an output file is not under api/ directory,
-      or output_files list is missing a required file.
+    ValueError: if output_files list is missing a required file.
   """
   module_name_to_file_path = {}
   for output_file in output_files:
@@ -338,10 +419,13 @@ def create_api_files(
     open(file_path, 'a').close()
 
   module_text_map = get_api_init_text(
-      package, output_package, api_name, api_version)
+      package, output_package, api_name, api_version, compat_api_versions)
 
   # Add imports to output files.
   missing_output_files = []
+  # Root modules are "" and "compat.v*".
+  root_modules = set(_COMPAT_MODULE_TEMPLATE % v for v in compat_api_versions)
+  root_modules.add('')
   for module, text in module_text_map.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
@@ -349,8 +433,9 @@ def create_api_files(
           module.replace('.', '/'))
       missing_output_files.append(module_file_path)
       continue
+
     contents = ''
-    if module or not root_init_template:
+    if module not in root_modules or not root_init_template:
       contents = (
           _GENERATED_FILE_HEADER %
           get_module_docstring(module, package, api_name) +
@@ -365,9 +450,7 @@ def create_api_files(
 
   if missing_output_files:
     raise ValueError(
-        'Missing outputs for python_api_gen genrule:\n%s.'
-        'Make sure all required outputs are in the '
-        'tensorflow/tools/api/generator/api_gen.bzl file.' %
+        'Missing outputs for genrule:\n%s.' %
         ',\n'.join(sorted(missing_output_files)))
 
 
@@ -398,12 +481,15 @@ def main():
       help='The API you want to generate.')
   parser.add_argument(
       '--apiversion', default=2, type=int,
-      choices=[1, 2],
+      choices=_API_VERSIONS,
       help='The API version you want to generate.')
+  parser.add_argument(
+      '--compat_apiversions', default=[], type=int, action='append',
+      help='Additional versions to generate in compat/ subdirectory. '
+           'If set to 0, then no additional version would be generated.')
   parser.add_argument(
       '--output_package', default='tensorflow', type=str,
       help='Root output package.')
-
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -418,7 +504,7 @@ def main():
   importlib.import_module(args.package)
   create_api_files(outputs, args.package, args.root_init_template,
                    args.apidir, args.output_package, args.apiname,
-                   args.apiversion)
+                   args.apiversion, args.compat_apiversions)
 
 
 if __name__ == '__main__':

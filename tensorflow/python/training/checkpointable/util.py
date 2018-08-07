@@ -943,7 +943,7 @@ class CheckpointLoadStatus(_LoadStatus):
     if session is None:
       session = ops.get_default_session()
     all_objects = list_objects(self._root_checkpointable)
-    already_initialized_objects = set(
+    already_initialized_objects = _ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
     initializers_for_non_restored_variables = [
         c.initializer for c in all_objects

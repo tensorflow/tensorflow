@@ -194,6 +194,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleGather(HloInstructionPtr gather) override {
     return DefaultAction(gather);
   }
+  Status HandleScatter(HloInstructionPtr scatter) override {
+    return DefaultAction(scatter);
+  }
   Status HandleAfterAll(HloInstructionPtr token) override {
     return DefaultAction(token);
   }

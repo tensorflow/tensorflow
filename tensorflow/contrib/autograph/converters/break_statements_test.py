@@ -20,13 +20,16 @@ from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import break_statements
 from tensorflow.contrib.autograph.core import converter_testing
+from tensorflow.python.eager import context as tfe_ctx
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
 class BreakCanonicalizationTest(converter_testing.TestCase):
 
   def assertTransformedEquivalent(self, test_fn, *inputs):
-    with self.converted(test_fn, break_statements, {}) as result:
+    with self.converted(test_fn, break_statements, {},
+                        constant_op.constant) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_while_loop(self):
@@ -40,9 +43,10 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
-    self.assertTransformedEquivalent(test_fn, 4)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 1)
+      self.assertTransformedEquivalent(test_fn, 4)
 
   def test_for_loop(self):
 
@@ -55,7 +59,8 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v
 
-    with self.converted(test_fn, break_statements, {}) as result:
+    with self.converted(test_fn, break_statements, {},
+                        constant_op.constant) as result:
       # The break is incompletely canonicalized. The loop will not interrupt,
       # but the section following the break will be skipped.
       self.assertEqual([3], result.test_fn([5, 4]))
@@ -77,9 +82,10 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v, u, w
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 11)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 11)
 
   def test_nested_loops(self):
 
@@ -99,10 +105,11 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v, u
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 5)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 2)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 5)
 
   def test_loop_orelse(self):
 
@@ -120,9 +127,10 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v, u
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, 3)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 2)
+      self.assertTransformedEquivalent(test_fn, 3)
 
 
 if __name__ == '__main__':

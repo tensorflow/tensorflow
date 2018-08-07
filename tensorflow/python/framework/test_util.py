@@ -51,7 +51,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
@@ -498,9 +497,7 @@ def assert_no_new_tensors(f):
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._zeros_cache.flush()
-    context.get_default_context().ones_rank_cache().flush()
-    context.get_default_context().scalar_cache().clear()
+    context.get_default_context()._clear_caches()  # pylint: disable=protected-access
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()

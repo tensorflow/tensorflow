@@ -481,6 +481,9 @@ cc_library(
         ":darwin": [
             ":neon_tensor_utils",
         ],
+        ":darwin_x86_64": [
+            ":neon_tensor_utils",
+        ],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],

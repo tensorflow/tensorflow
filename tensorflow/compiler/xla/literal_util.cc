@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::strings::Printf;
 using tensorflow::strings::StrCat;
 
 namespace xla {

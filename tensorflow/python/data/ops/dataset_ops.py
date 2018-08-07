@@ -39,10 +39,12 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -644,17 +646,34 @@ class Dataset(object):
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
     """
-    if shuffle is None:
-      shuffle = True
-    matching_files = gen_io_ops.matching_files(file_pattern)
-    dataset = Dataset.from_tensor_slices(matching_files)
-    if shuffle:
-      # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
-      # list of files might be empty.
-      buffer_size = math_ops.maximum(
-          array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
-      dataset = dataset.shuffle(buffer_size, seed=seed)
-    return dataset
+    with ops.name_scope("list_files"):
+      if shuffle is None:
+        shuffle = True
+      file_pattern = ops.convert_to_tensor(
+          file_pattern, dtype=dtypes.string, name="file_pattern")
+      matching_files = gen_io_ops.matching_files(file_pattern)
+
+      # Raise an exception if `file_pattern` does not match any files.
+      condition = math_ops.greater(array_ops.shape(matching_files)[0], 0,
+                                   name="match_not_empty")
+
+      message = math_ops.add(
+          "No files matched pattern: ",
+          string_ops.reduce_join(file_pattern, separator=", "), name="message")
+
+      assert_not_empty = control_flow_ops.Assert(
+          condition, [message], summarize=1, name="assert_not_empty")
+      with ops.control_dependencies([assert_not_empty]):
+        matching_files = array_ops.identity(matching_files)
+
+      dataset = Dataset.from_tensor_slices(matching_files)
+      if shuffle:
+        # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
+        # list of files might be empty.
+        buffer_size = math_ops.maximum(
+            array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
+        dataset = dataset.shuffle(buffer_size, seed=seed)
+      return dataset
 
   def repeat(self, count=None):
     """Repeats this dataset `count` times.
