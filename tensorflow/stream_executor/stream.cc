@@ -5294,6 +5294,19 @@ Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
   return *this;
 }
 
+Stream &Stream::ThenDoHostCallbackWithStatus(
+    std::function<port::Status()> callback) {
+  VLOG_CALL(PARAM(callback));
+
+  if (ok()) {
+    CheckError(parent_->HostCallback(this, std::move(callback)));
+  } else {
+    LOG(WARNING) << "stream " << DebugStreamPointers()
+                 << " was in error state before adding host callback";
+  }
+  return *this;
+}
+
 Stream &Stream::ThenFft(fft::Plan *plan,
                         const DeviceMemory<std::complex<float>> &input,
                         DeviceMemory<std::complex<float>> *output) {
