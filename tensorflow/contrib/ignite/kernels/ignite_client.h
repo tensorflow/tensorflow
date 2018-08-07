@@ -21,7 +21,7 @@ namespace ignite {
 
 class Client {
  public:
-  Client(std::string host, int port);
+  Client(std::string host, int port, std::string certfile, std::string keyfile, std::string cert_password);
 
   tensorflow::Status Connect();
   tensorflow::Status Disconnect();
@@ -42,6 +42,9 @@ class Client {
  private:
   std::string host;
   int port;
+  std::string certfile;
+  std::string keyfile;
+  std::string cert_password;
   int sock;
   struct sockaddr_in server;
 };

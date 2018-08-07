@@ -23,14 +23,18 @@ namespace ignite {
 IgniteDatasetIterator::IgniteDatasetIterator(
     const Params& params, std::string host, tensorflow::int32 port,
     std::string cache_name, bool local, tensorflow::int32 part,
-    tensorflow::int32 page_size, std::vector<tensorflow::int32> schema,
+    tensorflow::int32 page_size, std::string username, std::string password,
+    std::string certfile, std::string keyfile, std::string cert_password,
+    std::vector<tensorflow::int32> schema,
     std::vector<tensorflow::int32> permutation)
     : tensorflow::DatasetIterator<IgniteDataset>(params),
-      client(Client(host, port)),
+      client(Client(host, port, certfile, keyfile, cert_password)),
       cache_name(cache_name),
       local(local),
       part(part),
       page_size(page_size),
+      username(username),
+      password(password),
       schema(schema),
       permutation(permutation),
       remainder(-1),
@@ -156,6 +160,9 @@ tensorflow::Status IgniteDatasetIterator::RestoreInternal(
 }
 
 tensorflow::Status IgniteDatasetIterator::Handshake() {
+  std::cout << "Username : '" << username << "'" << std::endl;
+  std::cout << "Password : '" << password << "'" << std::endl;
+
   client.WriteInt(8);
   client.WriteByte(1);
   client.WriteShort(1);

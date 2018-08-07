@@ -40,6 +40,16 @@ class IgniteDatasetOp : public DatasetOpKernel {
     int32 page_size = -1;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int32>(ctx, "page_size", &page_size));
+    std::string username = "";
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "username", &username));
+    std::string password = "";
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "password", &password));
+    std::string certfile = "";
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "certfile", &certfile));
+    std::string keyfile = "";
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "keyfile", &keyfile));
+    std::string cert_password = "";
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "cert_password", &cert_password));
 
     const Tensor* schema_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
@@ -74,7 +84,7 @@ class IgniteDatasetOp : public DatasetOpKernel {
     }
 
     *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local,
-                                        part, page_size, std::move(schema), std::move(permutation));
+                                        part, page_size, username, password, certfile, keyfile, cert_password, std::move(schema), std::move(permutation));
   }
 };
 

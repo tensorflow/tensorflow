@@ -26,6 +26,9 @@ class IgniteDatasetIterator
                                  tensorflow::int32 port, std::string cache_name,
                                  bool local, tensorflow::int32 part,
                                  tensorflow::int32 page_size,
+                                 std::string username, std::string password,
+                                 std::string certfile, std::string keyfile,
+                                 std::string cert_password,
                                  std::vector<tensorflow::int32> schema,
                                  std::vector<tensorflow::int32> permutation);
   ~IgniteDatasetIterator();
@@ -49,6 +52,8 @@ class IgniteDatasetIterator
   const bool local;
   const tensorflow::int32 part;
   const tensorflow::int32 page_size;
+  const std::string username;
+  const std::string password;
   const std::vector<tensorflow::int32> schema;
   const std::vector<tensorflow::int32> permutation;
 

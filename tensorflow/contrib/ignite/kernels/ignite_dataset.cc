@@ -23,6 +23,9 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
                              tensorflow::int32 port, bool local,
                              tensorflow::int32 part,
                              tensorflow::int32 page_size,
+                             std::string username, std::string password,
+                             std::string certfile, std::string keyfile,
+                             std::string cert_password,
                              std::vector<tensorflow::int32> schema,
                              std::vector<tensorflow::int32> permutation)
     : GraphDatasetBase(ctx),
@@ -32,6 +35,11 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
       local(local),
       part(part),
       page_size(page_size),
+      username(username),
+      password(password),
+      certfile(certfile),
+      keyfile(keyfile),
+      cert_password(cert_password),
       schema(schema),
       permutation(permutation) {
   SchemaToTypes();
@@ -48,7 +56,7 @@ std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(
   return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator(
       {this, tensorflow::strings::StrCat(prefix, "::Ignite")}, this->host,
       this->port, this->cache_name, this->local, this->part,
-      this->page_size, this->schema, this->permutation));
+      this->page_size, this->username, this->password, this->certfile, this->keyfile, this->cert_password, this->schema, this->permutation));
 }
 
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {

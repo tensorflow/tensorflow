@@ -31,12 +31,19 @@ limitations under the License.
 
 namespace ignite {
 
-Client::Client(std::string host, int port) :
+Client::Client(std::string host, int port, std::string certfile, std::string keyfile, std::string cert_password) :
   host(host),
   port(port),
+  certfile(certfile),
+  keyfile(keyfile),
+  cert_password(cert_password),
   sock(-1) {}
 
 tensorflow::Status Client::Connect() {
+  std::cout << "Certfile : '" <<  certfile << "'" << std::endl;
+  std::cout << "Keyfile : '" <<  keyfile << "'" << std::endl;
+  std::cout << "Cert password : '" <<  cert_password << "'" << std::endl;
+
   if (sock == -1) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1)

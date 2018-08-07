@@ -27,6 +27,11 @@ REGISTER_OP("IgniteDataset")
   .Input("part: int32")
   .Input("distributed: bool")
   .Input("page_size: int32")
+  .Input("username: string")
+  .Input("password: string")
+  .Input("certfile: string")
+  .Input("keyfile: string")
+  .Input("cert_password: string")
   .Input("schema: int32")
   .Input("permutation: int32")
   .Output("handle: variant")
@@ -42,6 +47,11 @@ local: Local.
 part: Part.
 distributed: Distributed.
 page_size: Page size.
+username: Username.
+password: Password.
+certfile: SSL certificate.
+keyfile: Private key file.
+cert_password: SSL certificate password.
 schema: Schema.
 permutation: Permutation.
 )doc");
