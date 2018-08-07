@@ -534,6 +534,8 @@ class HloConstantInstruction : public HloInstruction {
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const { return literal_ != nullptr; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
