@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_base.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -253,7 +254,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name() << " : " << comp->name();
 
   // If is is a special fusion-type op
-  if (comp->name().substr(0, 8) == "_pop_op_") {
+  if (IsPopOpsCall(comp)) {
     auto end = comp->name().find('.');
     std::string name = comp->name().substr(8, end - 8);
 

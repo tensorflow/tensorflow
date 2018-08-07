@@ -287,7 +287,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       }
       case HloOpcode::kCall: {
         const HloComputation* comp = target->second.tgt->to_apply();
-        if (comp->name().substr(0, 8) == "_pop_op_") {
+        if (IsPopOpsCall(comp)) {
           auto end = comp->name().find('.');
           std::string name = comp->name().substr(8, end - 8);
           if (name == "depthwise_conv") {

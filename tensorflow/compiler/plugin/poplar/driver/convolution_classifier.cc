@@ -101,9 +101,9 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
           }
           case HloOpcode::kCall: {
             std::string name = inst->to_apply()->name();
-            if (name == "_pop_op_depthwise_conv" ||
-                name == "_pop_op_conv_with_reverse" ||
-                name == "_pop_op_depthwise_filter") {
+            if (IsPopOpsCall(inst, "depthwise_conv") ||
+                IsPopOpsCall(inst, "conv_with_reverse") ||
+                IsPopOpsCall(inst, "depthwise_filter")) {
               classification_[inst] = ClassificationType::INFERENCE;
             }
             break;

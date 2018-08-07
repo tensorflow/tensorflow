@@ -75,8 +75,13 @@ StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
   return *static_cast<const int64*>(s64_lit->untyped_data());
 }
 
-bool IsPopOpsCall(xla::HloComputation* computation) {
-  return tensorflow::str_util::StartsWith(computation->name(), "_pop_op");
+bool IsPopOpsCall(const xla::HloComputation* comp, const std::string& postfix) {
+  return tensorflow::str_util::StartsWith(comp->name(), "_pop_op_" + postfix);
+}
+
+bool IsPopOpsCall(const xla::HloInstruction* inst, const std::string& postfix) {
+  return inst->opcode() == xla::HloOpcode::kCall &&
+         IsPopOpsCall(inst->to_apply(), postfix);
 }
 
 }  // namespace poplarplugin

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -100,7 +101,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
   for (auto* comp : module->computations()) {
-    if (tensorflow::str_util::StartsWith(comp->name(), "_pop_op")) {
+    if (IsPopOpsCall(comp)) {
       continue;
     }
 
