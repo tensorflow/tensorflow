@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -30,6 +32,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 using LayoutAssignmentTest = HloTestBase;
 
@@ -325,6 +329,33 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
       }
     }
   }
+}
+
+TEST_F(LayoutAssignmentTest, DotLayout) {
+  const char* hlo_text = R"(
+  HloModule DotLayout
+  ENTRY dot {
+    p0 = f32[8,8,256,64]{3,1,2,0} parameter(0)
+    p1 = f32[8,8,256,64]{3,1,2,0} parameter(1)
+    ROOT dot.1330.10585 = f32[8,8,256,256]{3,2,1,0} dot(p0, p1),
+      lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+      rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 8, 256, 64}, {3, 2, 1, 0});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::ShapeWithLayout(expected_shape),
+                      op::ShapeWithLayout(expected_shape)));
 }
 
 }  // namespace

@@ -937,8 +937,8 @@ bool Placer::ClientHandlesErrorFormatting() const {
 string Placer::RichNodeName(const Node* node) const {
   string quoted_name = strings::StrCat("'", node->name(), "'");
   if (ClientHandlesErrorFormatting()) {
-    string file_and_line = error_format_tag(*node, "${file}:${line}");
-    return strings::StrCat(quoted_name, " (defined at ", file_and_line, ")");
+    string file_and_line = error_format_tag(*node, "${defined_at}");
+    return strings::StrCat(quoted_name, file_and_line);
   } else {
     return quoted_name;
   }

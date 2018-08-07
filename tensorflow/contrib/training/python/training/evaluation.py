@@ -142,9 +142,9 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 
@@ -189,7 +189,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
   logging.info('Waiting for new checkpoint at %s', checkpoint_dir)
   stop_time = time.time() + timeout if timeout is not None else None
   while True:
-    checkpoint_path = tf_saver.latest_checkpoint(checkpoint_dir)
+    checkpoint_path = checkpoint_management.latest_checkpoint(checkpoint_dir)
     if checkpoint_path is None or checkpoint_path == last_checkpoint:
       if stop_time is not None and time.time() + seconds_to_sleep > stop_time:
         return None

@@ -237,7 +237,7 @@ class _WorkerContext(object):
 def _run(worker_fn, cluster_spec, task_type, task_id, between_graph, rpc_layer,
          worker_barrier):
   with _WorkerContext(cluster_spec, task_type, task_id, between_graph,
-                           rpc_layer, worker_barrier):
+                      rpc_layer, worker_barrier):
     worker_fn()
 
 

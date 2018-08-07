@@ -71,8 +71,9 @@ class ComputeDeviceSummaryFromOpTest(test.TestCase):
                                         lineno=42))
 
     summary = error_interpolation._compute_device_summary_from_list(
-        assignments, prefix="  ")
+        "nodename", assignments, prefix="  ")
 
+    self.assertIn("nodename", summary)
     self.assertIn("tf.device(/cpu:0)", summary)
     self.assertIn("<hope.py:24>", summary)
     self.assertIn("tf.device(/gpu:2)", summary)
@@ -81,7 +82,8 @@ class ComputeDeviceSummaryFromOpTest(test.TestCase):
   def testCorrectFormatWhenNoColocationsWereActive(self):
     device_assignment_list = []
     summary = error_interpolation._compute_device_summary_from_list(
-        device_assignment_list, prefix="  ")
+        "nodename", device_assignment_list, prefix="  ")
+    self.assertIn("nodename", summary)
     self.assertIn("No device assignments", summary)
 
 
@@ -99,7 +101,8 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
         "test_node_2": t_obj_2,
     }
     summary = error_interpolation._compute_colocation_summary_from_dict(
-        colocation_dict, prefix="  ")
+        "node_name", colocation_dict, prefix="  ")
+    self.assertIn("node_name", summary)
     self.assertIn("colocate_with(test_node_1)", summary)
     self.assertIn("<test_1.py:27>", summary)
     self.assertIn("colocate_with(test_node_2)", summary)
@@ -108,7 +111,8 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
   def testCorrectFormatWhenNoColocationsWereActive(self):
     colocation_dict = {}
     summary = error_interpolation._compute_colocation_summary_from_dict(
-        colocation_dict, prefix="  ")
+        "node_name", colocation_dict, prefix="  ")
+    self.assertIn("node_name", summary)
     self.assertIn("No node-device colocations", summary)
 
 
@@ -176,7 +180,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     one_tag_string = "^^node:MinusOne:${file}^^"
     interpolated_string = error_interpolation.interpolate(one_tag_string,
                                                           self.graph)
-    self.assertEqual(interpolated_string, "<NA>")
+    self.assertEqual("<NA>", interpolated_string)
 
   def testTwoTagsNoSeps(self):
     two_tags_no_seps = "^^node:One:${file}^^^^node:Three:${line}^^"
@@ -287,7 +291,6 @@ class InterpolateColocationSummaryTest(test.TestCase):
     message = "^^node:One:${colocations}^^"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("No node-device colocations", result)
-    self.assertNotIn("One", result)
     self.assertNotIn("Two", result)
 
 

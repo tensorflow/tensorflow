@@ -23,6 +23,7 @@ from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.contrib.autograph.core.converter import AgAnno
 from tensorflow.contrib.autograph.lang import directives
 from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.python.platform import test
 
 
@@ -71,7 +72,23 @@ class DirectivesTest(converter_testing.TestCase):
     d = d[directives.set_loop_options]
     self.assertEqual(d['parallel_iterations'].n, 10)
     self.assertEqual(d['back_prop'].id, 'a')
-    self.assertEqual(d['swap_memory'], directives.UNSPECIFIED)
+    self.assertNotIn('swap_memory', d)
+
+  def test_invalid_default(self):
+
+    def invalid_directive(valid_arg, invalid_default=object()):
+      del valid_arg
+      del invalid_default
+      return
+
+    def call_invalid_directive():
+      invalid_directive(1)
+
+    node, _ = parser.parse_entity(call_invalid_directive)
+    # Find the call to the invalid directive
+    node = node.body[0].body[0].value
+    with self.assertRaisesRegexp(ValueError, 'Unexpected keyword.*'):
+      directives_converter._map_args(node, invalid_directive)
 
 
 if __name__ == '__main__':

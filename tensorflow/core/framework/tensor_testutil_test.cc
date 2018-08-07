@@ -249,10 +249,9 @@ TEST(TensorTestUtilTest, ExpectTensorCloseHalf) {
   EXPECT_TRUE(Helper<T>::IsClose(HALF(3.141592f), HALF(3.141593f), HALF(0.0),
                                  HALF(0.0)));
 
-  // This case failed because HALF(1e7f) is stored as inf, which it shouldn't.
-  // TODO(penporn): Debug Eigen::half and uncomment this test case.
-  // EXPECT_FALSE(
-  //     Helper<T>::IsClose(HALF(1e7f), HALF(1e-7f), kDefaultTol, kDefaultTol));
+  // Trivial case.
+  EXPECT_FALSE(
+      Helper<T>::IsClose(HALF(1e4f), HALF(1e-4f), kDefaultTol, kDefaultTol));
 #undef HALF
 
   // Some of the cases failed because Eigen::half doesn't behave as expected.

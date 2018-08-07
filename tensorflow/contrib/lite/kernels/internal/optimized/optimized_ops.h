@@ -168,6 +168,18 @@ ArrayMap<Scalar> MapAsArrayWithFirstDimAsRows(Scalar* data,
   return ArrayMap<Scalar>(data, rows, cols);
 }
 
+// Copied from tensorflow/core/framework/tensor_types.h
+template <typename T, int NDIMS = 1, typename IndexType = Eigen::DenseIndex>
+struct TTypes {
+  // Rank-1 tensor (vector) of scalar type T.
+  typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, IndexType>,
+                           Eigen::Aligned>
+      Flat;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
+      UnalignedConstMatrix;
+};
+
 // TODO(b/62193649): this function is only needed as long
 // as we have the --variable_batch hack.
 template <typename Scalar, int N>
@@ -1018,10 +1030,10 @@ inline void FullyConnectedAsGEMV(
 struct GemmlowpOutputPipeline {
   typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
       ColVectorMap;
-  typedef std::tuple<
-      gemmlowp::OutputStageBiasAddition<ColVectorMap>,
-      gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint,
-      gemmlowp::OutputStageClamp, gemmlowp::OutputStageSaturatingCastToUint8>
+  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
+                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
+                     gemmlowp::OutputStageClamp,
+                     gemmlowp::OutputStageSaturatingCastToUint8>
       Pipeline;
   static Pipeline MakeExp(const int32* bias_data, int output_rows,
                           int32 output_offset, int32 output_multiplier,
@@ -1030,11 +1042,10 @@ struct GemmlowpOutputPipeline {
     ColVectorMap bias_vector(bias_data, output_rows);
     gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
     bias_addition_stage.bias_vector = bias_vector;
-    gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint
-        quantize_down_stage;
+    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
     quantize_down_stage.result_offset_after_shift = output_offset;
     quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_shift = -output_left_shift;
+    quantize_down_stage.result_exponent = output_left_shift;
     gemmlowp::OutputStageClamp clamp_stage;
     clamp_stage.min = output_activation_min;
     clamp_stage.max = output_activation_max;
@@ -2315,7 +2326,8 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
     ++*output_shift;
   }
   TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits = __builtin_clz(input) - 1;
+  const unsigned max_left_shift_bits =
+      CountLeadingZeros(static_cast<uint32>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
   const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
   *output_shift -= left_shift_bit_pairs;
@@ -4023,7 +4035,7 @@ inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
     // perform a division by the above-computed sum-of-exponentials.
     int32 fixed_sum_of_exps = sum_of_exps.raw();
     int headroom_plus_one =
-        __builtin_clz(static_cast<uint32>(fixed_sum_of_exps));
+        CountLeadingZeros(static_cast<uint32>(fixed_sum_of_exps));
     // This is the number of bits to the left of the binary point above 1.0.
     // Consider fixed_sum_of_exps=1.25.  In that case shifted_scale=0.8 and
     // no later adjustment will be needed.
@@ -4169,7 +4181,7 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
   // required shift "ourselves" instead of using, say, Rescale.
   FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
   // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = __builtin_clz(static_cast<uint32>(z_a.raw()));
+  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
   FixedPoint0 r_a_tmp =
       SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
   const int32 r_a_raw =
@@ -4184,7 +4196,7 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
 
   // z_b is treated like z_a, but premultiplying by sqrt(0.5).
   FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = __builtin_clz(static_cast<uint32>(z_b.raw())) - 1;
+  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
   const int32 r_b_raw =
       SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
   const FixedPointAccum z_b_pow_2_adj = SaturatingSub(

@@ -377,6 +377,19 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
+    case OperatorType::kSum:
+      // reduce_sum is expected to change the output range. Hence
+      // a fake_quant op is necessary in the output to minimize error. However
+      // in special circumstances like when computing expected value using
+      // reduce_sum the input range and the output range matches. Hence the
+      // below code would act as a fallback. If a fake_quant node is observed in
+      // the output that takes precendence over the hard coding logic below.
+      changed = HardcodeMinMaxFromFirstInput(model, op);
+      if (changed) {
+        LOG(WARNING) << "Using the input range for output in reduce_sum op."
+                     << "This could have an impact on your model accuracy.";
+      }
+      break;
     case OperatorType::kSelect:
       changed = HardcodeMinMaxForSelect(model, op);
       break;

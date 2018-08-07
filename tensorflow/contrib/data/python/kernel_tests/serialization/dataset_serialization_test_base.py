@@ -32,6 +32,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import nest
 
@@ -655,7 +656,7 @@ class DatasetSerializationTestBase(test.TestCase):
     return os.path.join(self.get_temp_dir(), "iterator")
 
   def _latest_ckpt(self):
-    return saver_lib.latest_checkpoint(self.get_temp_dir())
+    return checkpoint_management.latest_checkpoint(self.get_temp_dir())
 
   def _save(self, sess, saver):
     saver.save(sess, self._ckpt_path())

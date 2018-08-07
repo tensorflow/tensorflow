@@ -441,11 +441,6 @@ filegroup(
     ),
 )
 
-filegroup(
-    name = "docs_src",
-    data = glob(["docs_src/**/*.md"]),
-)
-
 cc_library(
     name = "grpc",
     deps = select({

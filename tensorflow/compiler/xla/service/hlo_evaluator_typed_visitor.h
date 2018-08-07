@@ -1481,8 +1481,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                  ShapeUtil::Rank(arg->shape()) - dimensions.size());
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
                         ShapeInference::InferReduceShape(
-                            /*arg=*/arg->shape(),
-                            /*init_value=*/init_value->shape(),
+                            {&arg->shape(), &init_value->shape()},
                             /*dimensions_to_reduce=*/dimensions,
                             /*to_apply=*/function->ComputeProgramShape()));
     TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))

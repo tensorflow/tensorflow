@@ -737,7 +737,7 @@ endif()
 ########################################################
 
 # Parse tensorflow/python/tools/api/generator/BUILD to get list of generated files.
-FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_gen.bzl api_generator_BUILD_text)
+FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_init_files.bzl api_generator_BUILD_text)
 STRING(REGEX MATCH "# BEGIN GENERATED FILES.*# END GENERATED FILES" api_init_files_text ${api_generator_BUILD_text})
 string(REPLACE "# BEGIN GENERATED FILES" "" api_init_files_text ${api_init_files_text})
 string(REPLACE "# END GENERATED FILES" "" api_init_files_text ${api_init_files_text})

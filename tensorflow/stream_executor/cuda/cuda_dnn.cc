@@ -3082,8 +3082,7 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
   }
 
   // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
-  // zero-initialized.
-  // TODO(timshen): Add an nvbugs/ link.
+  // zero-initialized, nvbugs/2254619.
   if (CUDNN_VERSION >= 7000 &&
       algorithm_config.algorithm().algo_id() ==
           CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&

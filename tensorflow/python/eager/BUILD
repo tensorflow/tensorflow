@@ -249,6 +249,7 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 

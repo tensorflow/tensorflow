@@ -63,7 +63,7 @@ class VGGBlockTest(trt_test.TfTrtIntegrationTestBase):
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        num_expected_engines=1,
+        expected_engines=["my_trt_op_0"],
         expected_output_dims=(5, 2, 2, 6),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)

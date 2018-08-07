@@ -200,7 +200,9 @@ def fit_loop(model,
           logging.warning('Your dataset iterator ran out of data; '
                           'interrupting training. Make sure that your dataset '
                           'can generate at least `steps_per_epoch * epochs` '
-                          'batches (in this case, %d batches).' %
+                          'batches (in this case, %d batches). You may need to'
+                          'use the repeat() function when building your '
+                          'dataset.' %
                           steps_per_epoch * epochs)
           break
 
