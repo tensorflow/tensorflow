@@ -1239,13 +1239,23 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
   // Convert raw integer to float in range [0, 1) if the element is a float.
   llvm::Value* elem_value = raw_value;
   if (elem_ir_ty->isFloatingPointTy()) {
-    elem_value = b_->CreateUIToFP(elem_value, elem_ir_ty);
     unsigned raw_value_size_in_bits = raw_value_ty->getPrimitiveSizeInBits();
     CHECK(raw_value_size_in_bits == 32 || raw_value_size_in_bits == 64);
-    elem_value = b_->CreateFDiv(
-        elem_value,
-        llvm::ConstantFP::get(elem_ir_ty,
-                              raw_value_size_in_bits == 64 ? 0x1p64 : 0x1p32));
+    // Perform the division using the float type with the same number of bits
+    // as the raw value to avoid overflow.
+    if (raw_value_size_in_bits == 32) {
+      elem_value = b_->CreateUIToFP(elem_value, b_->getFloatTy());
+      elem_value = b_->CreateFDiv(
+          elem_value, llvm::ConstantFP::get(b_->getFloatTy(), std::exp2(32)));
+    } else {
+      elem_value = b_->CreateUIToFP(elem_value, b_->getDoubleTy());
+      elem_value = b_->CreateFDiv(
+          elem_value, llvm::ConstantFP::get(b_->getDoubleTy(), std::exp2(64)));
+    }
+
+    if (elem_ir_ty != elem_value->getType()) {
+      elem_value = b_->CreateFPTrunc(elem_value, elem_ir_ty);
+    }
   }
 
   // Convert the value for the requested distribution.
