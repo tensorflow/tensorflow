@@ -24,7 +24,10 @@ apt-get install -y libhdf5-dev
 ln -s /usr/lib/powerpc64le-linux-gnu/libhdf5_serial.so /usr/lib/powerpc64le-linux-gnu/libhdf5.so
 ln -s /usr/lib/powerpc64le-linux-gnu/libhdf5_serial_hl.so /usr/lib/powerpc64le-linux-gnu/libhdf5_hl.so
 
-#pip is not installed yet, so use easy_install
+#Install pip here because h5py seg faults with python3 when installed via easy_install
+easy_install -U pip==9.0.3
+easy_install3 -U pip==9.0.3
+
 #CPATH is the location of hdf5.h
-CPATH=/usr/include/hdf5/serial/ easy_install -U h5py
-CPATH=/usr/include/hdf5/serial/ easy_install3 -U h5py
+CPATH=/usr/include/hdf5/serial/ pip2 install --upgrade h5py
+CPATH=/usr/include/hdf5/serial/ pip3 install --upgrade h5py
