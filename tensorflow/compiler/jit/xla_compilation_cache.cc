@@ -338,7 +338,8 @@ Status XlaCompilationCache::CompileImpl(
     TF_RETURN_IF_ERROR(entry->compilation_status);
     CHECK_EQ(entry->executable.get(), nullptr);
     entry->compilation_status =
-        BuildExecutable(options, entry->compilation_result, &entry->executable);
+        BuildExecutable(options, entry->compilation_result, variable_args.size(),
+                        &entry->executable);
 
     const uint64 compile_end_us = env->NowMicros();
     const uint64 compile_time_us = compile_end_us - compile_start_us;
