@@ -84,9 +84,8 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors,
-    const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride) {
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
   int batch, row, col;
   for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
