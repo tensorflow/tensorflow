@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -154,17 +155,18 @@ class IRpropPlusOptimizer(optimizer_v2.OptimizerV2):
     error, old_error = self._get_error_values(state)
     # Update the error E(t) passed in apply_gradients or minimize
     update_error = error.assign(self._error, use_locking=self._use_locking)
-    return training_ops.apply_i_rprop_plus(
-        var,
-        old_grad,
-        delta_update,
-        state.get_hyper("eta_minus", var.dtype.base_dtype),
-        state.get_hyper("eta_plus", var.dtype.base_dtype),
-        state.get_hyper("delta_min", var.dtype.base_dtype),
-        state.get_hyper("delta_max", var.dtype.base_dtype),
-        math_ops.cast(update_error, var.dtype.base_dtype),
-        math_ops.cast(old_error, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking).op
+    with ops.control_dependencies([update_error]):
+      return training_ops.apply_i_rprop_plus(
+          var,
+          old_grad,
+          delta_update,
+          state.get_hyper("eta_minus", var.dtype.base_dtype),
+          state.get_hyper("eta_plus", var.dtype.base_dtype),
+          state.get_hyper("delta_min", var.dtype.base_dtype),
+          state.get_hyper("delta_max", var.dtype.base_dtype),
+          math_ops.cast(update_error, var.dtype.base_dtype),
+          math_ops.cast(old_error, var.dtype.base_dtype),
+          grad, use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, var, state):
     old_grad = state.get_slot(var, "old_grad")
@@ -174,17 +176,18 @@ class IRpropPlusOptimizer(optimizer_v2.OptimizerV2):
     update_error = error.assign(
         math_ops.cast(self._error, error.dtype.base_dtype),
         use_locking=self._use_locking)
-    return training_ops.resource_apply_i_rprop_plus(
-        var.handle,
-        old_grad.handle,
-        delta_update.handle,
-        state.get_hyper("eta_minus", var.dtype.base_dtype),
-        state.get_hyper("eta_plus", var.dtype.base_dtype),
-        state.get_hyper("delta_min", var.dtype.base_dtype),
-        state.get_hyper("delta_max", var.dtype.base_dtype),
-        math_ops.cast(update_error, var.dtype.base_dtype),
-        math_ops.cast(old_error, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking)
+    with ops.control_dependencies([update_error]):
+      return training_ops.resource_apply_i_rprop_plus(
+          var.handle,
+          old_grad.handle,
+          delta_update.handle,
+          state.get_hyper("eta_minus", var.dtype.base_dtype),
+          state.get_hyper("eta_plus", var.dtype.base_dtype),
+          state.get_hyper("delta_min", var.dtype.base_dtype),
+          state.get_hyper("delta_max", var.dtype.base_dtype),
+          math_ops.cast(update_error, var.dtype.base_dtype),
+          math_ops.cast(old_error, var.dtype.base_dtype),
+          grad, use_locking=self._use_locking)
 
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=optimizer_v2.OptimizerV2.GATE_OP,

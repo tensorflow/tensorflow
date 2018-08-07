@@ -17,8 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_ops.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -354,6 +355,21 @@ struct ApplyIRpropPlus<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat grad) {
     const int32 N = var.size();
 
+    // The RProp Optimizers can also be implemented by using the gpu operations
+    // from TF. The update step is dependent on the sign of the multiplication
+    // of the gradients at (t) and (t-1), which can have 3 values (1, -1, 0).
+    // Moreover, each var_{i,j} is updated individually according to the value
+    // of the sign. The vectorized implementation is possible by using a
+    // combination of Where and Cond ops. To implement the update, we would need
+    // to create 3 vars that hold a tensor for each value of the sign function.
+    // Each of the 3 tensors would be updated according to the sign value.
+    // After performing the updates, we need to take into account if the weight
+    // needs to be retracted, therefore the Cond op has to be used once more.
+    // The final step is to aggregate the 3 tensors that contain the computed
+    // vars. Whereas the implementation by launching a CUDA kernel
+    // is straightforward compared to fusing ops together.
+    // GetCudaLaunchConfig is used to determine the launch parameters
+    // of the GPU hardware.
     CudaLaunchConfig config = GetCudaLaunchConfig(N, d);
     IRpropPlusKernel<<<config.block_count, config.thread_per_block, 0,
                        d.stream()>>>(

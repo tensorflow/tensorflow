@@ -441,7 +441,7 @@ struct ApplyIRpropPlus<CPUDevice, T> {
         // revert deltaW(t-1) first then update delta
         if (error() > old_error())
           // compute deltaW and update the weight
-          var(i) -= delta_update(i) * (-sgn(old_grad(i)));
+          var(i) -= delta_update(i) * -sgn(old_grad(i));
 
         delta_update(i) = std::max(delta_min(), delta_update(i) * eta_minus());
         // gradient backtracking trick
@@ -3868,9 +3868,7 @@ namespace functor {
       typename TTypes<T>::ConstScalar old_error,        \
       typename TTypes<T>::ConstFlat grad);              \
   extern template struct ApplyIRpropPlus<GPUDevice, T>;
-DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(double);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -4003,11 +4001,8 @@ namespace functor {
       typename TTypes<T>::ConstScalar delta_max,        \
       typename TTypes<T>::ConstFlat grad);              \
   extern template struct ApplyRpropMinus<GPUDevice, T>;
-DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(double);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
 #undef DECLARE_GPU_SPEC
-
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
