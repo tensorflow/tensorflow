@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV HOME /home/rocm-user
 
 # install packages needed for this image
-RUN sudo apt-get update && sudo apt-get install -y python rpm git mercurial libxml2 libxml2-dev
+RUN sudo apt-get update && sudo apt-get install -y --allow-unauthenticated python rpm git mercurial libxml2 libxml2-dev miopengemm
 
 # Workaround : build HCC from source using the commit that is known to have fix for issue812
 RUN cd $HOME && git clone --recursive https://github.com/RadeonOpenCompute/hcc.git
