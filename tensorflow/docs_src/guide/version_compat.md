@@ -66,7 +66,7 @@ patch versions.  The public APIs consist of
 Some API functions are explicitly marked as "experimental" and can change in
 backward incompatible ways between minor releases. These include:
 
-*   **Experimental APIs**: The @{tf.contrib} module and its submodules in Python
+*   **Experimental APIs**: The `tf.contrib` module and its submodules in Python
     and any functions in the C API or fields in protocol buffers that are
     explicitly commented as being experimental. In particular, any field in a
     protocol buffer which is called "experimental" and all its fields and
@@ -252,13 +252,13 @@ ops has not changed:
 
 1. If forward compatibility is desired,  set `strip_default_attrs` to `True`
    while exporting the model using either the
-   @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`add_meta_graph_and_variables`}
-   and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`add_meta_graph`}
+   `tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables`
+   and `tf.saved_model.builder.SavedModelBuilder.add_meta_graph`
    methods of the `SavedModelBuilder` class, or
-   @{tf.estimator.Estimator.export_savedmodel$`Estimator.export_savedmodel`}
+   `tf.estimator.Estimator.export_savedmodel`
 2. This strips off the default valued attributes at the time of
    producing/exporting the models. This makes sure that the exported
-   @{tf.MetaGraphDef} does not contain the new op-attribute when the default
+   `tf.MetaGraphDef` does not contain the new op-attribute when the default
    value is used.
 3. Having this control could allow out-of-date consumers (for example, serving
    binaries that lag behind training binaries) to continue loading the models
