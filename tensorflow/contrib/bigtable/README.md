@@ -324,7 +324,7 @@ If you encounter a log line that includes the following:
 "filename":"/usr/share/grpc/roots.pem"
 ```
 
-you likely need to copy the [gRPC roots.pem file][grpcPem] to
+you likely need to copy the [gRPC `roots.pem` file][grpcPem] to
 `/usr/share/grpc/roots.pem` on your local machine.
 
 [grpcPem]: https://github.com/grpc/grpc/blob/master/etc/roots.pem
@@ -338,7 +338,10 @@ are available.
  - **Compute Engine**: When running on Compute Engine, the client will often use
    the service account from the virtual machine's metadata service. Be sure to
    authorize your Compute Engine VM to have access to the Cloud Bigtable service
-   when creating your VM.
+   when creating your VM, or [update the VM's scopes][update-vm-scopes] on a
+   running VM if you run into this issue.
  - **Cloud TPU**: Your Cloud TPUs run with the designated Cloud TPU service
    account dedicated to your GCP project. Ensure the service account has been
    authorized via the Cloud Console to access your Cloud Bigtable instances.
+
+[update-vm-scopes]: https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#changeserviceaccountandscopes

@@ -40,8 +40,6 @@ build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 build:cuda_clang --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true --define=using_clang=true
 
-build:mkl --define=using_mkl=true
-
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true --define=using_trisycl=false
 
@@ -61,3 +59,6 @@ build --define=grpc_no_ares=true
 build --spawn_strategy=standalone
 build --genrule_strategy=standalone
 build -c opt
+
+# Modular TF build options
+build:dynamic_kernels --define=dynamic_loaded_kernels=true

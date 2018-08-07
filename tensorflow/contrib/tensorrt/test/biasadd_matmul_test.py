@@ -102,7 +102,10 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        num_expected_engines=7,
+        expected_engines=[
+            "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
+            "my_trt_op_4", "my_trt_op_5", "my_trt_op_6"
+        ],
         expected_output_dims=(48, 89),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)

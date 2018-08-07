@@ -252,6 +252,12 @@ class XlaCompiler {
     // The default empty value is invalid.
     DeviceType device_type = DeviceType("");
 
+    // The device to use during compilation to execute instructions on, for
+    // example for auto-tuning.
+    // Valid values are defined by `xla::Backend::devices_ordinal_supported()`.
+    // -1 indicates the default device should be used.
+    int device_ordinal = -1;
+
     xla::Client* client = nullptr;
 
     // Function library in which to find function definitions. Must be non-null.

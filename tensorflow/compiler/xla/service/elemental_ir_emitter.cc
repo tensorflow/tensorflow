@@ -1302,6 +1302,7 @@ int32 GetNumberOfElementsPerPhiloxRngSample(PrimitiveType elem_prim_ty) {
     case F16:
       return 4;
     case U64:
+    case S64:
     case F64:
       return 2;
     default:
@@ -2134,7 +2135,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
       };
     default:
-      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+      return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
                              HloOpcodeString(hlo->opcode()).c_str());
       };

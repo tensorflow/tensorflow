@@ -22,14 +22,18 @@ namespace grappler {
 GraphView::GraphView(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {
     auto node = graph_->mutable_node(i);
-    auto result = nodes_.emplace(node->name(), node);
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(result.second) << "Non unique node name detected: " << node->name();
+    AddUniqueNodeOrDie(node);
   }
 
   for (NodeDef& node : *graph_->mutable_node()) {
     AddFanouts(&node);
   }
+}
+
+void GraphView::AddUniqueNodeOrDie(NodeDef* node) {
+  auto result = nodes_.emplace(node->name(), node);
+  // Check that the graph doesn't contain multiple nodes with the same name.
+  CHECK(result.second) << "Non unique node name detected: " << node->name();
 }
 
 void GraphView::AddFanouts(NodeDef* node) {
