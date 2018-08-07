@@ -25,11 +25,8 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export PYTHON_BIN_PATH=`which python`
+export PYTHON_BIN_PATH=`which python2`
 export CC_OPT_FLAGS='-mcpu=power8 -mtune=power8'
-
-#TODO get NCCL 2 in the docker image
-export TF_NCCL_VERSION=1
 
 export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
