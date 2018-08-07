@@ -40,6 +40,7 @@ StatusOr<std::vector<int64>> WideConstToInt64Vector(
     const xla::HloInstruction* bcast, const xla::HloInstruction* constant);
 
 StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit);
+StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit);
 
 bool IsPopOpsCall(const xla::HloComputation*, const std::string& postfix = "");
 bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");

@@ -48,6 +48,8 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"bias_apply", 0},
     {"reduction_no_convert", 1},
     {"reduction_no_convert", 1},
+    {"scaled_inplace", 0},
+    {"scaled_inplace", 0},
     {"convert_no_use", 0},
     {"convert_no_use", 0},
     {"wide_const", 1},
@@ -246,6 +248,22 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {5}},
      {HloOpcode::kParameter, false, 0, IsF16, {}},
      {HloOpcode::kParameter, false, 1, IsF16, {}}},
+
+    // Scaled add to - A = A + B * c
+    {{HloOpcode::kAdd, true, 0, nullptr, {4, 1}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {5, 2}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+
+    // Scaled subtract from - A = A - B * c
+    {{HloOpcode::kSubtract, true, 0, nullptr, {4, 1}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {5, 2}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
     // Convert and then convert back F16 -> F32 -> F16
     {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},

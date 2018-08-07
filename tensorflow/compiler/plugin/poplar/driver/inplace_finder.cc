@@ -47,6 +47,12 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       }
       break;
     }
+    case HloOpcode::kCall:
+      if (!IsPopOpsCall(inst, "scaled_inplace")) {
+        return;
+      }
+    // Fall through since scaled_inplace calls have to pass all the same
+    // criteria
     case HloOpcode::kAdd:
     case HloOpcode::kSubtract:
     case HloOpcode::kMultiply: {
@@ -117,9 +123,10 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       for (auto& inst : r.second) {
         switch (inst->opcode()) {
           case HloOpcode::kAdd:
-          case HloOpcode::kSubtract:
-          case HloOpcode::kMultiply:
+          case HloOpcode::kCall:
           case HloOpcode::kDynamicUpdateSlice:
+          case HloOpcode::kMultiply:
+          case HloOpcode::kSubtract:
             inplace_instructions.AddTo(InplaceInstructions::Priority::HIGH,
                                        inst);
             break;
@@ -131,6 +138,15 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
 
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       switch (inst->opcode()) {
+        case HloOpcode::kCall:
+          // Inplace calls (2 ops) have higher precedence than singular ops
+          if (IsPopOpsCall(inst, "scaled_inplace") &&
+              !inplace_instructions.IsIn(InplaceInstructions::Priority::HIGH,
+                                         inst)) {
+            inplace_instructions.AddTo(InplaceInstructions::Priority::MEDIUM,
+                                       inst);
+          }
+          break;
         case HloOpcode::kAdd:
         case HloOpcode::kSubtract:
         case HloOpcode::kMultiply:

@@ -75,6 +75,17 @@ StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
   return *static_cast<const int64*>(s64_lit->untyped_data());
 }
 
+StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit) {
+  if (!ShapeUtil::IsScalar(lit.shape())) {
+    return xla::FailedPrecondition("Literal is not scalar");
+  }
+
+  std::unique_ptr<Literal> double_lit;
+  TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
+
+  return *static_cast<const double*>(double_lit->untyped_data());
+}
+
 bool IsPopOpsCall(const xla::HloComputation* comp, const std::string& postfix) {
   return tensorflow::str_util::StartsWith(comp->name(), "_pop_op_" + postfix);
 }
