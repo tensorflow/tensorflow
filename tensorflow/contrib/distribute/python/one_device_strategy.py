@@ -105,6 +105,9 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   def _unwrap(self, value):
     return [value]
 
+  def value_container(self, value):
+    return value
+
   @property
   def is_single_tower(self):
     return True

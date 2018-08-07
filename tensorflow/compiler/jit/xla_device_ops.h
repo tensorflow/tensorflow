@@ -77,9 +77,7 @@ class XlaAssignVariableOp : public AsyncOpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("IdentityN").Device(DEVICE).TypeConstraint("T", TYPES),             \
-      IdentityNOp);                                                            \
+  REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE), IdentityNOp);      \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
                           PlaceholderOp);                                      \

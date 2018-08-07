@@ -212,12 +212,12 @@ def if_stmt(cond, body, orelse):
     Tuple containing the statement outputs.
   """
   if tensor_util.is_tensor(cond):
-    return _tf_if_stmt(cond, body, orelse)
+    return tf_if_stmt(cond, body, orelse)
   else:
     return _py_if_stmt(cond, body, orelse)
 
 
-def _tf_if_stmt(cond, body, orelse):
+def tf_if_stmt(cond, body, orelse):
   """Overload of if_stmt that stages a TF cond."""
   return control_flow_ops.cond(cond, body, orelse)
 

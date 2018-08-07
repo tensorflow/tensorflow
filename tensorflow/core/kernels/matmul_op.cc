@@ -453,10 +453,14 @@ class MatMulOp : public OpKernel {
     const Tensor& b = ctx->input(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] is not a matrix"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(a.shape()),
+        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
+                                a.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(b.shape()),
+        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
+                                b.shape().DebugString()));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;

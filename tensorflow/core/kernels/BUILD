@@ -22,6 +22,7 @@ package_group(
         "//learning/brain/research/sparse_matrix/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
+        "//third_party/car/...",
     ],
 )
 
@@ -124,6 +125,7 @@ tf_kernel_library(
         ":bounds_check",
         ":dense_update_functor",
         ":ops_util",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -557,12 +559,6 @@ cc_header_only_library(
     deps = [":image_resizer_state"],
 )
 
-cc_library(
-    name = "crop_resize_bilinear_core",
-    hdrs = ["crop_resize_bilinear_core.h"],
-    visibility = ["//visibility:private"],
-)
-
 # OpKernel libraries ----------------------------------------------------------
 
 ARRAY_DEPS = [
@@ -787,7 +783,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
     prefix = "quantize_and_dequantize_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":cwise_op"],
 )
 
 tf_kernel_library(
@@ -2158,7 +2154,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
+    deps = IMAGE_DEPS,
 )
 
 tf_kernel_library(
@@ -2224,7 +2220,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_bilinear_op",
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
+    deps = IMAGE_DEPS,
 )
 
 tf_kernel_library(
@@ -2338,6 +2334,22 @@ tf_cc_tests(
 tf_cuda_cc_test(
     name = "adjust_contrast_op_benchmark_test",
     srcs = ["adjust_contrast_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "crop_and_resize_op_benchmark_test",
+    srcs = ["crop_and_resize_op_benchmark_test.cc"],
     deps = [
         ":image",
         ":ops_testutil",
@@ -3778,7 +3790,7 @@ tf_kernel_library(
         "spacetodepth_op.h",
         "spacetodepth_op_gpu.cu.cc",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4855,6 +4867,8 @@ filegroup(
         "cast_op_impl_int64.cc",
         "cast_op_impl_int8.cc",
         "cast_op_impl_uint16.cc",
+        "cast_op_impl_uint32.cc",
+        "cast_op_impl_uint64.cc",
         "cast_op_impl_uint8.cc",
         "concat_lib.h",
         "concat_lib_cpu.cc",
@@ -4862,7 +4876,6 @@ filegroup(
         "concat_op.cc",
         "constant_op.cc",
         "constant_op.h",
-        "crop_resize_bilinear_core.h",
         "cwise_ops.h",
         "cwise_ops_common.cc",
         "cwise_ops_common.h",
@@ -5230,6 +5243,16 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+ANDROID_TEXTUAL_HDRS = [
+    "gather_nd_op_cpu_impl.h",
+    "gemm_functors.h",
+    "mirror_pad_op_cpu_impl.h",
+    "scatter_nd_op_cpu_impl.h",
+    "slice_op_cpu_impl.h",
+    "strided_slice_op_impl.h",
+    "tile_ops_cpu_impl.h",
+]
+
 # A file group which contains nearly all available operators which
 # may work on Android. This is intended to be used with selective
 # registration.
@@ -5291,8 +5314,18 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
-        ],
+            # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
+            "mkl_*",
+            "xsmm_*",
+            "cwise_ops_sycl_common.h",
+        ] + ANDROID_TEXTUAL_HDRS,
     ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_all_ops_textual_hdrs",
+    srcs = ANDROID_TEXTUAL_HDRS,
     visibility = ["//visibility:public"],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
@@ -5335,10 +5368,6 @@ cc_library(
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
     linkopts = ["-ldl"],
-    tags = [
-        "manual",
-        "notap",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_gif_internal",
@@ -6318,6 +6347,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:decode",
         "//tensorflow/core/util/proto:descriptors",
+        "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
     ],
 )
@@ -6330,6 +6360,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:descriptors",
+        "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
     ],
 )

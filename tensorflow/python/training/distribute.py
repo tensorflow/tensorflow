@@ -899,8 +899,22 @@ class DistributionStrategy(object):
       A list of values contained in `value`. If `value` represents a single
       value, this returns `[value].`
     """
-    _require_cross_tower_context(self)
     return self._unwrap(value)
+
+  def value_container(self, value):
+    """Returns the container that this per-device `value` belongs to.
+
+    Args:
+      value: A value returned by `call_for_each_tower()` or a variable
+        created in `scope()`.
+
+    Returns:
+      A container that `value` belongs to.
+      If value does not belong to any container (including the case of
+      container having been destroyed), returns the value itself.
+      `value in unwrap(value_container(value))` will always be true.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def _unwrap(self, distributed_value):
     raise NotImplementedError("must be implemented in descendants")
@@ -1154,6 +1168,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def _unwrap(self, distributed_value):
     return [distributed_value]
+
+  def value_container(self, value):
+    return value
 
   @property
   def is_single_tower(self):

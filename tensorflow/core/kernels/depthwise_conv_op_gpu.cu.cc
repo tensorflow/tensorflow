@@ -641,7 +641,22 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   return Status::OK();
 }
 
+namespace detail {
+template <typename T>
+struct PseudoHalfType {
+  using Type = T;
+};
+template <>
+struct PseudoHalfType<Eigen::half> {
+  using Type = float;
+};
+}  // namespace detail
+
 namespace {
+// Maps to float if T is __half, and to T otherwise.
+template <typename T>
+using PseudoHalfType = typename detail::PseudoHalfType<T>::Type;
+
 // Returns whether the context's GPU supports efficient fp16 math.
 bool HasFastHalfMath(OpKernelContext* ctx) {
   int major, minor;
@@ -654,21 +669,6 @@ bool HasFastHalfMath(OpKernelContext* ctx) {
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
   return cuda_arch >= 530 && cuda_arch != 610;
 }
-
-namespace detail {
-template <typename T>
-struct PseudoHalfType {
-  using Type = T;
-};
-template <>
-struct PseudoHalfType<Eigen::half> {
-  using Type = float;
-};
-}  // namespace detail
-
-// Maps to float if T is __half, and to T otherwise.
-template <typename T>
-using PseudoHalfType = typename detail::PseudoHalfType<T>::Type;
 }  // namespace
 
 template <typename T, DepthwiseConv2dDirection kDirection,

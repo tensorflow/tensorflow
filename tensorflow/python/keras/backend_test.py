@@ -23,6 +23,7 @@ import scipy.sparse
 
 from tensorflow.python import keras
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -489,6 +490,66 @@ class BackendLinearAlgebraTest(test.TestCase):
         compare_two_inputs_op_to_numpy(keras_op, np_op,
                                        input_shape_a=(4, 7),
                                        input_shape_b=(4, 7))
+
+  def test_relu(self):
+    x = ops.convert_to_tensor([[-4, 0], [2, 7]], 'float32')
+    with self.test_session():
+      # standard relu
+      relu_op = keras.backend.relu(x)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+
+      # alpha
+      relu_op = keras.backend.relu(x, alpha=0.5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
+
+      # max_value < some elements
+      relu_op = keras.backend.relu(x, max_value=5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 5]])
+
+      # nn.relu6 used
+      relu_op = keras.backend.relu(x, max_value=6)
+      self.assertTrue('Relu6' in relu_op.name)  # uses tf.nn.relu6
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 6]])
+
+      # max value > 6
+      relu_op = keras.backend.relu(x, max_value=10)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+
+      # max value is float
+      relu_op = keras.backend.relu(x, max_value=4.3)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 4.3]])
+
+      # max value == 0
+      relu_op = keras.backend.relu(x, max_value=0)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 0]])
+
+      # alpha and max_value
+      relu_op = keras.backend.relu(x, alpha=0.25, max_value=3)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-1, 0], [2, 3]])
+
+      # threshold
+      relu_op = keras.backend.relu(x, threshold=3)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 7]])
+
+      # threshold is float
+      relu_op = keras.backend.relu(x, threshold=1.5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+
+      # threshold is negative
+      relu_op = keras.backend.relu(x, threshold=-5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-4, 0], [2, 7]])
+
+      # threshold and max_value
+      relu_op = keras.backend.relu(x, threshold=3, max_value=5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 5]])
+
+      # threshold and alpha
+      relu_op = keras.backend.relu(x, alpha=0.25, threshold=4)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 7]])
+
+      # threshold, alpha, and max_value
+      relu_op = keras.backend.relu(x, alpha=0.25, threshold=4, max_value=5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
 
 
 class BackendShapeOpsTest(test.TestCase):

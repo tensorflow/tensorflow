@@ -61,6 +61,12 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileBody(
        WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
     int64 index = invariant_gte->tuple_index();
     const HloInstruction& invariant_value = *init_value.operand(index);
+
+    // Should have at least one user that's not while_body_root.
+    if (invariant_gte->user_count() <= 1) {
+      continue;
+    }
+
     if (invariant_value.opcode() == HloOpcode::kConstant) {
       auto* constant_instr =
           while_body->AddInstruction(invariant_value.Clone(/*suffix=*/".sunk"));

@@ -26,6 +26,7 @@ from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -180,7 +181,7 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
       return math_ops.cast(value, self.model.dtype)
     if name == feature_keys.PredictionFeatures.STATE_TUPLE:
       return value  # Correct dtypes are model-dependent
-    return ops.convert_to_tensor(value)
+    return sparse_tensor.convert_to_tensor_or_sparse_tensor(value)
 
   def _gather_state(self, features):
     """Returns `features` with state packed, indicates if packing was done."""
@@ -201,6 +202,29 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         structure=self.model.get_start_state(),
         flat_sequence=[tensor for _, _, tensor in numbered_state])
     return features, True
+
+  def _check_predict_features(self, features):
+    """Raises errors if features are not suitable for prediction."""
+    if feature_keys.PredictionFeatures.TIMES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.TIMES))
+    if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.STATE_TUPLE))
+    times_feature = features[feature_keys.PredictionFeatures.TIMES]
+    if not times_feature.get_shape().is_compatible_with([None, None]):
+      raise ValueError(
+          ("Expected shape (batch dimension, window size) for feature '{}' "
+           "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                    times_feature.get_shape()))
+    _check_feature_shapes_compatible_with(
+        features=features,
+        compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+        compatible_with_value=times_feature,
+        ignore=set([
+            # Model-dependent shapes
+            feature_keys.PredictionFeatures.STATE_TUPLE
+        ]))
 
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
@@ -230,7 +254,7 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
           mode == estimator_lib.ModeKeys.EVAL):
         _check_train_eval_features(features, self.model)
       elif mode == estimator_lib.ModeKeys.PREDICT:
-        _check_predict_features(features)
+        self._check_predict_features(features)
       else:
         raise ValueError("Unknown mode '{}' passed to model_fn.".format(mode))
 
@@ -266,6 +290,36 @@ class OneShotPredictionHead(TimeSeriesRegressionHead):
   Model state is neither accepted nor returned, so filtering must be performed
   each time predictions are requested when using this head.
   """
+
+  def _check_predict_features(self, features):
+    """Raises errors if features are not suitable for one-shot prediction."""
+    if feature_keys.PredictionFeatures.TIMES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.TIMES))
+    if feature_keys.TrainEvalFeatures.VALUES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.TrainEvalFeatures.VALUES))
+    if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.STATE_TUPLE))
+    times_feature = features[feature_keys.PredictionFeatures.TIMES]
+    if not times_feature.get_shape().is_compatible_with([None, None]):
+      raise ValueError(
+          ("Expected shape (batch dimension, window size) for feature '{}' "
+           "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                    times_feature.get_shape()))
+    _check_feature_shapes_compatible_with(
+        features=features,
+        compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+        compatible_with_value=times_feature,
+        ignore=set([
+            # Model-dependent shapes
+            feature_keys.PredictionFeatures.STATE_TUPLE,
+            # One shot prediction head relies on values being shorter than
+            # times. Even though we're predicting eventually, we need values for
+            # the filtering phase.
+            feature_keys.TrainEvalFeatures.VALUES,
+        ]))
 
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""
@@ -331,29 +385,6 @@ def _check_feature_shapes_compatible_with(features,
                feature_shape=feature_shape,
                feature_name=name,
                times_shape=compatible_with_value.get_shape()))
-
-
-def _check_predict_features(features):
-  """Raises errors if features are not suitable for prediction."""
-  if feature_keys.PredictionFeatures.TIMES not in features:
-    raise ValueError("Expected a '{}' feature for prediction.".format(
-        feature_keys.PredictionFeatures.TIMES))
-  if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
-    raise ValueError("Expected a '{}' feature for prediction.".format(
-        feature_keys.PredictionFeatures.STATE_TUPLE))
-  times_feature = features[feature_keys.PredictionFeatures.TIMES]
-  if not times_feature.get_shape().is_compatible_with([None, None]):
-    raise ValueError(
-        ("Expected shape (batch dimension, window size) for feature '{}' "
-         "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
-                                  times_feature.get_shape()))
-  _check_feature_shapes_compatible_with(
-      features=features,
-      compatible_with_name=feature_keys.PredictionFeatures.TIMES,
-      compatible_with_value=times_feature,
-      ignore=set([
-          feature_keys.PredictionFeatures.STATE_TUPLE  # Model-dependent shapes
-      ]))
 
 
 def _check_train_eval_features(features, model):

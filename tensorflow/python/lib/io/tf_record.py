@@ -125,6 +125,7 @@ class TFRecordWriter(object):
     Args:
       record: str
     """
+    # TODO(sethtroisi): Failures are currently swallowed, change that.
     self._writer.WriteRecord(record)
 
   def flush(self):

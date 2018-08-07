@@ -1,3 +1,4 @@
+// LINT.IfChange
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +32,10 @@ const float kLogZero = -std::numeric_limits<float>::infinity();
 inline float LogSumExp(float log_prob_1, float log_prob_2) {
   // Always have 'b' be the smaller number to avoid the exponential from
   // blowing up.
-  if (log_prob_1 == kLogZero && log_prob_2 == kLogZero) {
-    return kLogZero;
+  if (log_prob_1 == kLogZero) {
+    return log_prob_2;
+  } else if (log_prob_2 == kLogZero) {
+    return log_prob_1;
   } else {
     return (log_prob_1 > log_prob_2)
                ? log_prob_1 + log1pf(expf(log_prob_2 - log_prob_1))
@@ -44,3 +47,4 @@ inline float LogSumExp(float log_prob_1, float log_prob_2) {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_loss_util.h)

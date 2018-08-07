@@ -92,7 +92,7 @@ class HloModuleGroupMetadata {
     ComputationKind kind_ = ComputationKind::kInvalid;
   };
 
-  // Represents a channel and the 4 instructions that form the channel.
+  // Represents a channel and the instructions that form the channel.
   struct Channel {
     int64 id = -1;
     HloInstruction* send = nullptr;

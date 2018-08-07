@@ -276,7 +276,7 @@ def implicit_grad(f):
 def _get_arg_spec(f, params, param_args):
   """The positions of the parameters of f to be differentiated in param_args."""
   try:
-    args = tf_inspect.getargspec(f).args
+    args = tf_inspect.getfullargspec(f).args
   except TypeError as e:
     # TypeError can happen when f is a callable object.
     if params is None:
@@ -591,31 +591,34 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_zeros_cache = context._TensorCache()  # pylint: disable=protected-access
-
-
 def _fast_fill(value, shape, dtype):
   return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
 
 
 def _zeros(shape, dtype):
-  """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
-  device = context.context().device_name
+  """Helper to return (possibly cached) zero tensors in eager mode."""
   if dtype == dtypes.variant:
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
-  # pylint: disable=protected-access
-  cache_key = shape, dtype, device, context.context()._eager_context.mode
-  # pylint: enable=protected-access
-  cached = _zeros_cache.get(cache_key)
+
+  ctx = context.context()
+  if not ctx.executing_eagerly():
+    return array_ops.zeros(shape, dtype)
+
+  device = ctx.device_name
+  cache_key = shape, dtype, device
+  cached = ctx.zeros_cache().get(cache_key)
   if cached is None:
     cached = _fast_fill(0, shape, dtype)
-    _zeros_cache.put(cache_key, cached)
+    ctx.zeros_cache().put(cache_key, cached)
   return cached
 
 
 def _ones(shape, dtype):
+  if not context.context().executing_eagerly():
+    return array_ops.ones(shape, dtype)
+
   if shape == ():  # pylint: disable=g-explicit-bool-comparison
     return constant_op.constant(1, dtype=dtype)
   return _fast_fill(1, shape, dtype)
@@ -643,10 +646,10 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.contrib.eager.Variable` or
-  @{tf.get_variable}, trainable=True is default in both cases) are automatically
-  watched. Tensors can be manually watched by invoking the `watch` method on
-  this context manager.
+  Trainable variables (created by `tf.Variable` or @{tf.get_variable},
+  trainable=True is default in both cases) are automatically watched. Tensors
+  can be manually watched by invoking the `watch` method on this context
+  manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
   be computed as:

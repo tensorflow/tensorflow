@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -175,8 +177,12 @@ bool HloModuleGroupMetadata::IsChannelInstruction(
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
     case HloOpcode::kSendDone:
-    case HloOpcode::kRecvDone:
-      return true;
+    case HloOpcode::kRecvDone: {
+      const HloSendRecvInstruction* send_recv_instr =
+          DynCast<HloSendRecvInstruction>(instruction);
+      CHECK(send_recv_instr != nullptr);
+      return !send_recv_instr->is_host_transfer();
+    }
     default:
       return false;
   }

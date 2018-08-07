@@ -108,6 +108,11 @@ typedef enum {
   kTfLiteBuiltinFakeQuant = 80,
   kTfLiteBuiltinReduceProd = 81,
   kTfLiteBuiltinReduceMax = 82,
+  kTfLiteBuiltinPack = 83,
+  kTfLiteBuiltinLogicalOr = 84,
+  kTfLiteBuiltinOneHot = 85,
+  kTfLiteBuiltinLogicalAnd = 86,
+  kTfLiteBuiltinLogicalNot = 87,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

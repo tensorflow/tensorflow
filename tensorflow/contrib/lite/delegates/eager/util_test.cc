@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
+namespace eager {
 namespace {
 
 using tensorflow::DT_FLOAT;
@@ -102,6 +103,7 @@ TEST(UtilTest, TypeConversions) {
 }
 
 }  // namespace
+}  // namespace eager
 }  // namespace tflite
 
 int main(int argc, char** argv) {

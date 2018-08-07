@@ -1942,7 +1942,7 @@ cc_library(
         "include/llvm/BinaryFormat/COFF.h",
         "include/llvm/BinaryFormat/MachO.h",
         "lib/Support/*.h",
-    ] + llvm_support_platform_specific_srcs_glob),
+    ]) + llvm_support_platform_specific_srcs_glob(),
     hdrs = glob([
         "include/llvm/Support/*.h",
         "include/llvm/Support/*.def",

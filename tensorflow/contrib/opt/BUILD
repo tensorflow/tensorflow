@@ -27,6 +27,7 @@ py_library(
         "python/training/nadam_optimizer.py",
         "python/training/powersign.py",
         "python/training/reg_adagrad_optimizer.py",
+        "python/training/shampoo.py",
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
         "python/training/weight_decay_optimizers.py",
@@ -330,6 +331,24 @@ py_test(
 py_test(
     name = "ggt_test",
     srcs = ["python/training/ggt_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "shampoo_test",
+    srcs = ["python/training/shampoo_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",

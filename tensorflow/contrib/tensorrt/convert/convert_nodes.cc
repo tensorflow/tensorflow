@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <cstring>
 #include <list>
 #include <map>
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -77,7 +79,6 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 using ::tensorflow::str_util::Split;
-
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -105,6 +106,59 @@ inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
           "Unsupported data type ", tensorflow::DataTypeString(tf_dtype));
   }
   return tensorflow::Status::OK();
+}
+
+void GetInputProperties(const grappler::GraphProperties& graph_properties,
+                        const Node* outside_node, const int out_port,
+                        PartialTensorShape* shape,
+                        tensorflow::DataType* dtype) {
+  if (graph_properties.HasOutputProperties(outside_node->name())) {
+    auto output_params =
+        graph_properties.GetOutputProperties(outside_node->name());
+    auto out_shape = output_params.at(out_port);
+    *dtype = out_shape.dtype();
+    *shape = out_shape.shape();
+  } else {
+    VLOG(0) << "Unknown output shape" << outside_node->name();
+    *dtype = outside_node->output_type(out_port);
+  }
+}
+
+void GetOutputProperties(const grappler::GraphProperties& graph_properties,
+                         const Node* outside_node, const int in_port,
+                         PartialTensorShape* shape,
+                         tensorflow::DataType* dtype) {
+  if (graph_properties.HasInputProperties(outside_node->name())) {
+    auto input_params =
+        graph_properties.GetInputProperties(outside_node->name());
+    auto in_shape = input_params.at(in_port);
+    *dtype = in_shape.dtype();
+    *shape = in_shape.shape();
+  } else {
+    *dtype = outside_node->input_type(in_port);
+  }
+}
+
+tensorflow::Status ValidateInputProperties(const PartialTensorShape& shape,
+                                           const tensorflow::DataType dtype,
+                                           nvinfer1::DataType* trt_dtype) {
+  // TODO(aaroey): some of these checks also apply to IsTensorRTCandidate(), so
+  // put them there instead.
+  TF_RETURN_IF_ERROR(ConvertDType(dtype, trt_dtype));
+  if (shape.dims() < 0) {
+    return tensorflow::errors::InvalidArgument("Input tensor rank is unknown.");
+  }
+  if (shape.dims() > 9) {
+    return tensorflow::errors::OutOfRange(
+        "Input tensor rank is greater than 8.");
+  }
+  for (int d = 1; d < shape.dims(); ++d) {
+    if (shape.dim_size(d) < 0) {
+      return tensorflow::errors::InvalidArgument(
+          "Input tensor has a unknown non-batch dimemension at dim ", d);
+    }
+  }
+  return Status::OK();
 }
 
 // Return whether or not the broadcast is feasible;
@@ -2588,6 +2642,8 @@ void Converter::register_op_converters() {
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
   op_registry_["TopKV2"] = ConvertTopK;
 #endif
+
+  plugin_converter_ = ConvertPlugin;
 }
 
 }  // namespace
@@ -2635,30 +2691,27 @@ tensorflow::Status ConvertGraphDefToEngine(
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
-    VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
+    VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
     if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
         (node_def.op() == "Placeholder")) {
       nvinfer1::DimsCHW input_dim_pseudo_chw;
       for (int i = 0; i < 8; i++) input_dim_pseudo_chw.d[i] = 0;
-      nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
-      auto type_status =
-          ConvertDType(node_def.attr().at("dtype").type(), &dtype);
-      if (type_status != tensorflow::Status::OK()) {
-        LOG(WARNING) << "Type conversion failed for " << node_name;
-        return type_status;
-      }
       int32 slot_number = -1;
-      if (!tensorflow::strings::safe_strto32(node_name.c_str() + 8,
-                                             &slot_number)) {
-        LOG(ERROR) << "Failed to parse slot number from " << node_name
-                   << " +8= " << node_name.c_str() + 8;
+      if (!tensorflow::strings::safe_strto32(
+              node_name.c_str() + strlen(kInputPHName), &slot_number)) {
+        return tensorflow::errors::InvalidArgument(
+            "Failed to parse slot number from ", node_name);
       }
+      nvinfer1::DataType dtype;
       auto shape = input_shapes.at(slot_number);
-      if (shape.dims() > 8) {
-        LOG(ERROR) << "Tensor rank is greater than 8 for " << node_name
-                   << " at input slot " << slot_number;
-        return tensorflow::errors::OutOfRange(
-            "Input tensor rank is greater than 8");
+      auto status = ValidateInputProperties(
+          shape, node_def.attr().at("dtype").type(), &dtype);
+      if (!status.ok()) {
+        const string error_message =
+            StrCat("Validation failed for ", node_name, " and input slot ",
+                   slot_number, ": ", status.error_message());
+        LOG(WARNING) << error_message;
+        return Status(status.code(), error_message);
       }
       if (VLOG_IS_ON(1)) {
         string dim_str("dims=");
@@ -2689,10 +2742,10 @@ tensorflow::Status ConvertGraphDefToEngine(
     } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
                (node_def.op() == "Identity")) {
       int32 slot_number = -1;
-      if (!tensorflow::strings::safe_strto32(node_name.c_str() + 9,
-                                             &slot_number)) {
-        LOG(ERROR) << "Failed to parse slot number from " << node_name
-                   << " +9=" << node_name.c_str() + 9;
+      if (!tensorflow::strings::safe_strto32(
+              node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
+        return tensorflow::errors::InvalidArgument(
+            "Failed to parse slot number from ", node_name);
       }
       if (output_tensors.size() <= slot_number) {
         output_tensors.resize(slot_number + 1);
@@ -2736,6 +2789,7 @@ tensorflow::Status ConvertGraphDefToEngine(
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
+    const std::set<string>& subgraph_node_names,
     const std::vector<int>& subgraph_node_ids,  // In topological order
     std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope) {
@@ -2744,6 +2798,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
   // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
+    if (connection.is_control_edge()) continue;
     auto outside_node = graph->FindNodeId(connection.outside_id);
     if (!outside_node) {
       // This should never happen, unless the original graph is problematic.
@@ -2751,38 +2806,20 @@ tensorflow::Status ConvertSegmentToGraphDef(
           "Cannot find node with id ", connection.outside_id, " in the graph.");
     }
     // Updates the shape and data types of input/output connections.
-    tensorflow::DataType input_type = tensorflow::DT_FLOAT;
+    tensorflow::DataType dtype;
     tensorflow::PartialTensorShape partial_shape;
     if (connection.is_input_edge) {
-      if (graph_properties.HasOutputProperties(connection.outside_node_name)) {
-        auto output_params =
-            graph_properties.GetOutputProperties(connection.outside_node_name);
-        auto out_shape = output_params.at(connection.outside_port);
-        input_type = out_shape.dtype();
-        std::vector<tensorflow::int64> dims;
-        partial_shape = out_shape.shape();
-        connection.outside_shape = partial_shape;
-      } else {
-        VLOG(0) << "Unknown output shape" << outside_node->name();
-        input_type = graph->FindNodeId(connection.outside_id)
-                         ->output_type(connection.outside_port);
-      }
-      connection.connection_type = input_type;
-
-    } else {  // output edge
-      if (graph_properties.HasInputProperties(connection.outside_node_name)) {
-        auto input_params =
-            graph_properties.GetInputProperties(connection.outside_node_name);
-        auto in_shape = input_params.at(connection.outside_port);
-        input_type = in_shape.dtype();
-        partial_shape = in_shape.shape();
-        connection.inside_shape = partial_shape;
-      } else {
-        input_type = graph->FindNodeId(connection.inside_id)
-                         ->output_type(connection.outside_port);
-      }
-      connection.connection_type = input_type;
+      GetInputProperties(graph_properties,
+                         graph->FindNodeId(connection.outside_id),
+                         connection.outside_port, &partial_shape, &dtype);
+      connection.outside_shape = partial_shape;
+    } else {
+      GetOutputProperties(graph_properties,
+                          graph->FindNodeId(connection.outside_id),
+                          connection.outside_port, &partial_shape, &dtype);
+      connection.inside_shape = partial_shape;
     }
+    connection.connection_type = dtype;
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
@@ -2798,7 +2835,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Placeholder");
       auto status = builder.Attr("shape", partial_shape)
-                        .Attr("dtype", input_type)
+                        .Attr("dtype", dtype)
                         .Finalize(seg_node);
       VLOG(1) << "Constructing input " << node_name << " for the edge "
               << connection.outside_node_name << ":" << connection.outside_port
@@ -2816,7 +2853,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Identity");
-      auto status = builder.Input(connection.inside_node_name, 0, input_type)
+      auto status = builder.Input(connection.inside_node_name, 0, dtype)
                         .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port
@@ -2834,12 +2871,12 @@ tensorflow::Status ConvertSegmentToGraphDef(
     old_to_new_id_map[node_id] = segment_def->node_size();
     auto snode = segment_def->add_node();
     snode->CopyFrom(node->def());
-    VLOG(1) << "Copying " << snode->name() << " to subgraph";
+    VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
   for (int i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
-    if (!connection.is_input_edge) continue;
+    if (connection.is_control_edge() || !connection.is_input_edge) continue;
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
     const string placeholder_name =
@@ -2849,9 +2886,74 @@ tensorflow::Status ConvertSegmentToGraphDef(
             << placeholder_name;
     snode->set_input(connection.inside_port, placeholder_name);
   }
+  // Remove control inputs that are not inside the segment.
+  for (int i = 0; i < segment_def->node_size(); ++i) {
+    auto snode = segment_def->mutable_node(i);
+    const int input_size = snode->input_size();
+    int input_idx = 0;
+    int actual_input_idx = 0;
+    while (input_idx < input_size) {
+      TensorId input = ParseTensorName(snode->input(input_idx));
+      if (!subgraph_node_names.count(
+              string(input.first.data(), input.first.size())) &&
+          !str_util::StartsWith(input.first, kInputPHName)) {
+        if (input.second == Graph::kControlSlot) {
+          VLOG(1) << "... removing control inputs " << input.first
+                  << " from subgraph.";
+          ++input_idx;
+          continue;
+        } else {
+          return tensorflow::errors::InvalidArgument(
+              "Found non control input outside the segment that is not an "
+              "engine connection to ",
+              snode->name(), ": ", input.first);
+        }
+      }
+      if (actual_input_idx != input_idx) {
+        snode->set_input(actual_input_idx, snode->input(input_idx));
+      }
+      ++input_idx;
+      ++actual_input_idx;
+    }
+    for (int remove = input_size - actual_input_idx; remove > 0; --remove) {
+      snode->mutable_input()->RemoveLast();
+    }
+  }
   *common_scope = local_scope;
   VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
   return tensorflow::Status::OK();
+}
+
+bool InputEdgeValidator::operator()(const tensorflow::Edge* in_edge) const {
+  if (in_edge->IsControlEdge()) return true;
+  PartialTensorShape shape;
+  tensorflow::DataType dtype;
+  GetInputProperties(graph_properties_, in_edge->src(), in_edge->src_output(),
+                     &shape, &dtype);
+  nvinfer1::DataType trt_dtype;
+  Status status = ValidateInputProperties(shape, dtype, &trt_dtype);
+  if (!status.ok()) {
+    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
+            << ": " << status;
+    return false;
+  }
+  if (shape.dims() < 3 && in_edge->src()->type_string() != "Const") {
+    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
+            << " which has an input at port " << in_edge->dst_input()
+            << " with #dim<3 and is not a const: " << shape;
+    return false;
+  }
+  return true;
+}
+
+bool OutputEdgeValidator::operator()(const tensorflow::Edge* out_edge) const {
+  if (out_edge->IsControlEdge()) return true;
+  if (out_edge->src()->type_string() == "Const") {
+    VLOG(1) << "--> Need to remove output node " << out_edge->src()->name()
+            << " which is a Const.";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace convert

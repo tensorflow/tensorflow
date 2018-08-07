@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
+namespace eager {
 
 // Converts a tensorflow:Status into a TfLiteStatus. If the original status
 // represented an error, reports it using the given 'context'.
@@ -35,6 +36,7 @@ TfLiteStatus CopyShape(TfLiteContext* context, const tensorflow::Tensor& src,
 // Returns the TF C API Data type that corresponds to the given TfLiteType.
 TF_DataType GetTensorFlowDataType(TfLiteType type);
 
+}  // namespace eager
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_

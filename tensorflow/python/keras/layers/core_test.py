@@ -120,6 +120,20 @@ class CoreLayersTest(test.TestCase):
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_permute_errors_on_invalid_starting_dims_index(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+      testing_utils.layer_test(
+          keras.layers.Permute,
+          kwargs={'dims': (0, 1, 2)}, input_shape=(3, 2, 4))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_permute_errors_on_invalid_set_of_dims_indices(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+      testing_utils.layer_test(
+          keras.layers.Permute,
+          kwargs={'dims': (1, 4, 2)}, input_shape=(3, 2, 4))
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_flatten(self):
     testing_utils.layer_test(
         keras.layers.Flatten, kwargs={}, input_shape=(3, 2, 4))

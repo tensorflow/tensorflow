@@ -351,15 +351,16 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LessEqual)
     HANDLE_OPERATORTYPENAME_CASE(MatMul)
     HANDLE_OPERATORTYPENAME_CASE(ReduceMax)  //  Reduction Max
-    HANDLE_OPERATORTYPENAME_CASE(Maximum)  //  Element-wise Maximum
+    HANDLE_OPERATORTYPENAME_CASE(Maximum)    //  Element-wise Maximum
     HANDLE_OPERATORTYPENAME_CASE(Merge)
-    HANDLE_OPERATORTYPENAME_CASE(Min)      //  Reduction Min
-    HANDLE_OPERATORTYPENAME_CASE(Minimum)  //  Element-wise Minimum
+    HANDLE_OPERATORTYPENAME_CASE(ReduceMin)  //  Reduction Min
+    HANDLE_OPERATORTYPENAME_CASE(Minimum)    //  Element-wise Minimum
     HANDLE_OPERATORTYPENAME_CASE(Neg)
+    HANDLE_OPERATORTYPENAME_CASE(OneHot)
+    HANDLE_OPERATORTYPENAME_CASE(Pack)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(PadV2)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
-    HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
     HANDLE_OPERATORTYPENAME_CASE(Rank)
     HANDLE_OPERATORTYPENAME_CASE(Reshape)
@@ -399,6 +400,11 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Equal)
     HANDLE_OPERATORTYPENAME_CASE(NotEqual)
     HANDLE_OPERATORTYPENAME_CASE(Pow)
+    HANDLE_OPERATORTYPENAME_CASE(Any)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
+    HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -940,8 +946,12 @@ void CheckEachArray(const Model& model) {
       // shape.
       CHECK(array->has_shape());
       // Constant buffer should has a valid shape.
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
+      bool is_scalar =
+          array->shape().dimensions_count() == 1 && array->shape().dims(0) == 0;
+      if (!is_scalar) {
+        for (int d : array->shape().dims()) {
+          CHECK_GE(d, 1);
+        }
       }
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
@@ -1578,11 +1588,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                                model);
   }
 
-  for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.has_shape()) {
-      CHECK(input_array.shape().dims_size());
-    }
-  }
   model->flags.set_change_concat_input_ranges(
       model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
@@ -1615,11 +1620,12 @@ void CheckIsReadyForQuantization(const Model& model) {
           << "Array " << input << ", which is an input to the "
           << HelpfulOperatorTypeName(*op) << " operator producing the output "
           << "array " << op->outputs[0] << ", is lacking min/max data, "
-          << "which is necessary for quantization. Either target a "
-          << "non-quantized output format, or change the input graph to "
-          << "contain min/max information, or pass --default_ranges_min= and "
-          << "--default_ranges_max= if you do not care about the accuracy of "
-          << "results.";
+          << "which is necessary for quantization. If accuracy matters, either "
+          << "target a non-quantized output format, or run quantized training "
+          << "with your model from a floating point checkpoint to change the "
+          << "input graph to contain min/max information. If you don't care "
+          << "about accuracy, you can pass --default_ranges_min= and "
+          << "--default_ranges_max= for easy experimentation.";
     }
   }
 }

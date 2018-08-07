@@ -673,6 +673,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    shard_count = 5,
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -1002,6 +1003,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
+    shard_count = 5,
     # Times out in fastbuild mode.
     tags = ["optonly"],
     deps = [

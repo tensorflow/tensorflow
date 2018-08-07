@@ -322,6 +322,7 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
 CudnnSupport::CudnnSupport(CUDAExecutor* parent) : parent_(parent) {}
 
 port::Status CudnnSupport::Init() {
+  ScopedActivateExecutorContext context(parent_);
   cudnnHandle_t cudnn_handle = nullptr;
   auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
@@ -791,6 +792,11 @@ class CudnnActivationDescriptor {
     double relu_ceiling = 0.0;
     cudnnActivationMode_t mode;
     switch (activation_mode) {
+#if CUDNN_VERSION >= 7100
+      case dnn::ActivationMode::kNone:
+        mode = CUDNN_ACTIVATION_IDENTITY;
+        break;
+#endif
       case dnn::ActivationMode::kRelu6:
         relu_ceiling = 6.0;
         mode = CUDNN_ACTIVATION_CLIPPED_RELU;
@@ -2480,10 +2486,11 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
     DeviceMemory<Type>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  if (activation_mode != dnn::ActivationMode::kRelu) {
+  if (activation_mode != dnn::ActivationMode::kRelu &&
+      activation_mode != dnn::ActivationMode::kNone) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "cudnnConvolutionBiasActivationForward() only supports "
-                        "Relu activation.");
+                        "Relu or None activation.");
   }
 
   CudnnTensorDescriptor conv_input_nd(
@@ -3075,8 +3082,7 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
   }
 
   // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
-  // zero-initialized.
-  // TODO(timshen): Add an nvbugs/ link.
+  // zero-initialized, nvbugs/2254619.
   if (CUDNN_VERSION >= 7000 &&
       algorithm_config.algorithm().algo_id() ==
           CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&

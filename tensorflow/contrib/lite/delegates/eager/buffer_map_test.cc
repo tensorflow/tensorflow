@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
+namespace eager {
 namespace {
 
 using ::testing::ElementsAre;
@@ -163,6 +164,7 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
 }
 
 }  // namespace
+}  // namespace eager
 }  // namespace tflite
 
 int main(int argc, char** argv) {

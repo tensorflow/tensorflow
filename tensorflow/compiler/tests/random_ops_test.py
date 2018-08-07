@@ -57,7 +57,8 @@ class RandomOpsTest(xla_test.XLATestCase):
   def testRandomUniformIsNotConstant(self):
 
     def rng(dtype):
-      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=1000000)
+      dtype = dtypes.as_dtype(dtype)
+      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=dtype.max)
 
     for dtype in self._random_types():
       self._testRngIsNotConstant(rng, dtype)
@@ -129,13 +130,13 @@ class RandomOpsTest(xla_test.XLATestCase):
         expected_median = mu + probit(
             (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma
         actual_median = np.median(y)
-        self.assertAllClose(actual_median, expected_median, atol=8e-4)
+        self.assertAllClose(actual_median, expected_median, atol=1e-3)
 
         expected_variance = sigma**2 * (1 + (
             (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
                 (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
         actual_variance = np.var(y)
-        self.assertAllClose(actual_variance, expected_variance, rtol=3e-4)
+        self.assertAllClose(actual_variance, expected_variance, atol=1e-3)
 
   def testShuffle1d(self):
     with self.test_session() as sess:

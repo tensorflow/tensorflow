@@ -845,11 +845,9 @@ int64_t get_uid() {
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
 void TFE_DeleteContextCapsule(PyObject* context) {
-  TF_Status* status = TF_NewStatus();
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  TFE_DeleteContext(ctx, status);
-  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
 }
 
 static tensorflow::int64 MakeInt(PyObject* integer) {

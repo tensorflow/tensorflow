@@ -346,6 +346,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateConstant(
       std::unique_ptr<Literal> literal);
 
+  // Creates an Iota instruction.
+  static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape);
+
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       const Shape& shape, HloInstruction* operand, int64 index);
@@ -444,8 +447,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& all_reduce_id =
-          tensorflow::gtl::nullopt);
+      const tensorflow::gtl::optional<int64>& all_reduce_id);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -485,27 +487,30 @@ class HloInstruction {
 
   // Creates an asynchronous send instruction with the given channel id, which
   // initiates sending the operand data to a unique receive instruction in
-  // another computation that has the same channel id.
-  static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
-                                                    HloInstruction* token,
-                                                    int64 channel_id);
+  // another computation that has the same channel id. If is_host_transfer is
+  // true, then this Send operation transfers data to the host.
+  static std::unique_ptr<HloInstruction> CreateSend(
+      HloInstruction* operand, HloInstruction* token, int64 channel_id,
+      bool is_host_transfer = false);
 
   // Blocks until data transfer for the Send instruction (operand) is complete.
   // The operand must be kSend.
   static std::unique_ptr<HloInstruction> CreateSendDone(
-      HloInstruction* operand);
+      HloInstruction* operand, bool is_host_transfer = false);
 
   // Creates an asynchronous receive instruction with the given channel id,
   // which allocates resources to receive data of the given shape from a unique
-  // send instruction in another computation that has the same channel id.
-  static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
-                                                    HloInstruction* token,
-                                                    int64 channel_id);
+  // send instruction in another computation that has the same channel id.  If
+  // is_host_transfer is true, then this Send operation transfers data from the
+  // host.
+  static std::unique_ptr<HloInstruction> CreateRecv(
+      const Shape& shape, HloInstruction* token, int64 channel_id,
+      bool is_host_transfer = false);
 
   // Blocks until data transfer for the Recv instruction (operand) is complete
   // and returns the receive buffer. The operand must be kRecv.
   static std::unique_ptr<HloInstruction> CreateRecvDone(
-      HloInstruction* operand);
+      HloInstruction* operand, bool is_host_transfer = false);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -536,14 +541,31 @@ class HloInstruction {
       int64 dimension);
 
   // Creates a reduce instruction, where the computation (given by the handle)
-  // is applied successively to every element in operand. That is, if f is the
-  // function to apply (which either takes 2 [accumulator, value] or 3
-  // [accumulator, index, value] arguments) and init is a reduction operator
-  // specified initial value (for example, 0 for addition), then this operation
-  // will compute:
-  //   f(f(init, [index0], value0), [index1], value1), ...)
+  // is applied successively to every element in operand. For example, let f be
+  // the function to apply, which takes 2 arguments, an accumulator and the
+  // current value. Let init be an initial value (which is normally chosen to be
+  // the identity element for f, e.g. 0 if f is addition).
+  // Then the reduce HLO will compute:
+  // f(f(init, value0), value1), ...)
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
+      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      HloComputation* reduce_computation);
+
+  // A more general, multiple-argument version of the above.
+  // The function to apply, f, now takes N arguments:
+  // [accumulator0, accumulator1, ..., accumulatorN, value0, value1, ...,
+  // init_valueN], and returns an N-tuple. The performed computation is (for
+  // commutative and associative f operators) equivalent to:
+  //
+  // f_1 = f(init0, ...  initN, input0.value0, ..., inputN.value0)
+  // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
+  // ..., inputN.value1)
+  // ...
+  // TODO(b/112040122): Add support to this in HLO passes and in backends.
+  static std::unique_ptr<HloInstruction> CreateReduce(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::gtl::ArraySlice<HloInstruction*> init_values,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
@@ -638,6 +660,12 @@ class HloInstruction {
       HloInstruction* gather_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
       tensorflow::gtl::ArraySlice<int64> window_bounds);
+
+  static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* scatter_indices, HloInstruction* updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
 
   // Creates a kDomain instruction which delimits an HLO domain which have
   // the provided user and operand side metadata.
@@ -1009,9 +1037,7 @@ class HloInstruction {
     if (sharding_ == nullptr) {
       return tensorflow::gtl::optional<int64>();
     }
-    auto device = sharding_->UniqueDevice();
-    return device.ok() ? device.ValueOrDie()
-                       : tensorflow::gtl::optional<int64>();
+    return sharding_->UniqueDevice();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
@@ -1448,6 +1474,9 @@ class HloInstruction {
   const GatherDimensionNumbers& gather_dimension_numbers() const;
   // Delegates to HloGatherInstruction::gather_window_bounds.
   tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const;
+
+  // Delegates to HloScatterInstruction::scatter_dimension_numbers().
+  const ScatterDimensionNumbers& scatter_dimension_numbers() const;
 
   // Old methods kept for smooth subclassing transition END.
 

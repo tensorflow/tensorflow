@@ -47,6 +47,9 @@ PyRecordWriter* PyRecordWriter::New(const string& filename,
 }
 
 PyRecordWriter::~PyRecordWriter() {
+  // Writer depends on file during close for zlib flush, so destruct first.
+  writer_.reset();
+  file_.reset();
 }
 
 bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
@@ -56,6 +59,11 @@ bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
 }
 
 void PyRecordWriter::Flush(TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
   Status s = writer_->Flush();
   if (!s.ok()) {
     Set_TF_Status_from_Status(out_status, s);
@@ -64,18 +72,22 @@ void PyRecordWriter::Flush(TF_Status* out_status) {
 }
 
 void PyRecordWriter::Close(TF_Status* out_status) {
-  Status s = writer_->Close();
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(out_status, s);
-    return;
+  if (writer_ != nullptr) {
+    Status s = writer_->Close();
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    writer_.reset(nullptr);
   }
-  writer_.reset(nullptr);
-  s = file_->Close();
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(out_status, s);
-    return;
+  if (file_ != nullptr) {
+    Status s = file_->Close();
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    file_.reset(nullptr);
   }
-  file_.reset(nullptr);
 }
 
 }  // namespace io

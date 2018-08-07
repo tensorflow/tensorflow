@@ -96,6 +96,7 @@ py_library(
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":kernels",
         ":layers",
         ":lib",
         ":list_ops",
@@ -745,8 +746,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":framework_ops",
         ":function",
-        ":op_def_registry",
         ":tensor_shape",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -762,8 +763,10 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":constant_op",
         ":dtypes",
         ":framework_ops",
+        ":function",
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
@@ -783,6 +786,19 @@ py_library(
         ":framework_ops",
         ":platform",
         ":tensor_util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "kernels",
+    srcs = [
+        "framework/kernels.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+        ":util",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -818,8 +834,10 @@ py_library(
     deps = [
         ":c_api_util",
         ":control_flow_util",
+        ":cpp_shape_inference_proto_py",
         ":device",
         ":dtypes",
+        ":error_interpolation",
         ":op_def_registry",
         ":platform",
         ":registry",
@@ -1044,6 +1062,7 @@ py_test(
         ":client_testlib",
         ":constant_op",
         ":error_interpolation",
+        ":traceable_stack",
     ],
 )
 
@@ -1474,6 +1493,20 @@ py_test(
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+    ],
+)
+
+py_test(
+    name = "framework_kernels_test",
+    size = "small",
+    srcs = ["framework/kernels_test.py"],
+    main = "framework/kernels_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":kernels",
         ":platform_test",
         ":test_ops",
     ],
@@ -2136,8 +2169,8 @@ py_library(
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
-        ":nn_ops",
         ":random_ops",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -3046,6 +3079,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "init_ops_test",
+    size = "small",
+    srcs = ["ops/init_ops_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":init_ops",
+        ":framework_ops",
+        ":resource_variable_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
     name = "math_grad_test",
     size = "small",
     srcs = ["ops/math_grad_test.py"],
@@ -3126,6 +3173,7 @@ cuda_py_test(
         ":partitioned_variables",
         ":variable_scope",
         ":variables",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
     ],
     tags = ["no_windows"],
@@ -3170,14 +3218,18 @@ py_library(
             "training/checkpointable/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
+            "training/checkpoint_management.py",
             "training/saveable_object.py",
+            "training/saver.py",
             "training/training_util.py",
         ],
     ),
     srcs_version = "PY2AND3",
     deps = [
+        "saver",
         ":array_ops",
         ":array_ops_gen",
+        ":checkpoint_management",
         ":checkpoint_ops_gen",
         ":client",
         ":control_flow_ops",
@@ -3189,24 +3241,20 @@ py_library(
         ":framework_ops",
         ":gradients",
         ":init_ops",
-        ":distribute",
         ":io_ops",
-        ":io_ops_gen",
         ":layers_base",
-        ":lib",
         ":lookup_ops",
         ":math_ops",
         ":platform",
-        ":protos_all_py",
         ":pywrap_tensorflow",
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
-        ":saveable_object",
         ":sdca_ops",
+        ":session",
         ":sparse_ops",
+        ":sparse_tensor",
         ":state_ops",
-        ":string_ops",
         ":summary",
         ":training_ops_gen",
         ":training_util",
@@ -3216,6 +3264,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         # `layers` dependency only exists due to the use of a small utility.
@@ -3230,6 +3279,52 @@ py_library(
     name = "saveable_object",
     srcs = ["training/saveable_object.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "checkpoint_management",
+    srcs = ["training/checkpoint_management.py"],
+    deps = [
+        ":errors",
+        ":lib",
+        ":platform",
+        ":protos_all_py",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "saver",
+    srcs = ["training/saver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":checkpoint_management",
+        ":constant_op",
+        ":control_flow_ops",
+        ":device",
+        ":errors",
+        ":framework",
+        ":framework_ops",
+        ":io_ops",
+        ":io_ops_gen",
+        ":platform",
+        ":pywrap_tensorflow",
+        ":resource_variable_ops",
+        ":saveable_object",
+        ":session",
+        ":state_ops",
+        ":string_ops",
+        ":training_util",
+        ":util",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -3362,6 +3457,7 @@ py_test(
         ":math_ops",
         ":util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -3612,6 +3708,7 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_ref",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -4339,6 +4436,42 @@ cuda_py_test(
     tags = ["multi_gpu"],
 )
 
+cuda_py_test(
+    name = "checkpoint_management_test",
+    size = "small",
+    srcs = [
+        "training/checkpoint_management_test.py",
+    ],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":data_flow_ops",
+        ":errors",
+        ":gradients",
+        ":math_ops",
+        ":nn_grad",
+        ":nn_ops",
+        ":saver_test_utils",
+        ":partitioned_variables",
+        ":platform",
+        ":platform_test",
+        ":pywrap_tensorflow",
+        ":random_ops",
+        ":resource_variable_ops",
+        ":sparse_ops",
+        ":summary",
+        ":training",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 py_test(
     name = "saver_large_variable_test",
     size = "medium",
@@ -4405,6 +4538,7 @@ tf_py_test(
     srcs = ["training/supervisor_test.py"],
     additional_deps = [
         ":array_ops",
+        ":checkpoint_management",
         ":client_testlib",
         ":errors",
         ":framework",
@@ -4412,6 +4546,7 @@ tf_py_test(
         ":io_ops",
         ":parsing_ops",
         ":platform",
+        ":saver",
         ":summary",
         ":training",
         ":variables",
@@ -4525,10 +4660,13 @@ py_test(
     tags = ["notsan"],  # b/67945581
     deps = [
         ":array_ops",
+        ":checkpoint_management",
         ":client_testlib",
         ":control_flow_ops",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":resource_variable_ops",
+        ":saver",
         ":session",
         ":state_ops",
         ":summary",

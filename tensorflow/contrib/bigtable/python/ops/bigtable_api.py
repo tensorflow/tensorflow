@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The Python API for TensorFlow's Bigtable integration.
+"""The Python API for TensorFlow's Cloud Bigtable integration.
 
 TensorFlow has support for reading from and writing to Cloud Bigtable. To use
-the Bigtable TensorFlow integration, first create a BigtableClient (which
-configures your connection to Cloud Bigtable), and then open a Table. The Table
-object then allows you to create numerous @{tf.data.Dataset}s to read data, or
-write a @{tf.data.Dataset} object to the underlying Bigtable Table.
+TensorFlow + Cloud Bigtable integration, first create a BigtableClient to
+configure your connection to Cloud Bigtable, and then create a BigtableTable
+object to allow you to create numerous @{tf.data.Dataset}s to read data, or
+write a @{tf.data.Dataset} object to the underlying Cloud Bigtable table.
 
-For background on Google Cloud Bigtable, see: https://cloud.google.com/bigtable.
+For background on Cloud Bigtable, see: https://cloud.google.com/bigtable .
 """
 
 from __future__ import absolute_import
@@ -48,7 +48,7 @@ class BigtableClient(object):
   """BigtableClient is the entrypoint for interacting with Cloud Bigtable in TF.
 
   BigtableClient encapsulates a connection to Cloud Bigtable, and exposes the
-  `table` method to open a Bigtable Table.
+  `table` method to open a Bigtable table.
   """
 
   def __init__(self,
@@ -94,7 +94,7 @@ class BigtableClient(object):
         project_id, instance_id, connection_pool_size, max_receive_message_size)
 
   def table(self, name, snapshot=None):
-    """Opens a table and returns a `BigTable` object.
+    """Opens a table and returns a `tf.contrib.bigtable.BigtableTable` object.
 
     Args:
       name: A `tf.string` `tf.Tensor` name of the table to open.
@@ -102,19 +102,20 @@ class BigtableClient(object):
         request the creation of a snapshot. (Note: currently unimplemented.)
 
     Returns:
-      A `BigTable` python object representing the operations available on the
-      table.
+      A `tf.contrib.bigtable.BigtableTable` Python object representing the
+      operations available on the table.
     """
     # TODO(saeta): Implement snapshot functionality.
     table = gen_bigtable_ops.bigtable_table(self._resource, name)
-    return BigTable(name, snapshot, table)
+    return BigtableTable(name, snapshot, table)
 
 
-class BigTable(object):
-  """BigTable is the entrypoint for reading and writing data in Cloud Bigtable.
+class BigtableTable(object):
+  """BigtableTable is the entrypoint for reading and writing data in Cloud
+  Bigtable.
 
-  This BigTable class is the python representation of the Cloud Bigtable table
-  within TensorFlow. Methods on this class allow data to be read from and
+  This BigtableTable class is the Python representation of the Cloud Bigtable
+  table within TensorFlow. Methods on this class allow data to be read from and
   written to the Cloud Bigtable service in flexible and high performance
   manners.
   """
@@ -132,7 +133,8 @@ class BigTable(object):
     """Retrieves the values of columns for a dataset of keys.
 
     Example usage:
-    ```
+
+    ```python
     table = bigtable_client.table("my_table")
     key_dataset = table.get_keys_prefix("imagenet")
     images = key_dataset.apply(table.lookup_columns(("cf1", "image"),
@@ -143,7 +145,8 @@ class BigTable(object):
 
     Alternatively, you can use keyword arguments to specify the columns to
     capture. Example (same as above, rewritten):
-    ```
+
+    ```python
     table = bigtable_client.table("my_table")
     key_dataset = table.get_keys_prefix("imagenet")
     images = key_dataset.apply(table.lookup_columns(
@@ -151,15 +154,17 @@ class BigTable(object):
     training_data = images.map(parse_and_crop, num_parallel_calls=64).batch(128)
     ```
 
-    Note: certain kwargs keys are reserved, and thus some column families cannot
-    be identified using the kwargs syntax. Instead, please use the args syntax.
-    This list includes:
+    Note: certain `kwargs` keys are reserved, and thus, some column families
+    cannot be identified using the `kwargs` syntax. Instead, please use the
+    `args` syntax. This list includes:
+
       - 'name'
-    This list can change at any time.
+
+    Note: this list can change at any time.
 
     Args:
       *args: A list of tuples containing (column family, column name) pairs.
-      **kwargs: Column families and
+      **kwargs: Column families (keys) and column qualifiers (values).
 
     Returns:
       A function that can be passed to `tf.data.Dataset.apply` to retrieve the
@@ -711,7 +716,7 @@ class _BigtableScanDataset(dataset_ops.Dataset):
 
 
 class _BigtableSampleKeyPairsDataset(dataset_ops.Dataset):
-  """_BigtableKeyRangeDataset returns key pairs from the Bigtable.
+  """_BigtableSampleKeyPairsDataset returns key pairs from a Bigtable table.
   """
 
   def __init__(self, table, prefix, start, end):

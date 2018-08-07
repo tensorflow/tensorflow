@@ -48,6 +48,8 @@ bool ResolveReduceAttributes::Run(Model* model, std::size_t op_index) {
       return ResolveAttributes(model, static_cast<TensorFlowSumOperator*>(op));
     case OperatorType::kReduceProd:
       return ResolveAttributes(model, static_cast<TensorFlowProdOperator*>(op));
+    case OperatorType::kReduceMin:
+      return ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
     case OperatorType::kReduceMax:
       return ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
     default:

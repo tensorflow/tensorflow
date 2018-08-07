@@ -114,12 +114,14 @@ py_library(
         "constraints.py",
         "engine/__init__.py",
         "engine/base_layer.py",
+        "engine/distributed_training_utils.py",
         "engine/input_layer.py",
         "engine/network.py",
         "engine/saving.py",
         "engine/sequential.py",
         "engine/training.py",
         "engine/training_arrays.py",
+        "engine/training_distributed.py",
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
@@ -704,6 +706,17 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "training_gpu_test",
+    size = "small",
+    srcs = ["engine/training_gpu_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_test(
     name = "imagenet_utils_test",
     size = "small",
@@ -721,7 +734,6 @@ py_test(
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["nomsan"],  # TODO(b/110990716) reenable
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -768,7 +780,7 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "medium",
+    size = "large",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -860,7 +872,7 @@ py_test(
 
 py_test(
     name = "models_test",
-    size = "small",
+    size = "medium",
     srcs = ["models_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67509773

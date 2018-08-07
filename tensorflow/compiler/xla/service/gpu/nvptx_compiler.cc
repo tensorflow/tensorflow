@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
@@ -52,9 +51,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -146,7 +147,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // support BF16 operations without directly implementing a BF16 lowering for
     // most ops.
     pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
-    pipeline.AddPass<DotDecomposer>();
 
     {
       auto& pass =
@@ -199,6 +199,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
+    if (IsVoltaOrLater(*stream_exec)) {
+      pipeline.AddPass<PadForTensorCores>();
+      // PadForTensorCores leaves behind unnecessary tuple/get-tuple-element
+      // pairs that TupleSimplifier fixes.
+      pipeline.AddPass<TupleSimplifier>();
+    }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -362,8 +368,8 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   // b/70245379.
   //
   // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
-  // that appears related to address calculations.  ptxas 9.2.88 appears to
-  // work, as far as we can tell.
+  // that appears related to address calculations, b/111107644.  ptxas 9.2.88
+  // appears to work, as far as we can tell.
   if (vmaj < 9) {
     LOG(ERROR)
         << "You are using ptxas 8.x, but XLA requires ptxas 9.x (and strongly "
@@ -406,20 +412,17 @@ void WarnIfBadDriverJITVersion() {
     //  - 387.x before 387.40
     //  - 390.x before 390.10.
     //
-    // TODO(jlebar): This list does not cover the address-calculation bug we've
-    // observed in ptxas 9.1.121.  Need to get a new safe range from nvidia
-    // corresponding to ptxas >= 9.2.88.
-    auto vmaj = std::get<0>(version);
-    auto vmin = std::get<1>(version);
-    if ((vmaj == 384 && vmin < 108) ||  //
-        (vmaj == 387 && vmin < 40) ||   //
-        (vmaj == 390 && vmin < 10)) {
+    // In addition, only >= 396.20 contains ptxas >= 9.2.88, which contains the
+    // fix for the "large multioutput fusions" miscompile, b/111107644.
+    if (version < std::make_tuple(396, 20, 0)) {
       LOG(WARNING)
           << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
           << se::cuda::DriverVersionToString(version)
-          << ", which is in range [384.0.0, 384.108.0) + [387.0.0, 387.40.0) + "
-             "[390.0.0, 390.10.0). These versions are known to miscompile XLA "
-             "code, leading to incorrect results or invalid-address errors.";
+          << ", which is older than 396.20.0. These versions are known to "
+             "miscompile XLA code, leading to incorrect results or "
+             "invalid-address errors.\nXLA only uses the driver JIT if it "
+             "cannot find ptxas; you don't need to update your driver if "
+             "you can point XLA to ptxas 9.2.88 or newer.";
     }
   });
 }
@@ -543,11 +546,13 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(),
-                          /*color_alignment=*/[](LogicalBuffer::Color) {
-                            return kCudaMallocAlignBytes;
-                          }));
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
@@ -568,6 +573,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));

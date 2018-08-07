@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 
 namespace tflite {
+namespace eager {
 namespace {
 // A tensor buffer that is allocated, deallocated and populated by TF Lite.
 class TfLiteTensorBuffer : public tensorflow::TensorBuffer {
@@ -90,6 +91,10 @@ void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
   for (int i = 0; i < num_dims; ++i) {
     shape.AddDim(tensor->dims->data[i]);
   }
+  // TODO(ahentz): we assume this is a new tensor and allocate a new buffer
+  // for it. This is not always the best approach. For example, this might
+  // be a reallocation after resizing tensors. In that case we would be
+  // preferable to somehow reuse the buffer.
   auto* buf = new TfLiteTensorBuffer(tensor);
   tensorflow::Tensor t = tensorflow::TensorCApi::MakeTensor(
       GetTensorFlowDataType(tensor->type), shape, buf);
@@ -102,4 +107,5 @@ void BufferMap::SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor) {
   id_to_tensor_[tensor_index] = std::move(tensor);
 }
 
+}  // namespace eager
 }  // namespace tflite

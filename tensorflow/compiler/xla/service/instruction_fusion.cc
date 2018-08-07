@@ -73,6 +73,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLt:
@@ -140,6 +141,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

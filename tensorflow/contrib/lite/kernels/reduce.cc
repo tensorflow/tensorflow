@@ -78,6 +78,10 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
   size_t num_axis = NumElements(op_context->axis);
   const TfLiteIntArray* input_dims = op_context->input->dims;
   int input_num_dims = NumDimensions(op_context->input);
+  if (input_num_dims == 0) {
+    return context->ResizeTensor(context, op_context->output,
+                                 TfLiteIntArrayCreate(0));
+  }
   const int* axis = GetTensorData<int>(op_context->axis);
   if (op_context->params->keep_dims) {
     TfLiteIntArray* output_dims = TfLiteIntArrayCreate(input_num_dims);

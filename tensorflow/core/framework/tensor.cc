@@ -57,6 +57,10 @@ namespace tensorflow {
 // Allow Tensors to be stored inside Variants with automatic
 // encoding/decoding when those Variants are themselves being decoded
 // in a Tensor's FromProto.
+//
+// NOTE(mrry): The corresponding "copy function" registrations can be found in
+// ../common_runtime/copy_tensor.cc (due to dependencies on other common_runtime
+// code).
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(Tensor, "tensorflow::Tensor");
 
 namespace {

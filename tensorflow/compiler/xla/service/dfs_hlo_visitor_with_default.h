@@ -115,6 +115,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConstant(HloInstructionPtr constant) override {
     return DefaultAction(constant);
   }
+  Status HandleIota(HloInstructionPtr iota) override {
+    return DefaultAction(iota);
+  }
   Status HandleGetTupleElement(HloInstructionPtr get_tuple_element) override {
     return DefaultAction(get_tuple_element);
   }
@@ -190,6 +193,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleGather(HloInstructionPtr gather) override {
     return DefaultAction(gather);
+  }
+  Status HandleScatter(HloInstructionPtr scatter) override {
+    return DefaultAction(scatter);
   }
   Status HandleAfterAll(HloInstructionPtr token) override {
     return DefaultAction(token);
