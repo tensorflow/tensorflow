@@ -163,7 +163,7 @@ bazel build tensorflow/contrib/lite/toco:toco && \
   --std_value=127.5 --mean_value=127.5
 ```
 
-See the documentation for @{tf.contrib.quantize} and
+See the documentation for `tf.contrib.quantize` and
 [TensorFlow Lite](/mobile/tflite/).
 
 ## Quantized accuracy
