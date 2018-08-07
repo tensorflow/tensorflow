@@ -521,11 +521,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "boringssl",
         urls = [
-            "https://mirror.bazel.build/github.com/google/boringssl/archive/f4fa779521475a98c1586dff349eb44934d5f281.tar.gz",
-            "https://github.com/google/boringssl/archive/f4fa779521475a98c1586dff349eb44934d5f281.tar.gz",
+            "https://mirror.bazel.build/github.com/google/boringssl/archive/45c4a87ae97eb95a8fc2906c035d6a8d0e02e1b8.tar.gz",
+            "https://github.com/google/boringssl/archive/45c4a87ae97eb95a8fc2906c035d6a8d0e02e1b8.tar.gz",
         ],
-        sha256 = "813d3ae5a11f8391941f716172c4438f888953d9f15ab609e1ee8f291a4e42d9",
-        strip_prefix = "boringssl-f4fa779521475a98c1586dff349eb44934d5f281",
+        sha256 = "972e8d8a9d1daf9892fff7155312b1af46b4754446575a7b285e62f917424c78",
+        strip_prefix = "boringssl-45c4a87ae97eb95a8fc2906c035d6a8d0e02e1b8",
     )
 
     tf_http_archive(
