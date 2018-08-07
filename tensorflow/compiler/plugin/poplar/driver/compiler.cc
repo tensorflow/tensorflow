@@ -142,6 +142,29 @@ static bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
 }
 
 class EntryVisitor : public FullVisitor {
+ private:
+  // Arrange for a FIFO and Copy for outputs which can be streamed
+  Status StreamOutputs(HloInstruction* inst, uint64 start_idx,
+                       OutVector outputs) {
+    for (int o = 0; o < outputs.size(); o++) {
+      int64 index = start_idx + o;
+      output_streamed[index] = true;
+
+      HloComputation* comp = inst->parent();
+      HloModule* mod = comp->parent();
+      auto* layout = mod->mutable_entry_computation_layout();
+      auto shapes = FlattenedXlaShape(layout->result_shape());
+
+      poplar::Tensor out = ConvertFromDeviceLayout(shapes[index], outputs[o]);
+
+      auto fifo = graph_.addDeviceToHostFIFO(
+          GetOutputCopyHandle(index), out.elementType(), out.numElements());
+
+      sequence.add(poplar::program::Copy(out, fifo));
+    }
+    return Status::OK();
+  }
+
  public:
   EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
                uint64 num_parameters, uint64 num_outputs)
@@ -243,6 +266,15 @@ class EntryVisitor : public FullVisitor {
       }
     }
 
+    // Streamed inputs<->outputs cannot be inplace updates
+    if (!all_outputs_are_parameters) {
+      for (size_t o = 0; o < outputs.size(); o++) {
+        if (output_streamed[o]) {
+          output_map.erase(o);
+        }
+      }
+    }
+
     PrintTensorMapping(graph_, tensor_map);
     tensor_map.clear();
 
@@ -253,40 +285,25 @@ class EntryVisitor : public FullVisitor {
 
   Status Postprocess(HloInstruction* inst) {
     // After processing each instruction, check if its output can be streamed
-    // off the device, and arrange for a FIFO and Copy if it can be.
+    // off the device
     if (OkToStream(inst->shape())) {
       const auto* root = inst->parent()->root_instruction();
       auto num_streaming = FlattenedXlaShape(root->shape()).size() -
                            resources_.annotations.num_resource_outputs;
+      const auto& outputs = FindInstructionOutputs(tensor_map, inst);
       if (root->opcode() == HloOpcode::kTuple) {
         for (int i = 0; i < root->operand_count(); i++) {
           if (root->operand(i) == inst) {
             if (i < num_streaming) {
               auto pair = FindTupleInputIndices(root, i);
-              const auto& outputs = FindInstructionOutputs(tensor_map, inst);
               if (pair.second - pair.first == outputs.size()) {
-                for (int o = 0; o < outputs.size(); o++) {
-                  int64 index = pair.first + o;
-                  output_streamed[index] = true;
-
-                  HloComputation* comp = inst->parent();
-                  HloModule* mod = comp->parent();
-                  auto* layout = mod->mutable_entry_computation_layout();
-                  auto shapes = FlattenedXlaShape(layout->result_shape());
-
-                  poplar::Tensor out =
-                      ConvertFromDeviceLayout(shapes[index], outputs[o]);
-
-                  auto fifo = graph_.addDeviceToHostFIFO(
-                      GetOutputCopyHandle(index), out.elementType(),
-                      out.numElements());
-
-                  sequence.add(poplar::program::Copy(out, fifo));
-                }
+                StreamOutputs(inst, pair.first, outputs);
               }
             }
           }
         }
+      } else if (inst == inst->parent()->root_instruction() && num_streaming) {
+        StreamOutputs(inst, 0, outputs);
       }
     }
     return Status::OK();

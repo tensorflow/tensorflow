@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_INPLACE_FINDER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_INPLACE_FINDER_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -27,7 +28,6 @@ namespace poplarplugin {
 
 struct CompilerAnnotations;
 
-using InplaceInstructions = std::set<const HloInstruction*>;
 using InplaceRoute = std::vector<HloInstruction*>;
 
 /**

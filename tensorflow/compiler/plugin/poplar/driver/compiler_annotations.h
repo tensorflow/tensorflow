@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -29,7 +30,6 @@ namespace poplarplugin {
 // This structure contains all information which we generate that pertains
 // to the XLA graph, as opposed to the poplar lowering of that graph.
 struct CompilerAnnotations {
-
   uint64 num_resource_inputs;
   uint64 num_resource_outputs;
 

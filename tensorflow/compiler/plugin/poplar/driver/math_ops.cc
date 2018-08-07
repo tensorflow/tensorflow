@@ -2,6 +2,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -23,6 +24,7 @@
 #include <popnn/NonLinearity.hpp>
 #include <popops/Cast.hpp>
 #include <popops/ElementWise.hpp>
+#include <popops/ScaledAdd.hpp>
 
 namespace se = ::stream_executor;
 
@@ -198,13 +200,27 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
-  if (res.annotations.inplace_instructions.count(inst) == 1 &&
+  if (res.annotations.inplace_instructions.IsInPlace(inst) &&
       (in0.shape() == in1.shape()) && in0.isParallelWriteable()) {
-    popops::expr::BinaryOpType op;
-    TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
-
     poplar::program::Sequence seq;
-    popops::mapInPlace(graph, op, in0, in1, seq);
+    // Call the inplace op
+    switch (inst->opcode()) {
+      case HloOpcode::kAdd: {
+        popops::scaledAddTo(graph, in0, in1, 1.0f, seq, GetDebugName(inst));
+        break;
+      }
+      case HloOpcode::kSubtract: {
+        popops::scaledSubtractFrom(graph, in0, in1, 1.0f, seq,
+                                   GetDebugName(inst));
+        break;
+      }
+      default: {
+        popops::expr::BinaryOpType op;
+        TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
+        popops::mapInPlace(graph, op, in0, in1, seq, GetDebugName(inst));
+        break;
+      }
+    }
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
 
@@ -239,27 +255,25 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
             popops::map(graph, popops::expr::BinaryOpType::LOGICAL_OR, in0, in1,
                         seq, GetDebugName(inst));
         poplar::Tensor and_out =
-            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND, in0, in1,
-                        seq, GetDebugName(inst));
+            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND, in0,
+                        in1, seq, GetDebugName(inst));
         poplar::Tensor not_out =
             popops::map(graph, popops::expr::UnaryOpType::LOGICAL_NOT, and_out,
                         seq, GetDebugName(inst));
-        out =
-            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND, or_out,
-                        not_out, seq, GetDebugName(inst));
+        out = popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND,
+                          or_out, not_out, seq, GetDebugName(inst));
       } else {
         poplar::Tensor or_out =
             popops::map(graph, popops::expr::BinaryOpType::BITWISE_OR, in0, in1,
                         seq, GetDebugName(inst));
         poplar::Tensor and_out =
-            popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, in0, in1,
-                        seq, GetDebugName(inst));
+            popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, in0,
+                        in1, seq, GetDebugName(inst));
         poplar::Tensor not_out =
             popops::map(graph, popops::expr::UnaryOpType::BITWISE_NOT, and_out,
                         seq, GetDebugName(inst));
-        out =
-            popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, or_out,
-                        not_out, seq, GetDebugName(inst));
+        out = popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND,
+                          or_out, not_out, seq, GetDebugName(inst));
       }
     } else {
       popops::expr::BinaryOpType op;
@@ -468,9 +482,9 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
   TF_ASSIGN_OR_RETURN(outgrad, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::program::Sequence seq;
-  poplar::Tensor t = popnn::nonLinearityInputGradient(
-      graph, popnn::NonLinearityType::RELU, out, outgrad, seq,
-      GetDebugName(inst));
+  poplar::Tensor t =
+      popnn::nonLinearityInputGradient(graph, popnn::NonLinearityType::RELU,
+                                       out, outgrad, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
@@ -509,9 +523,8 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
 
   poplar::program::Sequence seq;
   poplar::Tensor t =
-      popnn::nonLinearityInputGradient(graph,
-                                       popnn::NonLinearityType::SIGMOID, out,
-                                       outgrad, seq, GetDebugName(inst));
+      popnn::nonLinearityInputGradient(graph, popnn::NonLinearityType::SIGMOID,
+                                       out, outgrad, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 

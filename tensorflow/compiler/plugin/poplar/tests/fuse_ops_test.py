@@ -42,7 +42,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Sigmoid/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -69,7 +70,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'SigmoidGrad/call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -94,7 +96,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Relu/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -121,7 +124,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'ReluGrad/call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -147,7 +151,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'max/call/maxPool']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -177,7 +182,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'MaxPool/call/maxPool',
             '/maxPoolBwd']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -204,7 +210,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-']
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testNoCastsF16ToF32ToF16(self):
@@ -229,7 +236,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-']
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testDontRemoveCastsIfUsed(self):
@@ -256,9 +264,10 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
             'Cast/convert.*/Cast',
-            'add/add.*/Op/Add',
+            'add/add.*/AddTo',
             'Cast_1/convert.*/Cast']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
