@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 
+import numpy as np
 import six
 
 from tensorflow.python.framework import constant_op
@@ -220,6 +221,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   If `clip_norm > global_norm` then the entries in `t_list` remain as they are,
   otherwise they're all shrunk by the global ratio.
+  If `global_norm` is not finite, the entries in `t_list` become NaN.
 
   Any of the entries of `t_list` that are of type `None` are ignored.
 
@@ -254,9 +256,13 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    scale = clip_norm * math_ops.minimum(
+    scale_for_finite = clip_norm * math_ops.minimum(
         1.0 / use_norm,
         constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
+    scale = array_ops.where(math_ops.is_finite(use_norm),
+                            scale_for_finite,
+                            # Return NaN if user_norm is not finite.
+                            constant_op.constant(np.nan, dtype=use_norm.dtype))
 
     values = [
         ops.convert_to_tensor(
