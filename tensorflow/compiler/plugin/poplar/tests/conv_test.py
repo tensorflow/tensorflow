@@ -113,6 +113,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_XLA_Args/arg2.*_weights_to_weightsRearranged/OnTileCopy',
             'Conv2D/convolution.*.clone/Conv_8x8_stride4x4',
             'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -146,6 +147,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_bwdWeights_to_inRearranged',
             'Conv2D/convolution.*.clone/Conv_1x1',
             'add/add.*/AddTo']
 # TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
@@ -181,7 +183,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_XLA_Args/arg0.*_to_bwdWeights',
-            'Copy_{<const>,bwdWeights}_to_weightsRearranged',
+            'Copy_bwdWeights_to_inRearranged',
             'Copy_partialReduceOut_to_Conv2DBackpropInput/call',
             'Conv2DBackpropInput/convolution.*clone/Conv_2x2']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -336,8 +338,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/WeightTranspose',
             'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_3x3',
-            'Copy_{<const>,bwdWeights}_to_weightsRearranged',
             'Copy_partialTranspose_to_bwdWeights/',
+            'Copy_{<const>,XLA_Args/arg1.*,bwdWeights}_to_{inRearranged,weightsRearranged}',
             'Copy_partialReduceOut_to_DepthwiseConv2dNativeBackpropInput/call']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -374,8 +376,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/WeightTranspose',
             'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_1x1',
-            'Copy_{<const>,partialTranspose}_to_weightsRearranged',
-            'Copy_partialTranspose_to_bwdWeights/',
+            'Copy_{XLA_Args/arg1.*,partialTranspose}_to_{inRearranged,weightsRearranged}',
             'Copy_partials_to_DepthwiseConv2dNativeBackpropInput/call']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -409,7 +410,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_{<const>,XLA_Args/arg*}_to_weightsRearranged',
-            'Copy_{<const>,bwdWeights}_to_weightsRearranged',
             'Copy_partialReduceOut_to_Conv2DBackpropInput/call',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
