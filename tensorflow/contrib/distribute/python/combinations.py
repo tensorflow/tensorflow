@@ -46,6 +46,7 @@ import unittest
 from absl.testing import parameterized
 import six
 
+from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
 from tensorflow.contrib.distribute.python import multi_worker_strategy
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
@@ -324,7 +325,9 @@ default_strategy = NamedDistribution(
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
-tpu_strategy = NamedDistribution("TPU", tpu_lib.TPUStrategy, required_tpu=True)
+tpu_strategy = NamedDistribution(
+    "TPU", lambda: tpu_lib.TPUStrategy(TPUClusterResolver("")),
+    required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
