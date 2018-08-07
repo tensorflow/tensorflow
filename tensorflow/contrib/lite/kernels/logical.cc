@@ -105,6 +105,11 @@ TfLiteStatus LogicalOrEval(TfLiteContext* context, TfLiteNode* node) {
   return LogicalImpl(context, node, logical_or_func);
 }
 
+TfLiteStatus LogicalAndEval(TfLiteContext* context, TfLiteNode* node) {
+  const auto logical_and_func = std::logical_and<bool>();
+  return LogicalImpl(context, node, logical_and_func);
+}
+
 }  // namespace
 }  // namespace logical
 
@@ -113,6 +118,14 @@ TfLiteRegistration* Register_LOGICAL_OR() {
   // TfLiteRegistration.
   static TfLiteRegistration r = {logical::Init, logical::Free, logical::Prepare,
                                  logical::LogicalOrEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOGICAL_AND() {
+  // Init, Free, Prepare, Eval are satisfying the Interface required by
+  // TfLiteRegistration.
+  static TfLiteRegistration r = {logical::Init, logical::Free, logical::Prepare,
+                                 logical::LogicalAndEval};
   return &r;
 }
 
