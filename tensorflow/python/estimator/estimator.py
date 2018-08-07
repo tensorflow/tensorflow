@@ -104,7 +104,7 @@ class Estimator(object):
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
 
-  @compatbility(eager)
+  @compatibility(eager)
   Calling methods of `Estimator` will work while eager execution is enabled.
   However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
   will switch to graph model before calling all user-provided functions (incl.
