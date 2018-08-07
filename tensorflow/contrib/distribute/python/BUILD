@@ -187,6 +187,7 @@ py_library(
         ":multi_worker_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/optimizer_v2:training",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
