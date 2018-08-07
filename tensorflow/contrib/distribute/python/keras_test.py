@@ -152,6 +152,28 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     writer_cache.FileWriterCache.clear()
     gfile.DeleteRecursively(self._config.model_dir)
 
+  def test_keras_optimizer_with_distribution_strategy(self):
+    dist = mirrored_strategy.MirroredStrategy(
+        devices=['/device:GPU:0', '/device:GPU:1'])
+    keras_model = simple_sequential_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizers.rmsprop(lr=0.01))
+
+    config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
+                                      model_dir=self._base_dir,
+                                      train_distribute=dist)
+    with self.test_session():
+      est_keras = keras_lib.model_to_estimator(keras_model=keras_model,
+                                               config=config)
+      with self.assertRaisesRegexp(ValueError,
+                                   'Only TensorFlow native optimizers are '
+                                   'supported with DistributionStrategy.'):
+        est_keras.train(input_fn=get_ds_train_input_fn, steps=_TRAIN_SIZE / 16)
+
+    writer_cache.FileWriterCache.clear()
+    gfile.DeleteRecursively(self._config.model_dir)
+
 
 class TestWithDistributionStrategy(test.TestCase):
 
