@@ -63,7 +63,11 @@ class PoplarExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
-  bool DumpReport() const { return first_execution_; }
+  int64 ExecutionCount() const { return execution_count_; }
+
+  void OnEngineLoaded() {
+    execution_count_ = 0;
+  }
 
   const OutputMap& OutputMapping() const { return output_map_; }
 
@@ -98,7 +102,7 @@ class PoplarExecutable : public Executable {
   std::vector<std::unique_ptr<Literal>> literal_output_;
   std::vector<bool> parameter_streamed_;
   std::vector<bool> output_streamed_;
-  bool first_execution_;
+  int64 execution_count_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };

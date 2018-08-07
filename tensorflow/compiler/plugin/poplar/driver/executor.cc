@@ -643,7 +643,7 @@ void PoplarExecutor::FlattenedOutputDeviceMemoryList(std::vector<void*>& list,
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
-    const xla::poplarplugin::PoplarExecutable& executable,
+    xla::poplarplugin::PoplarExecutable& executable,
     xla::DeviceMemoryAllocator* allocator, const Args& args) {
   const auto& output_map = executable.OutputMapping();
   const auto& output_shape = executable.result_shape();
@@ -714,6 +714,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
                          executable.module().name(), "", 0);
         }
+
+        executable.OnEngineLoaded();
       }
 
       current_engine_ = engine;
@@ -776,16 +778,22 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       try {
-        if (current_config_.profiling().enable_execution_trace()) {
+        if (current_config_.profiling().enable_execution_trace() > 0) {
           poplar::OptionFlags opts;
           opts.set("doLayerWiseBreakdown", "true");
-          // opts.set("doLayerWisePerIPUBreakdown", "true");
-          // opts.set("doLayerWisePerTileBreakdown", "true");
+          if (!CompilerReportingTextFormat()) {
+            opts.set("doLayerWisePerIPUBreakdown", "true");
+            opts.set("doLayerWisePerTileBreakdown", "true");
+          }
 
           std::stringstream stream;
-          if (executable.DumpReport()) {
+          if (executable.ExecutionCount() == 0) {
             auto rep = current_engine_->getExecutionReport(opts);
-            rep.printSummary(stream);
+            if (CompilerReportingTextFormat()) {
+              rep.printSummary(stream);
+            } else {
+              rep.serialize(stream, poplar::SerializationFormat::JSON);
+            }
 
             current_engine_->reportIntervals(stream);
           }

@@ -245,6 +245,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.profiling().enable_compilation_trace();
   }
 
+  int64 ReportEventNthExecution() const {
+    return current_config_.profiling().report_every_nth_execution();
+  }
+
   bool CompilerReportingTextFormat() const {
     return current_config_.profiling().enable_poplar_reports_text();
   }
@@ -256,7 +260,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent> &out);
 
   StatusOr<se::DeviceMemoryBase> ExecuteEngine(
-      se::StreamExecutor *executor, const xla::poplarplugin::PoplarExecutable &,
+      se::StreamExecutor *executor, xla::poplarplugin::PoplarExecutable &,
       xla::DeviceMemoryAllocator *allocator, const Args &);
 
   StatusOr<se::DeviceMemoryBase> GetTupleBufferByIndex(
