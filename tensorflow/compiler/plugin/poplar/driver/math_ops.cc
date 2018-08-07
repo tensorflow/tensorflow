@@ -297,6 +297,46 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   }
 }
 
+StatusOr<poplar::program::Program> CreateScaledInplace(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  poplar::Tensor in0;
+  TF_ASSIGN_OR_RETURN(in0, GetInplaceOutputTensor(graph, res, seq, inst,
+                                                  output_shape, tensor_map));
+
+  poplar::Tensor in1;
+  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
+
+  const auto* root_inst = inst->to_apply()->root_instruction();
+  const auto* const_inst = root_inst->operand(1)->operand(1)->operand(0);
+  CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
+
+  // Get the scalar multiplier
+  double mul;
+  TF_ASSIGN_OR_RETURN(mul, LiteralScalarDoubleToDouble(const_inst->literal()));
+
+  // Call the inplace op
+  switch (root_inst->opcode()) {
+    case HloOpcode::kAdd: {
+      popops::scaledAddTo(graph, in0, in1, mul, seq, GetDebugName(inst));
+      break;
+    }
+    case HloOpcode::kSubtract: {
+      popops::scaledSubtractFrom(graph, in0, in1, mul, seq, GetDebugName(inst));
+      break;
+    }
+    default: {
+      return xla::FailedPrecondition("Unsupported scaled inplace op: %s",
+                                     root_inst->name().c_str());
+    }
+  }
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
+
+  return seq;
+}
+
 StatusOr<poplar::program::Program> CreateMatMulForDotOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {

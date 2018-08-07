@@ -117,27 +117,17 @@ StatusOr<poplar::program::Program> CreateSliceOp(poplar::Graph& graph,
 StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
   poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(input, GetInplaceOutputTensor(graph, res, seq, inst,
+                                                    output_shape, tensor_map));
 
   poplar::Tensor update;
   TF_ASSIGN_OR_RETURN(update, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::Tensor indices;
   TF_ASSIGN_OR_RETURN(indices, FindInstructionInput(tensor_map, inst, 2));
-
-  poplar::program::Sequence seq;
-  if (!input.isParallelWriteable() ||
-      !res.annotations.inplace_instructions.IsInPlace(inst)) {
-    poplar::Tensor copy;
-    TF_ASSIGN_OR_RETURN(
-        copy, AddTensor(graph, std::make_pair(inst, 0),
-                        XlaShapeFromPoplarShape(output_shape.element_type(),
-                                                input.shape()),
-                        res));
-    seq.add(poplar::program::Copy(input, copy));
-    input = copy;
-  }
 
   auto type = indices.elementType();
   if (type == poplar::INT) {

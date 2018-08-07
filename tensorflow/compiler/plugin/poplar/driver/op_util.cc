@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <limits>
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -69,6 +71,30 @@ OutVector FindInstructionOutputs(const TensorMap& map,
     outputs.push_back(it->second);
   }
   return outputs;
+}
+
+StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
+                                                CompilerResources& res,
+                                                poplar::program::Sequence& seq,
+                                                const HloInstruction* inst,
+                                                const xla::Shape& output_shape,
+                                                TensorMap& tensor_map) {
+  poplar::Tensor in0;
+  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
+
+  if (!in0.isParallelWriteable() ||
+      !res.annotations.inplace_instructions.IsInPlace(inst)) {
+    VLOG(1) << "Adding a copy for inplace op " << inst->name();
+    poplar::Tensor copy;
+    TF_ASSIGN_OR_RETURN(
+        copy, AddTensor(graph, std::make_pair(inst, 0),
+                        XlaShapeFromPoplarShape(output_shape.element_type(),
+                                                in0.shape()),
+                        res));
+    seq.add(poplar::program::Copy(in0, copy));
+    in0 = copy;
+  }
+  return in0;
 }
 
 Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,

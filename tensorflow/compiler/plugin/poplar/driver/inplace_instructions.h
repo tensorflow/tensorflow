@@ -28,7 +28,7 @@ namespace poplarplugin {
 
 class InplaceInstructions {
  public:
-  enum class Priority { HIGH = 0, LOW };
+  enum class Priority { HIGH = 0, MEDIUM, LOW };
 
   InplaceInstructions();
 
@@ -54,15 +54,16 @@ class InplaceInstructions {
                     const HloInstruction* inst);
 
   // Gets the priorities in decreasing order
-  std::array<const InplaceInstructions::Priority, 2> GetPriorityOrder() const;
+  std::array<const InplaceInstructions::Priority, 3> GetPriorityOrder() const;
   const std::set<const HloInstruction*>& GetPrioritySet(
       const InplaceInstructions::Priority priority);
 
  private:
   std::map<const InplaceInstructions::Priority, std::set<const HloInstruction*>>
       priority_instructions;
-  const std::array<const InplaceInstructions::Priority, 2> priority_order{
+  const std::array<const InplaceInstructions::Priority, 3> priority_order{
       {InplaceInstructions::Priority::HIGH,
+       InplaceInstructions::Priority::MEDIUM,
        InplaceInstructions::Priority::LOW}};
 };
 
