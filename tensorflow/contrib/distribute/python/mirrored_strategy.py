@@ -434,6 +434,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       return [val.get(device=d) for d in sorted(val.devices)]
     return [val]
 
+  def value_container(self, val):
+    return values.value_container(val)
+
   @property
   def is_single_tower(self):
     return len(self._devices) == 1

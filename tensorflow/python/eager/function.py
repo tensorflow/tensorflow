@@ -42,52 +42,54 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training import distribute
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
+def create_substitute_placeholder(value, name, dtype=None):
+  """Creates a placeholder for `value` and propagates shape info to it."""
+  # Note: setting ops.control_dependencies(None) ensures we always put
+  # capturing placeholders outside of any control flow context.
+  with ops.control_dependencies(None):
+    placeholder = graph_placeholder(
+        dtype=dtype or value.dtype, shape=value.shape, name=name)
+  if placeholder.dtype == dtypes_module.resource:
+    if isinstance(value, ops.EagerTensor):
+      handle_data = value._handle_data  # pylint: disable=protected-access
+    else:
+      handle_data = resource_variable_ops.get_resource_handle_data(value)
+    if handle_data is not None and handle_data.is_set:
+      # pylint: disable=protected-access
+      pywrap_tensorflow.SetResourceHandleShapeAndType(
+          placeholder.graph._c_graph, placeholder._as_tf_output(),
+          handle_data.SerializeToString())
+      # pylint: enable=protected-access
+      # Ensure that shapes and dtypes are propagated.
+      shapes, types = zip(*[(pair.shape, pair.dtype)
+                            for pair in handle_data.shape_and_type])
+      ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
+      shapes = [[d.size for d in s.dim]
+                if not s.unknown_rank else None for s in shapes]
+      pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+          placeholder._op._graph._c_graph,  # pylint: disable=protected-access
+          placeholder._as_tf_output(),  # pylint: disable=protected-access
+          shapes, ranks, types)
+
+  return placeholder
+
+
 def capture_value(tensor_map, value, dtype, name):
   """Capture a value from outside the function, to pass in as an extra arg."""
-  captured_value = tensor_map.get(ops.tensor_id(value), None)
-  if captured_value is None:
-    # Note: setting ops.control_dependencies(None) ensures we always put
-    # capturing placeholders outside of any control flow context.
-    with ops.control_dependencies(None):
-      captured_value = graph_placeholder(
-          dtype=dtype or value.dtype, shape=value.shape, name=name)
-    if captured_value.dtype == dtypes_module.resource:
-      if ops._USE_C_SHAPES:  # pylint: disable=protected-access
-        if isinstance(value, ops.EagerTensor):
-          handle_data = value._handle_data  # pylint: disable=protected-access
-        else:
-          handle_data = resource_variable_ops.get_resource_handle_data(value)
-      else:
-        handle_data = value._handle_data  # pylint: disable=protected-access
-      if handle_data is not None and handle_data.is_set:
-        # pylint: disable=protected-access
-        if ops._USE_C_SHAPES:
-          pywrap_tensorflow.SetResourceHandleShapeAndType(
-              captured_value.graph._c_graph, captured_value._as_tf_output(),
-              handle_data.SerializeToString())
-        else:
-          captured_value._handle_data = handle_data
-        # pylint: enable=protected-access
-        # Ensure that shapes and dtypes are propagated.
-        shapes, types = zip(*[(pair.shape, pair.dtype)
-                              for pair in handle_data.shape_and_type])
-        ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
-        shapes = [[d.size for d in s.dim]
-                  if not s.unknown_rank else None for s in shapes]
-        pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-            captured_value._op._graph._c_graph,  # pylint: disable=protected-access
-            captured_value._as_tf_output(),  # pylint: disable=protected-access
-            shapes, ranks, types)
-
+  captured_tuple = tensor_map.get(ops.tensor_id(value), None)
+  if captured_tuple is None:
+    captured_value = create_substitute_placeholder(value, name=name,
+                                                   dtype=dtype)
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
-    captured_value = captured_value[1]
+    captured_value = captured_tuple[1]
   tape.record_operation("captured_value", [captured_value], [value],
                         lambda x: [x])
   return captured_value
@@ -479,6 +481,20 @@ class GraphModeFunction(object):
     self._output_shapes = output_shapes
     self._variables = variables if variables is not None else []
 
+    # Find the variables that are components of something distributed and
+    # put them into a {handle_tensor -> distributed variable object} map.
+    self._distributed_variables = {}
+    strategy = distribute.get_distribution_strategy()
+    for variable in self._variables:
+      # If variable is not distributed, unwrap returns [variable].
+      component_variables = strategy.unwrap(variable)
+      # Only add to the dictionary when the variable is actually distributed,
+      # i.e. more than one component or the component is different from the
+      # variable itself. component_variables cannot be empty.
+      if (len(component_variables) > 1 or component_variables[0] != variable):
+        for component_variable in component_variables:
+          self._distributed_variables[component_variable.handle] = variable
+
   @property
   def variables(self):
     return self._variables
@@ -545,13 +561,12 @@ class GraphModeFunction(object):
     (Only records results on a tape if the function has outputs)
 
     Args:
-      args: The tensor inputs to the function.
+      args: All inputs to the function, including resolved extra inputs
     Returns:
       The call output.
     """
-    all_args = args + self._extra_inputs
     ctx = context.context()
-    outputs = self._forward_fdef.call(ctx, all_args, self._output_shapes)
+    outputs = self._forward_fdef.call(ctx, args, self._output_shapes)
     if isinstance(outputs, ops.Operation) or outputs is None:
       return outputs
 
@@ -567,7 +582,7 @@ class GraphModeFunction(object):
     tape.record_operation(
         self._forward_fdef.signature.name,
         real_outputs,
-        (args + self._extra_inputs),
+        args,
         backward_function)
 
     return self._build_call_outputs(real_outputs)
@@ -607,21 +622,50 @@ class GraphModeFunction(object):
     """Returns the name of the function in Eager-compatible format."""
     return self._function_def.name.encode("utf-8")
 
+  def _resolve_extra_inputs(self):
+    """Resolve captured distributed variables to their current values.
+
+    Some inputs can be distributed variables. Such variables yield a different
+    component (i.e. actual tf.Variable) variables depending on the context of
+    execution.
+
+    Returns:
+      a list of resolved extra input tensors.
+    """
+    if self._distributed_variables:
+      # Loop over each extra_inputs and check if it corresponds to something
+      # distributed. If so, get its _distributed_container and fetch the
+      # component appropriate for the current execution context.
+      resolved_extra_inputs = self._extra_inputs[:]
+      for i, extra_input in enumerate(self._extra_inputs):
+        distributed_var = self._distributed_variables.get(extra_input, None)
+        if distributed_var is not None:
+          # distributed variables override __getattr__ and substitute the
+          # right component variable. In here, `distributed_var.handle`
+          # actually does the equivalent of
+          # distributed_var.get_current_component_var().handle.
+          resolved_extra_inputs[i] = distributed_var.handle
+      return resolved_extra_inputs
+
+    return self._extra_inputs
+
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
     for v in self._variables:
       if v.trainable:
         tape.watch_variable(v)
 
+    resolved_extra_inputs = self._resolve_extra_inputs()
+
     tensor_inputs = [x for x in nest.flatten(args) if isinstance(x, ops.Tensor)]
+    args = tensor_inputs + resolved_extra_inputs
     if tape.should_record(tensor_inputs) or tape.should_record(
-        self._extra_inputs):
+        resolved_extra_inputs):
       if self._backward_function is None:
         self._construct_backprop_function()
-      return self._backprop_call(tensor_inputs)
+      return self._backprop_call(args)
 
     ctx = context.context()
-    args = tensor_inputs + self._extra_inputs
     outputs = self._function_def.call(ctx, args, self._output_shapes)
     return self._build_call_outputs(outputs)
 
@@ -762,7 +806,17 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
 
     finally:
       tape.pop_tape(this_tape)
-    variables = this_tape.watched_variables()
+    variables = list(this_tape.watched_variables())
+
+    # Some variables captured by the tape can come from a DistributedValue.
+    # At call time, DistributedValue can return another variable (e.g. if
+    # the function is run on a different device). Thus, instead of storing
+    # the specific captured variable, we replace it with its distributed
+    # container.
+    strategy = distribute.get_distribution_strategy()
+    for i, variable in enumerate(variables):
+      # If variable is not distributed value_container returns itself.
+      variables[i] = strategy.value_container(variable)
 
     # Returning a closed-over tensor as an output does not trigger a
     # call to convert_to_tensor, so we manually capture all such tensors.

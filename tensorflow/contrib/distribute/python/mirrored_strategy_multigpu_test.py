@@ -25,7 +25,9 @@ from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,6 +39,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 
 
@@ -974,7 +977,7 @@ class TowerLocalVariableAssignTest(test.TestCase):
 
   def _skip_eager_if_gpus_less_than(self, num_gpus):
     if context.num_gpus() < num_gpus and context.executing_eagerly():
-      self.skipTest("Enough GPUs not available for this test in eager mode.")
+      self.skipTest("Not enough GPUs available for this test in eager mode.")
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignTowerLocalVarSumAggregation(self):
@@ -1034,6 +1037,132 @@ class TowerLocalVariableAssignTest(test.TestCase):
       # On reading the tower local var we should get the MEAN of all values
       # which is equal to the value assigned.
       self.assertEqual(6.0, self.evaluate(dist.read_var(tower_local_var)))
+
+
+class MockModel(object):
+
+  def __init__(self, two_variables=False):
+    self.variables = []
+    self.variables.append(variable_scope.variable(1.25, name="dummy_var1"))
+    if two_variables:
+      self.variables.append(variable_scope.variable(2.0, name="dummy_var2"))
+
+  def __call__(self, factor=2):
+    x = factor * self.variables[0]
+    if len(self.variables) > 1:
+      x += self.variables[1]
+    return x
+
+
+class MirroredStrategyDefunTest(test.TestCase):
+
+  def _skip_eager_if_gpus_less_than(self, num_gpus):
+    if context.num_gpus() < num_gpus and context.executing_eagerly():
+      self.skipTest("Not enough GPUs available for this test in eager mode.")
+
+  def _call_and_check(self, model_fn, inputs, expected_result, defuns,
+                      two_variables=False):
+    cpu_dev = device_util.canonicalize("CPU:0")
+    gpu_dev = device_util.canonicalize("GPU:0")
+    devices = [cpu_dev, gpu_dev]
+    dist = mirrored_strategy.MirroredStrategy(devices)
+
+    with dist.scope():
+      mock_model = MockModel(two_variables)
+      self.evaluate(variables.global_variables_initializer())
+
+      result = dist.call_for_each_tower(model_fn, mock_model, *inputs,
+                                        run_concurrently=False)
+      for device in devices:
+        device_result = values.select_device(device, result)
+        device_expected_result = values.select_device(device, expected_result)
+        self.assertAllClose(device_expected_result,
+                            self.evaluate(device_result))
+
+      for defun in defuns:
+        self.assertEqual(set(mock_model.variables), set(defun.variables))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testVariableInDefun(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    @function.defun
+    def times_two(mock_model):
+      return mock_model()
+
+    def model_fn(mock_model):
+      return times_two(mock_model)
+
+    self._call_and_check(model_fn, [], 2.5, [times_two])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testVariableInNestedDefun(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    @function.defun
+    def times_two(mock_model):
+      return mock_model()
+
+    @function.defun
+    def two_x_plus_one(mock_model):
+      return times_two(mock_model) + 1
+
+    def model_fn(mock_model):
+      return two_x_plus_one(mock_model)
+
+    self._call_and_check(model_fn, [], 3.5, [times_two, two_x_plus_one])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTwoVariablesInNestedDefun(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    @function.defun
+    def fn1(mock_model):
+      return mock_model()
+
+    @function.defun
+    def fn2(mock_model):
+      return fn1(mock_model) + 1
+
+    def model_fn(mock_model):
+      return fn2(mock_model)
+
+    self._call_and_check(model_fn, [], 5.5, [fn1, fn2], two_variables=True)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testGradientTapeOverNestedDefuns(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    @function.defun
+    def fn1(mock_model):
+      return mock_model()
+
+    @function.defun
+    def fn2(mock_model):
+      return fn1(mock_model) + 1
+
+    def model_fn(mock_model):
+      with backprop.GradientTape(persistent=True) as gtape:
+        result = fn2(mock_model)
+      grads = gtape.gradient(result,
+                             [v.get() for v in mock_model.variables])
+      return grads
+
+    self._call_and_check(model_fn, [], [2.0, 1.0], [fn1, fn2],
+                         two_variables=True)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPassPerDevice(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    @function.defun
+    def fn1(mock_model, factor):
+      return mock_model(factor)
+
+    factors = values.PerDevice({"CPU:0": 5.0, "GPU:0": 3.0})
+    expected_result = values.PerDevice({"CPU:0": 5.0 * 1.25,
+                                        "GPU:0": 3.0 * 1.25})
+    self._call_and_check(fn1, [factors], expected_result, [fn1])
 
 
 if __name__ == "__main__":
