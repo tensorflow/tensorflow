@@ -55,7 +55,8 @@ class NadamOptimizerTest(test.TestCase):
     
     # need to use a larger value of epsilon here so that
     # np.sqrt(v_t) + epsilon doesn't get rounded to 0 when 
-    # the dtype is half and np.sqrt(v_t) = 0.
+    # the dtype is half and np.sqrt(v_t) = 0, as is the case
+    # when the gradient is 0 
     sparse_epsilon = 1e-7
       
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
