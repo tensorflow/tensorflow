@@ -42,7 +42,7 @@ def nadam_update_numpy(param,
 
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = beta2 * v + (1 - beta2) * g_t * g_t
-  
+
   m_bar = (1 - beta1) * g_t + beta1 * m_t
 
   param_t = param - alpha_t * m_bar / (np.sqrt(v_t) + epsilon)
