@@ -239,6 +239,8 @@ class StreamExecutorInterface {
                                     const DeviceMemoryBase &host_src,
                                     uint64 size) = 0;
   virtual bool HostCallback(Stream *stream, std::function<void()> callback) = 0;
+  virtual bool HostCallback(Stream *stream,
+                            std::function<port::Status()> callback);
   virtual port::Status AllocateEvent(Event *event) = 0;
   virtual port::Status DeallocateEvent(Event *event) = 0;
   virtual port::Status RecordEvent(Stream *stream, Event *event) = 0;
