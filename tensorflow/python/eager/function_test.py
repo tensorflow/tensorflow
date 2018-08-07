@@ -1233,6 +1233,19 @@ class FunctionTest(test.TestCase):
     self.assertEqual(one.numpy(), 1.0)
     self.assertEqual(two.numpy(), 2)
 
+  def testDefuningInstanceMethodWithDefaultArgument(self):
+
+    integer = constant_op.constant(2, dtypes.int64)
+
+    class Foo(object):
+
+      @function.defun
+      def func(self, other=integer):
+        return other
+
+    foo = Foo()
+    self.assertEqual(foo.func().numpy(), int(integer))
+
   def testPythonCallWithSideEffects(self):
     state = []
 

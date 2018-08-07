@@ -960,11 +960,17 @@ class _PolymorphicFunction(object):
     self._lock = threading.Lock()
 
     fullargspec = tf_inspect.getfullargspec(self._python_function)
+    if tf_inspect.ismethod(self._python_function):
+      # Remove `self`: default arguments shouldn't be matched to it.
+      args = fullargspec.args[1:]
+    else:
+      args = fullargspec.args
+
     # A cache mapping from argument name to index, for canonicalizing
     # arguments that are called in a keyword-like fashion.
-    self._args_to_indices = {arg: i for i, arg in enumerate(fullargspec.args)}
+    self._args_to_indices = {arg: i for i, arg in enumerate(args)}
     # A cache mapping from arg index to default value, for canonicalization.
-    offset = len(fullargspec.args) - len(fullargspec.defaults or [])
+    offset = len(args) - len(fullargspec.defaults or [])
     self._arg_indices_to_default_values = {
         offset + index: default
         for index, default in enumerate(fullargspec.defaults or [])
