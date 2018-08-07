@@ -24,11 +24,11 @@
 
 #include "mlir/IR/Statement.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 class MLFunction;
 class IfStmt;
+class MLValue;
 
 /// Statement block represents an ordered list of statements, with the order
 /// being the contiguous lexical order in which the statements appear as

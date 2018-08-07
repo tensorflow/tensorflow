@@ -158,12 +158,13 @@ protected:
 };
 
 /// This is a refinement of the "constant" op for the case where it is
-/// returning an integer value (either an IntegerType or AffineInt).
+/// returning an integer value of IntegerType.
 ///
 ///   %1 = "constant"(){value: 42}
 ///
 class ConstantIntOp : public ConstantOp {
 public:
+  /// Build a constant int op producing an integer of the specified width.
   template <class Builder>
   static OpPointer<ConstantIntOp> build(Builder *builder, int64_t value,
                                         unsigned width) {
@@ -184,6 +185,36 @@ public:
 private:
   friend class Operation;
   explicit ConstantIntOp(const Operation *state) : ConstantOp(state) {}
+};
+
+/// This is a refinement of the "constant" op for the case where it is
+/// returning an integer value of AffineInt type.
+///
+///   %1 = "constant"(){value: 99} : () -> affineint
+///
+class ConstantAffineIntOp : public ConstantOp {
+public:
+  /// Build a constant int op producing an affineint.
+  template <class Builder>
+  static OpPointer<ConstantAffineIntOp> build(Builder *builder, int64_t value) {
+    std::pair<Identifier, Attribute *> namedAttr(
+        builder->getIdentifier("value"), builder->getIntegerAttr(value));
+    auto *type = builder->getAffineIntType();
+
+    return OpPointer<ConstantAffineIntOp>(
+        ConstantAffineIntOp(builder->createOperation(
+            builder->getIdentifier("constant"), {}, type, {namedAttr})));
+  }
+
+  int64_t getValue() const {
+    return getAttrOfType<IntegerAttr>("value")->getValue();
+  }
+
+  static bool isClassFor(const Operation *op);
+
+private:
+  friend class Operation;
+  explicit ConstantAffineIntOp(const Operation *state) : ConstantOp(state) {}
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an

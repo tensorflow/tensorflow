@@ -123,19 +123,24 @@ public:
       walk(&(*Start++));
     }
   }
+  template <class Iterator> void walkPostOrder(Iterator Start, Iterator End) {
+    while (Start != End) {
+      walkPostOrder(&(*Start++));
+    }
+  }
 
   // Define walkers for MLFunction and all MLFunction statement kinds.
   void walk(MLFunction *f) {
     static_cast<SubClass *>(this)->visitMLFunction(f);
-    static_cast<SubClass *>(this)->walk(f->begin(), f->end());
+    walk(f->begin(), f->end());
   }
 
   void walkPostOrder(MLFunction *f) {
-    walk(f->begin(), f->end());
-    return static_cast<SubClass *>(this)->visitMLFunction(f);
+    walkPostOrder(f->begin(), f->end());
+    static_cast<SubClass *>(this)->visitMLFunction(f);
   }
 
-  void walkOpStmt(OperationStmt *opStmt) {
+  RetTy walkOpStmt(OperationStmt *opStmt) {
     return static_cast<SubClass *>(this)->visitOperationStmt(opStmt);
   }
 
@@ -204,7 +209,8 @@ public:
 
   // When visiting a specific stmt directly during a walk, these  methods get
   // called. These are typically O(1) complexity and shouldn't be recursively
-  // processing their descendants in some way.
+  // processing their descendants in some way. When using RetTy, all of these
+  // need to be overridden.
   void visitMLFunction(MLFunction *f) {}
   void visitForStmt(ForStmt *forStmt) {}
   void visitIfStmt(IfStmt *ifStmt) {}

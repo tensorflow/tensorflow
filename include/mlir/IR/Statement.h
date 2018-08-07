@@ -31,6 +31,7 @@ class MLFunction;
 class StmtBlock;
 class ForStmt;
 class MLIRContext;
+class MLValue;
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
@@ -71,6 +72,9 @@ public:
 
   void print(raw_ostream &os) const;
   void dump() const;
+
+  /// Replace all uses of 'oldVal' with 'newVal' in 'stmt'.
+  void replaceUses(MLValue *oldVal, MLValue *newVal);
 
 protected:
   Statement(Kind kind) : kind(kind) {}

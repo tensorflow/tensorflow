@@ -265,39 +265,16 @@ public:
     return op;
   }
 
-  OperationStmt *clone(const OperationStmt &srcOpStmt) {
-    auto *op = srcOpStmt.clone();
-    block->getStatements().insert(insertPoint, op);
-    return op;
-  }
-
   // Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Args... args) {
     return OpTy::build(this, args...);
   }
 
-  ForStmt *clone(const ForStmt &srcForStmt) {
-    auto *forStmt = srcForStmt.clone();
-    block->getStatements().insert(insertPoint, forStmt);
-    return forStmt;
-  }
-
-  IfStmt *clone(const IfStmt &srcIfStmt) {
-    auto *ifStmt = srcIfStmt.clone();
-    block->getStatements().insert(insertPoint, ifStmt);
-    return ifStmt;
-  }
-
   Statement *clone(const Statement &stmt) {
-    switch (stmt.getKind()) {
-    case Statement::Kind::Operation:
-      return clone(cast<const OperationStmt>(stmt));
-    case Statement::Kind::If:
-      return clone(cast<const IfStmt>(stmt));
-    case Statement::Kind::For:
-      return clone(cast<const ForStmt>(stmt));
-    }
+    Statement *cloneStmt = stmt.clone();
+    block->getStatements().insert(insertPoint, cloneStmt);
+    return cloneStmt;
   }
 
   // Creates for statement. When step is not specified, it is set to 1.
