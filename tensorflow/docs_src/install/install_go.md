@@ -6,7 +6,7 @@ a Go application. This guide explains how to install and set up the
 [TensorFlow Go package](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go).
 
 Warning: The TensorFlow Go API is *not* covered by the TensorFlow
-[API stability guarantees](../guide/version_semantics.md).
+[API stability guarantees](../guide/version_compat.md).
 
 
 ## Supported Platforms
