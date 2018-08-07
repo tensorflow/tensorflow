@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_shape
 
 import socket
 import struct
+import ssl
 
 class Readable(object):
     """Readable abstract class that exposes methods to do reading-related operations."""
@@ -81,15 +82,29 @@ class DataBuffer(Readable):
 class TcpClient(Readable):
     """TcpClient class that exposes methods to read data from a socket."""
     
-    def __init__(self, host, port):
+    def __init__(self, host, port, certfile=None, keyfile=None, password=None):
         """Constructs a new instance of TcpClient based on the specified host and port.
         
         Args:
             host: Host to be connected.
             port: Port to be connected.
+            certfile: File in PEM format containing the certificate as well as any number of CA certificates needed to establish the certificate’s authenticity.
+            keyfile: File containing the private key (otherwise the private key will be taken from certfile as well).
+            password: Password to be used if the private key is encrypted and a password is necessary.
         """
         Readable.__init__(self)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        if certfile is not None:
+            context = ssl.SSLContext()
+            context.load_cert_chain(certfile, keyfile, password)
+            self.sock = context.wrap_socket(self.sock)
+        else:
+            if keyfile is not None:
+                raise Exception("SSL is disabled, keyfile must not be specified (to enable SSL specify certfile)")
+            if password is not None:
+                raise Exception("SSL is disabled, password must not be specified (to enable SSL specify certfile)")
+
         self.host = host
         self.port = port
     
@@ -117,6 +132,10 @@ class TcpClient(Readable):
     def write_long(self, v):
         """Writes the specified int (8 bytes, little-endian)."""
         self.__write(v, "q")
+
+    def write_string(self, v):
+        """Writes the specified string."""
+        self.sock.sendall(v.encode("UTF-8"))
     
     def read_data(self, length):
         """Reads the specified number of bytes and returns them as a buffer."""
@@ -128,7 +147,7 @@ class TcpClient(Readable):
             if data_buffer is None:
                 data_buffer = buf
             else:
-                data_buffer.append(buf)
+                data_buffer += buf
         return data_buffer
         
     def __write(self, value, data_type):
@@ -278,24 +297,57 @@ class TypeTreeNode():
 class IgniteClient(TcpClient):
     """IgniteClient class exposes methods to work with Apache Ignite using Thin client."""
     
-    def __init__(self, host, port):
+    def __init__(self, host, port, username=None, password=None, certfile=None, keyfile=None, cert_password=None):
         """Constructs a new instance of IgniteClient.
         
         Args:
             host: Apache Ignite Thin client host to be connected.
             port: Apache Ignite Thin client port to be connected.
+            username: Apache Ignite Thin Client authentication username.
+            password: Apache Ignite Thin Client authentication password.
+            certfile: File in PEM format containing the certificate as well as any number of CA certificates needed to establish the certificate’s authenticity.
+            keyfile: File containing the private key (otherwise the private key will be taken from certfile as well).
+            cert_password: Password to be used if the private key is encrypted and a password is necessary.
         """
-        TcpClient.__init__(self, host, port)
+        TcpClient.__init__(self, host, port, certfile, keyfile, cert_password)
+        self.username = username
+        self.password = password
         
     def handshake(self):
         """Makes a handshake required to be made after connect before any other calls."""
-        self.write_int(8)    # Message length
-        self.write_byte(1)   # Handshake operation
-        self.write_short(1); # Version (1.0.0)
-        self.write_short(0);
-        self.write_short(0);
-        self.write_byte(2);  # Thin client
+        msg_len = 8
+        
+        if self.username is None:
+            msg_len += 1
+        else:
+            msg_len += 5 + len(self.username)
+        
+        if self.password is None:
+            msg_len += 1
+        else:
+            msg_len += 5 + len(self.password)
 
+        self.write_int(msg_len)   # Message length
+        self.write_byte(1)        # Handshake operation
+        self.write_short(1);      # Version (1.1.0)
+        self.write_short(1);
+        self.write_short(0);
+        self.write_byte(2);       # Thin client
+
+        if self.username is None: # Username
+            self.write_byte(101)
+        else:
+            self.write_byte(9)
+            self.write_int(len(self.username))
+            self.write_string(self.username)
+
+        if self.password is None: # Password
+            self.write_byte(101)
+        else:
+            self.write_byte(9)
+            self.write_int(len(self.password))
+            self.write_string(self.password)
+        
         res_len = self.read_int()
         res = self.read_byte()
 
@@ -589,21 +641,26 @@ class IgniteDataset(Dataset):
   """An Ignite Dataset that consumes the message.
   """
 
-  def __init__(self, cache_name, host="localhost", port=10800, local=False, part=-1, distributed=False, page_size=100):
+  def __init__(self, cache_name, host="localhost", port=10800, local=False, part=-1, distributed=False, page_size=100, username=None, password=None, certfile=None, keyfile=None, cert_password=None):
     """Create a IgniteDataset.
 
     Args:
-      cache_name: Cache Name.
-      host: Host.
-      port: Port.
-      local: Local.
-      part: Part.
-      distributed: Distributed.
-      page_size: Page size.
+      cache_name: Cache name to be used as datasource.
+      host: Apache Ignite Thin Client host to be connected.
+      port: Apache Ignite Thin Client port to be connected.
+      local: Local flag that defines to query only local data.
+      part: Number of partitions to be queried.
+      distributed: Distributed flag that defines to query only partition current process assigned on.
+      page_size: Apache Ignite Thin Client page size.
+      username: Apache Ignite Thin Client authentication username.
+      password: Apache Ignite Thin Client authentication password.
+      certfile: File in PEM format containing the certificate as well as any number of CA certificates needed to establish the certificate’s authenticity.
+      keyfile: File containing the private key (otherwise the private key will be taken from certfile as well).
+      cert_password: Password to be used if the private key is encrypted and a password is necessary.
     """
     super(IgniteDataset, self).__init__()
 
-    with IgniteClient(host, port) as client:
+    with IgniteClient(host, port, username, password, certfile, keyfile, cert_password) as client:
       client.handshake()
       self.cache_type = client.get_cache_type(cache_name)
 
