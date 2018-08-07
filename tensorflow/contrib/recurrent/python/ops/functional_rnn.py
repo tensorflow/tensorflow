@@ -284,8 +284,13 @@ def functional_rnn(cell, inputs, sequence_length=None,
       inputs=inputs,
       cell_fn=func_cell.cell_step,
       use_tpu=use_tpu)
-  return _PostProcessOutput(extended_acc_state, extended_final_state,
-                            func_cell, inputs_flat[0].shape[0], sequence_length)
+  tf_output, tf_state = _PostProcessOutput(
+      extended_acc_state, extended_final_state, func_cell,
+      inputs_flat[0].shape[0], sequence_length)
+
+  if time_major:
+    tf_output = array_ops.transpose(tf_output, [1, 0, 2])
+  return tf_output, tf_state
 
 
 def bidirectional_functional_rnn(
