@@ -32,11 +32,33 @@ template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
 class SSAValue;
+class Type;
 
 /// NamedAttribute is a used for operation attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
 /// pointer should always be non-null.
 typedef std::pair<Identifier, Attribute*> NamedAttribute;
+
+/// This represents an operation in an abstracted form, suitable for use with
+/// the builder APIs.  This object is a large and heavy weight object meant to
+/// be used as a temporary object on the stack.  It is generally unwise to put
+/// this in a collection.
+struct OperationState {
+  Identifier name;
+  SmallVector<SSAValue *, 4> operands;
+  SmallVector<Type *, 4> types;
+  SmallVector<NamedAttribute, 4> attributes;
+
+public:
+  OperationState(Identifier name) : name(name) {}
+
+  OperationState(Identifier name, ArrayRef<SSAValue *> operands,
+                 ArrayRef<Type *> types,
+                 ArrayRef<NamedAttribute> attributes = {})
+      : name(name), operands(operands.begin(), operands.end()),
+        types(types.begin(), types.end()),
+        attributes(attributes.begin(), attributes.end()) {}
+};
 
 /// Operations represent all of the arithmetic and other basic computation in
 /// MLIR.  This class is the common implementation details behind OperationInst

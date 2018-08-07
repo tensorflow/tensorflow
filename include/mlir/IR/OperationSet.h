@@ -27,6 +27,7 @@
 
 namespace mlir {
 class Operation;
+class OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;
@@ -53,7 +54,7 @@ public:
   bool (&isClassFor)(const Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
-  OpAsmParserResult (&parseAssembly)(OpAsmParser *parser);
+  bool (&parseAssembly)(OpAsmParser *parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(const Operation *op, OpAsmPrinter *p);
@@ -66,7 +67,8 @@ public:
 
 private:
   AbstractOperation(StringRef name, bool (&isClassFor)(const Operation *op),
-                    OpAsmParserResult (&parseAssembly)(OpAsmParser *parser),
+                    bool (&parseAssembly)(OpAsmParser *parser,
+                                          OperationState *result),
                     void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
                     const char *(&verifyInvariants)(const Operation *op))
       : name(name), isClassFor(isClassFor), parseAssembly(parseAssembly),

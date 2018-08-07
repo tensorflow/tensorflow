@@ -1799,10 +1799,11 @@ public:
     return result == nullptr;
   }
 
-  /// Emit a diagnostic at the specified location.
-  void emitError(llvm::SMLoc loc, const Twine &message) override {
+  /// Emit a diagnostic at the specified location and return true.
+  bool emitError(llvm::SMLoc loc, const Twine &message) override {
     parser.emitError(loc, "custom op '" + Twine(opName) + "' " + message);
     emittedError = true;
+    return true;
   }
 
   bool didEmitError() const { return emittedError; }
@@ -1830,15 +1831,17 @@ Operation *FunctionParser::parseCustomOperation(
   consumeToken();
 
   // Have the op implementation take a crack and parsing this.
-  auto result = opDefinition->parseAssembly(&opAsmParser);
+  OperationState opState(builder.getIdentifier(opName));
+  if (opDefinition->parseAssembly(&opAsmParser, &opState))
+    return nullptr;
 
   // If it emitted an error, we failed.
   if (opAsmParser.didEmitError())
     return nullptr;
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
-  auto nameId = builder.getIdentifier(opName);
-  return createOpFunc(nameId, result.operands, result.types, result.attributes);
+  return createOpFunc(opState.name, opState.operands, opState.types,
+                      opState.attributes);
 }
 
 //===----------------------------------------------------------------------===//

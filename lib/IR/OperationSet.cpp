@@ -27,9 +27,8 @@ using llvm::StringMap;
 OpAsmParser::~OpAsmParser() {}
 
 // The fallback for the printer is to reject the short form.
-OpAsmParserResult OpBaseState::parse(OpAsmParser *parser) {
-  parser->emitError(parser->getNameLoc(), "has no concise form");
-  return {};
+bool OpBaseState::parse(OpAsmParser *parser, OperationState *result) {
+  return parser->emitError(parser->getNameLoc(), "has no concise form");
 }
 
 // The fallback for the printer is to print it the longhand form.

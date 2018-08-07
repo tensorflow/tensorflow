@@ -278,8 +278,8 @@ public:
     return false;
   }
 
-  /// Emit a diagnostic at the specified location.
-  virtual void emitError(llvm::SMLoc loc, const Twine &message) = 0;
+  /// Emit a diagnostic at the specified location and return true.
+  virtual bool emitError(llvm::SMLoc loc, const Twine &message) = 0;
 };
 
 } // end namespace mlir

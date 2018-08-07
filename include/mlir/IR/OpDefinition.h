@@ -71,23 +71,6 @@ public:
   const OpType value;
 };
 
-/// This is the result type of parsing a custom operation.  If an error is
-/// emitted, it is fine to return this in a partially mutated state.
-struct OpAsmParserResult {
-  SmallVector<SSAValue *, 4> operands;
-  SmallVector<Type *, 4> types;
-  SmallVector<NamedAttribute, 4> attributes;
-
-  /*implicit*/ OpAsmParserResult() {}
-
-  OpAsmParserResult(ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
-                    ArrayRef<NamedAttribute> attributes = {})
-      : operands(operands.begin(), operands.end()),
-        types(types.begin(), types.end()),
-        attributes(attributes.begin(), attributes.end()) {}
-};
-
-
 /// This is the concrete base class that holds the operation pointer and has
 /// non-generic methods that only depend on State (to avoid having them
 /// instantiated on template types that don't affect them.
@@ -125,8 +108,11 @@ protected:
   /// back to this one which accepts everything.
   const char *verify() const { return nullptr; }
 
-  // Unless overridden, the short form of an op is always rejected.
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  /// Unless overridden, the short form of an op is always rejected.  Op
+  /// implementations should implement this to return boolean true on failure.
+  /// On success, they should return false and fill in result with the fields to
+  /// use.
+  static bool parse(OpAsmParser *parser, OperationState *result);
 
   // The fallback for the printer is to print it the longhand form.
   void print(OpAsmPrinter *p) const;
@@ -159,9 +145,11 @@ public:
   }
 
   /// This is the hook used by the AsmParser to parse the custom form of this
-  /// op from an .mlir file.  Op implementations should provide a parse method.
-  static OpAsmParserResult parseAssembly(OpAsmParser *parser) {
-    return ConcreteType::parse(parser);
+  /// op from an .mlir file.  Op implementations should provide a parse method,
+  /// which returns boolean true on failure.  On success, they should return
+  /// false and fill in result with the fields to use.
+  static bool parseAssembly(OpAsmParser *parser, OperationState *result) {
+    return ConcreteType::parse(parser, result);
   }
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.

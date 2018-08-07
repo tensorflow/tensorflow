@@ -51,7 +51,7 @@ public:
   }
 
   const char *verify() const;
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
 private:
@@ -85,7 +85,7 @@ public:
   static StringRef getOperationName() { return "affine_apply"; }
 
   // Hooks to customize behavior of this op.
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   const char *verify() const;
 
@@ -124,7 +124,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
 private:
@@ -148,7 +148,7 @@ public:
   static StringRef getOperationName() { return "constant"; }
 
   // Hooks to customize behavior of this op.
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   const char *verify() const;
 
@@ -235,7 +235,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
 private:
@@ -269,7 +269,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
 private:
@@ -308,7 +308,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
-  static OpAsmParserResult parse(OpAsmParser *parser);
+  static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
 private:

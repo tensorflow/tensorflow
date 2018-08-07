@@ -158,9 +158,35 @@ BasicBlock *CFGFuncBuilder::createBlock() {
   return b;
 }
 
+/// Create an operation given the fields represented as an OperationState.
+OperationInst *CFGFuncBuilder::createOperation(const OperationState &state) {
+  SmallVector<CFGValue *, 8> operands;
+  operands.reserve(state.operands.size());
+  for (auto elt : state.operands)
+    operands.push_back(cast<CFGValue>(elt));
+
+  auto *op = OperationInst::create(state.name, operands, state.types,
+                                   state.attributes, context);
+  block->getOperations().insert(insertPoint, op);
+  return op;
+}
+
 //===----------------------------------------------------------------------===//
 // Statements.
 //===----------------------------------------------------------------------===//
+
+/// Create an operation given the fields represented as an OperationState.
+OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
+  SmallVector<MLValue *, 8> operands;
+  operands.reserve(state.operands.size());
+  for (auto elt : state.operands)
+    operands.push_back(cast<MLValue>(elt));
+
+  auto *op = OperationStmt::create(state.name, operands, state.types,
+                                   state.attributes, context);
+  block->getStatements().insert(insertPoint, op);
+  return op;
+}
 
 ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
                                   AffineConstantExpr *upperBound,
