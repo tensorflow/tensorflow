@@ -251,6 +251,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generator_dataset_op",
     srcs = ["generator_dataset_op.cc"],
+    hdrs = ["generator_dataset_op.h"],
     deps = [
         ":captured_function",
         "//tensorflow/core:core_cpu_internal",
@@ -343,6 +344,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "prefetch_dataset_op",
     srcs = ["prefetch_dataset_op.cc"],
+    hdrs = ["prefetch_dataset_op.h"],
     deps = [
         ":dataset",
         ":prefetch_autotuner",
@@ -564,6 +566,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.cc"],
+    hdrs = ["iterator_ops.h"],
     deps = [
         ":dataset",
         ":dataset_utils",

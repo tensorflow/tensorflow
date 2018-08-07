@@ -4887,6 +4887,7 @@ filegroup(
         "fill_functor.cc",
         "fill_functor.h",
         "function_ops.cc",
+        "function_ops.h",
         "gather_functor.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
