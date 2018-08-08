@@ -340,6 +340,18 @@ class HloReduceInstruction : public HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
+  // Returns the input tensors to be reduced.
+  tensorflow::gtl::ArraySlice<HloInstruction*> inputs() const {
+    return tensorflow::gtl::ArraySlice<HloInstruction*>(operands(), 0,
+                                                        operand_count() / 2);
+  }
+
+  // Returns the init values of the reduction.
+  tensorflow::gtl::ArraySlice<HloInstruction*> init_values() const {
+    return tensorflow::gtl::ArraySlice<HloInstruction*>(
+        operands(), operand_count() / 2, operand_count());
+  }
+
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
