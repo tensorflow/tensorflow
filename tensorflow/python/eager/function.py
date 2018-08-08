@@ -744,6 +744,10 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
 
   Returns:
     A GraphModeFunction.
+
+  Raises:
+    TypeError: If any of `python_func`'s return values is neither `None` nor a
+      `Tensor`.
   """
   graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
   func_graph = CapturingGraph()
@@ -775,9 +779,17 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
     func_kwds_before = nest.pack_sequence_as(func_kwds, nest.flatten(func_kwds))
 
     def convert(x):
+      """Converts an argument to a Tensor."""
       if x is None:
         return None
-      x = ops.convert_to_tensor_or_indexed_slices(x)
+      try:
+        x = ops.convert_to_tensor_or_indexed_slices(x)
+      except (ValueError, TypeError):
+        raise TypeError(
+            "To be compatible with tf.contrib.eager.defun, Python functions "
+            "must return zero or more Tensors; in compilation of %s, found "
+            "return value of type %s, which is not a Tensor." %
+            (str(python_func), type(x)))
       x = a.mark_as_return(x)
       return x
 
@@ -820,9 +832,8 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
 
     # Returning a closed-over tensor as an output does not trigger a
     # call to convert_to_tensor, so we manually capture all such tensors.
-    outputs_list = _flatten(func_outputs)
     func_def_outputs = [
-        func_graph.capture(x) for x in outputs_list
+        func_graph.capture(x) for x in _flatten(func_outputs)
         if x is not None
     ]
 
