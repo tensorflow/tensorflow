@@ -58,7 +58,7 @@ void InplaceInstructions::MovePriority(const InplaceInstructions::Priority from,
   }
 }
 
-std::array<const InplaceInstructions::Priority, 2>
+std::array<const InplaceInstructions::Priority, 3>
 InplaceInstructions::GetPriorityOrder() const {
   return priority_order;
 }

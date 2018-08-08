@@ -20,14 +20,16 @@ import re
 import fnmatch
 
 @contextlib.contextmanager
-def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
+def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
+                report_every_nth_execution=0, text_report=True):
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
   dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
   dev.profiling.enable_compilation_trace = compilation_trace
   dev.profiling.enable_io_trace = io_trace
   dev.profiling.enable_execution_trace = execution_trace
-  dev.profiling.enable_poplar_reports_text = True
+  dev.profiling.enable_poplar_reports_text = text_report
+  dev.profiling.report_every_nth_execution = report_every_nth_execution
   with session_lib.Session(
       config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
     yield sess

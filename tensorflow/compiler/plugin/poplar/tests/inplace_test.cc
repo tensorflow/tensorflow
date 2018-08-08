@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/update_op_dependencies.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -569,6 +571,104 @@ TEST_F(HloInplaceDependencyTest, InplaceLowPriority) {
 
   auto* inst = *(inplace_instructions_high.begin());
   EXPECT_THAT(inst->name(), "u0");
+}
+
+TEST_F(HloInplaceDependencyTest, ScaledInplaceHighPriority) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  a = f32[20] parameter(0)
+  b = f32[20] parameter(1)
+  c = f32[] constant(2)
+  c_bcast = f32[20] broadcast(f32[] %c), dimensions={}
+  bc = f32[20] multiply(%b, %c_bcast)
+  ROOT res = f32[20] add(%a, %bc), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+}
+
+)";
+
+  auto module =
+      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations;
+
+  FuseOpsLate fuseOpsLate(annotations);
+  EXPECT_TRUE(fuseOpsLate.Run(module0).ValueOrDie());
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  // Make sure that the only inplace instruction is a call to scaled add to in a
+  // high set because of the metadata.
+  auto inplace_instructions_high =
+      annotations.inplace_instructions.GetPrioritySet(
+          InplaceInstructions::Priority::HIGH);
+
+  EXPECT_THAT(inplace_instructions_high.size(), 1);
+  EXPECT_THAT(annotations.inplace_instructions
+                  .GetPrioritySet(InplaceInstructions::Priority::MEDIUM)
+                  .size(),
+              0);
+  EXPECT_THAT(annotations.inplace_instructions
+                  .GetPrioritySet(InplaceInstructions::Priority::LOW)
+                  .size(),
+              0);
+
+  EXPECT_TRUE(module0->entry_computation()->root_instruction() ==
+              *inplace_instructions_high.begin());
+  EXPECT_TRUE(IsPopOpsCall(module0->entry_computation()->root_instruction(),
+                           "scaled_inplace"));
+}
+
+TEST_F(HloInplaceDependencyTest, ScaledInplaceMediumPriority) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  a = f32[20] parameter(0)
+  b = f32[20] parameter(1)
+  c = f32[] constant(2)
+  c_bcast = f32[20] broadcast(f32[] %c), dimensions={}
+  bc = f32[20] multiply(%b, %c_bcast)
+  ROOT res = f32[20] add(%a, %bc)
+}
+
+)";
+
+  auto module =
+      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations;
+
+  FuseOpsLate fuseOpsLate(annotations);
+  EXPECT_TRUE(fuseOpsLate.Run(module0).ValueOrDie());
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  // Make sure that the only inplace instruction is a call to scaled add to in
+  // the medium set.
+  auto inplace_instructions_medium =
+      annotations.inplace_instructions.GetPrioritySet(
+          InplaceInstructions::Priority::MEDIUM);
+
+  EXPECT_THAT(inplace_instructions_medium.size(), 1);
+  EXPECT_THAT(annotations.inplace_instructions
+                  .GetPrioritySet(InplaceInstructions::Priority::HIGH)
+                  .size(),
+              0);
+  EXPECT_THAT(annotations.inplace_instructions
+                  .GetPrioritySet(InplaceInstructions::Priority::LOW)
+                  .size(),
+              0);
+
+  EXPECT_TRUE(module0->entry_computation()->root_instruction() ==
+              *inplace_instructions_medium.begin());
+  EXPECT_TRUE(IsPopOpsCall(module0->entry_computation()->root_instruction(),
+                           "scaled_inplace"));
 }
 
 }  // namespace

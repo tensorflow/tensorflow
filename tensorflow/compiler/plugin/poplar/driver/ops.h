@@ -119,6 +119,18 @@ OutVector FindInstructionOutputs(const TensorMap& map,
 void PrintTensorMapping(const poplar::Graph& graph,
                         const TensorMap& tensor_map);
 
+/* Sometimes an inplace op cannot be performed because the input/output tensor
+ * is not parallel writable or because further analysis has shown that the op
+ * can no longer be in place. If that's the case, this function will add an
+ * extra tensor copy and use that tensor as the input/output tensor.
+ */
+StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
+                                                CompilerResources& res,
+                                                poplar::program::Sequence& seq,
+                                                const HloInstruction* inst,
+                                                const xla::Shape& output_shape,
+                                                TensorMap& tensor_map);
+
 /* Ops */
 
 StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
@@ -128,6 +140,10 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
 StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateScaledInplace(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateMatMulForDotOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,

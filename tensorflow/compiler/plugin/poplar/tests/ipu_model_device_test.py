@@ -240,15 +240,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = True
-
-    with session_lib.Session(
-            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+    with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -259,14 +251,103 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(rep)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      print(cs_list)
-
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'my_ops/my_add_op/add']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
+  def testReportEveryNthExecution(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [2, 2], name="a")
+      pb = array_ops.placeholder(np.float32, [2, 2], name="b")
+      out = math_ops.add(pa, pb)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(compilation_trace=False) as sess:
+      fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
+      sess.run(report, fd)
+
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+
+      rep = sess.run(report, fd)
+      evts = tu.extract_all_events(rep)
+      self.assertEqual(len(evts), 5) # execute x 5
+
+      for i, e in enumerate(evts):
+        if i > 0:
+          self.assertTrue(len(e.data_str) == 0)
+
+      sess.close()
+
+    with tu.ipu_session(
+            compilation_trace=False, report_every_nth_execution=2) as sess:
+      fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
+      sess.run(report, fd)
+
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+
+      rep = sess.run(report, fd)
+      evts = tu.extract_all_events(rep)
+      self.assertEqual(len(evts), 5) # execute x 5
+
+      for i, e in enumerate(evts):
+        if i % 2 != 0:
+          self.assertTrue(len(e.data_str) == 0)
+
+      sess.close()
+
+    with tu.ipu_session(
+            compilation_trace=False, report_every_nth_execution=1) as sess:
+      fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
+      sess.run(report, fd)
+
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+      sess.run(out, fd)
+
+      rep = sess.run(report, fd)
+      evts = tu.extract_all_events(rep)
+      self.assertEqual(len(evts), 5) # execute x 5
+
+      for e in evts:
+        self.assertTrue(len(e.data_str) > 0)
+
+      sess.close()
+
+  def testJsonReport(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [2, 2], name="a")
+      pb = array_ops.placeholder(np.float32, [2, 2], name="b")
+      out = math_ops.add(pa, pb)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(text_report=False) as sess:
+      fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
+      sess.run(report, fd)
+
+      sess.run(out, fd)
+
+      rep = sess.run(report, fd)
+      evts = tu.extract_all_events(rep)
+      self.assertEqual(len(evts), 3) # begin, end, execute
+
+      self.assertEqual(evts[1].data_str.decode('utf-8')[0], '{')
+      self.assertEqual(evts[2].data_str.decode('utf-8')[0], '{')
 
 if __name__ == "__main__":
   googletest.main()

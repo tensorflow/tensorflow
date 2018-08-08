@@ -1,4 +1,5 @@
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
@@ -11,7 +12,7 @@ namespace poplarplugin {
 static bool IsPoplibsFusion(const HloInstruction *inst,
                             const std::string &type) {
   const HloComputation *comp = inst->to_apply();
-  if (comp->name().substr(0, 8) == "_pop_op_") {
+  if (IsPopOpsCall(comp)) {
     auto end = comp->name().find('.');
     std::string name = comp->name().substr(8, end - 8);
     return name == type;
@@ -211,12 +212,9 @@ bool IsF16ToF32Convert(const HloInstruction *inst) {
 }
 
 bool IsPopOpsConvolution(const HloInstruction *inst) {
-  if (inst->to_apply()->name().substr(0, 22) == "_pop_op_depthwise_conv")
-    return true;
-  if (inst->to_apply()->name().substr(0, 25) == "_pop_op_conv_with_reverse")
-    return true;
-  if (inst->to_apply()->name().substr(0, 24) == "_pop_op_depthwise_filter")
-    return true;
+  if (IsPopOpsCall(inst, "depthwise_conv")) return true;
+  if (IsPopOpsCall(inst, "conv_with_reverse")) return true;
+  if (IsPopOpsCall(inst, "depthwise_filter")) return true;
   return false;
 }
 

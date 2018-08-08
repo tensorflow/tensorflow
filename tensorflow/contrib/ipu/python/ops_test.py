@@ -108,7 +108,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     self.assertTrue("ResourceVariable" in str(type(c)))
     self.assertEqual(logits.device, "/device:IPU:0")
 
-    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config(profiling=False, type='IPU_MODEL')
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Initialize and then discard events relating to initialization
       sess.run(variables.global_variables_initializer())
@@ -126,7 +126,6 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       l_final, _ = sess.run([l, train], fd)
 
       self.assertTrue(l_initial > l_final)
-
 
 if __name__ == "__main__":
     googletest.main()

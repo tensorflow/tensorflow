@@ -3,7 +3,9 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
+
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -431,10 +433,10 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
 
     // Find the type of the reduction
     if (inst->opcode() == HloOpcode::kCall) {
-      if (inst->to_apply()->name().substr(0, 16) == "_pop_op_avg_pool") {
+      if (IsPopOpsCall(inst, "avg_pool")) {
         reduction_type = popnn::PoolingType::AVG;
         pooling_inst = inst->to_apply()->root_instruction()->operand(0);
-      } else if (inst->to_apply()->name().substr(0, 16) == "_pop_op_max_pool") {
+      } else if (IsPopOpsCall(inst, "max_pool")) {
         reduction_type = popnn::PoolingType::MAX;
         pooling_inst = inst->to_apply()->root_instruction();
       } else {

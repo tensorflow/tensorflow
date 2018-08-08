@@ -271,5 +271,65 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'Cast_1/convert.*/Cast']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
+  def testScaledAddTo(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float16, [3])
+      pb = array_ops.placeholder(np.float16, [3])
+      const = array_ops.constant(2.0, np.float16)
+      c = pa + pb * const
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        pa: [2.0, 0.5, 1.0],
+        pb: [1.0, 2.0, 3.0]
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, [4.0, 4.5, 7.0])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'add/call/AddTo']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testScaledSubtractFrom(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float16, [3])
+      pb = array_ops.placeholder(np.float16, [3])
+      const = array_ops.constant(2.0, np.float16)
+      # note how const operand index varies compared to testScaledAddTo
+      # still should match as it will be reordered
+      c = pa - const * pb
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        pa: [2.0, 0.5, 1.0],
+        pb: [1.0, 2.0, 3.0]
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, [0.0, -3.5, -5.0])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'sub/call/AddTo']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
 if __name__ == "__main__":
     googletest.main()

@@ -87,7 +87,7 @@ class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
   }
 
   Status HandleCall(HloInstruction* inst) override {
-    if (inst->to_apply()->name().substr(0, 17) == "_pop_op_wide_const") {
+    if (IsPopOpsCall(inst, "wide_const")) {
       allocating_instructions.push_back(std::make_pair(inst, 0));
     }
     return Status::OK();
@@ -160,7 +160,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
         }
         case HloOpcode::kCall: {
           HloComputation* comp = user->to_apply();
-          if (comp->name().substr(0, 8) != "_pop_op_") {
+          if (!IsPopOpsCall(comp)) {
             HloInstruction* param = comp->parameter_instruction(op_index);
             FindConsumers(src, param, index);
           } else {
