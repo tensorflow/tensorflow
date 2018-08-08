@@ -1215,19 +1215,23 @@ class Estimator(object):
                 labels,
                 model_fn_lib.ModeKeys.TRAIN,
                 self.config)
-            ctx.last_step_outputs = estimator_spec.loss
-            ctx.non_tensor_outputs = {'estimator_spec': estimator_spec}
-            with ops.control_dependencies([estimator_spec.train_op]):
-              return array_ops.identity(estimator_spec.loss)
+            ctx.set_last_step_output(
+                name='loss',
+                output=estimator_spec.loss,
+                aggregation=distribute_lib.get_loss_reduction())
+            ctx.set_non_tensor_output(
+                name='estimator_spec', output=estimator_spec)
+            return estimator_spec.train_op
 
           # Create new train_op post graph rewrites
           # TODO(sourabhbajaj): Make sure train_steps and tpu_iterations
           # work correctly. Currently hardcoded at 2
           initial_training_loss = constant_op.constant(1e7)
-          distributed_train_op, tpu_result, ctx = \
-              self._train_distribution._run_steps_on_dataset(  # pylint: disable=protected-access
-                  step_fn, iterator, iterations=2,
-                  initial_loop_values=initial_training_loss)
+          ctx = self._train_distribution.run_steps_on_dataset(
+              step_fn, iterator, iterations=2,
+              initial_loop_values={'loss': initial_training_loss})
+          distributed_train_op = ctx.run_op
+          tpu_result = ctx.last_step_outputs
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
           features, labels, input_hooks = (
@@ -1263,22 +1267,22 @@ class Estimator(object):
 
         # TODO(sourabhbajaj): Merge the two code paths and clean up the code
         if is_tpu_strategy:
-          distributed_loss = tpu_result
+          loss = tpu_result['loss']
           worker_hooks.append(
               estimator_util.StrategyInitFinalizeHook(
-                  self._train_distribution.get_initialization_ops,
-                  self._train_distribution.get_finalize_ops))
+                  self._train_distribution.initialize,
+                  self._train_distribution.finalize))
         else:
-          distributed_loss = grouped_estimator_spec.loss
+          loss = self._train_distribution.unwrap(
+              self._train_distribution.reduce(
+                  distribute_lib.get_loss_reduction(),
+                  grouped_estimator_spec.loss,
+                  destinations='/device:CPU:0'))[0]
           distributed_train_op = grouped_estimator_spec.train_op
 
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
-            loss=self._train_distribution.unwrap(
-                self._train_distribution.reduce(
-                    distribute_lib.get_loss_reduction(),
-                    distributed_loss,
-                    destinations='/device:CPU:0'))[0],
+            loss=loss,
             train_op=self._train_distribution.group(distributed_train_op),
             training_hooks=training_hooks,
             training_chief_hooks=training_chief_hooks,
