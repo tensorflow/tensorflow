@@ -104,6 +104,8 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
 DEFINE(float, int32);
 DEFINE(float, int64);
+DEFINE(double, int32);
+DEFINE(double, int64);
 #undef DEFINE
 
 }  // end namespace tensorflow
