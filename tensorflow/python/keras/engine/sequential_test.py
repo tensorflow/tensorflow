@@ -307,6 +307,16 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_variable_names(self):
+    model = keras.models.Sequential([keras.layers.Dense(3)])
+    model.add(keras.layers.Dense(2))
+    model(array_ops.ones([2, 4]))
+    self.assertEqual(
+        ['sequential/dense/kernel:0', 'sequential/dense/bias:0',
+         'sequential/dense_1/kernel:0', 'sequential/dense_1/bias:0'],
+        [v.name for v in model.variables])
+
 
 if __name__ == '__main__':
   test.main()
