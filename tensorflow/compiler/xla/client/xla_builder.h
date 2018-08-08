@@ -195,8 +195,13 @@ class XlaBuilder {
 
   // Builds the computation with the requested operations, or returns a non-ok
   // status. Note that all ops that have been enqueued will be moved to the
-  // computation being returned.
+  // computation being returned. The root of the computation will be the last
+  // added operation.
   StatusOr<XlaComputation> Build();
+
+  // Overload of Build which specifies a particular root instruction for the
+  // computation.
+  StatusOr<XlaComputation> Build(XlaOp root);
 
   // Builds the computation with the requested operations, or notes an error in
   // the parent XlaBuilder and returns an empty computation if building failed.
@@ -225,8 +230,13 @@ class XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
-  // Returns the (inferred) result for the current computation's shape.
+  // Returns the (inferred) result for the current computation's shape. This
+  // assumes the root instruction is the last added instruction.
   StatusOr<ProgramShape> GetProgramShape() const;
+
+  // Returns the (inferred) result for the current computation's shape using the
+  // given operation as the root.
+  StatusOr<ProgramShape> GetProgramShape(XlaOp root) const;
 
   // Reports an error to the builder, by
   // * storing it internally and capturing a backtrace if it's the first error
@@ -255,6 +265,9 @@ class XlaBuilder {
   StatusOr<bool> IsConstant(const XlaOp& operand) const;
 
  private:
+  // Build helper which takes the id of the root operation..
+  StatusOr<XlaComputation> Build(int64 root_id);
+
   // Enqueues a "retrieve parameter value" instruction for a parameter that was
   // passed to the computation.
   XlaOp Parameter(int64 parameter_number, const Shape& shape,
@@ -969,9 +982,8 @@ class XlaBuilder {
   // shape.
   StatusOr<XlaOp> Reshape(const Shape& shape, const XlaOp& operand);
 
-  // Returns the (inferred) result for the program shape for the current
-  // computation and fills the root_id in the pointer.
-  StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
+  // Returns the (inferred) result for the program shape using the given root.
+  StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
 
   // Returns shapes for the operands.
   StatusOr<std::vector<Shape>> GetOperandShapes(
