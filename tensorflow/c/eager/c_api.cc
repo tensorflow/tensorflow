@@ -719,6 +719,10 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
 }
 }  // namespace
 
+void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context.StartStep(); }
+
+void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context.EndStep(); }
+
 namespace tensorflow {
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,

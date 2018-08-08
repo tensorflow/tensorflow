@@ -653,7 +653,12 @@ Status EagerExecute(EagerContext* ctx, Device* device,
   // FunctionLibraryDefinition?).  TODO(apassos) figure out how to record stats
   // for ops which are a part of functions.
   // TODO(agarwal): change Run to take vector of handles ?
-  TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+  ScopedStepContainer* container = ctx->StepContainer();
+  if (container == nullptr) {
+    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+  } else {
+    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats));
+  }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();
     maybe_stats->set_op_end_rel_micros(nanos / EnvTime::kMicrosToNanos -

@@ -603,6 +603,12 @@ class Context(object):
     """Returns a stack of context switches."""
     return self._context_switches
 
+  def start_step(self):
+    pywrap_tensorflow.TFE_ContextStartStep(self._handle)
+
+  def end_step(self):
+    pywrap_tensorflow.TFE_ContextEndStep(self._handle)
+
 _context = None
 _context_lock = threading.Lock()
 

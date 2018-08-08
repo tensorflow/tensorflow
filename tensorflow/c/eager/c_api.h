@@ -380,6 +380,16 @@ TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
                                                         TF_Buffer* buf,
                                                         TF_Status* status);
 
+// Some TF ops need a step container to be set to limit the lifetime of some
+// resources (mostly TensorArray and Stack, used in while loop gradients in
+// graph mode). Calling this on a context tells it to start a step.
+TF_CAPI_EXPORT extern void TFE_ContextStartStep(TFE_Context* ctx);
+
+// Ends a step. When there is no active step (that is, every started step has
+// been ended) step containers will be cleared. Note: it is not safe to call
+// TFE_ContextEndStep while ops which rely on the step container may be running.
+TF_CAPI_EXPORT extern void TFE_ContextEndStep(TFE_Context* ctx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
