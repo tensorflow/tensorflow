@@ -397,6 +397,8 @@ class OneShotTests(parameterized.TestCase):
         input_pipeline.NumpyReader(train_features), shuffle_seed=2,
         num_threads=1, batch_size=16, window_size=16)
     estimator.train(input_fn=train_input_fn, steps=5)
+    result = estimator.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertNotIn(feature_keys.State.STATE_TUPLE, result)
     input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
     export_location = estimator.export_savedmodel(_new_temp_dir(),
                                                   input_receiver_fn)
