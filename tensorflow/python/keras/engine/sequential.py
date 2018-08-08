@@ -22,6 +22,7 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine.input_layer import Input
@@ -217,7 +218,8 @@ class Sequential(Model):
       shape = input_shape
       for layer in self.layers:
         if not layer.built:
-          layer.build(shape)
+          with ops.name_scope(layer._name_scope()):
+            layer.build(shape)
           layer.built = True
         shape = layer.compute_output_shape(shape)
     self.built = True
