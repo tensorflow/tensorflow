@@ -794,7 +794,7 @@ class LossWeightingTest(test.TestCase):
 class LossMaskingTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_masking(self):
+  def test_masking_graph_sequential(self):
     with self.test_session():
       x = np.array([[[1], [1]], [[0], [0]]])
       model = keras.models.Sequential()
@@ -802,6 +802,34 @@ class LossMaskingTest(test.TestCase):
       model.add(
           keras.layers.TimeDistributed(
               keras.layers.Dense(1, kernel_initializer='one')))
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      y = np.array([[[1], [1]], [[1], [1]]])
+      loss = model.train_on_batch(x, y)
+      self.assertEqual(float(loss), 0.)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_masking_deferred_sequential(self):
+    with self.test_session():
+      x = np.array([[[1], [1]], [[0], [0]]])
+      model = keras.models.Sequential()
+      model.add(keras.layers.Masking(mask_value=0))
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(1, kernel_initializer='one')))
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      y = np.array([[[1], [1]], [[1], [1]]])
+      loss = model.train_on_batch(x, y)
+      self.assertEqual(float(loss), 0.)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_masking_functional(self):
+    with self.test_session():
+      x = np.array([[[1], [1]], [[0], [0]]])
+      inputs = keras.layers.Input((2, 1))
+      outputs = keras.layers.Masking(mask_value=0)(inputs)
+      outputs = keras.layers.TimeDistributed(
+          keras.layers.Dense(1, kernel_initializer='one'))(outputs)
+      model = keras.Model(inputs, outputs)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
       y = np.array([[[1], [1]], [[1], [1]]])
       loss = model.train_on_batch(x, y)

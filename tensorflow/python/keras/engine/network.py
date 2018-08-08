@@ -116,6 +116,16 @@ class Network(base_layer.Layer):
     # included in base_init to avoid excessive special casing when retrieving
     # the value).
     self._extra_variables = []
+    # In many internal cases one needs to compute both the model's output
+    # and its output mask without relying on `__call__` (which would do both and
+    # set mask metadata), but for models, computing the mask requires to
+    # recompute the output.
+    # Hence the pattern `output = model.call(); mask = model.compute_mask()`
+    # would be redundant, and internal logic
+    # (susceptible to use `call` directly) should prefer using the
+    # internal method `output, mask = _call_and_compute_mask()`.
+    # This is True for Sequential networks and graph networks.
+    self._compute_output_and_mask_jointly = False
 
     self.supports_masking = False
     if not hasattr(self, 'optimizer'):
@@ -219,6 +229,7 @@ class Network(base_layer.Layer):
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
+    self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
 
     self._input_layers = []
@@ -819,6 +830,10 @@ class Network(base_layer.Layer):
         A tensor if there is a single output, or
         a list of tensors if there are more than one outputs.
     """
+    if not self._is_graph_network:
+      raise NotImplementedError('When subclassing the `Model` class, you should'
+                                ' implement a `call` method.')
+
     inputs = generic_utils.to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
@@ -1007,7 +1022,8 @@ class Network(base_layer.Layer):
                 kwargs.setdefault('mask', computed_mask)
 
               # Compute outputs and masks.
-              if isinstance(layer, Network) and layer._is_graph_network:
+              if (isinstance(layer, Network) and
+                  layer._compute_output_and_mask_jointly):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensor, **kwargs)
               else:
@@ -1027,7 +1043,8 @@ class Network(base_layer.Layer):
                 kwargs.setdefault('mask', computed_masks)
 
               # Compute outputs and masks.
-              if isinstance(layer, Network) and layer._is_graph_network:
+              if (isinstance(layer, Network) and
+                  layer._compute_output_and_mask_jointly):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensors, **kwargs)
               else:
