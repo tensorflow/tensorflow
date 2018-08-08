@@ -45,21 +45,6 @@ int64 GetUniqueId() {
   return id;
 }
 
-// Returns true if an instruction with the given opcode can be the root of the
-// computation.
-bool CanBeRoot(HloOpcode opcode) {
-  switch (opcode) {
-    case HloOpcode::kAfterAll:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kTrace:
-      return false;
-    default:
-      return true;
-  }
-}
-
 }  // namespace
 
 XlaOp operator-(const XlaOp& x) { return Neg(x); }
@@ -142,28 +127,13 @@ XlaOp XlaBuilder::ReportErrorOrReturn(
   return ReportErrorOrReturn(op_creator());
 }
 
-StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) const {
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64 root_id) const {
   TF_RETURN_IF_ERROR(first_error_);
-
-  TF_RET_CHECK(root_id != nullptr);
+  TF_RET_CHECK((root_id >= 0) && (root_id < instructions_.size()));
 
   ProgramShape program_shape;
 
-  // Not all instructions can be roots. Walk backwards from the last added
-  // instruction until a valid root is found.
-  int64 index = instructions_.size() - 1;
-  for (; index >= 0; index--) {
-    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
-                        StringToHloOpcode(instructions_[index].opcode()));
-    if (CanBeRoot(opcode)) {
-      break;
-    }
-  }
-  if (index < 0) {
-    return FailedPrecondition("no root instruction was found");
-  }
-  *root_id = instructions_[index].id();
-  *program_shape.mutable_result() = instructions_[index].shape();
+  *program_shape.mutable_result() = instructions_[root_id].shape();
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
@@ -188,8 +158,15 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) const {
 }
 
 StatusOr<ProgramShape> XlaBuilder::GetProgramShape() const {
-  int64 root;
-  return GetProgramShape(&root);
+  TF_RET_CHECK(!instructions_.empty());
+  return GetProgramShape(instructions_.back().id());
+}
+
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
+  if (root.builder_ != this) {
+    return InvalidArgument("Given root operation is not in this computation.");
+  }
+  return GetProgramShape(root.handle());
 }
 
 void XlaBuilder::IsConstantVisitor(const int64 op_handle,
@@ -257,17 +234,29 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
+  return Build(instructions_.back().id());
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root) {
+  if (root.builder_ != this) {
+    return InvalidArgument("Given root operation is not in this computation.");
+  }
+  return Build(root.handle());
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
+  if (!first_error_.ok()) {
+    string backtrace;
+    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
+    return AppendStatus(first_error_, backtrace);
+  }
 
   HloComputationProto entry;
   entry.set_id(GetUniqueId());  // Give the computation a global unique id.
   entry.set_name(StrCat(name_, entry.id()));  // Ensure that the name is unique.
 
-  {
-    int64 root_id;
-    TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(),
-                        GetProgramShape(&root_id));
-    entry.set_root_id(root_id);
-  }
+  TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(), GetProgramShape(root_id));
+  entry.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.
@@ -1099,11 +1088,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           sharding_builder::AssignDevice(0);
       XlaScopedShardingAssignment scoped_sharding(this,
                                                   infeed_instruction_sharding);
-      TF_ASSIGN_OR_RETURN(infeed,
-                          AddInstruction(std::move(instr), HloOpcode::kInfeed));
+      TF_ASSIGN_OR_RETURN(
+          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
     } else {
-      TF_ASSIGN_OR_RETURN(infeed,
-                          AddInstruction(std::move(instr), HloOpcode::kInfeed));
+      TF_ASSIGN_OR_RETURN(
+          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
     }
 
     // The infeed instruction produces a tuple of the infed data and a token
@@ -2163,11 +2152,6 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       LookUpInstruction(root_op));
-  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
-  if (!CanBeRoot(opcode)) {
-    return InvalidArgument("the operand with opcode %s cannot be root",
-                           root->opcode().c_str());
-  }
 
   HloComputationProto entry;
   entry.set_id(GetUniqueId());  // Give the computation a global unique id.
