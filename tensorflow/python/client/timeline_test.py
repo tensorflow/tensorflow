@@ -102,7 +102,12 @@ class TimelineTest(test.TestCase):
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in devices)
-    self.assertTrue('/device:GPU:0/stream:all' in devices)
+
+    if not test.is_built_with_rocm() :
+      # stream tracing is currently not available in tensorflow with ROCm
+      # disabling this test for ROCm for the time being
+      self.assertTrue('/device:GPU:0/stream:all' in devices)
+      
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
@@ -158,9 +163,11 @@ class TimelineTest(test.TestCase):
     maximums = step_analysis.allocator_maximums
     cpuname = 'mklcpu' if test_util.IsMklEnabled() else 'cpu'
     self.assertTrue(cpuname in maximums)
-    cpu_max = maximums[
-        'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
-    # At least num1 + num2, both float32s (4 bytes each)
+    if test.is_built_with_rocm():
+      cpu_max = maximums['gpu_host_bfc'] if 'gpu_host_bfc' in maximums else maximums[cpuname]
+    else :
+      cpu_max = maximums['cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
+      # At least num1 + num2, both float32s (4 bytes each)
     self.assertGreater(cpu_max.num_bytes, 8)
     self.assertGreater(cpu_max.timestamp, 0)
     self.assertTrue('num1' in cpu_max.tensors or 'num1/read' in cpu_max.tensors)
