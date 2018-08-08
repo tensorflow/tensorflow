@@ -102,8 +102,9 @@ public:
     return &StmtBlock::statements;
   }
 
-  void print(raw_ostream &os) const;
-  void dump() const;
+  /// These have unconventional names to avoid derive class ambiguities.
+  void printBlock(raw_ostream &os) const;
+  void dumpBlock() const;
 
 protected:
   StmtBlock(StmtBlockKind kind) : kind(kind) {}

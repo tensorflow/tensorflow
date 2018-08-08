@@ -156,15 +156,13 @@ public:
 
   void walkIfStmt(IfStmt *ifStmt) {
     static_cast<SubClass *>(this)->visitIfStmt(ifStmt);
-    walk(ifStmt->getThenClause()->begin(), ifStmt->getThenClause()->end());
-    walk(ifStmt->getElseClause()->begin(), ifStmt->getElseClause()->end());
+    walk(ifStmt->getThen()->begin(), ifStmt->getThen()->end());
+    walk(ifStmt->getElse()->begin(), ifStmt->getElse()->end());
   }
 
   void walkIfStmtPostOrder(IfStmt *ifStmt) {
-    walkPostOrder(ifStmt->getThenClause()->begin(),
-                  ifStmt->getThenClause()->end());
-    walkPostOrder(ifStmt->getElseClause()->begin(),
-                  ifStmt->getElseClause()->end());
+    walkPostOrder(ifStmt->getThen()->begin(), ifStmt->getThen()->end());
+    walkPostOrder(ifStmt->getElse()->begin(), ifStmt->getElse()->end());
     static_cast<SubClass *>(this)->visitIfStmt(ifStmt);
   }
 

@@ -174,10 +174,10 @@ void ModuleState::visitCFGFunction(const CFGFunction *fn) {
 
 void ModuleState::visitIfStmt(const IfStmt *ifStmt) {
   recordIntegerSetReference(ifStmt->getCondition());
-  for (auto &childStmt : *ifStmt->getThenClause())
+  for (auto &childStmt : *ifStmt->getThen())
     visitStatement(&childStmt);
-  if (ifStmt->hasElseClause())
-    for (auto &childStmt : *ifStmt->getElseClause())
+  if (ifStmt->hasElse())
+    for (auto &childStmt : *ifStmt->getElse())
       visitStatement(&childStmt);
 }
 
@@ -1270,11 +1270,11 @@ void MLFunctionPrinter::print(const IfStmt *stmt) {
   os.indent(numSpaces) << "if (";
   printIntegerSetReference(stmt->getCondition());
   os << ") {\n";
-  print(stmt->getThenClause());
+  print(stmt->getThen());
   os.indent(numSpaces) << "}";
-  if (stmt->hasElseClause()) {
+  if (stmt->hasElse()) {
     os << " else {\n";
-    print(stmt->getElseClause());
+    print(stmt->getElse());
     os.indent(numSpaces) << "}";
   }
 }
@@ -1393,14 +1393,14 @@ void Statement::print(raw_ostream &os) const {
 
 void Statement::dump() const { print(llvm::errs()); }
 
-void StmtBlock::print(raw_ostream &os) const {
+void StmtBlock::printBlock(raw_ostream &os) const {
   MLFunction *function = findFunction();
   ModuleState state(function->getContext());
   ModulePrinter modulePrinter(os, state);
   MLFunctionPrinter(function, modulePrinter).print(this);
 }
 
-void StmtBlock::dump() const { print(llvm::errs()); }
+void StmtBlock::dumpBlock() const { printBlock(llvm::errs()); }
 
 void Function::print(raw_ostream &os) const {
   ModuleState state(getContext());

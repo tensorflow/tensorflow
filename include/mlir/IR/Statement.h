@@ -49,8 +49,17 @@ public:
   /// Remove this statement from its block and delete it.
   void eraseFromBlock();
 
-  /// Clone this statement, the cloning is deep.
-  Statement *clone() const;
+  // This is a verbose type used by the clone method below.
+  using OperandMapTy =
+      DenseMap<const MLValue *, MLValue *, llvm::DenseMapInfo<const MLValue *>,
+               llvm::detail::DenseMapPair<const MLValue *, MLValue *>>;
+
+  /// Create a deep copy of this statement, remapping any operands that use
+  /// values outside of the statement using the map that is provided (leaving
+  /// them alone if no entry is present).  Replaces references to cloned
+  /// sub-statements to the corresponding statement that is copied, and adds
+  /// those mappings to the map.
+  Statement *clone(OperandMapTy &operandMapping, MLIRContext *context) const;
 
   /// Returns the statement block that contains this statement.
   StmtBlock *getBlock() const { return block; }
@@ -72,9 +81,6 @@ public:
 
   void print(raw_ostream &os) const;
   void dump() const;
-
-  /// Replace all uses of 'oldVal' with 'newVal' in 'stmt'.
-  void replaceUses(MLValue *oldVal, MLValue *newVal);
 
 protected:
   Statement(Kind kind) : kind(kind) {}

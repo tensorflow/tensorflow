@@ -371,10 +371,10 @@ bool MLFuncVerifier::verifyDominance() {
 
       // If this is an if or for, recursively walk the block they contain.
       if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
-        if (walkBlock(*ifStmt->getThenClause()))
+        if (walkBlock(*ifStmt->getThen()))
           return true;
 
-        if (auto *elseClause = ifStmt->getElseClause())
+        if (auto *elseClause = ifStmt->getElse())
           if (walkBlock(*elseClause))
             return true;
       }

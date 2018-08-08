@@ -216,12 +216,18 @@ private:
 /// statement block.
 class MLFuncBuilder : public Builder {
 public:
-  /// Create ML function builder and set insertion point to the given
-  /// statement block, that is, given ML function, for statement or if statement
-  /// clause.
-  MLFuncBuilder(StmtBlock *block)
+  /// Create ML function builder and set insertion point to the given statement,
+  /// which will cause subsequent insertions to go right before it.
+  MLFuncBuilder(Statement *stmt)
+      // TODO: Eliminate findFunction from this.
+      : Builder(stmt->findFunction()->getContext()) {
+    setInsertionPoint(stmt);
+  }
+
+  MLFuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
+      // TODO: Eliminate findFunction from this.
       : Builder(block->findFunction()->getContext()) {
-    setInsertionPoint(block);
+    setInsertionPoint(block, insertPoint);
   }
 
   /// Reset the insertion point to no location.  Creating an operation without a
@@ -242,20 +248,20 @@ public:
   }
 
   /// Set the insertion point to the specified operation.
-  void setInsertionPoint(OperationStmt *stmt) {
+  void setInsertionPoint(Statement *stmt) {
     setInsertionPoint(stmt->getBlock(), StmtBlock::iterator(stmt));
   }
 
-  /// Set the insertion point to the end of the specified block.
-  void setInsertionPoint(StmtBlock *block) {
-    this->block = block;
-    insertPoint = block->end();
-  }
-
-  /// Set the insertion point at the beginning of the specified block.
-  void setInsertionPointAtStart(StmtBlock *block) {
+  /// Set the insertion point to the start of the specified block.
+  void setInsertionPointToStart(StmtBlock *block) {
     this->block = block;
     insertPoint = block->begin();
+  }
+
+  /// Set the insertion point to the end of the specified block.
+  void setInsertionPointToEnd(StmtBlock *block) {
+    this->block = block;
+    insertPoint = block->end();
   }
 
   /// Get the current insertion point of the builder.
@@ -273,8 +279,14 @@ public:
     return result;
   }
 
-  Statement *clone(const Statement &stmt) {
-    Statement *cloneStmt = stmt.clone();
+  /// Create a deep copy of the specified statement, remapping any operands that
+  /// use values outside of the statement using the map that is provided (
+  /// leaving them alone if no entry is present).  Replaces references to cloned
+  /// sub-statements to the corresponding statement that is copied, and adds
+  /// those mappings to the map.
+  Statement *clone(const Statement &stmt,
+                   OperationStmt::OperandMapTy &operandMapping) {
+    Statement *cloneStmt = stmt.clone(operandMapping, getContext());
     block->getStatements().insert(insertPoint, cloneStmt);
     return cloneStmt;
   }

@@ -2094,7 +2094,7 @@ class MLFunctionParser : public FunctionParser {
 public:
   MLFunctionParser(ParserState &state, MLFunction *function)
       : FunctionParser(state, Kind::MLFunc), function(function),
-        builder(function) {}
+        builder(function, function->end()) {}
 
   ParseResult parseFunctionBody();
 
@@ -2191,7 +2191,7 @@ ParseResult MLFunctionParser::parseForStmt() {
     return ParseFailure;
 
   // Reset insertion point to the current block.
-  builder.setInsertionPoint(forStmt->getBlock());
+  builder.setInsertionPointToEnd(forStmt->getBlock());
 
   // TODO: remove definition of the induction variable.
 
@@ -2348,7 +2348,7 @@ ParseResult MLFunctionParser::parseIfStmt() {
     return ParseFailure;
 
   IfStmt *ifStmt = builder.createIf(condition);
-  IfClause *thenClause = ifStmt->getThenClause();
+  IfClause *thenClause = ifStmt->getThen();
 
   // When parsing of an if statement body fails, the IR contains
   // the if statement with the portion of the body that has been
@@ -2357,20 +2357,20 @@ ParseResult MLFunctionParser::parseIfStmt() {
     return ParseFailure;
 
   if (consumeIf(Token::kw_else)) {
-    auto *elseClause = ifStmt->createElseClause();
+    auto *elseClause = ifStmt->createElse();
     if (parseElseClause(elseClause))
       return ParseFailure;
   }
 
   // Reset insertion point to the current block.
-  builder.setInsertionPoint(ifStmt->getBlock());
+  builder.setInsertionPointToEnd(ifStmt->getBlock());
 
   return ParseSuccess;
 }
 
 ParseResult MLFunctionParser::parseElseClause(IfClause *elseClause) {
   if (getToken().is(Token::kw_if)) {
-    builder.setInsertionPoint(elseClause);
+    builder.setInsertionPointToEnd(elseClause);
     return parseIfStmt();
   }
 
@@ -2385,7 +2385,7 @@ ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
     return builder.createOperation(state);
   };
 
-  builder.setInsertionPoint(block);
+  builder.setInsertionPointToEnd(block);
 
   while (getToken().isNot(Token::kw_return, Token::r_brace)) {
     switch (getToken().getKind()) {

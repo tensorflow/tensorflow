@@ -48,8 +48,6 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
-  OperationStmt *clone() const;
-
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//
@@ -210,8 +208,8 @@ public:
     clear();
   }
 
-  /// Deep clone this for stmt.
-  ForStmt *clone() const;
+  /// Resolve base class ambiguity.
+  using Statement::findFunction;
 
   AffineConstantExpr *getLowerBound() const { return lowerBound; }
   AffineConstantExpr *getUpperBound() const { return upperBound; }
@@ -274,14 +272,14 @@ public:
 
   ~IfStmt();
 
-  /// Deep clone this IfStmt.
-  IfStmt *clone() const;
-
-  IfClause *getThenClause() const { return thenClause; }
-  IfClause *getElseClause() const { return elseClause; }
+  IfClause *getThen() const { return thenClause; }
+  IfClause *getElse() const { return elseClause; }
   IntegerSet *getCondition() const { return condition; }
-  bool hasElseClause() const { return elseClause != nullptr; }
-  IfClause *createElseClause() { return (elseClause = new IfClause(this)); }
+  bool hasElse() const { return elseClause != nullptr; }
+  IfClause *createElse() {
+    assert(elseClause == nullptr && "already has an else clause!");
+    return (elseClause = new IfClause(this));
+  }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
@@ -294,7 +292,6 @@ private:
   // The integer set capturing the conditional guard.
   IntegerSet *condition;
   // TODO: arguments to integer set
-  ArrayRef<MLValue *> conditionArgs;
 };
 } // end namespace mlir
 
