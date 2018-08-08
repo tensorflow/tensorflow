@@ -130,22 +130,22 @@ void RunSafeCastTests() {
 }
 
 TEST(QuantizationUtilTest, SafeCast) {
-  RunSafeCastTests<float, int8>();
-  RunSafeCastTests<double, int8>();
-  RunSafeCastTests<float, int16>();
-  RunSafeCastTests<double, int16>();
-  RunSafeCastTests<float, int32>();
-  RunSafeCastTests<double, int32>();
-  RunSafeCastTests<float, int64>();
-  RunSafeCastTests<double, int64>();
-  RunSafeCastTests<float, uint8>();
-  RunSafeCastTests<double, uint8>();
-  RunSafeCastTests<float, uint16>();
-  RunSafeCastTests<double, uint16>();
-  RunSafeCastTests<float, uint32>();
-  RunSafeCastTests<double, uint32>();
-  RunSafeCastTests<float, uint64>();
-  RunSafeCastTests<double, uint64>();
+  RunSafeCastTests<float, int8_t>();
+  RunSafeCastTests<double, int8_t>();
+  RunSafeCastTests<float, int16_t>();
+  RunSafeCastTests<double, int16_t>();
+  RunSafeCastTests<float, int32_t>();
+  RunSafeCastTests<double, int32_t>();
+  RunSafeCastTests<float, int64_t>();
+  RunSafeCastTests<double, int64_t>();
+  RunSafeCastTests<float, uint8_t>();
+  RunSafeCastTests<double, uint8_t>();
+  RunSafeCastTests<float, uint16_t>();
+  RunSafeCastTests<double, uint16_t>();
+  RunSafeCastTests<float, uint32_t>();
+  RunSafeCastTests<double, uint32_t>();
+  RunSafeCastTests<float, uint64_t>();
+  RunSafeCastTests<double, uint64_t>();
 }
 
 // Example taken from http://www.tensorflow.org/performance/quantization
@@ -189,6 +189,69 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
   QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 0.0);
   EXPECT_NEAR(qp.scale, 0.039216, 1e-5);
   EXPECT_EQ(qp.zero_point, 255);
+}
+
+TEST(QuantizationUtilTest, IntegerFrExp) {
+  int shift;
+  int32_t result = IntegerFrExp(0.0, &shift);
+  EXPECT_EQ(result, 0);
+  EXPECT_EQ(shift, 0);
+
+  result = IntegerFrExp(1.0, &shift);
+  EXPECT_NEAR(result, 0x40000000, 1);
+  EXPECT_EQ(shift, 1);
+
+  result = IntegerFrExp(0.25, &shift);
+  EXPECT_NEAR(result, 0x40000000, 1);
+  EXPECT_EQ(shift, -1);
+
+  result = IntegerFrExp(-1.0, &shift);
+  EXPECT_NEAR(result, -(1 << 30), 1);
+  EXPECT_EQ(shift, 1);
+
+  result = IntegerFrExp(123.45, &shift);
+  EXPECT_NEAR(result, 2071147315, 1);
+  EXPECT_EQ(shift, 7);
+}
+
+TEST(QuantizationUtilTest, IntegerFrExpVersusDouble) {
+  int shift;
+  int32_t result = IntegerFrExp(0.0, &shift);
+  EXPECT_EQ(result, 0);
+  EXPECT_EQ(shift, 0);
+
+  int double_shift;
+  double double_result = std::frexp(0.0, &double_shift);
+  EXPECT_EQ(double_result, 0);
+  EXPECT_EQ(double_shift, 0);
+
+  result = IntegerFrExp(1.0, &shift);
+  EXPECT_NEAR(result, 0x40000000, 1);
+  EXPECT_EQ(shift, 1);
+  double_result = std::frexp(1.0, &double_shift);
+  EXPECT_NEAR(double_result, 0.5, 1e-5);
+  EXPECT_EQ(double_shift, 1);
+
+  result = IntegerFrExp(0.25, &shift);
+  EXPECT_NEAR(result, 0x40000000, 1);
+  EXPECT_EQ(shift, -1);
+  double_result = std::frexp(0.25, &double_shift);
+  EXPECT_NEAR(double_result, 0.5, 1e-5);
+  EXPECT_EQ(double_shift, -1);
+
+  result = IntegerFrExp(-1.0, &shift);
+  EXPECT_NEAR(result, -(1 << 30), 1);
+  EXPECT_EQ(shift, 1);
+  double_result = std::frexp(-1.0, &double_shift);
+  EXPECT_NEAR(double_result, -0.5, 1e-5);
+  EXPECT_EQ(double_shift, 1);
+
+  result = IntegerFrExp(123.45, &shift);
+  EXPECT_NEAR(result, (0.964453 * (1L << 31)), 1000);
+  EXPECT_EQ(shift, 7);
+  double_result = std::frexp(123.45, &double_shift);
+  EXPECT_NEAR(double_result, 0.964453, 1e-5);
+  EXPECT_EQ(double_shift, 7);
 }
 
 #ifdef GTEST_HAS_DEATH_TEST
