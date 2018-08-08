@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_binary_object_parser.h"
-#include "ignite_client.h"
 #include "ignite_dataset.h"
+
+#ifndef IGNITE_CLIENT_H
+#define IGNITE_CLIENT_H
+#include "ignite_client.h"
+#endif
 
 namespace ignite {
 
@@ -45,7 +49,7 @@ class IgniteDatasetIterator
       tensorflow::IteratorStateReader* reader) override;
 
  private:
-  Client client;
+  std::unique_ptr<Client> client;
   BinaryObjectParser parser;
 
   const std::string cache_name;

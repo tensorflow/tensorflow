@@ -26,6 +26,7 @@ py_library(
 tf_custom_op_library(
     name = "_dataset_ops.so",
     srcs = ["ops/dataset_ops.cc"],
+    linkopts = ["-lssl", "-lcrypto"],
     deps = [":dataset_kernels"],
 )
 
@@ -38,7 +39,10 @@ cc_library(
     srcs = [
         "kernels/ignite_dataset_ops.cc",
         "kernels/ignite_client.h",
-        "kernels/ignite_client.cc",
+        "kernels/ignite_plain_client.h",
+        "kernels/ignite_plain_client_unix.cc",
+        "kernels/ignite_ssl_client.h",
+        "kernels/ignite_ssl_client_unix.cc",
         "kernels/ignite_binary_object_parser.h",
         "kernels/ignite_binary_object_parser.cc",
         "kernels/ignite_dataset.h",

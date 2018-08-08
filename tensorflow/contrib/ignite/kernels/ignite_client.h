@@ -21,32 +21,21 @@ namespace ignite {
 
 class Client {
  public:
-  Client(std::string host, int port, std::string certfile, std::string keyfile, std::string cert_password);
+  virtual tensorflow::Status Connect() = 0;
+  virtual tensorflow::Status Disconnect() = 0;
+  virtual bool IsConnected() = 0;
 
-  tensorflow::Status Connect();
-  tensorflow::Status Disconnect();
-  bool IsConnected();
+  virtual char ReadByte() = 0;
+  virtual short ReadShort() = 0;
+  virtual int ReadInt() = 0;
+  virtual long ReadLong() = 0;
+  virtual void ReadData(char* buf, int length) = 0;
 
-  char ReadByte();
-  short ReadShort();
-  int ReadInt();
-  long ReadLong();
-  void ReadData(char* buf, int length);
-
-  void WriteByte(char data);
-  void WriteShort(short data);
-  void WriteInt(int data);
-  void WriteLong(long data);
-  void WriteData(char* buf, int length);
-
- private:
-  std::string host;
-  int port;
-  std::string certfile;
-  std::string keyfile;
-  std::string cert_password;
-  int sock;
-  struct sockaddr_in server;
+  virtual void WriteByte(char data) = 0;
+  virtual void WriteShort(short data) = 0;
+  virtual void WriteInt(int data) = 0;
+  virtual void WriteLong(long data) = 0;
+  virtual void WriteData(char* buf, int length) = 0;
 };
 
 }  // namespace ignite
