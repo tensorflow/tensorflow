@@ -1082,27 +1082,23 @@ void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
   }
 
   // Yield until input dims have been resolved.
-  if (!input_values.has_shape()) {
+  if (!input_values.has_shape() || !input_k.has_shape()) {
     return;
   }
 
-  const auto& input_values_shape = input_values.shape();
-  auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
-  auto output_values_dims = output_values.mutable_shape()->mutable_dims();
-  for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
-    output_indexes_dims->push_back(input_values_shape.dims(dim));
-    output_values_dims->push_back(input_values_shape.dims(dim));
-  }
   // If the value is initialized, we can specify the last dimension, otherwise
   // unknown.
   if (input_k.buffer) {
+    const auto& input_values_shape = input_values.shape();
+    auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
+    auto output_values_dims = output_values.mutable_shape()->mutable_dims();
+    for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
+      output_indexes_dims->push_back(input_values_shape.dims(dim));
+      output_values_dims->push_back(input_values_shape.dims(dim));
+    }
     const int32_t k_value = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
     output_indexes_dims->push_back(k_value);
     output_values_dims->push_back(k_value);
-
-  } else {
-    output_indexes_dims->push_back(0);
-    output_values_dims->push_back(0);
   }
 }
 
