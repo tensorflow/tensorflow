@@ -1069,22 +1069,13 @@ class Model(Network):
           'in their call() signatures do not yet support shape inference. File '
           'a feature request if this limitation bothers you.')
     if self.__class__.__name__ == 'Sequential':
-      # Note: we can't test whether the model is `Sequential` via `isinstance`
-      # since `Sequential` depends on `Model`.
-      if isinstance(inputs, list):
-        assert len(inputs) == 1
-        inputs = inputs[0]
-
       if tensor_util.is_tensor(inputs):
-        if context.executing_eagerly():
-          input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
-          self.build(input_shape=input_shape)
-        else:
-          self.symbolic_set_inputs(inputs)
+        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+        self.build(input_shape=input_shape)
       else:
         input_shape = (None,) + inputs.shape[1:]
         self.build(input_shape=input_shape)
-    elif context.executing_eagerly():
+    if context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
       self._symbolic_set_inputs(inputs, training=training)
