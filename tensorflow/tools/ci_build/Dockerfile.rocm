@@ -18,17 +18,28 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV HOME /home/rocm-user
 
 # install packages needed for this image
-RUN sudo apt-get update && sudo apt-get install -y python rpm git mercurial libxml2 libxml2-dev
+RUN sudo apt-get update && sudo apt-get install -y python rpm git mercurial libxml2 libxml2-dev libssl-dev
 
 # Workaround : build HCC from source using the commit that is known to have fix for issue812
 RUN cd $HOME && git clone --recursive https://github.com/RadeonOpenCompute/hcc.git
 RUN cd $HOME/hcc  && git checkout -b issue812-fix d530be7
 RUN cd $HOME/hcc && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && sudo make package -j$(nproc) && sudo dpkg -i *.deb
 
-# Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
-RUN cd $HOME && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git
+# Workaround: build HIP from source using fork that holds roc-1.8.x with the alternate fix for HIP PR 457
+RUN cd $HOME && git clone -b roc-1.8.x-pr457-altfix https://github.com/deven-amd/HIP.git
 RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && sudo make package -j$(nproc) && sudo dpkg -i *.deb
 
+# Workaround: build MIOpen from source using fork that folds the public 1.4.2 release with the fix for issue 1061 
+RUN cd $HOME && git clone -b pr1061-fix https://github.com/deven-amd/MIOpen.git miopen
+RUN cd $HOME/miopen && sudo cmake -P install_deps.cmake
+RUN cd $HOME/miopen && mkdir build && cd build && \
+    CXX=/opt/rocm/bin/hcc cmake \
+    -DMIOPEN_BACKEND=HIP \
+    -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" \
+    -DCMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" \
+    -DCMAKE_BUILD_TYPE=Release \
+    .. && \
+    sudo make package -j$(nproc)
 
 ###########################
 # Stage 2 : do the TF build
@@ -106,6 +117,11 @@ RUN cd $HOME/pkgs/hcc && dpkg -i *.deb
 RUN mkdir -p $HOME/pkgs/HIP
 COPY --from=tool_builder /home/rocm-user/HIP/build/*.deb $HOME/pkgs/HIP/
 RUN cd $HOME/pkgs/HIP && dpkg -i *.deb
+
+# COPY and install the MIOpen package built in the previous stage
+RUN mkdir -p $HOME/pkgs/miopen
+COPY --from=tool_builder /home/rocm-user/miopen/build/*.deb $HOME/pkgs/miopen/
+RUN cd $HOME/pkgs/miopen && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
