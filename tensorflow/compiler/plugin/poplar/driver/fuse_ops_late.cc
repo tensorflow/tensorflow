@@ -46,12 +46,8 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"bias_apply", 0},
-    {"reduction_no_convert", 1},
-    {"reduction_no_convert", 1},
     {"scaled_inplace", 0},
     {"scaled_inplace", 0},
-    {"convert_no_use", 0},
-    {"convert_no_use", 0},
     {"wide_const", 1},
 };
 
@@ -232,23 +228,6 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
-    // Remove convert to/from F32 before/after reduction, where initial value is
-    // a constant
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kReduce, true, 0, IsF32, {2, 3}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
-     {HloOpcode::kConstant, true, 0, IsF32, {}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}}},
-
-    // Remove convert to/from F32 before/after reduction, where initial value is
-    // a convert from F16
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kReduce, true, 0, IsF32, {2, 3}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {5}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}},
-     {HloOpcode::kParameter, false, 1, IsF16, {}}},
-
     // Scaled add to - A = A + B * c
     {{HloOpcode::kAdd, true, 0, nullptr, {4, 1}},
      {HloOpcode::kMultiply, true, 0, nullptr, {5, 2}},
@@ -264,16 +243,6 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // Convert and then convert back F16 -> F32 -> F16
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {2}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}}},
-
-    // Convert and then convert back F32 -> F16 -> F32
-    {{HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {1}},
-     {HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {2}},
-     {HloOpcode::kParameter, false, 0, IsF32, {}}},
 
     // Broadcast scalar constant (must be low priority)
     {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},

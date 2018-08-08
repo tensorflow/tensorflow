@@ -33,6 +33,7 @@ cc_library(
     name = "optimizers",
     srcs = [
         "driver/allocation_finder.cc",
+        "driver/casts_elimination.cc",
         "driver/classification_predicates.cc",
         "driver/commutative_instruction_reorder_operands.cc",
         "driver/computation_flattener.cc",
@@ -57,6 +58,7 @@ cc_library(
     ],
     hdrs = [
         "driver/allocation_finder.h",
+        "driver/casts_elimination.h",
         "driver/classification_predicates.h",
         "driver/commutative_instruction_reorder_operands.h",
         "driver/compiler_annotations.h",
@@ -695,6 +697,21 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "casts_elimination_test",
+    size = "medium",
+    srcs = ["tests/casts_elimination_test.py"],
+    deps = [
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -730,6 +747,7 @@ test_suite(
         "inplace_test",
         "constant_test",
         "commutative_instruction_reorder_operands_test",
+        "casts_elimination_test",
     ],
 )
 
@@ -763,6 +781,7 @@ test_suite(
         "inplace_test",
         "constant_test",
         "commutative_instruction_reorder_operands_test",
+        "casts_elimination_test",
     ],
 )
 
