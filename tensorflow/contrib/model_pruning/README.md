@@ -5,7 +5,7 @@ neural network's weight tensors. The API helps inject necessary tensorflow op
 into the training graph so the model can be pruned while it is being trained.
 
 ## Table of contents
-1. [Model creation](# model-creation)
+1. [Model creation](#model-creation)
 2. [Hyperparameters for pruning](#hyperparameters)
   - [Block sparsity](#block-sparsity)
 3. [Adding pruning ops to the training graph](#adding-pruning-ops)
