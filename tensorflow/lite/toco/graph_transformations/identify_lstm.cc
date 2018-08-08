@@ -202,8 +202,14 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
     return ::tensorflow::Status::OK();
   }
   // State forget gate activation function
-  if (!MatchOperatorInputs(*state_forget_sig, *model, OperatorType::kSplit,
-                           &tmp) ||
+  Operator *state_forget_add;
+  if (!MatchOperatorInputs(*state_forget_sig, *model, OperatorType::kAdd,
+                           &state_forget_add)) {
+    return false;
+  }
+  // State forget gate addition
+  if (!MatchOperatorInputs(*state_forget_add, *model, OperatorType::kSplit,
+                           &tmp, OperatorType::kNone, nullptr) ||
       (tmp != fc_output_split)) {
     return ::tensorflow::Status::OK();
   }
