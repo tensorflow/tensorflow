@@ -527,12 +527,13 @@ class Interpreter {
                                              TfLiteRegistration** registration);
 
   // WARNING: This is an experimental interface that is subject to change.
-  // Gets an TfLiteIntArray* representing the execution plan. The caller owns
-  // this memory and must free it with TfLiteIntArrayFree().
+  // Gets an TfLiteIntArray* representing the execution plan. The interpreter
+  // owns this memory and it is only guaranteed to exist during the invocation
+  // of the delegate prepare.
   TfLiteStatus GetExecutionPlan(TfLiteIntArray** execution_plan);
 
   // WARNING: This is an experimental interface that is subject to change.
-  // Entry point for C node plugin API to get the execution plan
+  // Entry point for C node plugin API to get the execution plan.
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
