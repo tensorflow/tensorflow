@@ -25,7 +25,6 @@ import tempfile as _tempfile
 from tensorflow.contrib.lite.python import lite_constants
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
-from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -116,6 +115,7 @@ def build_toco_convert_protos(input_tensors,
                               inference_type=lite_constants.FLOAT,
                               inference_input_type=None,
                               input_format=lite_constants.TENSORFLOW_GRAPHDEF,
+                              input_shapes=None,
                               output_format=lite_constants.TFLITE,
                               quantized_input_stats=None,
                               default_ranges_stats=None,
@@ -135,13 +135,15 @@ def build_toco_convert_protos(input_tensors,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.get_shape()` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
-    inference_input_type: Target data type of input arrays. Allows for a
-      different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+    inference_type: Target data type of real-number arrays in the output file.
+      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of real-number input arrays. Allows
+      for a different type for input arrays in the case of quantization.
+      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
+    input_shapes: Input array shape. It needs to be a list of the same length
+      as `input_tensors`, or None. (default None)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: List of tuples of integers representing the mean and
@@ -202,31 +204,19 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
+
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
-    if input_tensor.dtype == _dtypes.float32:
-      tflite_input_type = lite_constants.FLOAT
-    elif input_tensor.dtype == _dtypes.int32:
-      tflite_input_type = lite_constants.INT32
-    elif input_tensor.dtype == _dtypes.int64:
-      tflite_input_type = lite_constants.INT64
-    elif input_tensor.dtype == _dtypes.uint8:
-      tflite_input_type = lite_constants.QUANTIZED_UINT8
-    # TODO(aselle): Insert strings when they are available
-    else:
-      raise ValueError("Tensors %s not known type %r" % (input_tensor.name,
-                                                         input_tensor.dtype))
-
     input_array = model.input_arrays.add()
-
     if inference_type == lite_constants.QUANTIZED_UINT8:
-      if tflite_input_type == lite_constants.FLOAT:
-        tflite_input_type = lite_constants.QUANTIZED_UINT8
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
-
     input_array.name = tensor_name(input_tensor)
-    input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
+    if input_shapes is None:
+      shape = input_tensor.get_shape()
+    else:
+      shape = input_shapes[idx]
+    input_array.shape.dims.extend(map(int, shape))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(tensor_name(output_tensor))

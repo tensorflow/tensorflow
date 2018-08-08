@@ -939,7 +939,7 @@ class CaseTest(test_util.TensorFlowTestCase):
 
 class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testWhileLoopWithSingleVariable(self):
     i = constant_op.constant(0)
     c = lambda i: math_ops.less(i, 10)
@@ -948,7 +948,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
     self.assertEqual(self.evaluate(r), 10)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerWhileLoopWithSingleVariable_bodyReturnsTuple(self):
     i = constant_op.constant(0)
     c = lambda i: math_ops.less(i, 10)
@@ -957,6 +957,28 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
     # Expect a tuple since that is what the body returns.
     self.assertEqual(self.evaluate(r), (10,))
+
+  def testWhileLoopSameReturnShape_False(self):
+    i = constant_op.constant(0)
+    c = lambda i, _: math_ops.less(i, 10)
+
+    # Body returns a [tensor, []]
+    b = lambda i, _: [math_ops.add(i, 1), []]
+
+    # Should only return the tensor.
+    r = control_flow_ops.while_loop(c, b, [i, []])
+    self.assertEqual(self.evaluate(r), 10)
+
+  def testWhileLoopSameReturnShape_True(self):
+    i = constant_op.constant(0)
+    c = lambda i, _: math_ops.less(i, 10)
+
+    # Body returns a [tensor, []]
+    b = lambda i, _: [math_ops.add(i, 1), []]
+
+    # Should only return the original structure.
+    r = control_flow_ops.while_loop(c, b, [i, []], return_same_structure=True)
+    self.assertEqual(self.evaluate(r), [10, []])
 
 
 if __name__ == "__main__":

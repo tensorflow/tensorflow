@@ -60,6 +60,7 @@ cc_library(
 tf_cc_test(
     name = "resolve_svdf_test",
     srcs = ["resolve_svdf_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":cluster",
         ":cluster_utils",

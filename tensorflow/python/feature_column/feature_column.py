@@ -452,13 +452,15 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
+  with variable_scope.variable_scope(None, 'linear_model') as vs:
+    model_name = _strip_leading_slashes(vs.name)
   linear_model_layer = _LinearModel(
       feature_columns=feature_columns,
       units=units,
       sparse_combiner=sparse_combiner,
       weight_collections=weight_collections,
       trainable=trainable,
-      name='linear_model')
+      name=model_name)
   retval = linear_model_layer(features)  # pylint: disable=not-callable
   if cols_to_vars is not None:
     cols_to_vars.update(linear_model_layer.cols_to_vars())
@@ -466,13 +468,25 @@ def linear_model(features,
 
 
 def _add_to_collections(var, weight_collections):
-  # TODO(rohanj): Explore adding a _get_variable_list method on `Variable`
-  # so that we don't have to do this check.
-  if isinstance(var, variables.PartitionedVariable):
-    for constituent_var in list(var):
-      ops.add_to_collections(weight_collections, constituent_var)
-  else:
-    ops.add_to_collections(weight_collections, var)
+  """Adds a var to the list of weight_collections provided.
+
+  Handles the case for partitioned and non-partitioned variables.
+
+  Args:
+    var: A variable or Partitioned Variable.
+    weight_collections: List of collections to add variable to.
+  """
+  for weight_collection in weight_collections:
+    # The layer self.add_variable call already adds it to GLOBAL_VARIABLES.
+    if weight_collection == ops.GraphKeys.GLOBAL_VARIABLES:
+      continue
+    # TODO(rohanj): Explore adding a _get_variable_list method on `Variable`
+    # so that we don't have to do this check.
+    if isinstance(var, variables.PartitionedVariable):
+      for constituent_var in list(var):
+        ops.add_to_collection(weight_collection, constituent_var)
+    else:
+      ops.add_to_collection(weight_collection, var)
 
 
 class _FCLinearWrapper(base.Layer):
@@ -583,6 +597,8 @@ class _LinearModel(training.Model):
     self._feature_columns = _normalize_feature_columns(
         feature_columns)
     self._weight_collections = list(weight_collections or [])
+    if ops.GraphKeys.GLOBAL_VARIABLES not in self._weight_collections:
+      self._weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
     if ops.GraphKeys.MODEL_VARIABLES not in self._weight_collections:
       self._weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
 
@@ -971,7 +987,12 @@ def shared_embedding_columns(
     ValueError: if exactly one of `ckpt_to_load_from` and `tensor_name_in_ckpt`
       is specified.
     ValueError: if `initializer` is specified and is not callable.
+    RuntimeError: if eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError('shared_embedding_columns are not supported when eager '
+                       'execution is enabled.')
+
   if (dimension is None) or (dimension < 1):
     raise ValueError('Invalid dimension {}.'.format(dimension))
   if (ckpt_to_load_from is None) != (tensor_name_in_ckpt is None):
@@ -1016,16 +1037,6 @@ def shared_embedding_columns(
     shared_embedding_collection_name = '_'.join(c.name for c in sorted_columns)
     shared_embedding_collection_name += '_shared_embedding'
 
-  # Create the state (_SharedEmbeddingColumnLayer) here.
-  embedding_shape = num_buckets, dimension
-
-  shared_embedding_column_layer = _EmbeddingColumnLayer(
-      embedding_shape=embedding_shape,
-      initializer=initializer,
-      weight_collections=[],
-      trainable=trainable,
-      name=shared_embedding_collection_name)
-
   result = []
   for column in categorical_columns:
     result.append(
@@ -1034,15 +1045,11 @@ def shared_embedding_columns(
             initializer=initializer,
             dimension=dimension,
             combiner=combiner,
-            var_scope_name=shared_embedding_collection_name,
+            shared_embedding_collection_name=shared_embedding_collection_name,
             ckpt_to_load_from=ckpt_to_load_from,
             tensor_name_in_ckpt=tensor_name_in_ckpt,
             max_norm=max_norm,
             trainable=trainable))
-
-  for single_result in result:
-    single_result._set_layer(shared_embedding_column_layer)  # pylint: disable=protected-access
-    single_result._set_all_columns(result)  # pylint: disable=protected-access
 
   return result
 
@@ -1863,11 +1870,8 @@ class _EmbeddingColumnLayer(base.Layer):
         dtype=dtypes.float32,
         initializer=self._initializer,
         trainable=self.trainable)
-    # self.add_variable already appends to GLOBAL_VARIABLES collection.
     if self._weight_collections and not context.executing_eagerly():
-      for weight_collection in self._weight_collections:
-        if weight_collection != ops.GraphKeys.GLOBAL_VARIABLES:
-          _add_to_collections(self._embedding_weight_var, [weight_collection])
+      _add_to_collections(self._embedding_weight_var, self._weight_collections)
     self.built = True
 
   def call(self, _):
@@ -2154,7 +2158,7 @@ def _create_categorical_column_weighted_sum(column,
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=weight_collections)
-  return _safe_embedding_lookup_sparse(
+  return embedding_ops.safe_embedding_lookup_sparse(
       weight,
       id_tensor,
       sparse_weights=weight_tensor,
@@ -2590,7 +2594,7 @@ class _EmbeddingColumn(
       })
 
     # Return embedding lookup result.
-    return _safe_embedding_lookup_sparse(
+    return embedding_ops.safe_embedding_lookup_sparse(
         embedding_weights=embedding_weights,
         sparse_ids=sparse_ids,
         sparse_weights=sparse_weights,
@@ -2649,8 +2653,8 @@ class _SharedEmbeddingColumn(
     collections.namedtuple(
         '_SharedEmbeddingColumn',
         ('categorical_column', 'dimension', 'combiner', 'initializer',
-         'var_scope_name', 'ckpt_to_load_from', 'tensor_name_in_ckpt',
-         'max_norm', 'trainable'))):
+         'shared_embedding_collection_name', 'ckpt_to_load_from',
+         'tensor_name_in_ckpt', 'max_norm', 'trainable'))):
   """See `embedding_column`."""
 
   @property
@@ -2661,7 +2665,7 @@ class _SharedEmbeddingColumn(
 
   @property
   def _var_scope_name(self):
-    return self.var_scope_name
+    return self.shared_embedding_collection_name
 
   @property
   def _parse_example_spec(self):
@@ -2669,22 +2673,6 @@ class _SharedEmbeddingColumn(
 
   def _transform_feature(self, inputs):
     return inputs.get(self.categorical_column)
-
-  def _set_layer(self, layer):
-    self._layer = layer
-
-  def _set_all_columns(self, all_columns):
-    self._all_columns = all_columns
-
-  def _reset_config(self):
-    config = self._layer.get_config()
-    config['embedding_shape'] = (
-        self.categorical_column._num_buckets,  # pylint: disable=protected-access
-        self.dimension)
-    config['initializer'] = self.initializer
-    self._layer = self._layer.__class__.from_config(config)
-    for column in self._all_columns:
-      column._set_layer(self._layer)  # pylint: disable=protected-access
 
   @property
   def _variable_shape(self):
@@ -2707,19 +2695,38 @@ class _SharedEmbeddingColumn(
       sparse_ids = sparse_tensors.id_tensor
       sparse_weights = sparse_tensors.weight_tensor
 
-      self._layer.set_weight_collections(weight_collections)
-      embedding_weights = self._layer(
-          None, scope=variable_scope.get_variable_scope())
-      # If we're in graph mode and this is called with a different graph,
-      # then we should reset.
-      if not context.executing_eagerly() and (
-          ops.get_default_graph() !=
-          _get_graph_for_variable(embedding_weights)):
-        self._reset_config()
-        self._layer.set_weight_collections(weight_collections)
-        embedding_weights = self._layer(
-            None, scope=variable_scope.get_variable_scope())
-
+      embedding_shape = (self.categorical_column._num_buckets, self.dimension)  # pylint: disable=protected-access
+      shared_embedding_collection = ops.get_collection(
+          self.shared_embedding_collection_name)
+      if shared_embedding_collection:
+        if len(shared_embedding_collection) > 1:
+          raise ValueError(
+              'Collection {} can only contain one variable. '
+              'Suggested fix A: Choose a unique name for this collection. '
+              'Suggested fix B: Do not add any variables to this collection. '
+              'The feature_column library already adds a variable under the '
+              'hood.'.format(shared_embedding_collection))
+        embedding_weights = shared_embedding_collection[0]
+        if embedding_weights.get_shape() != embedding_shape:
+          raise ValueError(
+              'Shared embedding collection {} contains variable {} of '
+              'unexpected shape {}. Expected shape is {}. '
+              'Suggested fix A: Choose a unique name for this collection. '
+              'Suggested fix B: Do not add any variables to this collection. '
+              'The feature_column library already adds a variable under the '
+              'hood.'.format(self.shared_embedding_collection_name,
+                             embedding_weights.name,
+                             embedding_weights.get_shape(), embedding_shape))
+      else:
+        embedding_weights = variable_scope.get_variable(
+            name='embedding_weights',
+            shape=embedding_shape,
+            dtype=dtypes.float32,
+            initializer=self.initializer,
+            trainable=self.trainable and trainable,
+            collections=weight_collections)
+        ops.add_to_collection(self.shared_embedding_collection_name,
+                              embedding_weights)
       if self.ckpt_to_load_from is not None:
         to_restore = embedding_weights
         if isinstance(to_restore, variables.PartitionedVariable):
@@ -2729,7 +2736,7 @@ class _SharedEmbeddingColumn(
         })
 
       # Return embedding lookup result.
-      return _safe_embedding_lookup_sparse(
+      return embedding_ops.safe_embedding_lookup_sparse(
           embedding_weights=embedding_weights,
           sparse_ids=sparse_ids,
           sparse_weights=sparse_weights,
@@ -3221,161 +3228,6 @@ def _collect_leaf_level_keys(cross):
   return leaf_level_keys
 
 
-# TODO(zakaria): Move this to embedding_ops and make it public.
-def _safe_embedding_lookup_sparse(embedding_weights,
-                                  sparse_ids,
-                                  sparse_weights=None,
-                                  combiner='mean',
-                                  default_id=None,
-                                  name=None,
-                                  partition_strategy='div',
-                                  max_norm=None):
-  """Lookup embedding results, accounting for invalid IDs and empty features.
-
-  The partitioned embedding in `embedding_weights` must all be the same shape
-  except for the first dimension. The first dimension is allowed to vary as the
-  vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
-  may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
-  partitioner.
-
-  Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
-  with non-positive weight. For an entry with no features, the embedding vector
-  for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
-
-  The ids and weights may be multi-dimensional. Embeddings are always aggregated
-  along the last dimension.
-
-  Args:
-    embedding_weights:  A list of `P` float `Tensor`s or values representing
-        partitioned embedding `Tensor`s.  Alternatively, a `PartitionedVariable`
-        created by partitioning along dimension 0.  The total unpartitioned
-        shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
-        vocab size and `e_1, ..., e_m` are the embedding dimensions.
-    sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
-        ids. `d_0` is typically batch size.
-    sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
-        float weights corresponding to `sparse_ids`, or `None` if all weights
-        are be assumed to be 1.0.
-    combiner: A string specifying how to combine embedding results for each
-        entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
-        the default.
-    default_id: The id to use for an entry with no features.
-    name: A name for this operation (optional).
-    partition_strategy: A string specifying the partitioning strategy.
-        Currently `"div"` and `"mod"` are supported. Default is `"div"`.
-    max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
-        combining.
-
-
-  Returns:
-    Dense `Tensor` of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
-
-  Raises:
-    ValueError: if `embedding_weights` is empty.
-  """
-  if embedding_weights is None:
-    raise ValueError('Missing embedding_weights %s.' % embedding_weights)
-  if isinstance(embedding_weights, variables.PartitionedVariable):
-    embedding_weights = list(embedding_weights)  # get underlying Variables.
-  if not isinstance(embedding_weights, list):
-    embedding_weights = [embedding_weights]
-  if len(embedding_weights) < 1:
-    raise ValueError('Missing embedding_weights %s.' % embedding_weights)
-
-  dtype = sparse_weights.dtype if sparse_weights is not None else None
-  embedding_weights = [
-      ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
-  ]
-
-  with ops.name_scope(name, 'embedding_lookup',
-                      embedding_weights + [sparse_ids,
-                                           sparse_weights]) as scope:
-    # Reshape higher-rank sparse ids and weights to linear segment ids.
-    original_shape = sparse_ids.dense_shape
-    original_rank_dim = sparse_ids.dense_shape.get_shape()[0]
-    original_rank = (
-        array_ops.size(original_shape)
-        if original_rank_dim.value is None
-        else original_rank_dim.value)
-    sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
-        math_ops.reduce_prod(
-            array_ops.slice(original_shape, [0], [original_rank - 1])),
-        array_ops.gather(original_shape, original_rank - 1)])
-    if sparse_weights is not None:
-      sparse_weights = sparse_tensor_lib.SparseTensor(
-          sparse_ids.indices,
-          sparse_weights.values, sparse_ids.dense_shape)
-
-    # Prune invalid ids and weights.
-    sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
-    if combiner != 'sum':
-      sparse_ids, sparse_weights = _prune_invalid_weights(
-          sparse_ids, sparse_weights)
-
-    # Fill in dummy values for empty features, if necessary.
-    sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(sparse_ids,
-                                                                 default_id or
-                                                                 0)
-    if sparse_weights is not None:
-      sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(sparse_weights, 1.0)
-
-    result = embedding_ops.embedding_lookup_sparse(
-        embedding_weights,
-        sparse_ids,
-        sparse_weights,
-        combiner=combiner,
-        partition_strategy=partition_strategy,
-        name=None if default_id is None else scope,
-        max_norm=max_norm)
-
-    if default_id is None:
-      # Broadcast is_row_empty to the same shape as embedding_lookup_result,
-      # for use in Select.
-      is_row_empty = array_ops.tile(
-          array_ops.reshape(is_row_empty, [-1, 1]),
-          array_ops.stack([1, array_ops.shape(result)[1]]))
-
-      result = array_ops.where(is_row_empty,
-                               array_ops.zeros_like(result),
-                               result,
-                               name=scope)
-
-    # Reshape back from linear ids back into higher-dimensional dense result.
-    final_result = array_ops.reshape(
-        result,
-        array_ops.concat([
-            array_ops.slice(
-                math_ops.cast(original_shape, dtypes.int32), [0],
-                [original_rank - 1]),
-            array_ops.slice(array_ops.shape(result), [1], [-1])
-        ], 0))
-    final_result.set_shape(tensor_shape.unknown_shape(
-        (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
-    return final_result
-
-
-def _prune_invalid_ids(sparse_ids, sparse_weights):
-  """Prune invalid IDs (< 0) from the input ids and weights."""
-  is_id_valid = math_ops.greater_equal(sparse_ids.values, 0)
-  if sparse_weights is not None:
-    is_id_valid = math_ops.logical_and(
-        is_id_valid,
-        array_ops.ones_like(sparse_weights.values, dtype=dtypes.bool))
-  sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
-  if sparse_weights is not None:
-    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
-  return sparse_ids, sparse_weights
-
-
-def _prune_invalid_weights(sparse_ids, sparse_weights):
-  """Prune invalid weights (< 0) from the input ids and weights."""
-  if sparse_weights is not None:
-    is_weights_valid = math_ops.greater(sparse_weights.values, 0)
-    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid)
-    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid)
-  return sparse_ids, sparse_weights
-
-
 class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
                        collections.namedtuple('_IndicatorColumn',
                                               ['categorical_column'])):
@@ -3412,10 +3264,14 @@ class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
           sp_ids=id_tensor,
           sp_values=weight_tensor,
           vocab_size=int(self._variable_shape[-1]))
-      # Remove (?, -1) index
+      # Remove (?, -1) index.
       weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
                                                 weighted_column.dense_shape)
-      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+      # Use scatter_nd to merge duplicated indices if existed,
+      # instead of sparse_tensor_to_dense.
+      return array_ops.scatter_nd(weighted_column.indices,
+                                  weighted_column.values,
+                                  weighted_column.dense_shape)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
         id_tensor, default_value=-1)
@@ -3579,8 +3435,3 @@ class _SequenceCategoricalColumn(
             weight_tensor,
             shape=array_ops.concat([weight_tensor.dense_shape, [1]], axis=0))
     return _CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)
-
-
-# TODO(xiejw): Remove the following alias once call sites are updated.
-_clean_feature_columns = _normalize_feature_columns
-_to_sparse_input = _to_sparse_input_and_drop_ignore_values

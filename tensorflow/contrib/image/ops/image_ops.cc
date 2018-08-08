@@ -29,7 +29,7 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("ImageProjectiveTransform")
     .Input("images: dtype")
     .Input("transforms: float32")
-    .Attr("dtype: {uint8, int32, int64, float32, float64}")
+    .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
     .Attr("interpolation: string")
     .Output("transformed_images: dtype")
     .SetShapeFn([](InferenceContext* c) {

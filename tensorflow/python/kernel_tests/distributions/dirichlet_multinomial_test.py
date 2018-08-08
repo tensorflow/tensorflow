@@ -17,6 +17,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -250,10 +253,10 @@ class DirichletMultinomialTest(test.TestCase):
           dist.variance(),
           dist.stddev(),
       ])
-      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
-      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.05)
-      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.05)
-      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0.04, rtol=0.)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0.05, rtol=0.)
+      self.assertAllClose(sample_var_, analytic_var, atol=0.05, rtol=0.)
+      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
   def testCovariance(self):
     # Shape [2]
@@ -442,7 +445,7 @@ class DirichletMultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.15)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.20)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
       self.assertAllClose(
           actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
@@ -470,10 +473,25 @@ class DirichletMultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.05)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.20)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.15)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
+
+  def testNotReparameterized(self):
+    total_count = constant_op.constant(5.0)
+    concentration = constant_op.constant([0.1, 0.1, 0.1])
+    with backprop.GradientTape() as tape:
+      tape.watch(total_count)
+      tape.watch(concentration)
+      dist = ds.DirichletMultinomial(
+          total_count=total_count,
+          concentration=concentration)
+      samples = dist.sample(100)
+    grad_total_count, grad_concentration = tape.gradient(
+        samples, [total_count, concentration])
+    self.assertIsNone(grad_total_count)
+    self.assertIsNone(grad_concentration)
 
 
 if __name__ == "__main__":

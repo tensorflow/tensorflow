@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,7 +32,7 @@ from tensorflow.python.platform import googletest
 CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
 
 
-class ClusteringTest(XLATestCase):
+class ClusteringTest(xla_test.XLATestCase):
 
   def testAdd(self):
     val1 = np.array([4, 3, 2, 1], dtype=np.float32)

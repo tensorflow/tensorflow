@@ -771,6 +771,10 @@ template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
 
 template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
+
+template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
 
 template <typename T>

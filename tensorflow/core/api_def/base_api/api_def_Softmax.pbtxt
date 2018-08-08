@@ -16,6 +16,6 @@ END
   description: <<END
 For each batch `i` and class `j` we have
 
-    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
+    $$softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))$$
 END
 }

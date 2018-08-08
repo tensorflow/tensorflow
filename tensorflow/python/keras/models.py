@@ -26,7 +26,6 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils.generic_utils import has_arg
 
 
 # API entries importable from `keras.models`:
@@ -69,7 +68,7 @@ def _clone_functional_model(model, input_tensors=None):
                      'got a `Sequential` instance instead:', model)
 
   layer_map = {}  # Cache for created layers.
-  tensor_map = {}  # Map {reference_tensor: (corresponding_tensor, mask)}
+  tensor_map = {}  # Map {reference_tensor: corresponding_tensor}
   if input_tensors is None:
     # Create placeholders to build the model on top of.
     input_layers = []
@@ -106,7 +105,7 @@ def _clone_functional_model(model, input_tensors=None):
     input_tensors = input_tensors_
 
   for x, y in zip(model.inputs, input_tensors):
-    tensor_map[x] = (y, None)  # tensor, mask
+    tensor_map[x] = y
 
   # Iterated over every node in the reference model, in depth order.
   depth_keys = list(model._nodes_by_depth.keys())
@@ -131,55 +130,41 @@ def _clone_functional_model(model, input_tensors=None):
           continue
 
       # Gather inputs to call the new layer.
-      referenceinput_tensors_ = node.input_tensors
+      reference_input_tensors = node.input_tensors
       reference_output_tensors = node.output_tensors
 
       # If all previous input tensors are available in tensor_map,
       # then call node.inbound_layer on them.
-      computed_data = []  # List of tuples (input, mask).
-      for x in referenceinput_tensors_:
+      computed_tensors = []
+      for x in reference_input_tensors:
         if x in tensor_map:
-          computed_data.append(tensor_map[x])
+          computed_tensors.append(tensor_map[x])
 
-      if len(computed_data) == len(referenceinput_tensors_):
+      if len(computed_tensors) == len(reference_input_tensors):
         # Call layer.
         if node.arguments:
           kwargs = node.arguments
         else:
           kwargs = {}
-        if len(computed_data) == 1:
-          computed_tensor, computed_mask = computed_data[0]
-          if has_arg(layer.call, 'mask'):
-            if 'mask' not in kwargs:
-              kwargs['mask'] = computed_mask
+        if len(computed_tensors) == 1:
+          computed_tensor = computed_tensors[0]
           output_tensors = generic_utils.to_list(layer(computed_tensor,
                                                        **kwargs))
-          output_masks = generic_utils.to_list(
-              layer.compute_mask(computed_tensor, computed_mask))
           computed_tensors = [computed_tensor]
-          computed_masks = [computed_mask]
         else:
-          computed_tensors = [x[0] for x in computed_data]
-          computed_masks = [x[1] for x in computed_data]
-          if has_arg(layer.call, 'mask'):
-            if 'mask' not in kwargs:
-              kwargs['mask'] = computed_masks
+          computed_tensors = computed_tensors
           output_tensors = generic_utils.to_list(layer(computed_tensors,
                                                        **kwargs))
-          output_masks = generic_utils.to_list(
-              layer.compute_mask(computed_tensors, computed_masks))
-        # Update tensor_map.
-        for x, y, mask in zip(reference_output_tensors, output_tensors,
-                              output_masks):
-          tensor_map[x] = (y, mask)
+
+        for x, y in zip(reference_output_tensors, output_tensors):
+          tensor_map[x] = y
 
   # Check that we did compute the model outputs,
   # then instantiate a new model from inputs and outputs.
   output_tensors = []
   for x in model.outputs:
     assert x in tensor_map, 'Could not compute output ' + str(x)
-    tensor, _ = tensor_map[x]
-    output_tensors.append(tensor)
+    output_tensors.append(tensor_map[x])
   return Model(input_tensors, output_tensors, name=model.name)
 
 

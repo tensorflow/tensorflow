@@ -127,13 +127,6 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  if (const uint8* from_constant_pool =
-          external_constant_pool_.Find(string(name))) {
-    return llvm::JITEvaluatedSymbol(
-        reinterpret_cast<uint64_t>(from_constant_pool),
-        llvm::JITSymbolFlags::None);
-  }
-
   void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
   if (func_addr == nullptr) {
     return nullptr;

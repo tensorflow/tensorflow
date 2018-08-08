@@ -288,8 +288,8 @@ void TfLiteDriver::ResetLSTMStateTensors() {
   interpreter_->ResetVariableTensorsToZero();
 
   // Below is a workaround for initializing state tensors for LSTM.
-  // TODO(ycling): Refactoring and find a better way to initialize state
-  // tensors. Maybe write the reset instructions into the test data.
+  // TODO(ycling): Remove the code below after nobody is using the 18-inputs
+  // definition.
   for (auto node_index : interpreter_->execution_plan()) {
     const auto& node_and_reg = interpreter_->node_and_registration(node_index);
     const auto& node = node_and_reg->first;
@@ -299,7 +299,7 @@ void TfLiteDriver::ResetLSTMStateTensors() {
       const auto* params =
           reinterpret_cast<const TfLiteLSTMParams*>(node.builtin_data);
       if (params->kernel_type == kTfLiteLSTMFullKernel &&
-          node.outputs->size >= 2) {
+          node.inputs->size == 18 && node.outputs->size >= 2) {
         // The first 2 outputs of LSTM are state tensors.
         for (int i = 0; i < 2; ++i) {
           int node_index = node.outputs->data[i];

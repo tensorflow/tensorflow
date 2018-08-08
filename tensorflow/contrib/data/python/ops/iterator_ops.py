@@ -20,6 +20,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 
@@ -206,7 +207,7 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
 
     # Check if there is an existing checkpoint. If so, restore from it.
     # pylint: disable=protected-access
-    latest_checkpoint_path = saver_lib.latest_checkpoint(
+    latest_checkpoint_path = checkpoint_management.latest_checkpoint(
         self._checkpoint_saver_hook._checkpoint_dir,
         latest_filename=self._latest_filename)
     if latest_checkpoint_path:

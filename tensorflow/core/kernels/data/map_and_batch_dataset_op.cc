@@ -219,9 +219,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           }
           std::swap(result, batch_results_.front());
           batch_results_.pop_front();
-          cond_var_.notify_all();
         }
-        return ProcessBatch(ctx, result, out_tensors, end_of_sequence);
+        cond_var_.notify_all();
+        return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -286,7 +286,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       void Callback(const std::shared_ptr<IteratorContext>& ctx,
                     const std::shared_ptr<BatchResult>& result,
                     const std::shared_ptr<std::vector<Tensor>>& return_values,
-                    int64 offset, const Status& status) {
+                    int64 offset, const Status& status) LOCKS_EXCLUDED(mu_) {
         result->UpdateStatus(status);
         if (status.ok()) {
           EnsureOutputAllocated(ctx, result, return_values);
@@ -313,41 +313,42 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               break;
             }
           }
+          {
+            mutex_lock l(result->mu);
+            result->num_elements++;
+          }
         }
-        {
-          mutex_lock l(result->mu);
-          result->num_elements++;
-        }
-        {
-          mutex_lock l(mu_);
-          CallCompleted(result);
-        }
+        CallCompleted(result);
       }
 
       void CallCompleted(const std::shared_ptr<BatchResult>& result)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        num_calls_--;
+          LOCKS_EXCLUDED(mu_) {
+        {
+          mutex_lock l(mu_);
+          num_calls_--;
+          result->num_calls--;
+        }
         cond_var_.notify_all();
-        result->num_calls--;
       }
 
       void CallFunction(std::shared_ptr<IteratorContext> ctx,
                         const std::shared_ptr<BatchResult>& result,
-                        int64 offset) {
+                        int64 offset) LOCKS_EXCLUDED(mu_) {
         // Get the next input element.
         std::vector<Tensor> input_element;
         bool end_of_input;
         Status status =
             input_impl_->GetNext(ctx.get(), &input_element, &end_of_input);
+        bool return_early;
         {
-          mutex_lock l(mu_);
-          mutex_lock l2(result->mu);
+          mutex_lock l(result->mu);
           result->end_of_input = result->end_of_input || end_of_input;
           result->status.Update(status);
-          if (result->end_of_input || !result->status.ok()) {
-            CallCompleted(result);
-            return;
-          }
+          return_early = result->end_of_input || !result->status.ok();
+        }
+        if (return_early) {
+          CallCompleted(result);
+          return;
         }
 
         // Call `captured_func_(input_element)`, using `Callback` to store the
@@ -369,7 +370,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status CopyPartialBatch(Tensor* output, const Tensor& value,
                               int64 num_elements) {
         switch (value.dtype()) {
-#define CASE(type)                                                \
+#define HANDLE_TYPE(type)                                         \
   case DataTypeToEnum<type>::value: {                             \
     auto output_t = output->flat_outer_dims<type>();              \
     auto value_t = value.flat_outer_dims<type>();                 \
@@ -378,10 +379,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     }                                                             \
     return Status::OK();                                          \
   }
-          TF_CALL_NUMBER_TYPES(CASE);
-          TF_CALL_string(CASE);
-          TF_CALL_variant(CASE);
-#undef CASE
+          TF_CALL_DATASET_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
           default:
             return errors::InvalidArgument("Unsupported data type: ",
                                            value.dtype());
@@ -425,79 +424,88 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                dataset()->batch_size_;
       }
 
-      Status ProcessBatch(IteratorContext* ctx,
-                          const std::shared_ptr<BatchResult>& result,
-                          std::vector<Tensor>* out_tensors,
-                          bool* end_of_sequence) {
+      Status ProcessResult(IteratorContext* ctx,
+                           const std::shared_ptr<BatchResult>& result,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) {
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
           *end_of_sequence = true;
           return Status::OK();
         }
-
-        if (!result->status.ok()) {
+        // `f` may deliberately raise `errors::OutOfRange` to indicate that we
+        // should terminate the iteration early.
+        if (!result->status.ok() && !errors::IsOutOfRange(result->status)) {
+          // Deallocate tensors allocated for the output.
+          result->output.clear();
+          *end_of_sequence = false;
+          return result->status;
+        }
+        if (result->num_elements < dataset()->batch_size_) {
+          if (dataset()->drop_remainder_) {
+            // Deallocate tensors allocated for the output.
+            result->output.clear();
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          const std::vector<Tensor>& output = result->output;
+          for (size_t i = 0; i < output.size(); ++i) {
+            TensorShape component_shape(result->output[i].shape());
+            component_shape.set_dim(0, result->num_elements);
+            AllocatorAttributes attr;
+            attr.set_gpu_compatible(true);
+            Tensor component(ctx->allocator(attr), output[i].dtype(),
+                             component_shape);
+            TF_RETURN_IF_ERROR(
+                CopyPartialBatch(&component, output[i], result->num_elements));
+            out_tensors->emplace_back(std::move(component));
+          }
           // Deallocate tensors allocated for the output.
           result->output.clear();
         } else {
-          if (result->num_elements < dataset()->batch_size_) {
-            if (dataset()->drop_remainder_) {
-              // Deallocate tensors allocated for the output.
-              result->output.clear();
-              *end_of_sequence = true;
-              return Status::OK();
-            }
-            const std::vector<Tensor>& output = result->output;
-            for (size_t i = 0; i < output.size(); ++i) {
-              TensorShape component_shape(result->output[i].shape());
-              component_shape.set_dim(0, result->num_elements);
-              AllocatorAttributes attr;
-              attr.set_gpu_compatible(true);
-              Tensor component(ctx->allocator(attr), output[i].dtype(),
-                               component_shape);
-              TF_RETURN_IF_ERROR(CopyPartialBatch(&component, output[i],
-                                                  result->num_elements));
-              out_tensors->emplace_back(std::move(component));
-            }
-            // Deallocate tensors allocated for the output.
-            result->output.clear();
-          } else {
-            *out_tensors = std::move(result->output);
-          }
-          *end_of_sequence = false;
+          *out_tensors = std::move(result->output);
         }
-        return result->status;
+        *end_of_sequence = result->num_elements == 0;
+        return Status::OK();
       }
 
-      void RunnerThread(const std::shared_ptr<IteratorContext>& ctx) {
-        mutex_lock l(mu_);
+      void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
+          LOCKS_EXCLUDED(mu_) {
+        std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
+        new_calls.reserve(dataset()->num_parallel_calls_);
         while (true) {
-          while (!cancelled_ &&
-                 (num_calls_ >= dataset()->num_parallel_calls_ ||
-                  batch_results_.size() > MaxBatchResults() ||
-                  (batch_results_.size() == MaxBatchResults() &&
-                   call_counter_ % dataset()->batch_size_ == 0))) {
-            cond_var_.wait(l);
-          }
-
-          if (cancelled_) {
-            return;
-          }
-
-          while (num_calls_ < dataset()->num_parallel_calls_ &&
-                 (batch_results_.size() < MaxBatchResults() ||
-                  (batch_results_.size() == MaxBatchResults() &&
-                   call_counter_ % dataset()->batch_size_ != 0))) {
-            if (call_counter_ % dataset()->batch_size_ == 0) {
-              batch_results_.emplace_back(
-                  new BatchResult(dataset()->batch_size_));
+          {
+            mutex_lock l(mu_);
+            while (!cancelled_ &&
+                   (num_calls_ >= dataset()->num_parallel_calls_ ||
+                    batch_results_.size() > MaxBatchResults() ||
+                    (batch_results_.size() == MaxBatchResults() &&
+                     call_counter_ % dataset()->batch_size_ == 0))) {
+              cond_var_.wait(l);
             }
-            std::shared_ptr<BatchResult> result = batch_results_.back();
-            int64 offset = call_counter_++ % dataset()->batch_size_;
-            num_calls_++;
-            mu_.unlock();
-            CallFunction(ctx, result, offset);
-            mu_.lock();
+
+            if (cancelled_) {
+              return;
+            }
+
+            while (num_calls_ < dataset()->num_parallel_calls_ &&
+                   (batch_results_.size() < MaxBatchResults() ||
+                    (batch_results_.size() == MaxBatchResults() &&
+                     call_counter_ % dataset()->batch_size_ != 0))) {
+              if (call_counter_ % dataset()->batch_size_ == 0) {
+                batch_results_.emplace_back(
+                    new BatchResult(dataset()->batch_size_));
+              }
+              int64 offset = call_counter_++ % dataset()->batch_size_;
+              new_calls.emplace_back(batch_results_.back(), offset);
+              num_calls_++;
+            }
           }
+
+          for (const auto& call : new_calls) {
+            CallFunction(ctx, call.first, call.second);
+          }
+          new_calls.clear();
         }
       }
 

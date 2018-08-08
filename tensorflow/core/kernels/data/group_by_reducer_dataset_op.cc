@@ -254,6 +254,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(
             dataset()->captured_finalize_func_->RunWithBorrowedArgs(
                 ctx, states_[keys_[keys_index_++]], out_tensors));
+        *end_of_sequence = false;
         return Status::OK();
       }
 

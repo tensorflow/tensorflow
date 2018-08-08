@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 import timeit
 
@@ -46,6 +47,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -81,6 +83,25 @@ class ScalarStateRNNCell(rnn_cell_impl.RNNCell):
     return (input_, state + 1)
 
 
+class UnbalancedOutputRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
+
+  @property
+  def output_size(self):
+    return  tensor_shape.TensorShape(1), tensor_shape.TensorShape((2))
+
+  @property
+  def state_size(self):
+    return tensor_shape.TensorShape([])
+
+  def zero_state(self, batch_size, dtype):
+    return array_ops.zeros([], dtype=dtypes.int32)
+
+  def call(self, input_, state, scope=None):
+    concatenated = array_ops.concat((input_, input_), axis=-1)
+    return (input_, concatenated), state + 1
+
+
 class TensorArrayStateRNNCell(rnn_cell_impl.RNNCell):
   """RNN Cell its state as a TensorArray."""
 
@@ -108,7 +129,7 @@ class RNNTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
     if context.executing_eagerly():
@@ -122,7 +143,7 @@ class RNNTest(test.TestCase):
           dtype=dtypes.float32,
           sequence_length=[[4]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSizeFromInput(self):
     cell = Plus1RNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -162,7 +183,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(None, outputs.shape[0].value)
       self.assertEqual(None, state.shape[0].value)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScalarStateIsAccepted(self):
     cell = ScalarStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -182,7 +203,29 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
     self.assertAllEqual(4, state)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
+  def testUnbalancedOutputIsAccepted(self):
+    cell = UnbalancedOutputRNNCell()
+    in_eager_mode = context.executing_eagerly()
+
+    if in_eager_mode:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+
+    with self.test_session() as sess:
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+      if not in_eager_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
+
+    self.assertIsInstance(outputs, tuple)
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs[0])
+    self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
+    self.assertAllEqual(4, state)
+
+  @test_util.run_in_graph_and_eager_modes
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -215,7 +258,7 @@ class RNNTest(test.TestCase):
     cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
     self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCellsBuild(self):
     f32 = dtypes.float32
     f64 = dtypes.float64
@@ -227,7 +270,34 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(rnn_cell_impl.GRUCell, f64, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
+  def testBasicLSTMCellInterchangeWithLSTMCell(self):
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      basic_cell = rnn_cell_impl.BasicLSTMCell(1)
+      basic_cell(array_ops.ones([1, 1]),
+                 state=basic_cell.zero_state(batch_size=1,
+                                             dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in basic_cell.variables])
+      self.evaluate(basic_cell._bias.assign([10.] * 4))
+      save = saver.Saver()
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = save.save(sess, prefix)
+
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      lstm_cell = rnn_cell_impl.LSTMCell(1, name="basic_lstm_cell")
+      lstm_cell(array_ops.ones([1, 1]),
+                state=lstm_cell.zero_state(batch_size=1,
+                                           dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in lstm_cell.variables])
+      save = saver.Saver()
+      save.restore(sess, save_path)
+      self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
 
 ######### Benchmarking RNN code
 

@@ -2731,7 +2731,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
       try:
         self._ResizeImageWithPad(x, target_height, target_width,
                                  use_tensor_inputs)
-      except Exception as e:
+      except Exception as e:  # pylint: disable=broad-except
         if err_msg not in str(e):
           raise
       else:

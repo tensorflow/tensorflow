@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -1669,17 +1670,19 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   shape = logits.get_shape()
   is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
 
-  if shape.ndims is 2 and is_last_dim:
-    return compute_op(logits, name=name)
-
-  # If dim is the last dimension, simply reshape the logits to a matrix and
-  # apply the internal softmax.
+  # TODO(phawkins): remove after 2018/8/27 and simplify this code.
+  softmax_accepts_r1_or_greater = compat.forward_compatible(2018, 8, 27)
+  reshape_required = (not softmax_accepts_r1_or_greater) and shape.ndims != 2
   if is_last_dim:
-    input_shape = array_ops.shape(logits)
-    logits = _flatten_outer_dims(logits)
-    output = compute_op(logits)
-    output = array_ops.reshape(output, input_shape, name=name)
-    return output
+    if reshape_required:
+      # If dim is the last dimension, simply reshape the logits to a matrix and
+      # apply the internal softmax.
+      input_shape = array_ops.shape(logits)
+      logits = _flatten_outer_dims(logits)
+      output = compute_op(logits)
+      output = array_ops.reshape(output, input_shape, name=name)
+      return output
+    return compute_op(logits, name=name)
 
   # If dim is not the last dimension, we have to do a reshape and transpose so
   # that we can still perform softmax on its last dimension.
@@ -1690,14 +1693,19 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
   shape_after_swap = array_ops.shape(logits)
 
-  # Reshape logits into a matrix.
-  logits = _flatten_outer_dims(logits)
+  if reshape_required:
+    # Reshape logits into a matrix.
+    logits = _flatten_outer_dims(logits)
 
-  # Do the actual softmax on its last dimension.
-  output = compute_op(logits)
+    # Do the actual softmax on its last dimension.
+    output = compute_op(logits)
 
-  # Transform back the output tensor.
-  output = array_ops.reshape(output, shape_after_swap)
+    # Transform back the output tensor.
+    output = array_ops.reshape(output, shape_after_swap)
+  else:
+    # Do the actual softmax on its last dimension.
+    output = compute_op(logits)
+
   output = _swap_axis(
       output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
@@ -2009,7 +2017,8 @@ def sparse_softmax_cross_entropy_with_logits(
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32`, or
+      `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2166,7 +2175,7 @@ def _calc_conv_flops(graph, node):
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
   filter_in_depth = int(filter_shape[2])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats(
       "flops",
       (output_count * filter_in_depth * filter_height * filter_width * 2))
@@ -2184,7 +2193,7 @@ def _calc_depthwise_conv_flops(graph, node):
   output_shape.assert_is_fully_defined()
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
@@ -2594,7 +2603,7 @@ def _calc_dilation2d_flops(graph, node):
   output_shape.assert_is_fully_defined()
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 

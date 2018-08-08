@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Add"
+  endpoint {
+    name: "math.add"
+  }
+  endpoint {
+    name: "add"
+    deprecated: true
+  }
+}

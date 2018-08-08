@@ -29,6 +29,7 @@ limitations under the License.
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_OpNameGetAttrType;

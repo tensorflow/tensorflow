@@ -179,6 +179,16 @@ class Compiler {
   ComputeBackendConfigs(const HloInstruction& hlo,
                         se::StreamExecutor* executor) const;
 
+  // Returns the backend configuration that the backend chooses by default for
+  // the given HLO. Returns no configuration if the backend does not support
+  // configurations for the given HLO.
+  //
+  // The stream executor is passed in to provide information about the hardware
+  // that the backend configurations would be targeting.
+  virtual std::unique_ptr<tensorflow::protobuf::Message>
+  ComputeDefaultBackendConfig(const HloInstruction& hlo,
+                              se::StreamExecutor* executor) const;
+
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

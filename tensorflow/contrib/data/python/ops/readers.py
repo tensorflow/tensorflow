@@ -286,11 +286,14 @@ def make_tf_record_dataset(
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
+  # NOTE(mrry): We set `drop_final_batch=True` when `num_epochs is None` to
+  # improve the shape inference, because it makes the batch dimension static.
+  # It is safe to do this because in that case we are repeating the input
+  # indefinitely, and all batches will be full-sized.
+  drop_final_batch = drop_final_batch or num_epochs is None
+
   if parser_fn is None:
-    if drop_final_batch:
-      dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
-    else:
-      dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(batch_size, drop_remainder=drop_final_batch)
   else:
     # TODO(josh11b): if num_parallel_parser_calls is None, use some function
     # of num cores instead of map_and_batch's default behavior of one batch.
@@ -326,6 +329,7 @@ def make_csv_dataset(
     num_parallel_parser_calls=2,
     sloppy=False,
     num_rows_for_inference=100,
+    compression_type=None,
 ):
   """Reads CSV files into a dataset.
 
@@ -399,6 +403,8 @@ def make_csv_dataset(
     num_rows_for_inference: Number of rows of a file to use for type inference
       if record_defaults is not provided. If None, reads all the rows of all
       the files. Defaults to 100.
+    compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+      `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no compression.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -461,7 +467,9 @@ def make_csv_dataset(
         use_quote_delim=use_quote_delim,
         na_value=na_value,
         select_cols=select_columns,
-        header=header)
+        header=header,
+        compression_type=compression_type,
+    )
 
   def map_fn(*columns):
     """Organizes columns into a features dictionary.
@@ -488,8 +496,13 @@ def make_csv_dataset(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
   # Apply batch before map for perf, because map has high overhead relative
-  # to the size of the computation in each map
-  dataset = dataset.batch(batch_size=batch_size)
+  # to the size of the computation in each map.
+  # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
+  # improve the shape inference, because it makes the batch dimension static.
+  # It is safe to do this because in that case we are repeating the input
+  # indefinitely, and all batches will be full-sized.
+  dataset = dataset.batch(batch_size=batch_size,
+                          drop_remainder=num_epochs is None)
   dataset = dataset.map(map_fn, num_parallel_calls=num_parallel_parser_calls)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
@@ -505,6 +518,7 @@ class CsvDataset(dataset_ops.Dataset):
   def __init__(self,
                filenames,
                record_defaults,
+               compression_type=None,
                buffer_size=None,
                header=False,
                field_delim=",",
@@ -540,11 +554,11 @@ class CsvDataset(dataset_ops.Dataset):
 
     The expected output of its iterations is:
     ```python
-    next = dataset.make_one_shot_iterator().get_next()
+    next_element = dataset.make_one_shot_iterator().get_next()
     with tf.Session() as sess:
       while True:
         try:
-          print(sess.run(nxt))
+          print(sess.run(next_element))
         except tf.errors.OutOfRangeError:
           break
 
@@ -562,6 +576,9 @@ class CsvDataset(dataset_ops.Dataset):
         both this and `select_columns` are specified, these must have the same
         lengths, and `column_defaults` is assumed to be sorted in order of
         increasing column index.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
+        compression.
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
         to buffer while reading files. Defaults to 4MB.
       header: (Optional.) A `tf.bool` scalar indicating whether the CSV file(s)
@@ -581,6 +598,11 @@ class CsvDataset(dataset_ops.Dataset):
     super(CsvDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
+    self._compression_type = convert.optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
     record_defaults = [
         constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
         for x in record_defaults
@@ -621,6 +643,7 @@ class CsvDataset(dataset_ops.Dataset):
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
         select_cols=self._select_cols,
+        compression_type=self._compression_type,
     )
 
   @property
@@ -757,10 +780,12 @@ def make_batched_features_dataset(file_pattern,
 
   dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
 
-  if drop_final_batch:
-    dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
-  else:
-    dataset = dataset.batch(batch_size)
+  # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
+  # improve the shape inference, because it makes the batch dimension static.
+  # It is safe to do this because in that case we are repeating the input
+  # indefinitely, and all batches will be full-sized.
+  dataset = dataset.batch(
+      batch_size, drop_remainder=drop_final_batch or num_epochs is None)
 
   # Parse `Example` tensors to a dictionary of `Feature` tensors.
   dataset = dataset.map(

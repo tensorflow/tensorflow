@@ -155,19 +155,38 @@ OpContext DescribeDepthwiseConv2dNative(int batch, int ix, int iy, int iz1,
 // Note that this assumes the NHWC data format.
 OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
                                             int iz2, int kx, int ky, int ox,
-                                            int oy, int oz,
-                                            bool has_side_input) {
+                                            int oy, int oz, bool has_side_input,
+                                            const string& data_format,
+                                            const string& filter_format) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op("FusedConv2DBiasActivation");
-  DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
-  DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+  auto* attr_data_format = op_context.op_info.mutable_attr();
+  SetAttrValue(data_format, &(*attr_data_format)["data_format"]);
+  auto* attr_filter_format = op_context.op_info.mutable_attr();
+  SetAttrValue(filter_format, &(*attr_filter_format)["filter_format"]);
+  if (data_format == "NHWC") {
+    DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
+  } else {
+    // Use the NCHW format.
+    DescribeTensor4D(batch, iz1, ix, iy, op_context.op_info.add_inputs());
+  }
+  if (filter_format == "HWIO") {
+    DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+  } else {
+    // Use the OIHW format.
+    DescribeTensor4D(oz, iz2, kx, ky, op_context.op_info.add_inputs());
+  }
   DescribeTensor1D(oz, op_context.op_info.add_inputs());
 
   // Add the side_input, if any.
   auto side_input = op_context.op_info.add_inputs();
   if (has_side_input) {
-    DescribeTensor4D(batch, ox, oy, oz, side_input);
+    if (data_format == "NHWC") {
+      DescribeTensor4D(batch, ox, oy, oz, side_input);
+    } else {
+      DescribeTensor4D(batch, oz, ox, oy, side_input);
+    }
   }
 
   // Add the scaling tensors.
@@ -549,23 +568,77 @@ TEST_F(OpLevelCostEstimatorTest, ExecutionTimeSumOrMax) {
   SetComputeMemoryOverlap(false);  // Set it back to default.
 }
 
-TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationExecutionTime) {
+TEST_F(OpLevelCostEstimatorTest,
+       FusedConv2DBiasActivationNCHW_HWIO_NoSideInput) {
   auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
-      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true));
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ false,
+      "NCHW", "HWIO"));
+  EXPECT_EQ(Costs::Duration(825345), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355321038), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(356146383), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_HWIO) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NCHW", "HWIO"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
   EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
   EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
   EXPECT_FALSE(cost.inaccurate);
 }
 
-TEST_F(OpLevelCostEstimatorTest,
-       FusedConv2DBiasActivationNoSideInputExecutionTime) {
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_OIHW) {
   auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
-      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ false));
-  EXPECT_EQ(Costs::Duration(825345), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355321038), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(356146383), cost.execution_time);
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NCHW", "OIHW"));
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
   EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNHWC_HWIO) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NHWC", "HWIO"));
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNHWC_OIHW) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NHWC", "OIHW"));
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+// TODO(yaozhang): Update once NCHW_VECT_C is supported.
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_VECT_C_OIHW) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NCHW_VECT_C", "OIHW"));
+  EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+  EXPECT_TRUE(cost.inaccurate);
+}
+
+// TODO(yaozhang): Update once OIHW_VECT_I is supported.
+TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_OIHW_VECT_I) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NCHW", "OIHW_VECT_I"));
+  EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+  EXPECT_TRUE(cost.inaccurate);
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {
@@ -655,8 +728,8 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   TensorProto tensor_proto;
   TensorShapeProto tensor_shape_proto;
 
-  // Dimension larger than max value; should fail while converting to Tensor
-  // class.
+  // Dimension larger than max value; should fail while converting to
+  // Tensor class.
   tensor_proto.mutable_tensor_shape()->add_dim()->set_size(255);
   EXPECT_FALSE(
       GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
@@ -676,8 +749,8 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   // Check GetTensorShapeProtoFromTensorProto() resturns correct values.
   {
     std::vector<int64> shape_expected = {10, 20, 30, 40};
-    GetTensorProto(DT_INT32, {4}, shape_expected, /*tensor_content=*/false,
-                   &tensor_proto);
+    GetTensorProto(DT_INT32, {4}, shape_expected,
+                   /*tensor_content=*/false, &tensor_proto);
     EXPECT_TRUE(
         GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
     ExpectTensorShape(shape_expected, tensor_shape_proto);
@@ -685,8 +758,8 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
 
   {
     std::vector<int64> shape_expected = {40, 20, 90, 40};
-    GetTensorProto(DT_INT64, {4}, shape_expected, /*tensor_content=*/false,
-                   &tensor_proto);
+    GetTensorProto(DT_INT64, {4}, shape_expected,
+                   /*tensor_content=*/false, &tensor_proto);
     EXPECT_TRUE(
         GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
     ExpectTensorShape(shape_expected, tensor_shape_proto);
@@ -694,8 +767,8 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
 
   {
     std::vector<int64> shape_expected = {10, 20, 30, 40};
-    GetTensorProto(DT_INT32, {4}, shape_expected, /*tensor_content=*/true,
-                   &tensor_proto);
+    GetTensorProto(DT_INT32, {4}, shape_expected,
+                   /*tensor_content=*/true, &tensor_proto);
     EXPECT_TRUE(
         GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
     ExpectTensorShape(shape_expected, tensor_shape_proto);
@@ -703,8 +776,8 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
 
   {
     std::vector<int64> shape_expected = {40, 20, 90, 40};
-    GetTensorProto(DT_INT64, {4}, shape_expected, /*tensor_content=*/true,
-                   &tensor_proto);
+    GetTensorProto(DT_INT64, {4}, shape_expected,
+                   /*tensor_content=*/true, &tensor_proto);
     EXPECT_TRUE(
         GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
     ExpectTensorShape(shape_expected, tensor_shape_proto);

@@ -21,11 +21,13 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
+from tensorflow.contrib.autograph.pyct import cfg
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis import activity
 from tensorflow.contrib.autograph.pyct.static_analysis import live_values
+from tensorflow.contrib.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.contrib.autograph.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
@@ -39,22 +41,22 @@ class LiveValuesResolverTest(test.TestCase):
                          literals=None,
                          arg_types=None):
     literals = literals or {}
-    arg_types = arg_types or {}
     node, source = parser.parse_entity(test_fn)
-    ctx = context.EntityContext(
-        namer=None,
+    entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
-        owner_type=None,
-        recursive=True)
+        owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, ctx)
-    node = live_values.resolve(node, ctx, literals)
-    node = type_info.resolve(node, ctx)
-    node = live_values.resolve(node, ctx, literals)
+    graphs = cfg.build(node)
+    node = activity.resolve(node, entity_info)
+    node = reaching_definitions.resolve(node, entity_info, graphs,
+                                        reaching_definitions.Definition)
+    node = live_values.resolve(node, entity_info, literals)
+    node = type_info.resolve(node, entity_info)
+    node = live_values.resolve(node, entity_info, literals)
     return node
 
   def test_literals(self):

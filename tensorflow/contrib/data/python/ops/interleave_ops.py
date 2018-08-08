@@ -153,7 +153,7 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
   return _apply_fn
 
 
-class DirectedInterleaveDataset(dataset_ops.Dataset):
+class _DirectedInterleaveDataset(dataset_ops.Dataset):
   """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
 
   def __init__(self, selector_input, data_inputs):
@@ -236,7 +236,7 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   selector_input = dataset_ops.Dataset.zip(
       (logits_ds, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
 
-  return DirectedInterleaveDataset(selector_input, datasets)
+  return _DirectedInterleaveDataset(selector_input, datasets)
 
 
 def choose_from_datasets(datasets, choice_dataset):
@@ -280,4 +280,4 @@ def choose_from_datasets(datasets, choice_dataset):
           and choice_dataset.output_classes == ops.Tensor):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
-  return DirectedInterleaveDataset(choice_dataset, datasets)
+  return _DirectedInterleaveDataset(choice_dataset, datasets)

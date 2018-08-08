@@ -15,8 +15,8 @@ package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu:__subpackages__",
     ],
 )
 
@@ -37,16 +37,17 @@ cc_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
+        "python/tpu/error_handling.py",
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
-        "python/tpu/tpu_system_metadata.py",
         "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",
-        ":tpu_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -133,7 +134,7 @@ py_library(
 
 tf_custom_op_py_library(
     name = "tpu_py",
-    srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
+    srcs = glob(["python/ops/*.py"]),
     dso = [":python/ops/_tpu_ops.so"],
     kernels = [
         ":all_ops",
@@ -152,11 +153,53 @@ tf_custom_op_py_library(
 
 py_library(
     name = "tpu",
-    srcs = ["python/tpu/__init__.py"],
+    srcs = [
+        "__init__.py",
+        "python/tpu/__init__.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
+        ":keras_support",  # split out to avoid cycle with tpu_strategy
         ":tpu_estimator",
         ":tpu_lib",
+    ],
+)
+
+py_library(
+    name = "keras_support",
+    srcs = [
+        "python/tpu/keras_support.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//cloud/vmm/testing/tests/tpu:__subpackages__",
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//third_party/cloud_tpu/models/keras:__subpackages__",
+    ],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/distribute",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -166,7 +209,6 @@ py_library(
         "python/tpu/__init__.py",
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
-        "python/tpu/keras_support.py",
         "python/tpu/session_support.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
@@ -174,6 +216,7 @@ py_library(
         "python/tpu/tpu_function.py",
         "python/tpu/tpu_optimizer.py",
         "python/tpu/tpu_sharding.py",
+        "python/tpu/tpu_system_metadata.py",
         "python/tpu/training_loop.py",
     ],
     srcs_version = "PY2AND3",
@@ -181,6 +224,7 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -303,6 +347,16 @@ tf_py_test(
     additional_deps = [
         ":tpu_estimator",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_py_test(
+    name = "topology_test",
+    size = "small",
+    srcs = ["python/tpu/topology_test.py"],
+    additional_deps = [
+        ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
 )

@@ -49,7 +49,7 @@ details::OperatorKey GetOperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   string custom_code;
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     custom_code = unsupported_op.tensorflow_op;
@@ -211,7 +211,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
       ordered_opcodes[op_index] =
           CreateOperatorCode(*builder, builtin_ops[name], 0, op_version);
     } else {
-      // This could be a kTensorFlowUnsupported, in which case we should be
+      // This could be a kUnsupported, in which case we should be
       // able to retrieve the original Tensorflow name from the OperatorKey, or
       // this could be a proper TOCO operator that is completely unknown to TF
       // Lite.
@@ -268,7 +268,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
                                   : tflite_op_it->second.get();
 
     // This is a custom op unless we can find it in ops_by_type, and even then
-    // it could be a custom op (such as kTensorFlowUnsupported).
+    // it could be a custom op (such as kUnsupported).
     auto options = Options::Custom(0);
 
     std::vector<bool> mutating_input_variables;
@@ -336,17 +336,13 @@ void Export(
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
 
-  const string fake_quant_operation_name = "FAKE_QUANT";
-
-  if (error_summary.count(fake_quant_operation_name) != 0) {
-    LOG(ERROR)
-        << fake_quant_operation_name
-        << " operation was not converted. If running quantized make sure you "
-           "are passing --inference_type=QUANTIZED_UINT8 and values for "
-           "--std_values and --mean_values.";
-    // Remove the fake quant operation from the errors, since it shouldn't
-    // be provided a custom implementation.
-    error_summary.erase(fake_quant_operation_name);
+  for (const auto& op : model.operators) {
+    if (op->type == OperatorType::kFakeQuant) {
+      LOG(WARNING) << "FAKE_QUANT operation " << LogName(*op)
+                   << " was not converted. If running quantized make sure you "
+                      "are passing --inference_type=QUANTIZED_UINT8 and values "
+                      "for --std_values and --mean_values.";
+    }
   }
   if (!allow_custom_ops && !error_summary.empty()) {
     // Remove ExpandDims and ReorderAxes from unimplemented list unless they

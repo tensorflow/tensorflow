@@ -138,6 +138,13 @@ REGISTER_OP("RandomGamma")
       return Status::OK();
     });
 
+REGISTER_OP("RandomGammaGrad")
+    .Input("alpha: T")
+    .Input("sample: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("RandomPoisson")
     .SetIsStateful()
     .Input("shape: S")

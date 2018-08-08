@@ -299,7 +299,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
       return x
     return control_flow_ops.with_dependencies([
         check_ops.assert_non_positive(x),
-        distribution_util.assert_close(
+        check_ops.assert_near(
             array_ops.zeros([], dtype=self.dtype),
             math_ops.reduce_logsumexp(x, axis=[-1])),
     ], x)

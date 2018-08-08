@@ -1,0 +1,27 @@
+path: "tensorflow.RunMetadata"
+tf_proto {
+  descriptor {
+    name: "RunMetadata"
+    field {
+      name: "step_stats"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.StepStats"
+    }
+    field {
+      name: "cost_graph"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.CostGraphDef"
+    }
+    field {
+      name: "partition_graphs"
+      number: 3
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GraphDef"
+    }
+  }
+}

@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/contrib/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/contrib/lite/tools/benchmark/command_line_flags.h"
 #include "tensorflow/core/util/stats_calculator.h"
 
@@ -61,17 +62,6 @@ class BenchmarkResults {
   uint64_t input_bytes_;
   tensorflow::Stat<int64_t> warmup_time_us_;
   tensorflow::Stat<int64_t> inference_time_us_;
-};
-
-struct BenchmarkParams {
-  BenchmarkParams()
-      : num_runs(50), warmup_runs(1), run_delay(-1.0), num_threads(1) {}
-  int num_runs;
-  int warmup_runs;
-  float run_delay;
-  int num_threads;
-  std::string benchmark_name;
-  std::string output_prefix;
 };
 
 class BenchmarkListener {
@@ -130,26 +120,38 @@ class BenchmarkLoggingListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 };
 
+template <typename T>
+Flag CreateFlag(const char* name, BenchmarkParams* params,
+                const std::string& usage) {
+  return Flag(name, [params, name](const T& val) { params->Set<T>(name, val); },
+              params->Get<T>(name), usage);
+}
+
 // Benchmarks a model.
 //
 // Subclasses need to implement initialization and running of the model.
 // The results can be collected by adding BenchmarkListener(s).
 class BenchmarkModel {
  public:
+  static BenchmarkParams DefaultParams();
+  BenchmarkModel();
+  BenchmarkModel(BenchmarkParams params) : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
-  bool ParseFlags(int argc, char** argv);
   virtual void Init() = 0;
   void Run(int argc, char** argv);
+  virtual void Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
 
  protected:
-  virtual void LogFlags();
-  virtual bool ValidateFlags() { return true; }
+  virtual void LogParams();
+  virtual bool ValidateParams();
+  bool ParseFlags(int argc, char** argv);
   virtual std::vector<Flag> GetFlags();
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int num_times, RunType run_type);
+  virtual void PrepareInputsAndOutputs();
   virtual void RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;

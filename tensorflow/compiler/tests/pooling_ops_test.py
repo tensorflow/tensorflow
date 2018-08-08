@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -69,7 +69,7 @@ def GetTestConfigs():
   return test_configs
 
 
-class PoolingTest(XLATestCase):
+class PoolingTest(xla_test.XLATestCase):
 
   def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, expected):
@@ -288,7 +288,7 @@ class PoolingTest(XLATestCase):
         expected=expected_output)
 
 
-class PoolGradTest(XLATestCase):
+class PoolGradTest(xla_test.XLATestCase):
 
   CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
 

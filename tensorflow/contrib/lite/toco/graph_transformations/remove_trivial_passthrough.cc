@@ -97,7 +97,7 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
         "Cannot remove %s, neither its main input nor its output may be "
         "discarded",
         LogName(*passthru_op));
-    if (passthru_op->type != OperatorType::kTensorFlowReshape &&
+    if (passthru_op->type != OperatorType::kReshape &&
         model->GetArray(main_input_name).has_shape()) {
       // We can't remove either array but we can remove the op. Converting it to
       // a reshape gives us some hope of later on fixing that (either in the

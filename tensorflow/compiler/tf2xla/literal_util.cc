@@ -17,28 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
-
-Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
-  xla::Shape literal_shape;
-  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
-      host_tensor.dtype(), host_tensor.shape(), &literal_shape));
-
-  *literal = xla::Literal(literal_shape);
-
-  // memcpy over the payload ...
-  // TODO(phawkins): handle string types.
-  size_t total_bytes = host_tensor.TotalBytes();
-  if (total_bytes > 0) {
-    void* dst_ptr = literal->untyped_data();
-    const void* src_ptr = DMAHelper::base(&host_tensor);
-    memcpy(dst_ptr, src_ptr, total_bytes);
-  }
-  return Status::OK();
-}
 
 Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
                                     xla::BorrowingLiteral* literal) {

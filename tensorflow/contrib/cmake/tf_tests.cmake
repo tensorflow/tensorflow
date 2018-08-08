@@ -193,6 +193,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     # flaky test
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/model_analyzer_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/map_dataset_op_test.py"
     # Fails because uses data dependencies with bazel
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/sparse_image_warp_test.py"
@@ -216,7 +217,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     ${tensorflow_source_dir}/tensorflow/python/kernel_tests/duplicate_op_test.py
     ${tensorflow_source_dir}/tensorflow/python/kernel_tests/invalid_op_test.py
     ${tensorflow_source_dir}/tensorflow/python/kernel_tests/ackermann_test.py
-
+    # Tests too large to run.
+    ${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg/linear_operator_low_rank_update_test.py
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -325,8 +327,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/replicate_model_fn_test.py"  # b/71901810
       # Broken io_utils_test
       "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/io_utils_test.py"  # b/72894325
-      # OOM
-      "${tensorflow_source_dir}/tensorflow/python/training/saver_large_variable_test.py"  # b/110210559
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

@@ -46,17 +46,17 @@ def ignore_errors():
   """
 
   def _apply_fn(dataset):
-    return IgnoreErrorsDataset(dataset)
+    return _IgnoreErrorsDataset(dataset)
 
   return _apply_fn
 
 
-class IgnoreErrorsDataset(dataset_ops.Dataset):
+class _IgnoreErrorsDataset(dataset_ops.Dataset):
   """A `Dataset` that silently ignores errors when computing its input."""
 
   def __init__(self, input_dataset):
     """See `Dataset.ignore_errors()` for details."""
-    super(IgnoreErrorsDataset, self).__init__()
+    super(_IgnoreErrorsDataset, self).__init__()
     self._input_dataset = input_dataset
 
   def _as_variant_tensor(self):

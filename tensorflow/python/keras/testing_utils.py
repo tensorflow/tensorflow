@@ -183,3 +183,4 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 
   # for further checks in the caller function
   return actual_output
+

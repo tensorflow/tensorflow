@@ -77,7 +77,10 @@ class SCOPED_LOCKABLE mutex_lock {
 
   // Manually nulls out the source to prevent double-free.
   // (std::move does not null the source pointer by default.)
-  mutex_lock(mutex_lock&& ml) noexcept : mu_(ml.mu_) { ml.mu_ = nullptr; }
+  mutex_lock(mutex_lock&& ml) noexcept EXCLUSIVE_LOCK_FUNCTION(ml.mu_)
+      : mu_(ml.mu_) {
+    ml.mu_ = nullptr;
+  }
   ~mutex_lock() UNLOCK_FUNCTION() {
     if (mu_ != nullptr) {
       mu_->unlock();
@@ -113,7 +116,8 @@ class SCOPED_LOCKABLE tf_shared_lock {
 
   // Manually nulls out the source to prevent double-free.
   // (std::move does not null the source pointer by default.)
-  explicit tf_shared_lock(tf_shared_lock&& ml) noexcept : mu_(ml.mu_) {
+  tf_shared_lock(tf_shared_lock&& ml) noexcept SHARED_LOCK_FUNCTION(ml.mu_)
+      : mu_(ml.mu_) {
     ml.mu_ = nullptr;
   }
   ~tf_shared_lock() UNLOCK_FUNCTION() {
