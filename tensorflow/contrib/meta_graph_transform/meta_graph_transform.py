@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Apply graph_transforms tool to MetaGraphDefs."""
+"""Apply graph_transforms tool to MetaGraphDefs.
+
+@@meta_graph_transform
+"""
 
 from __future__ import absolute_import
 from __future__ import division

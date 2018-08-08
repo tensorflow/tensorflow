@@ -30,12 +30,10 @@ constexpr char kLoopOptimizer[] = "LoopOptimizer";
 
 class LoopOptimizer : public GraphOptimizer {
  public:
-  LoopOptimizer()
-      : opt_level_(RewriterConfig::ON),
-        options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
-  explicit LoopOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level),
-        options_(LoopOptimizerOptions::Default(RewriterConfig::ON)) {}
+  LoopOptimizer();
+
+  explicit LoopOptimizer(RewriterConfig::Toggle opt_level,
+                         DeviceBase* cpu_device);
 
   ~LoopOptimizer() override {}
 
@@ -52,8 +50,9 @@ class LoopOptimizer : public GraphOptimizer {
 
   // Granular control for loop optimizer stages.
   struct LoopOptimizerOptions {
-    bool enable_loop_invariant_node_motion = true;
+    bool enable_loop_invariant_node_motion = false;
     bool enable_stack_push_removal = true;
+    bool enable_dead_branch_removal = true;
 
     static LoopOptimizerOptions Default(RewriterConfig::Toggle opt_level) {
       LoopOptimizerOptions options;
@@ -61,8 +60,13 @@ class LoopOptimizer : public GraphOptimizer {
     }
   };
 
+  Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
+                            const NodeMap& node_map, GraphDef* optimized_graph);
+
   RewriterConfig::Toggle opt_level_;
+  DeviceBase* cpu_device_;
   LoopOptimizerOptions options_;
+  std::unique_ptr<ResourceMgr> resource_mgr_;
 };
 
 }  // end namespace grappler

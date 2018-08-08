@@ -67,13 +67,8 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
-#ifdef EIGEN_VECTORIZE_AVX512
   // Align to 64 byte boundary.
   static constexpr size_t kAllocatorAlignment = 64;
-#else
-  // Align to 32 byte boundary.
-  static constexpr size_t kAllocatorAlignment = 32;
-#endif
 
   virtual ~Allocator();
 
@@ -381,16 +376,18 @@ struct AllocatorAttributes {
   int32 scope_id = 0;
 };
 
-// Returns a trivial implementation of Allocator which uses the system
-// default malloc. The returned allocator is a process singleton.
+// Returns a trivial implementation of Allocator, which is a process singleton.
+// Access through this function is only intended for use in tests and auxiliary
+// processing.  Performance sensitive uses should always obtain allocators from
+// ProcessState.
 Allocator* cpu_allocator();
 
-// If 'enable' is true, the process-wide cpu allocator collects
+// If 'enable' is true, the default CPU allocator implementation will collect
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
-// If 'enable' is true, the process-wide cpu allocator collects full
-// statistics. By default, it's disabled.
+// If 'enable' is true, the default CPU allocator implementation will collect
+// full statistics. By default, it's disabled.
 void EnableCPUAllocatorFullStats(bool enable);
 
 // Abstract interface of an object that does the underlying suballoc/free of

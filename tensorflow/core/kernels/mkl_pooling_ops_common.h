@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_POOLING_OPS_COMMON_H_
 
 #ifdef INTEL_MKL
-#include <string>
+#include <memory>
 #include <vector>
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
@@ -31,6 +31,326 @@ using mkldnn::stream;
 #endif
 
 namespace tensorflow {
+
+#ifndef INTEL_MKL_ML
+
+using mkldnn::memory;
+using mkldnn::pooling_avg;
+using mkldnn::pooling_avg_exclude_padding;
+using mkldnn::pooling_avg_include_padding;
+using mkldnn::pooling_max;
+using mkldnn::prop_kind;
+
+struct MklPoolingParams {
+  memory::dims src_dims;
+  memory::dims dst_dims;
+  memory::dims filter_dims;
+  memory::dims strides;
+  memory::dims padding_left;
+  memory::dims padding_right;
+  mkldnn::algorithm alg_kind;
+
+  MklPoolingParams(memory::dims src_dims, memory::dims dst_dims,
+                   memory::dims filter_dims, memory::dims strides,
+                   memory::dims padding_left, memory::dims padding_right,
+                   mkldnn::algorithm alg_kind)
+      : src_dims(src_dims),
+        dst_dims(dst_dims),
+        filter_dims(filter_dims),
+        strides(strides),
+        padding_left(padding_left),
+        padding_right(padding_right),
+        alg_kind(alg_kind) {}
+};
+
+template <typename T>
+class MklPoolingFwdPrimitive : public MklPrimitive {
+ public:
+  explicit MklPoolingFwdPrimitive(const MklPoolingParams& fwdParams)
+      : cpu_engine_(engine::cpu, 0) {
+    context_.fwd_stream.reset(new stream(stream::kind::eager));
+    if (context_.fwd == nullptr) Setup(fwdParams);
+  }
+
+  ~MklPoolingFwdPrimitive() {}
+
+  // Pooling forward execute
+  //   src_data:  input data buffer of src
+  //   ws_data:   output data buffer of workspace
+  //   dst_data:  output data buffer of dst
+  void Execute(const T* src_data, T* dst_data, void* ws_data = nullptr);
+
+  std::shared_ptr<mkldnn::pooling_forward::primitive_desc> GetPoolingFwdPd()
+      const {
+    return context_.fwd_pd;
+  }
+
+  memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
+
+  memory::format GetDstMemoryFormat() const { return context_.dst_fmt; }
+
+ private:
+  void Setup(const MklPoolingParams& fwdParams);
+
+  struct PoolingFwdContext {
+    // algorithm
+    mkldnn::algorithm alg_kind;
+
+    // expected memory format
+    memory::format src_fmt;
+    memory::format dst_fmt;
+    memory::format ws_fmt;
+
+    // workspace shape
+    memory::dims ws_dims;
+    memory::data_type ws_dt;
+    size_t ws_size;
+
+    // MKL-DNN memory, just dummy data
+    std::shared_ptr<mkldnn::memory> ws_mem;
+    std::shared_ptr<mkldnn::memory> src_mem;
+    std::shared_ptr<mkldnn::memory> dst_mem;
+
+    // desc & primitive desc
+    std::shared_ptr<mkldnn::pooling_forward::desc> fwd_desc;
+    std::shared_ptr<mkldnn::pooling_forward::primitive_desc> fwd_pd;
+
+    // memory desc
+    std::shared_ptr<mkldnn::memory::desc> src_md;
+    std::shared_ptr<mkldnn::memory::desc> dst_md;
+
+    // Pooling primitive
+    std::shared_ptr<mkldnn::pooling_forward> fwd;
+    std::shared_ptr<mkldnn::stream> fwd_stream;
+    std::vector<mkldnn::primitive> fwd_primitives;
+
+    PoolingFwdContext()
+        : src_fmt(memory::format::any),
+          dst_fmt(memory::format::any),
+          ws_fmt(memory::format::any),
+          ws_mem(nullptr),
+          src_mem(nullptr),
+          dst_mem(nullptr),
+          fwd_desc(nullptr),
+          fwd_pd(nullptr),
+          src_md(nullptr),
+          dst_md(nullptr),
+          fwd(nullptr),
+          fwd_stream(nullptr) {}
+  };
+
+  struct PoolingFwdContext context_;
+  engine cpu_engine_;
+};
+
+template <typename T>
+class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
+ public:
+  static MklPoolingFwdPrimitive<T>* Get(const MklPoolingParams& fwdParams) {
+    MklPoolingFwdPrimitive<T>* pooling_forward = nullptr;
+
+    // Get pooling primitive from the pool
+    pooling_forward = static_cast<MklPoolingFwdPrimitive<T>*>(
+        MklPoolingFwdPrimitiveFactory<T>::GetInstance().GetPoolingFwd(
+            fwdParams));
+
+    if (pooling_forward == nullptr) {
+      pooling_forward = new MklPoolingFwdPrimitive<T>(fwdParams);
+      MklPoolingFwdPrimitiveFactory<T>::GetInstance().SetPoolingFwd(
+          fwdParams, pooling_forward);
+    }
+    return pooling_forward;
+  }
+
+  static MklPoolingFwdPrimitiveFactory& GetInstance() {
+    static MklPoolingFwdPrimitiveFactory instance_;
+    return instance_;
+  }
+
+ private:
+  MklPoolingFwdPrimitiveFactory() {}
+  ~MklPoolingFwdPrimitiveFactory() {}
+
+  // The key to be created will be used to get/set pooling
+  // primitive op from reuse perspective.
+  // A pooling key is a string which concates key parameters
+  // as well as algorithm kind (max versus avg).
+  static std::string CreateKey(const MklPoolingParams& fwdParams) {
+    std::string prefix = "pooling_fwd";
+    FactoryKeyCreator key_creator;
+    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(fwdParams.src_dims);
+    key_creator.AddAsKey(fwdParams.dst_dims);
+    key_creator.AddAsKey(fwdParams.filter_dims);
+    key_creator.AddAsKey(fwdParams.strides);
+    key_creator.AddAsKey(fwdParams.padding_left);
+    key_creator.AddAsKey(fwdParams.padding_right);
+    key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
+    return key_creator.GetKey();
+  }
+
+  MklPrimitive* GetPoolingFwd(const MklPoolingParams& fwdParams) {
+    std::string key = CreateKey(fwdParams);
+    return this->GetOp(key);
+  }
+
+  void SetPoolingFwd(const MklPoolingParams& fwdParams, MklPrimitive* op) {
+    std::string key = CreateKey(fwdParams);
+    this->SetOp(key, op);
+  }
+};
+
+template <typename T>
+class MklPoolingBwdPrimitive : public MklPrimitive {
+ public:
+  explicit MklPoolingBwdPrimitive(const MklPoolingParams& bwdParams)
+      : cpu_engine(engine::cpu, 0) {
+    context_.bwd_stream.reset(new stream(stream::kind::eager));
+    if (context_.bwd == nullptr) Setup(bwdParams);
+  }
+
+  ~MklPoolingBwdPrimitive() {}
+
+  // Pooling backward execute
+  //   diff_dst_data:  input data buffer of diff_dst
+  //   diff_src_data:  output data buffer of diff_src
+  //   ws_data:        input data buffer of workspace
+  void Execute(const T* diff_dst_data, T* diff_src_data,
+               const void* ws_data = nullptr);
+
+ public:
+  std::shared_ptr<mkldnn::pooling_forward::primitive_desc> GetPoolingFwdPd()
+      const {
+    return context_.fwd_pd;
+  }
+  std::shared_ptr<mkldnn::pooling_backward::primitive_desc> GetPoolingBwdPd()
+      const {
+    return context_.bwd_pd;
+  }
+
+  memory::format GetDiffDstFormat() const { return context_.diff_dst_fmt; }
+
+  mkldnn::memory::data_type GetWorkspaceDataType() const {
+    return context_.ws_dt;
+  }
+  memory::format GetWorkspaceFormat() const { return context_.ws_fmt; }
+
+ private:
+  void Setup(const MklPoolingParams& bwdParams);
+
+  // Primitive reuse context for pooling bwd ops
+  struct PoolingBwdContext {
+    // algorithm
+    mkldnn::algorithm alg_kind;
+
+    // expected memory format
+    mkldnn::memory::format diff_src_fmt;
+    mkldnn::memory::format diff_dst_fmt;
+    mkldnn::memory::format ws_fmt;
+
+    // workspace attribute
+    mkldnn::memory::dims ws_dims;
+    mkldnn::memory::data_type ws_dt;
+
+    // MKL-DNN memory
+    std::shared_ptr<mkldnn::memory> ws_mem;
+    std::shared_ptr<mkldnn::memory> diff_src_mem;
+    std::shared_ptr<mkldnn::memory> diff_dst_mem;
+
+    // memory desc
+    std::shared_ptr<mkldnn::memory::desc> diff_src_md;
+    std::shared_ptr<mkldnn::memory::desc> diff_dst_md;
+
+    // desc & primitive desc
+    std::shared_ptr<mkldnn::pooling_forward::desc> fwd_desc;
+    std::shared_ptr<mkldnn::pooling_backward::desc> bwd_desc;
+    std::shared_ptr<mkldnn::pooling_forward::primitive_desc> fwd_pd;
+    std::shared_ptr<mkldnn::pooling_backward::primitive_desc> bwd_pd;
+
+    // pooling primitive
+    std::shared_ptr<mkldnn::pooling_backward> bwd;
+    std::shared_ptr<mkldnn::stream> bwd_stream;
+
+    std::vector<mkldnn::primitive> bwd_primitives;
+
+    PoolingBwdContext()
+        : diff_src_fmt(memory::format::any),
+          diff_dst_fmt(memory::format::any),
+          ws_fmt(memory::format::any),
+          ws_mem(nullptr),
+          diff_src_mem(nullptr),
+          diff_dst_mem(nullptr),
+          diff_src_md(nullptr),
+          diff_dst_md(nullptr),
+          fwd_desc(nullptr),
+          bwd_desc(nullptr),
+          fwd_pd(nullptr),
+          bwd_pd(nullptr),
+          bwd(nullptr),
+          bwd_stream(nullptr) {}
+  };
+
+  struct PoolingBwdContext context_;
+  engine cpu_engine;
+};
+
+template <typename T>
+class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
+ public:
+  static MklPoolingBwdPrimitive<T>* Get(const MklPoolingParams& bwdParams) {
+    MklPoolingBwdPrimitive<T>* pooling_backward = nullptr;
+
+    // Find a pooling backward primitive from the pool
+    // If it does not exist, create a new one
+    pooling_backward = static_cast<MklPoolingBwdPrimitive<T>*>(
+        MklPoolingBwdPrimitiveFactory<T>::GetInstance().GetPoolingBwd(
+            bwdParams));
+    if (pooling_backward == nullptr) {
+      pooling_backward = new MklPoolingBwdPrimitive<T>(bwdParams);
+      MklPoolingBwdPrimitiveFactory<T>::GetInstance().SetPoolingBwd(
+          bwdParams, pooling_backward);
+    }
+    return pooling_backward;
+  }
+
+  static MklPoolingBwdPrimitiveFactory& GetInstance() {
+    static MklPoolingBwdPrimitiveFactory instance_;
+    return instance_;
+  }
+
+ private:
+  MklPoolingBwdPrimitiveFactory() {}
+  ~MklPoolingBwdPrimitiveFactory() {}
+
+  // The key to be created will be used to get/set pooling
+  // primitive op from reuse perspective.
+  // A pooling key is a string which concates key parameters
+  // as well as algorithm kind (max versus avg).
+  static std::string CreateKey(const MklPoolingParams& bwdParams) {
+    std::string prefix = "pooling_bwd";
+    FactoryKeyCreator key_creator;
+    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(bwdParams.src_dims);
+    key_creator.AddAsKey(bwdParams.dst_dims);
+    key_creator.AddAsKey(bwdParams.filter_dims);
+    key_creator.AddAsKey(bwdParams.strides);
+    key_creator.AddAsKey(bwdParams.padding_left);
+    key_creator.AddAsKey(bwdParams.padding_right);
+    key_creator.AddAsKey<int>(static_cast<int>(bwdParams.alg_kind));
+    return key_creator.GetKey();
+  }
+
+  MklPrimitive* GetPoolingBwd(const MklPoolingParams& bwdParams) {
+    std::string key = CreateKey(bwdParams);
+    return this->GetOp(key);
+  }
+
+  void SetPoolingBwd(const MklPoolingParams& bwdParams, MklPrimitive* op) {
+    std::string key = CreateKey(bwdParams);
+    this->SetOp(key, op);
+  }
+};
+#endif
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -163,6 +483,41 @@ class MklPoolingOpBase : public OpKernel {
     }
   }
 
+  void PoolParamsToDims(const MklPoolParameters* pool_params,
+                        memory::dims* filter_dims, memory::dims* strides,
+                        memory::dims* padding_left,
+                        memory::dims* padding_right) {
+    *filter_dims = {pool_params->window_rows, pool_params->window_cols};
+    *strides = {pool_params->row_stride, pool_params->col_stride};
+    *padding_left = {static_cast<int>(pool_params->pad_top),
+                     static_cast<int>(pool_params->pad_left)};
+    *padding_right = {static_cast<int>(pool_params->pad_bottom),
+                      static_cast<int>(pool_params->pad_right)};
+  }
+
+  void AllocateEmptyOutputTensor(OpKernelContext* context,
+                                 const int kOutputIndex,
+                                 MklPoolParameters* pool_params,
+                                 const memory::dims output_dims_mkl_order,
+                                 Tensor** output_tensor) {
+    MklDnnShape output_mkl_shape;
+    output_mkl_shape.SetMklTensor(false);
+    TensorShape output_tf_shape;
+    if (pool_params->data_format == TensorFormat::FORMAT_NCHW) {
+      output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+    } else {
+      memory::dims output_dims_NHWC_order;
+      output_dims_NHWC_order = {pool_params->tensor_in_batch,
+                                static_cast<int>(pool_params->out_height),
+                                static_cast<int>(pool_params->out_width),
+                                pool_params->out_depth};
+      output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+    }
+    AllocateOutputSetMklShape(context, kOutputIndex, output_tensor,
+                              output_tf_shape, output_mkl_shape);
+    CHECK_NOTNULL(output_tensor);
+  }
+
   // Checks to make sure that the memory we need to allocate
   // is a multiple of sizeof(T)
   // returns the number of elements
@@ -199,13 +554,15 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
     CHECK_NOTNULL(pool_params);
     CHECK_NOTNULL(dnn_data_input);
     TensorShape input_tensor_shape = input_tensor.shape();
-    memory::desc input_md =
+    if (input_tensor.NumElements() != 0) {
+      memory::desc input_md =
         input_mkl_shape.IsMklTensor()
             ? input_mkl_shape.GetMklLayout()
             : memory::desc(TFShapeToMklDnnDimsInNCHW(input_tensor_shape,
                                                      this->data_format_tf_),
                            MklDnnType<T>(), this->data_format_mkldnn_);
-    dnn_data_input->SetUsrMem(input_md, &input_tensor);
+      dnn_data_input->SetUsrMem(input_md, &input_tensor);
+    }
     this->InitMklPoolParameters(context, pool_params, input_mkl_shape,
                                 input_tensor_shape);
   }
@@ -231,23 +588,6 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
     AllocateOutputSetMklShape(context, kOutputTensorIndexOutput, output_tensor,
                               output_tf_shape, output_mkl_shape);
     CHECK_NOTNULL(*output_tensor);
-  }
-
-  void PrepareAndExecuteNet(
-      const pooling_forward::primitive_desc& pool_fwd_desc,
-      const MklDnnData<T>* src, MklDnnData<T>* dst,
-      MklDnnData<uint8>* wksp = nullptr) {
-    std::vector<primitive> net;
-
-    // Create pooling primitive and add it to net
-    if (wksp != nullptr) {
-      net.push_back(pooling_forward(pool_fwd_desc, src->GetOpMem(),
-                                    dst->GetOpMem(), wksp->GetOpMem()));
-    } else {
-      net.push_back(
-          pooling_forward(pool_fwd_desc, src->GetOpMem(), dst->GetOpMem()));
-    }
-    stream(stream::kind::eager).submit(net).wait();
   }
 
   void SanityCheckInput(OpKernelContext* context, const Tensor& input_tensor,
@@ -297,67 +637,6 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     AllocateOutputSetMklShape(context, kOutputTensorIndexOutput, output_tensor,
                               output_tf_shape, output_mkl_shape);
     CHECK_NOTNULL(*output_tensor);
-  }
-
-  void PrepareAndExecuteNet(
-      const pooling_backward::primitive_desc& pool_bkwd_desc,
-      MklDnnData<T>* input_gradient_diff_dst, MklDnnData<T>* output_diff_src,
-      const memory::primitive_desc& target_diff_dst_pd,
-      const MklDnnData<uint8>* workspace = nullptr) {
-    std::vector<primitive> net;
-
-    // If the input gradient isn't in the same format as the output
-    // reorder it to the same format as the output
-    input_gradient_diff_dst->CheckReorderToOpMem(target_diff_dst_pd, &net);
-
-    // Create pooling primitive and add it to net
-    if (nullptr == workspace) {
-      net.push_back(pooling_backward(pool_bkwd_desc,
-                                     input_gradient_diff_dst->GetOpMem(),
-                                     output_diff_src->GetOpMem()));
-    } else {
-      net.push_back(
-          pooling_backward(pool_bkwd_desc, input_gradient_diff_dst->GetOpMem(),
-                           workspace->GetOpMem(), output_diff_src->GetOpMem()));
-    }
-    stream(stream::kind::eager).submit(net).wait();
-  }
-
-  // Max Pooling and Avg Pooling have slightly different implementations
-  // Takes the Tensor containing original input data and the original
-  // mkl Dnn Shape and populates other data
-  memory::desc ConfigureOriginalInput(
-      OpKernelContext* context, const Tensor& tensor_original_input_shape,
-      const MklDnnShape& original_input_mkl_shape,
-      memory::dims* original_input_dims_nchw, MklPoolParameters* pool_params,
-      const TensorShape& input_tensor_shape) {
-    CHECK_NOTNULL(original_input_dims_nchw);
-    CHECK_NOTNULL(pool_params);
-    this->InitMklPoolParameters(context, pool_params, original_input_mkl_shape,
-                                input_tensor_shape);
-
-    *original_input_dims_nchw =
-        original_input_mkl_shape.IsMklTensor()
-            ? original_input_mkl_shape.GetSizesAsMklDnnDims()
-            : TFShapeToMklDnnDimsInNCHW(input_tensor_shape,
-                                        this->data_format_tf_);
-
-    return original_input_mkl_shape.IsMklTensor()
-               ? original_input_mkl_shape.GetMklLayout()
-               : memory::desc(*original_input_dims_nchw, MklDnnType<T>(),
-                              this->data_format_mkldnn_);
-  }
-
-  memory::desc ConfigureOriginalOutput(
-      const MklPoolParameters& pool_params,
-      const MklDnnShape& original_output_mkl_shape,
-      memory::dims output_dims_mkl_order) {
-    this->GetOutputDims(pool_params, &output_dims_mkl_order);
-
-    return original_output_mkl_shape.IsMklTensor()
-               ? original_output_mkl_shape.GetMklLayout()
-               : memory::desc(output_dims_mkl_order, MklDnnType<T>(),
-                              this->data_format_mkldnn_);
   }
 
   memory::desc ConfigureInputGradient(

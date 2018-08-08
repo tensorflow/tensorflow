@@ -25,6 +25,7 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -124,7 +125,6 @@ cc_library(
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],
     deps = [
-        ":common",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
@@ -166,6 +166,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -176,10 +177,19 @@ cc_library(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:fifo_queue",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:no_op",
+        "//tensorflow/core/kernels:queue_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
+        "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/kernels/data:generator_dataset_op",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        "//tensorflow/core/kernels/data:prefetch_dataset_op",
     ],
 )
 
@@ -216,6 +226,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
@@ -257,22 +268,10 @@ cc_library(
 )
 
 cc_library(
-    name = "graph_to_functiondef",
-    srcs = ["graph_to_functiondef.cc"],
-    hdrs = ["graph_to_functiondef.h"],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "create_xla_launch_op",
     srcs = [
         "create_xla_launch_op.cc",
+        "create_xla_launch_op.h",
     ],
     deps = [
         ":common",
@@ -282,6 +281,27 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "create_xla_launch_op_test",
+    srcs = [
+        "create_xla_launch_op.h",
+        "create_xla_launch_op_test.cc",
+    ],
+    deps = [
+        ":create_xla_launch_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -289,34 +309,50 @@ cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
+        "deadness_analysis.cc",
+        "deadness_analysis_internal.h",
         "encapsulate_subgraphs_pass.cc",
         "mark_for_compilation_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
+        "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "mark_for_compilation_pass.h",
     ],
     deps = [
         ":common",
-        ":graph_to_functiondef",
         ":shape_inference_helpers",
         ":union_find",
+        ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
-        "//tensorflow/compiler/jit/legacy_flags:encapsulate_subgraphs_pass_flags",
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:parallel_check_op",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
+    ],
+)
+
+cc_library(
+    name = "xla_cluster_util",
+    srcs = ["xla_cluster_util.cc"],
+    hdrs = ["xla_cluster_util.h"],
+    deps = [
+        "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
     ],
@@ -347,21 +383,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "graph_to_functiondef_test",
+    name = "deadness_analysis_test",
     size = "small",
     srcs = [
-        "graph_to_functiondef_test.cc",
+        "deadness_analysis_internal.h",
+        "deadness_analysis_test.cc",
     ],
     deps = [
-        ":graph_to_functiondef",
+        ":common",
+        ":compilation_passes",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -378,7 +421,33 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
-        ":graph_to_functiondef",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_cluster_util_test",
+    size = "small",
+    srcs = [
+        "xla_cluster_util_test.cc",
+    ],
+    deps = [
+        ":common",
+        ":xla_cluster_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -393,6 +462,64 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_launch_util_test",
+    size = "small",
+    srcs = ["xla_launch_util_test.cc"],
+    deps = [
+        ":common",
+        ":xla_compilation_cache",
+        ":xla_launch_util",
+        ":xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/kernels:variable_ops",
+    ],
+)
+
+cc_library(
+    name = "xla_fusion_optimizer",
+    srcs = ["xla_fusion_optimizer.cc"],
+    hdrs = ["xla_fusion_optimizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":common",
+        ":compilation_passes",
+        ":union_find",
+        ":xla_cluster_util",
+        "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "xla_fusion_optimizer_test",
+    srcs = ["xla_fusion_optimizer_test.cc"],
+    deps = [
+        ":common",
+        ":xla_cluster_util",
+        ":xla_fusion_optimizer",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 

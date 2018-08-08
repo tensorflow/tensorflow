@@ -40,8 +40,8 @@ class CUDAStream : public internal::StreamInterface {
   // Note: teardown is handled by a parent's call to DeallocateStream.
   ~CUDAStream() override {}
 
-  void *CudaStreamHack() override { return cuda_stream_; }
-  void **CudaStreamMemberHack() override {
+  void *GpuStreamHack() override { return cuda_stream_; }
+  void **GpuStreamMemberHack() override {
     return reinterpret_cast<void **>(&cuda_stream_);
   }
 

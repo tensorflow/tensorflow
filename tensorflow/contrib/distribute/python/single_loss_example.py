@@ -22,6 +22,7 @@ from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import step_fn
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import array_ops
@@ -59,7 +60,7 @@ def minimize_loss_example(optimizer_fn,
     # TODO(isaprykin): map_and_batch with drop_remainder causes shapes to be
     # fully defined for TPU.  Remove this when XLA supports dynamic shapes.
     return dataset.apply(
-        batching.map_and_batch(lambda x: x, batch_size=2, drop_remainder=True))
+        batching.map_and_batch(lambda x: x, batch_size=1, drop_remainder=True))
 
   # An Optimizer instance is created either outside or inside model_fn.
   outer_optimizer = None
@@ -68,11 +69,10 @@ def minimize_loss_example(optimizer_fn,
 
   layer = core.Dense(1, use_bias=use_bias)
 
-  def model_fn(xs):
+  def model_fn(x):
     """A very simple model written by the user."""
 
     def loss_fn():
-      x = math_ops.reduce_mean(xs, keepdims=True)
       y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
       return y * y
 
@@ -89,7 +89,8 @@ def minimize_loss_example(optimizer_fn,
 def batchnorm_example(optimizer_fn,
                       batch_per_epoch=1,
                       momentum=0.9,
-                      renorm=False):
+                      renorm=False,
+                      update_ops_in_tower_mode=False):
   """Example of non-distribution-aware legacy code with batch normalization."""
 
   def dataset_fn():
@@ -103,12 +104,19 @@ def batchnorm_example(optimizer_fn,
   optimizer = optimizer_fn()
   batchnorm = normalization.BatchNormalization(
       renorm=renorm, momentum=momentum, fused=False)
+  layer = core.Dense(1, use_bias=False)
 
   def model_fn(x):
+    """A model that uses batchnorm."""
 
     def loss_fn():
-      y = math_ops.reduce_sum(batchnorm(x, training=True), axis=1)
-      loss = math_ops.reduce_mean(y - constant_op.constant(1.))
+      y = batchnorm(x, training=True)
+      with ops.control_dependencies(
+          ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+          if update_ops_in_tower_mode else []):
+        loss = math_ops.reduce_mean(
+            math_ops.reduce_sum(layer(y)) - constant_op.constant(1.))
+      # `x` and `y` will be fetched by the gradient computation, but not `loss`.
       return loss
 
     # Callable loss.

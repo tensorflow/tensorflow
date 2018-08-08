@@ -221,11 +221,11 @@ def has_distribution_strategy():
 
 
 def get_loss_reduction():
-  """Reduce `method_string` corresponding to the last loss reduction."""
+  """Reduce `aggregation` corresponding to the last loss reduction."""
   loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
   if loss_reduction == losses_impl.Reduction.SUM:
-    return "sum"
-  return "mean"
+    return variable_scope.VariableAggregation.SUM
+  return variable_scope.VariableAggregation.MEAN
 
 
 # ------------------------------------------------------------------------------
@@ -289,19 +289,31 @@ def _require_distribution_strategy_scope(distribution_strategy):
 class _CurrentDistributionContext(object):
   """Context manager for setting the `DistributionStrategy` and var creator."""
 
-  def __init__(self, distribution_strategy, var_creator_scope, var_scope=None):
+  def __init__(self,
+               distribution_strategy,
+               var_creator_scope,
+               var_scope=None,
+               default_device=None):
     self._context = _CrossTowerThreadMode(distribution_strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    if default_device:
+      self._device_scope = ops.device(default_device)
+    else:
+      self._device_scope = None
 
   def __enter__(self):
     _push_per_thread_mode(self._context)
     if self._var_scope:
       self._var_scope.__enter__()
     self._var_creator_scope.__enter__()
+    if self._device_scope:
+      self._device_scope.__enter__()
     return self._context.distribution_strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if self._device_scope:
+      self._device_scope.__exit__(exception_type, exception_value, traceback)
     self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
     if self._var_scope:
       self._var_scope.__exit__(exception_type, exception_value, traceback)
@@ -344,14 +356,14 @@ class DistributionStrategy(object):
     on different slices of the input data. This is in contrast to
     _model parallelism_ where we divide up a single copy of a model
     across multiple devices.
-    Note: for now we only support data parallelism at this time, but
+    Note: we only support data parallelism for now, but
     hope to add support for model parallelism in the future.
   * A _tower_ is one copy of the model, running on one slice of the
     input data.
-  * _Synchronous_, or more commonly _sync_, training is when the
+  * _Synchronous_, or more commonly _sync_, training is where the
     updates from each tower are aggregated together before updating
     the model variables. This is in contrast to _asynchronous_, or
-    _async_ training where each tower updates the model variables
+    _async_ training, where each tower updates the model variables
     independently.
   * Furthermore you might run your computation on multiple devices
     on one machine (or "host"), or on multiple machines/hosts.
@@ -373,11 +385,11 @@ class DistributionStrategy(object):
   * Reductions and Allreduce: A _reduction_ is some method of
     aggregating multiple values into one value, like "sum" or
     "mean". If doing sync training, we will perform a reduction on the
-    gradients to a parameter from each tower before applying the
+    gradients to a parameter from all towers before applying the
     update. Allreduce is an algorithm for performing a reduction on
     values from multiple devices and making the result available on
     all of those devices.
-  * In the future we will have support for TensorFlows' partitioned
+  * In the future we will have support for TensorFlow's partitioned
     variables, where a single variable is split across multiple
     devices.
 
@@ -406,9 +418,9 @@ class DistributionStrategy(object):
     `tower_fn` can use the `get_tower_context()` API to get enhanced
     behavior in this case.
 
-    You can also create an initializable iterator instead of one shot iterator.
-    In that case, you will need to ensure that you initialize the iterator
-    before calling get_next.
+    You can also create an initializable iterator instead of a one-shot
+    iterator. In that case, you will need to ensure that you initialize the
+    iterator before calling get_next.
     ```
     iterator = my_distribution.distribute_dataset(
         dataset).make_initializable_iterator())
@@ -514,15 +526,21 @@ class DistributionStrategy(object):
     V(`v`), output will have locality V(`v`) as well.
   * `d.update_non_slot(d.non_slot_devices(), fn)`: in cross-tower
     context, like `d.update()` except with locality N.
-  * `d.fetch(t)`: Copy `t` with any locality to the client's CPU device.
+  * `d.read_var(v)`: Gets the (read-only) value of the variable `v` (on
+    the device determined by the current device scope), aggregating
+    across towers for tower-local variables. Frequently, this will be
+    done automatically when using `v` in an expression or fetching it in
+    a cross-tower context, but this function can be used to force that
+    conversion happens at a particular point in time (for example, to
+    add the result of the conversion to a graph collection).
 
   The standard pattern for updating variables is to:
 
   1. Wrap your input dataset in `d.distribute_dataset()` and create an iterator.
   2. Define each tower `d.call_for_each_tower()` up to the point of
      getting a list of gradient, variable pairs.
-  3. Call `d.reduce("sum", t, v)` or `d.batch_reduce()` to sum the
-     gradients (with locality T) into values with locality V(`v`).
+  3. Call `d.reduce(VariableAggregation.SUM, t, v)` or `d.batch_reduce()` to sum
+     the gradients (with locality T) into values with locality V(`v`).
   4. Call `d.update(v)` for each variable to update its value.
 
   Steps 3 and 4 are done automatically by class `Optimizer` if you call
@@ -556,6 +574,9 @@ class DistributionStrategy(object):
   # TODO(josh11b): List of towers with their worker and parameter devices
   #   (where the parameter devices may overlap in the ps case).
 
+  def __init__(self):
+    self._default_device = None
+
   def scope(self):
     """Returns a context manager selecting this DistributionStrategy as current.
 
@@ -586,48 +607,27 @@ class DistributionStrategy(object):
         self, variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=disable_partitioned_variables))
+            custom_getter=disable_partitioned_variables),
+        self._default_device)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
 
-  def tower_local_var_scope(self, reduce_method):
-    """Inside this scope, new variables will not be mirrored.
+  def read_var(self, v):
+    """Reads the value of a variable.
 
-    There will still be one component variable per tower, but there is
-    no requirement that they stay in sync. Instead, when saving them
-    or calling `fetch()`, we use the value that results when calling
-    `reduce()` on all the towers' variables.
-
-    Note: tower-local implies not trainable. Instead, it is expected
-    that each tower will directly update (using `assign_add()` or
-    whatever) its local variable instance but only the aggregated
-    value (accessible using `fetch()`) will be exported from the
-    model. When it is acceptable to only aggregate on export, we
-    greatly reduce communication overhead by using tower-local
-    variables.
-
-    Note: All component variables will be initialized to the same
-    value, using the initialization expression from the first tower.
-    The values will match even if the initialization expression uses
-    random numbers.
+    Returns the aggregate value of a tower-local variable, or the
+    (read-only) value of any other variable.
 
     Args:
-      reduce_method: String used as a `method_string` to `reduce()`
-        to get the value to save when checkpointing.
+      v: A variable allocated within the scope of this `DistributionStrategy`.
 
     Returns:
-      A context manager.
+      A tensor representing the value of `v`, aggregated across towers if
+      necessary.
     """
-    def create_tower_local_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      kwargs["use_resource"] = True
-      kwargs["tower_local_reduce_method"] = reduce_method
-      return next_creator(*args, **kwargs)
-
-    _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_tower_local_variable)
+    raise NotImplementedError("must be implemented in descendants")
 
   def colocate_vars_with(self, colocate_with_variable):
     """Scope that controls which devices variables will be created on.
@@ -733,7 +733,7 @@ class DistributionStrategy(object):
     `fn` may call `tf.get_tower_context()` to access methods such as
     `tower_id()` and `merge_call()`.
 
-    `merge_call()` is used to communicate betwen the towers and
+    `merge_call()` is used to communicate between the towers and
     re-enter the cross-tower context. All towers pause their execution
     having encountered a `merge_call()` call. After that the
     `merge_fn`-function is executed. Its results are then unwrapped and
@@ -779,12 +779,12 @@ class DistributionStrategy(object):
   def _call_for_each_tower(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
-  def reduce(self, method_string, value, destinations=None):
+  def reduce(self, aggregation, value, destinations=None):
     """Combine (via e.g. sum or mean) values across towers.
 
     Args:
-      method_string: A string indicating how to combine values, either
-        "sum" or "mean".
+      aggregation: Indicates how a variable will be aggregated. Accepted values
+        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
       value: A per-device value with one value per tower.
       destinations: An optional mirrored variable, a device string,
         list of device strings. The return value will be copied to all
@@ -799,17 +799,21 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_tower_context(self)
-    return self._reduce(method_string, value, destinations)
+    assert aggregation in [
+        variable_scope.VariableAggregation.SUM,
+        variable_scope.VariableAggregation.MEAN
+    ]
+    return self._reduce(aggregation, value, destinations)
 
-  def _reduce(self, method_string, value, destinations):
+  def _reduce(self, aggregation, value, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
-  def batch_reduce(self, method_string, value_destination_pairs):
+  def batch_reduce(self, aggregation, value_destination_pairs):
     """Combine multiple `reduce` calls into one for faster execution.
 
     Args:
-      method_string: A string indicating how to combine values, either
-        "sum" or "mean".
+      aggregation: Indicates how a variable will be aggregated. Accepted values
+        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -818,12 +822,17 @@ class DistributionStrategy(object):
     """
     # TODO(josh11b): More docstring
     _require_cross_tower_context(self)
-    assert method_string in ("sum", "mean")
-    return self._batch_reduce(method_string, value_destination_pairs)
+    assert aggregation in [
+        variable_scope.VariableAggregation.SUM,
+        variable_scope.VariableAggregation.MEAN
+    ]
+    return self._batch_reduce(aggregation, value_destination_pairs)
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
-    return [self.reduce(method_string, t, destinations=v)
-            for t, v in value_destination_pairs]
+  def _batch_reduce(self, aggregation, value_destination_pairs):
+    return [
+        self.reduce(aggregation, t, destinations=v)
+        for t, v in value_destination_pairs
+    ]
 
   def update(self, var, fn, *args, **kwargs):
     """Run `fn` to update `var` using inputs mirrored to the same devices.
@@ -879,28 +888,6 @@ class DistributionStrategy(object):
   def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
-  def fetch(self, val, destination="/device:CPU:0", fn=lambda x: x):
-    """Return a copy of `val` or `fn(val)` on `destination`.
-
-    This is useful for getting a mirrored value onto a device.  It
-    will attempt to avoid a copy by checking if the value is already
-    on the destination device.
-
-    Args:
-      val: Value (which may be mirrored) to copy.
-      destination: A device string to copy the value to.
-      fn: An optional function to apply to the value on the source
-          device, before copying.
-
-    Returns:
-      A `Tensor` on `destination`.
-    """
-    _require_cross_tower_context(self)
-    return self._fetch(val, destination, fn)
-
-  def _fetch(self, val, destination, fn):
-    raise NotImplementedError("must be implemented in descendants")
-
   def unwrap(self, value):
     """Returns the list of all per-device values contained in `value`.
 
@@ -912,8 +899,22 @@ class DistributionStrategy(object):
       A list of values contained in `value`. If `value` represents a single
       value, this returns `[value].`
     """
-    _require_cross_tower_context(self)
     return self._unwrap(value)
+
+  def value_container(self, value):
+    """Returns the container that this per-device `value` belongs to.
+
+    Args:
+      value: A value returned by `call_for_each_tower()` or a variable
+        created in `scope()`.
+
+    Returns:
+      A container that `value` belongs to.
+      If value does not belong to any container (including the case of
+      container having been destroyed), returns the value itself.
+      `value in unwrap(value_container(value))` will always be true.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def _unwrap(self, distributed_value):
     raise NotImplementedError("must be implemented in descendants")
@@ -926,7 +927,7 @@ class DistributionStrategy(object):
       return control_flow_ops.group(value, name=name)
     # Special handling for the common case of one op.
     v, = value
-    if isinstance(v, ops.Tensor):
+    if hasattr(v, "op"):
       v = v.op
     return v
 
@@ -1074,10 +1075,6 @@ class TowerContext(object):
     finally:
       _pop_per_thread_mode()
 
-  def tower_local_var_scope(self, reduce_method):
-    """Alias for distribution_strategy.tower_local_var_scope()."""
-    return self._distribution_strategy.tower_local_var_scope(reduce_method)
-
   @property
   def is_single_tower(self):
     """Returns whether there is a single tower or multiple."""
@@ -1124,22 +1121,10 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      if kwargs.pop("tower_local_reduce_method", None) is not None:
-        kwargs["trainable"] = False
       return next_creator(*args, **kwargs)
 
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator))
-
-  def tower_local_var_scope(self, reduce_method):
-    """Does not set to resource variables."""
-    def create_tower_local_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      kwargs["tower_local_reduce_method"] = reduce_method
-      return next_creator(*args, **kwargs)
-
-    _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_tower_local_variable)
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
@@ -1161,9 +1146,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     with TowerContext(self, tower_id=0):
       return fn(*args, **kwargs)
 
-  def _reduce(self, method_string, value, destinations):
+  def _reduce(self, aggregation, value, destinations):
     # TODO(josh11b): Use destinations?
-    del method_string, destinations
+    del aggregation, destinations
     return value
 
   def _update(self, var, fn, *args, **kwargs):
@@ -1178,14 +1163,14 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
       return fn(*args, **kwargs)
 
-  def _fetch(self, var, destination, fn):
-    with ops.colocate_with(var):
-      var = fn(var)
-    with ops.device(destination):
-      return array_ops.identity(var)
+  def read_var(self, tower_local_var):
+    return array_ops.identity(tower_local_var)
 
   def _unwrap(self, distributed_value):
     return [distributed_value]
+
+  def value_container(self, value):
+    return value
 
   @property
   def is_single_tower(self):

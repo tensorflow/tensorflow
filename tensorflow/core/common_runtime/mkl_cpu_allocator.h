@@ -22,14 +22,15 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <cstdlib>
-#include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 
+#ifndef DO_NOT_USE_ML
 #include "i_malloc.h"
+#endif
 
 #ifdef _WIN32
 typedef unsigned int uint;
@@ -97,14 +98,14 @@ class MklCPUAllocator : public VisitableAllocator {
     VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
     allocator_ = new BFCAllocator(new MklSubAllocator, max_mem_bytes,
                                   kAllowGrowth, kName);
-
+#ifndef DO_NOT_USE_ML
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
     i_malloc = MallocHook;
     i_calloc = CallocHook;
     i_realloc = ReallocHook;
     i_free = FreeHook;
-
+#endif
     return Status::OK();
   }
 

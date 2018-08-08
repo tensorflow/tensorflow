@@ -15,7 +15,7 @@
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/programmers_guide/saved_model_cli
+https://www.tensorflow.org/guide/saved_model_cli
 
 """
 
@@ -195,14 +195,14 @@ def _show_all(saved_model_dir):
   """
   tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
-    tag_set = ', '.join(tag_set)
-    print('\nMetaGraphDef with tag-set: \'' + tag_set +
-          '\' contains the following SignatureDefs:')
+    print("\nMetaGraphDef with tag-set: '%s' "
+          "contains the following SignatureDefs:" % ', '.join(tag_set))
 
+    tag_set = ','.join(tag_set)
     signature_def_map = get_signature_def_map(saved_model_dir, tag_set)
     for signature_def_key in sorted(signature_def_map.keys()):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
-      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, 
+      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
 
 
@@ -720,7 +720,7 @@ def create_parser():
              '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' \\\n'
              '   --outdir=/out\n\n'
              'For more information about input file format, please see:\n'
-             'https://www.tensorflow.org/programmers_guide/saved_model_cli\n')
+             'https://www.tensorflow.org/guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
       'run', description=run_msg, formatter_class=argparse.RawTextHelpFormatter)
   parser_run.add_argument(

@@ -38,9 +38,9 @@ py_library(
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
+        "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
@@ -64,6 +64,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",

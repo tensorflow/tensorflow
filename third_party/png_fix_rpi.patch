@@ -1,0 +1,16 @@
+diff -r -u /tmp/libpng-1.6.34/scripts/pnglibconf.h.prebuilt ./scripts/pnglibconf.h.prebuilt
+--- /tmp/libpng-1.6.34/scripts/pnglibconf.h.prebuilt	2017-09-29 01:42:33.000000000 -0700
++++ ./scripts/pnglibconf.h.prebuilt	2018-05-01 09:51:24.719318242 -0700
+@@ -20,6 +20,12 @@
+ #define PNG_ALIGNED_MEMORY_SUPPORTED
+ /*#undef PNG_ARM_NEON_API_SUPPORTED*/
+ /*#undef PNG_ARM_NEON_CHECK_SUPPORTED*/
++
++/* Workaround not having a great build file by forcing
++ * png filter optimization to be disabled on arm */
++#define PNG_ARM_NEON_OPT 0
++
++
+ /*#undef PNG_POWERPC_VSX_API_SUPPORTED*/
+ /*#undef PNG_POWERPC_VSX_CHECK_SUPPORTED*/
+ #define PNG_BENIGN_ERRORS_SUPPORTED

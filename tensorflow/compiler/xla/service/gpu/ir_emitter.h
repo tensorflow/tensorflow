@@ -79,7 +79,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecv(HloInstruction* recv) override;
@@ -87,14 +86,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleRng(HloInstruction* random) override;
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  Status HandleIota(HloInstruction* iota) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -120,10 +121,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
     return bindings_.GetBasePointer(inst);
   }
-  // A convenient helper for calling BufferAssignment::GetUniqueTopLevelSlice.
-  BufferAllocation::Slice GetAllocationSlice(const HloInstruction& hlo) const {
+  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
+  BufferAllocation::Slice GetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
     return ir_emitter_context_->buffer_assignment()
-        .GetUniqueTopLevelSlice(&hlo)
+        .GetUniqueSlice(&hlo, index)
         .ConsumeValueOrDie();
   }
 
@@ -160,7 +162,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // The following fields track the IR emission state. According to LLVM memory
   // management rules, their memory is owned by the module.
-  llvm::IRBuilder<> ir_builder_;
+  llvm::IRBuilder<> b_;
 
   // Mapping from HLO to its underlying LLVM value.
   HloToIrBindings bindings_;
@@ -169,17 +171,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   const HloModuleConfig& hlo_module_config_;
 
  private:
-  // Emits a series of nested loops for iterating over an operand array in the
-  // dot operation. Loops are constructed in major to minor dimension layout
-  // order. No loop is emitted for the given reduction_dimension. The function
-  // returns an IrArray index for the given operand_array containing the indvars
-  // of the loops. All dimensions of the index are filled except for the
-  // reduction dimension. name_suffix is the string to append to the names of
-  // LLVM constructs (eg, basic blocks) constructed by this method.
-  llvm_ir::IrArray::Index EmitOperandArrayLoopNest(
-      const llvm_ir::IrArray& operand_array, int64 reduction_dimension,
-      tensorflow::StringPiece name_suffix, llvm_ir::ForLoopNest* loop_nest);
-
   // A helper method for EmitAtomicOperationForNestedComputation. Certain
   // computations, such as floating-point addition and integer maximization, can
   // be simply implemented using an LLVM atomic instruction. If "computation" is
@@ -195,6 +186,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitAtomicOperationUsingCAS(const HloComputation& computation,
                                      llvm::Value* output_address,
                                      llvm::Value* source_address);
+
+  // A helper method for HandleSort(). It adds the inner comparison loop where
+  // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
+  void EmitCompareLoop(int64 dimension_to_sort,
+                       const llvm_ir::IrArray::Index& keys_index,
+                       const llvm_ir::IrArray::Index& compare_keys_index,
+                       const llvm_ir::IrArray& keys_array);
 
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,

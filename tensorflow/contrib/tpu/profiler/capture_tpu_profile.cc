@@ -18,7 +18,7 @@ limitations under the License.
 // Initiates a TPU profiling on the TPUProfiler service at service_addr,
 // receives and dumps the profile data to a tensorboard log directory.
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 
 #include <cstdio>
 #include <ctime>
@@ -79,11 +79,11 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
     request.set_repository_root(repository_root);
     request.set_session_id(session_id);
   }
+  request.add_tools("op_profile");
   request.add_tools("input_pipeline");
+  request.add_tools("memory_viewer");
   request.add_tools("overview_page");
   *request.mutable_opts() = opts;
-  std::cout << "Limiting the number of trace events to " << kMaxEvents
-            << std::endl;
   return request;
 }
 
@@ -97,7 +97,6 @@ bool Profile(const string& service_addr, const string& logdir, int duration_ms,
 
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
-  // TODO(ioeric): use `SetMaxReceiveMessageSize` instead once it's available.
   // TODO(qiuminxu): use `NewHostPortGrpcChannel` instead once their
   // `ValidateHostPortPair` checks for empty host string case.
   channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
@@ -164,6 +163,85 @@ bool NewSession(const string& service_addr,
   return new_session_response.empty_trace();
 }
 
+// Starts tracing on a single or multiple TPU hosts and saves the result in the
+// given logdir. If no trace was collected, retries tracing for
+// num_tracing_attempts.
+void StartTracing(const tensorflow::string& service_addr,
+                  const tensorflow::string& logdir,
+                  const tensorflow::string& workers_list,
+                  bool include_dataset_ops, int duration_ms,
+                  int num_tracing_attempts) {
+  // Use the current timestamp as the run name.
+  tensorflow::string session_id = GetCurrentTimeStampAsString();
+  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
+  tensorflow::string repository_root =
+      io::JoinPath(logdir, kProfilePluginDirectory);
+  std::vector<tensorflow::string> hostnames =
+      tensorflow::str_util::Split(workers_list, ",");
+
+  bool empty_trace = false;
+  int remaining_attempts = num_tracing_attempts;
+  tensorflow::ProfileOptions opts;
+  opts.set_include_dataset_ops(include_dataset_ops);
+  while (true) {
+    std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
+              << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
+    if (hostnames.empty()) {
+      empty_trace = tensorflow::tpu::Profile(service_addr, logdir, duration_ms,
+                                             repository_root, session_id, opts);
+    } else {
+      tensorflow::string tpu_master = service_addr;
+      empty_trace =
+          tensorflow::tpu::NewSession(tpu_master, hostnames, duration_ms,
+                                      repository_root, session_id, opts);
+    }
+    if (remaining_attempts <= 0 || !empty_trace) break;
+    std::cout << "No trace event is collected. Automatically retrying."
+              << std::endl
+              << std::endl;
+  }
+
+  if (empty_trace) {
+    std::cout << "No trace event is collected after " << num_tracing_attempts
+              << " attempt(s). "
+              << "Perhaps, you want to try again (with more attempts?)."
+              << std::endl
+              << "Tip: increase number of attempts with --num_tracing_attempts."
+              << std::endl;
+  }
+}
+
+MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
+  MonitorRequest request;
+  request.set_duration_ms(duration_ms);
+  request.set_monitoring_level(monitoring_level);
+  return request;
+}
+
+// Repeatedly collects profiles and shows user-friendly metrics for
+// 'num_queries' time(s).
+void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
+                     int monitoring_level, int num_queries) {
+  for (int query = 0; query < num_queries; ++query) {
+    MonitorRequest request =
+        PopulateMonitorRequest(duration_ms, monitoring_level);
+
+    ::grpc::ClientContext context;
+    ::grpc::ChannelArguments channel_args;
+    channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
+                        std::numeric_limits<int32>::max());
+    std::unique_ptr<TPUProfiler::Stub> stub =
+        TPUProfiler::NewStub(::grpc::CreateCustomChannel(
+            "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
+            channel_args));
+    MonitorResponse response;
+    TF_QCHECK_OK(FromGrpcStatus(stub->Monitor(&context, request, &response)));
+
+    std::cout << "Xprof Monitoring Results (Sample " << query + 1 << "):\n\n"
+              << response.data() << std::flush;
+  }
+}
+
 }  // namespace
 }  // namespace tpu
 }  // namespace tensorflow
@@ -172,9 +250,11 @@ int main(int argc, char** argv) {
   tensorflow::string FLAGS_service_addr;
   tensorflow::string FLAGS_logdir;
   tensorflow::string FLAGS_workers_list;
-  int FLAGS_duration_ms = 2000;
+  int FLAGS_duration_ms = 0;
   int FLAGS_num_tracing_attempts = 3;
   bool FLAGS_include_dataset_ops = true;
+  int FLAGS_monitoring_level = 0;
+  int FLAGS_num_queries = 100;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
                        "Address of TPU profiler service e.g. localhost:8466"),
@@ -184,21 +264,38 @@ int main(int argc, char** argv) {
       tensorflow::Flag("logdir", &FLAGS_logdir,
                        "Path of TensorBoard log directory e.g. /tmp/tb_log, "
                        "gs://tb_bucket"),
-      tensorflow::Flag("duration_ms", &FLAGS_duration_ms,
-                       "Duration of tracing in ms. Default is 2000ms."),
+      tensorflow::Flag(
+          "duration_ms", &FLAGS_duration_ms,
+          "Duration of tracing or monitoring in ms. Default is 2000ms for "
+          "tracing and 1000ms for monitoring."),
       tensorflow::Flag("num_tracing_attempts", &FLAGS_num_tracing_attempts,
                        "Automatically retry N times when no trace event "
                        "is collected. Default is 3."),
       tensorflow::Flag("include_dataset_ops", &FLAGS_include_dataset_ops,
                        "Set to false to profile longer TPU device traces."),
-  };
+      tensorflow::Flag("monitoring_level", &FLAGS_monitoring_level,
+                       "Choose a monitoring level between 1 and 2 to monitor "
+                       "your TPU job continuously. Level 2 is more verbose "
+                       "than level 1 and shows more metrics."),
+      tensorflow::Flag("num_queries", &FLAGS_num_queries,
+                       "This script will run monitoring for num_queries before "
+                       "it stops.")};
 
   std::cout << "Welcome to the Cloud TPU Profiler v" << TPU_PROFILER_VERSION
             << std::endl;
 
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_ok || FLAGS_service_addr.empty() || FLAGS_logdir.empty()) {
+  if (!parse_ok || FLAGS_service_addr.empty() ||
+      (FLAGS_logdir.empty() && FLAGS_monitoring_level == 0)) {
+    // Fail if flags are not parsed correctly or service_addr not provided.
+    // Also, fail if neither logdir is provided (required for tracing) nor
+    // monitoring level is provided (required for monitoring).
+    std::cout << usage.c_str() << std::endl;
+    return 2;
+  }
+  if (FLAGS_monitoring_level < 0 || FLAGS_monitoring_level > 2) {
+    // Invalid monitoring level.
     std::cout << usage.c_str() << std::endl;
     return 2;
   }
@@ -211,52 +308,27 @@ int main(int argc, char** argv) {
   }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  // Sets the minimum duration_ms and tracing attempts to one.
-  int duration_ms = std::max(FLAGS_duration_ms, 1);
-  int remaining_attempts = std::max(FLAGS_num_tracing_attempts, 1);
-  tensorflow::ProfileOptions opts;
-  opts.set_include_dataset_ops(FLAGS_include_dataset_ops);
-  tensorflow::ProfileResponse response;
-
-  // Use the current timestamp as the run name.
-  tensorflow::string session_id =
-      tensorflow::tpu::GetCurrentTimeStampAsString();
-  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  tensorflow::string repository_root =
-      ::tensorflow::io::JoinPath(FLAGS_logdir, kProfilePluginDirectory);
-  std::vector<tensorflow::string> hostnames =
-      tensorflow::str_util::Split(FLAGS_workers_list, ",");
-
-  bool empty_trace = false;
-  while (true) {
-    std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
-              << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
-    if (hostnames.empty()) {
-      empty_trace = tensorflow::tpu::Profile(FLAGS_service_addr, FLAGS_logdir,
-                                             duration_ms, repository_root,
-                                             session_id, opts);
-    } else {
-      tensorflow::string tpu_master = FLAGS_service_addr;
-      empty_trace =
-          tensorflow::tpu::NewSession(tpu_master, hostnames, duration_ms,
-                                      repository_root, session_id, opts);
-    }
-    if (remaining_attempts <= 0 || !empty_trace) break;
-    std::cout << "No trace event is collected. Automatically retrying."
-              << std::endl
-              << std::endl;
+  // Sets the minimum duration_ms, tracing attempts and num queries.
+  int duration_ms = std::max(FLAGS_duration_ms, 0);
+  if (duration_ms == 0) {
+    // If profiling duration was not set by user or set to a negative value, we
+    // set it to default values of 2000ms for tracing and 1000ms for monitoring.
+    duration_ms = FLAGS_monitoring_level == 0 ? 2000 : 1000;
   }
+  int num_tracing_attempts = std::max(FLAGS_num_tracing_attempts, 1);
+  int num_queries = std::max(FLAGS_num_queries, 1);
 
-  if (empty_trace) {
-    std::cout << "No trace event is collected after "
-              << FLAGS_num_tracing_attempts << " attempt(s). "
-              << "Perhaps, you want to try again (with more attempts?)."
-              << std::endl
-              << "Tip: increase number of attempts with --num_tracing_attempts."
+  if (FLAGS_monitoring_level != 0) {
+    std::cout << "Since monitoring level is provided, profile "
+              << FLAGS_service_addr << " for " << duration_ms
+              << "ms and show metrics for " << num_queries << " time(s)."
               << std::endl;
-    // Don't dump profile data if no trace is collected.
-    return 0;
+    tensorflow::tpu::StartMonitoring(FLAGS_service_addr, duration_ms,
+                                     FLAGS_monitoring_level, num_queries);
+  } else {
+    tensorflow::tpu::StartTracing(FLAGS_service_addr, FLAGS_logdir,
+                                  FLAGS_workers_list, FLAGS_include_dataset_ops,
+                                  duration_ms, num_tracing_attempts);
   }
-
   return 0;
 }

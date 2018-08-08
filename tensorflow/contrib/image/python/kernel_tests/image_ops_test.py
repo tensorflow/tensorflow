@@ -30,7 +30,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 _DTYPES = set(
-    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
+    [dtypes.uint8, dtypes.int32, dtypes.int64,
+     dtypes.float16, dtypes.float32, dtypes.float64])
 
 
 class ImageOpsTest(test_util.TensorFlowTestCase):
@@ -126,6 +127,23 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [0, 1, 0, 1],
                              [0, 1, 0, 1],
                              [0, 1, 1, 1]])
+
+  def test_extreme_projective_transform(self):
+    for dtype in _DTYPES:
+      with self.test_session():
+        image = constant_op.constant(
+            [[1, 0, 1, 0],
+             [0, 1, 0, 1],
+             [1, 0, 1, 0],
+             [0, 1, 0, 1]], dtype=dtype)
+        transformation = constant_op.constant([1, 0, 0, 0, 1, 0, -1, 0],
+                                              dtypes.float32)
+        image_transformed = image_ops.transform(image, transformation)
+        self.assertAllEqual(image_transformed.eval(),
+                            [[1, 0, 0, 0],
+                             [0, 0, 0, 0],
+                             [1, 0, 0, 0],
+                             [0, 0, 0, 0]])
 
   def test_bilinear(self):
     with self.test_session():

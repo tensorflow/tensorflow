@@ -71,8 +71,8 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
     addresses_ = ResolveNames(kCachedDomainNames);
 
     // Note: we opt to use a thread instead of a delayed closure.
-    worker_.reset(env_->StartThread(
-        {}, "gcs_dns_worker", std::bind(&GcsDnsCache::WorkerThread, this)));
+    worker_.reset(env_->StartThread({}, "gcs_dns_worker",
+                                    [this]() { return WorkerThread(); }));
     started_ = true;
   }
 

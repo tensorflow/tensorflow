@@ -28,8 +28,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -37,6 +37,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/remote_device.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -79,6 +87,14 @@ struct TFE_TensorHandle {
   TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
   tensorflow::TensorHandle* handle;
+};
+
+struct TFE_TensorDebugInfo {
+  TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+      : dev_dims(dims) {}
+
+  // Fully-padded, minor-to-major.
+  std::vector<tensorflow::int64> dev_dims;
 };
 
 struct TFE_Op {

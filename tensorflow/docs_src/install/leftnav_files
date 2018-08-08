@@ -4,6 +4,7 @@ index.md
 install_linux.md: Ubuntu
 install_mac.md: MacOS
 install_windows.md: Windows
+install_raspbian.md: Raspbian
 install_sources.md: From source
 >>>
 migration.md

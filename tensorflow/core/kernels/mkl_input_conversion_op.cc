@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -368,8 +369,8 @@ class MklInputConversionOp : public OpKernel {
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            kInputIndex_1);
-      SetDummyMklShapeOutput(context, kInputIndex_0);
-      SetDummyMklShapeOutput(context, kInputIndex_1);
+      SetDummyMklDnnShapeOutput(context, kInputIndex_0);
+      SetDummyMklDnnShapeOutput(context, kInputIndex_1);
       return;
     }
 
@@ -438,11 +439,11 @@ class MklInputConversionOp : public OpKernel {
                    tensor_out, &net);
       if(!reordered) {
         // This is the case that the TF tensor has the same shape and format of
-        // mkl tensor. However, tf_tensor can not be simply forwarded to the output
-        // tensor since mkl data tensor is always one dimensional tensor. 
-        // Tensor::CopyFrom shares the buffer of the other tensor while set its shape
-        // to the other tensor. 
-        tensor_out->CopyFrom(*tf_tensor, tensor_out->shape());
+        // mkl tensor. However, tf_tensor can not be simply forwarded to the
+        // output tensor since mkl data tensor is always one dimensional tensor.
+        // Tensor::CopyFrom shares the buffer of the other tensor while set its
+        // shape to the other tensor.
+        CHECK(tensor_out->CopyFrom(*tf_tensor, tensor_out->shape()));
       }
       else  
         stream(stream::kind::eager).submit(net).wait();
@@ -457,7 +458,7 @@ class MklInputConversionOp : public OpKernel {
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            mkl_tensor_index);
-      SetDummyMklShapeOutput(context, mkl_tensor_index);
+      SetDummyMklDnnShapeOutput(context, mkl_tensor_index);
 
       // The tensor in TF format passes through
       ForwardTfTensorInToOut(context, tf_tensor_index, tf_tensor_index);

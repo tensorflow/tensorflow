@@ -22,12 +22,12 @@ import six
 
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export.export_output import PredictOutput
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.training import optimizer as optimizer_lib
+from tensorflow.python.util import function_utils
 
 
 _VALID_METRIC_FN_ARGS = set(['features', 'labels', 'predictions', 'config'])
@@ -330,7 +330,7 @@ class _TransformGradients(optimizer_lib.Optimizer):
 
 
 def _verify_metric_fn_args(metric_fn):
-  args = set(estimator_util.fn_args(metric_fn))
+  args = set(function_utils.fn_args(metric_fn))
   invalid_args = list(args - _VALID_METRIC_FN_ARGS)
   if invalid_args:
     raise ValueError('metric_fn (%s) has following not expected args: %s' %
@@ -339,7 +339,7 @@ def _verify_metric_fn_args(metric_fn):
 
 def _call_metric_fn(metric_fn, features, labels, predictions, config):
   """Calls metric fn with proper arguments."""
-  metric_fn_args = estimator_util.fn_args(metric_fn)
+  metric_fn_args = function_utils.fn_args(metric_fn)
   kwargs = {}
   if 'features' in metric_fn_args:
     kwargs['features'] = features

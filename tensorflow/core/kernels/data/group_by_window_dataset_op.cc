@@ -118,7 +118,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::GroupByWindow")}));
@@ -131,7 +131,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "GroupByWindowDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "GroupByWindowDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -198,8 +200,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -241,7 +246,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
                   key_func_output[0].NumElements() != 1) {
-                // TODO(mrry): Support non-int64 keys.
+                // TODO(b/78665031): Support non-int64 keys.
                 return errors::InvalidArgument(
                     "`key_func` must return a scalar int64.");
               }
@@ -484,8 +489,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
         // Create an iterator for the dataset that was returned by `f`.
-        current_group_iterator_ = returned_dataset->MakeIterator(prefix());
-        return Status::OK();
+        return returned_dataset->MakeIterator(ctx, prefix(),
+                                              &current_group_iterator_);
       }
 
       mutex mu_;

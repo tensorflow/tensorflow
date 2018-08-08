@@ -2,7 +2,7 @@
 
 This document shows how to create a cluster of TensorFlow servers, and how to
 distribute a computation graph across that cluster. We assume that you are
-familiar with the @{$programmers_guide/low_level_intro$basic concepts} of
+familiar with the @{$guide/low_level_intro$basic concepts} of
 writing low level TensorFlow programs.
 
 ## Hello distributed TensorFlow!
@@ -21,7 +21,7 @@ $ python
 ```
 
 The
-@{tf.train.Server.create_local_server}
+`tf.train.Server.create_local_server`
 method creates a single-process cluster, with an in-process server.
 
 ## Create a cluster
@@ -55,7 +55,7 @@ the following:
 
 The cluster specification dictionary maps job names to lists of network
 addresses. Pass this dictionary to
-the @{tf.train.ClusterSpec}
+the `tf.train.ClusterSpec`
 constructor.  For example:
 
 <table>
@@ -84,10 +84,10 @@ tf.train.ClusterSpec({
 
 ### Create a `tf.train.Server` instance in each task
 
-A @{tf.train.Server} object contains a
+A `tf.train.Server` object contains a
 set of local devices, a set of connections to other tasks in its
 `tf.train.ClusterSpec`, and a
-@{tf.Session} that can use these
+`tf.Session` that can use these
 to perform a distributed computation. Each server is a member of a specific
 named job and has a task index within that job.  A server can communicate with
 any other server in the cluster.
@@ -117,7 +117,7 @@ which you'd like to see support, please raise a
 ## Specifying distributed devices in your model
 
 To place operations on a particular process, you can use the same
-@{tf.device}
+`tf.device`
 function that is used to specify whether ops run on the CPU or GPU. For example:
 
 ```python
@@ -165,7 +165,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   for each `/job:worker` task, typically in the same process as the worker
   task. Each client builds a similar graph containing the parameters (pinned to
   `/job:ps` as before using
-  @{tf.train.replica_device_setter}
+  `tf.train.replica_device_setter`
   to map them deterministically to the same tasks); and a single copy of the
   compute-intensive part of the model, pinned to the local task in
   `/job:worker`.
@@ -180,7 +180,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   gradient averaging as in the
   [CIFAR-10 multi-GPU trainer](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
-  @{tf.train.SyncReplicasOptimizer}).
+  `tf.train.SyncReplicasOptimizer`).
 
 ### Putting it all together: example trainer program
 
@@ -314,11 +314,11 @@ serve multiple clients.
 
 **Cluster**
 
-A TensorFlow cluster comprises a one or more "jobs", each divided into lists of
+A TensorFlow cluster comprises one or more "jobs", each divided into lists of
 one or more "tasks". A cluster is typically dedicated to a particular high-level
 objective, such as training a neural network, using many machines in parallel. A
 cluster is defined by
-a @{tf.train.ClusterSpec} object.
+a `tf.train.ClusterSpec` object.
 
 **Job**
 
@@ -344,7 +344,7 @@ to a single process. A task belongs to a particular "job" and is identified by
 its index within that job's list of tasks.
 
 **TensorFlow server** A process running
-a @{tf.train.Server} instance, which is
+a `tf.train.Server` instance, which is
 a member of a cluster, and exports a "master service" and "worker service".
 
 **Worker service**

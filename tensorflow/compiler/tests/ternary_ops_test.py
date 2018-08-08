@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class TernaryOpsTest(XLATestCase):
+class TernaryOpsTest(xla_test.XLATestCase):
 
   def _testTernary(self, op, a, b, c, expected):
     with self.test_session() as session:
@@ -69,40 +69,41 @@ class TernaryOpsTest(XLATestCase):
         expected=np.array([1, 3, 5], dtype=np.int32))
 
   def testSelect(self):
-    self._testTernary(
-        array_ops.where,
-        np.array(0, dtype=np.bool),
-        np.array(2, dtype=np.float32),
-        np.array(7, dtype=np.float32),
-        expected=np.array(7, dtype=np.float32))
+    for dtype in self.numeric_types:
+      self._testTernary(
+          array_ops.where,
+          np.array(0, dtype=np.bool),
+          np.array(2, dtype=dtype),
+          np.array(7, dtype=dtype),
+          expected=np.array(7, dtype=dtype))
 
-    self._testTernary(
-        array_ops.where,
-        np.array(1, dtype=np.bool),
-        np.array([1, 2, 3, 4], dtype=np.float32),
-        np.array([5, 6, 7, 8], dtype=np.float32),
-        expected=np.array([1, 2, 3, 4], dtype=np.float32))
+      self._testTernary(
+          array_ops.where,
+          np.array(1, dtype=np.bool),
+          np.array([1, 2, 3, 4], dtype=dtype),
+          np.array([5, 6, 7, 8], dtype=dtype),
+          expected=np.array([1, 2, 3, 4], dtype=dtype))
 
-    self._testTernary(
-        array_ops.where,
-        np.array(0, dtype=np.bool),
-        np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32),
-        np.array([[7, 8], [9, 10], [11, 12]], dtype=np.float32),
-        expected=np.array([[7, 8], [9, 10], [11, 12]], dtype=np.float32))
+      self._testTernary(
+          array_ops.where,
+          np.array(0, dtype=np.bool),
+          np.array([[1, 2], [3, 4], [5, 6]], dtype=dtype),
+          np.array([[7, 8], [9, 10], [11, 12]], dtype=dtype),
+          expected=np.array([[7, 8], [9, 10], [11, 12]], dtype=dtype))
 
-    self._testTernary(
-        array_ops.where,
-        np.array([0, 1, 1, 0], dtype=np.bool),
-        np.array([1, 2, 3, 4], dtype=np.float32),
-        np.array([5, 6, 7, 8], dtype=np.float32),
-        expected=np.array([5, 2, 3, 8], dtype=np.float32))
+      self._testTernary(
+          array_ops.where,
+          np.array([0, 1, 1, 0], dtype=np.bool),
+          np.array([1, 2, 3, 4], dtype=dtype),
+          np.array([5, 6, 7, 8], dtype=dtype),
+          expected=np.array([5, 2, 3, 8], dtype=dtype))
 
-    self._testTernary(
-        array_ops.where,
-        np.array([0, 1, 0], dtype=np.bool),
-        np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32),
-        np.array([[7, 8], [9, 10], [11, 12]], dtype=np.float32),
-        expected=np.array([[7, 8], [3, 4], [11, 12]], dtype=np.float32))
+      self._testTernary(
+          array_ops.where,
+          np.array([0, 1, 0], dtype=np.bool),
+          np.array([[1, 2], [3, 4], [5, 6]], dtype=dtype),
+          np.array([[7, 8], [9, 10], [11, 12]], dtype=dtype),
+          expected=np.array([[7, 8], [3, 4], [11, 12]], dtype=dtype))
 
   def testSlice(self):
     for dtype in self.numeric_types:

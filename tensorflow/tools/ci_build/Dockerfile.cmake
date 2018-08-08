@@ -28,6 +28,8 @@ RUN pip install --upgrade astor
 RUN pip install --upgrade gast
 RUN pip install --upgrade numpy
 RUN pip install --upgrade termcolor
+RUN pip install keras_applications==1.0.2
+RUN pip install keras_preprocessing==1.0.1
 
 # Install golang
 RUN apt-get install -t xenial-backports -y golang-1.9

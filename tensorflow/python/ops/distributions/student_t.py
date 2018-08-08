@@ -80,6 +80,12 @@ class StudentT(distribution.Distribution):
   variance. However it is not actually the std. deviation; the Student's
   t-distribution std. dev. is `scale sqrt(df / (df - 2))` when `df > 2`.
 
+  Samples of this distribution are reparameterized (pathwise differentiable).
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+
   #### Examples
 
   Examples of initialization of one or a batch of distributions.
@@ -116,6 +122,19 @@ class StudentT(distribution.Distribution):
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
   dist.prob(3.0)
+  ```
+
+  Compute the gradients of samples w.r.t. the parameters:
+
+  ```python
+  df = tf.constant(2.0)
+  loc = tf.constant(2.0)
+  scale = tf.constant(11.0)
+  dist = tf.distributions.StudentT(df=df, loc=loc, scale=scale)
+  samples = dist.sample(5)  # Shape [5]
+  loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
+  # Unbiased stochastic gradients of the loss function
+  grads = tf.gradients(loss, [df, loc, scale])
   ```
 
   """
@@ -157,7 +176,7 @@ class StudentT(distribution.Distribution):
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[df, loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(df)]
                                     if validate_args else []):
@@ -168,7 +187,7 @@ class StudentT(distribution.Distribution):
             (self._df, self._loc, self._scale))
     super(StudentT, self).__init__(
         dtype=self._scale.dtype,
-        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -349,7 +368,7 @@ class StudentTWithAbsDfSoftplusScale(StudentT):
                validate_args=False,
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusScale"):
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[df, scale]) as name:
       super(StudentTWithAbsDfSoftplusScale, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),

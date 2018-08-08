@@ -21,13 +21,13 @@ limitations under the License.
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#include "tensorflow/contrib/lite/toco/toco_port.h"
 #if defined(PLATFORM_GOOGLE)
 #include "strings/split.h"
+#include "strings/strip.h"
 #endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/cc/saved_model/tag_constants.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 
 namespace toco {
@@ -145,8 +145,10 @@ class Arg<toco::StringMapList> final {
       }
       string outer_member_copy = outer_member;
       absl::StripAsciiWhitespace(&outer_member);
-      if (!TryStripPrefixString(outer_member, "{", &outer_member)) return false;
-      if (!TryStripSuffixString(outer_member, "}", &outer_member)) return false;
+      if (!strings::TryStripPrefixString(outer_member, "{", &outer_member))
+        return false;
+      if (!strings::TryStripSuffixString(outer_member, "}", &outer_member))
+        return false;
       const std::vector<string> inner_fields_vector =
           absl::StrSplit(outer_member, ',');
 
@@ -223,7 +225,7 @@ struct ParsedTocoFlags {
   Arg<string> output_file;
   Arg<string> input_format = Arg<string>("TENSORFLOW_GRAPHDEF");
   Arg<string> output_format = Arg<string>("TFLITE");
-  Arg<string> savedmodel_tagset = Arg<string>(tensorflow::kSavedModelTagServe);
+  Arg<string> savedmodel_tagset;
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);
@@ -234,6 +236,7 @@ struct ParsedTocoFlags {
   Arg<bool> drop_fake_quant = Arg<bool>(false);
   Arg<bool> reorder_across_fake_quant = Arg<bool>(false);
   Arg<bool> allow_custom_ops = Arg<bool>(false);
+  Arg<bool> quantize_weights = Arg<bool>(false);
   // Deprecated flags
   Arg<string> input_type;
   Arg<string> input_types;
@@ -241,6 +244,8 @@ struct ParsedTocoFlags {
   Arg<bool> drop_control_dependency = Arg<bool>(false);
   Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
   Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
+  Arg<int64> dedupe_array_min_size_bytes = Arg<int64>(64);
+  Arg<bool> split_tflite_lstm_inputs = Arg<bool>(true);
 };
 
 }  // namespace toco

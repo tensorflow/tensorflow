@@ -119,11 +119,11 @@ class GrpcRemoteMaster : public MasterInterface {
 
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
-  port::Tracing::TraceMe TraceRpc(StringPiece name,
-                                  ::grpc::ClientContext* ctx) {
-    string trace_id = strings::StrCat(port::Tracing::UniqueId());
+  tracing::ScopedActivity TraceRpc(StringPiece name,
+                                   ::grpc::ClientContext* ctx) {
+    string trace_id = strings::StrCat(tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
-    return port::Tracing::TraceMe(name, trace_id);
+    return tracing::ScopedActivity(name, trace_id);
   }
 
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {

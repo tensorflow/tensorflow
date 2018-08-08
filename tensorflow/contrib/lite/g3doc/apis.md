@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite APIs
 
 TensorFlow Lite provides programming APIs in C++ and Java, and in both cases
@@ -6,6 +9,9 @@ TensorFlow Lite is designed for fast inference on small devices so it should be
 no surprise that the APIs try to avoid unnecessary copies at the expense of
 convenience.  Similarly, consistency with TensorFlow APIs was not an explicit
 goal and some variance is to be expected.
+
+There is also a Python API for TensorFlow Lite described
+[here](../toco/g3doc/python_api.md#interpreter).
 
 ## C++
 
@@ -50,6 +56,7 @@ typedef enum {
 ```
 
 Failures can be easily verified with:
+
 ```c++
 if (status != kTfLiteOk) {
   // ... error handling here ...

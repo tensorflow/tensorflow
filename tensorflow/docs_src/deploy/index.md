@@ -14,4 +14,8 @@ the following documents:
     designed for production environments. TensorFlow Serving provides
     out-of-the-box integration with TensorFlow models.
     [Source code for TensorFlow Serving](https://github.com/tensorflow/serving)
-    is available on Github.
+    is available on GitHub.
+
+[TensorFlow Extended (TFX)](/tfx) is an end-to-end machine learning platform for
+TensorFlow. Implemented at Google, we've open sourced some TFX libraries with the
+rest of the system to come.

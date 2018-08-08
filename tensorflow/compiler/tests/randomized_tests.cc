@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -101,6 +102,9 @@ class OpTestBuilder {
   OpTestBuilder& RandomInput(DataType type);
   OpTestBuilder& RandomInput(DataType type, std::vector<int64> dims);
 
+  // As RandomInput but the values are unique.
+  OpTestBuilder& RandomUniqueInput(DataType type, std::vector<int64> dims);
+
   // Sets an attribute.
   template <class T>
   OpTestBuilder& Attr(StringPiece attr_name, T&& value);
@@ -126,6 +130,7 @@ class OpTestBuilder {
 
     DataType type = DT_INVALID;
     bool has_dims = false;
+    bool needs_unique_values = false;
     std::vector<int64> dims;
   };
 
@@ -162,6 +167,18 @@ OpTestBuilder& OpTestBuilder::RandomInput(DataType type,
   InputDescription input;
   input.type = type;
   input.has_dims = true;
+  input.dims = std::move(dims);
+  inputs_.push_back(input);
+  return *this;
+}
+
+OpTestBuilder& OpTestBuilder::RandomUniqueInput(DataType type,
+                                                std::vector<int64> dims) {
+  VLOG(1) << "Adding input: " << type << " " << TensorShape(dims).DebugString();
+  InputDescription input;
+  input.type = type;
+  input.has_dims = true;
+  input.needs_unique_values = true;
   input.dims = std::move(dims);
   inputs_.push_back(input);
   return *this;
@@ -289,7 +306,8 @@ class OpTest : public ::testing::Test {
   // Returns a tensor filled with random but "reasonable" values from the middle
   // of the type's range. If the shape is omitted, a random shape is used.
   // TODO(phawkins): generalize this code to a caller-supplied distribution.
-  Tensor RandomTensor(DataType dtype, gtl::ArraySlice<int64> shape);
+  Tensor RandomTensor(DataType dtype, bool needs_unique_values,
+                      gtl::ArraySlice<int64> shape);
   Tensor RandomTensor(DataType dtype);
 
   // Like RandomTensor, but uses values >= 0.
@@ -432,49 +450,90 @@ std::vector<int64> OpTest::RandomDims(int min_rank, int max_rank,
   return dims;
 }
 
-Tensor OpTest::RandomTensor(DataType dtype, gtl::ArraySlice<int64> shape) {
+Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
+                            gtl::ArraySlice<int64> shape) {
   Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
     case DT_FLOAT: {
+      gtl::FlatSet<float> already_generated;
       std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-      test::FillFn<float>(&tensor, [this, &distribution](int i) -> float {
-        return distribution(generator());
+      test::FillFn<float>(&tensor, [&](int i) -> float {
+        float generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_DOUBLE: {
+      gtl::FlatSet<double> already_generated;
       std::uniform_real_distribution<double> distribution(-1.0, 1.0);
-      test::FillFn<double>(&tensor, [this, &distribution](int i) -> double {
-        return distribution(generator());
+      test::FillFn<double>(&tensor, [&](int i) -> double {
+        double generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_COMPLEX64: {
+      gtl::FlatSet<std::pair<float, float>> already_generated;
       std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-      test::FillFn<complex64>(&tensor, [this, &distribution](int i) {
-        return complex64(distribution(generator()), distribution(generator()));
+      test::FillFn<complex64>(&tensor, [&](int i) {
+        complex64 generated;
+        do {
+          generated =
+              complex64(distribution(generator()), distribution(generator()));
+        } while (
+            needs_unique_values &&
+            !already_generated
+                 .insert(std::make_pair(generated.real(), generated.imag()))
+                 .second);
+        return generated;
       });
       break;
     }
     case DT_INT32: {
+      gtl::FlatSet<int32> already_generated;
       std::uniform_int_distribution<int32> distribution(-(1 << 20), 1 << 20);
-      test::FillFn<int32>(&tensor, [this, &distribution](int i) -> int32 {
-        return distribution(generator());
+      test::FillFn<int32>(&tensor, [&](int i) -> int32 {
+        int32 generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_INT64: {
+      gtl::FlatSet<int64> already_generated;
       std::uniform_int_distribution<int64> distribution(-(1LL << 40),
                                                         1LL << 40);
-      test::FillFn<int64>(&tensor, [this, &distribution](int i) -> int64 {
-        return distribution(generator());
+      test::FillFn<int64>(&tensor, [&](int i) -> int64 {
+        int64 generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_BOOL: {
+      gtl::FlatSet<bool> already_generated;
       std::bernoulli_distribution distribution;
-      test::FillFn<bool>(&tensor, [this, &distribution](int i) -> bool {
-        return distribution(generator());
+      test::FillFn<bool>(&tensor, [&](int i) -> bool {
+        bool generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
@@ -485,7 +544,7 @@ Tensor OpTest::RandomTensor(DataType dtype, gtl::ArraySlice<int64> shape) {
 }
 
 Tensor OpTest::RandomTensor(DataType dtype) {
-  return RandomTensor(dtype, RandomDims());
+  return RandomTensor(dtype, /*needs_unique_values=*/false, RandomDims());
 }
 
 Tensor OpTest::RandomNonNegativeTensor(DataType dtype,
@@ -619,8 +678,8 @@ std::vector<int64> OpTest::ImageDims(TensorFormat format, int batch,
         dims.push_back(dim);
       }
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(FATAL) << "FORMAT_NCHW_VECT_C not supported.";
+    default:
+      LOG(FATAL) << "Tensor format " << ToString(format) << " not supported.";
   }
   return dims;
 }
@@ -761,7 +820,8 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
         VLOG(1) << "Ignoring oversize dims.";
         return kInvalid;
       }
-      input_tensors.push_back(RandomTensor(input.type, dims));
+      input_tensors.push_back(
+          RandomTensor(input.type, input.needs_unique_values, dims));
     }
     VLOG(1) << "Input: " << input_tensors.back().DebugString();
   }
@@ -960,7 +1020,7 @@ TEST_F(OpTest, ArgMax) {
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ArgMax")
-            .RandomInput(DT_FLOAT, dims)
+            .RandomUniqueInput(DT_FLOAT, dims)
             .Input(test::AsScalar<int32>(reduce_dim))
             .Attr("T", DT_FLOAT)
             .Attr("Tidx", DT_INT32)
@@ -976,7 +1036,7 @@ TEST_F(OpTest, ArgMin) {
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ArgMin")
-            .RandomInput(DT_FLOAT, dims)
+            .RandomUniqueInput(DT_FLOAT, dims)
             .Input(test::AsScalar<int32>(reduce_dim))
             .Attr("T", DT_FLOAT)
             .Attr("Tidx", DT_INT32)

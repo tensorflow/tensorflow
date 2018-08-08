@@ -66,6 +66,15 @@ namespace xla {
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
 class HloTestBase : public ::testing::Test {
+ public:
+  // Creates a new HLO module for a test. The module created will have
+  // TestName() for its name; it will also automatically populate its debug
+  // options from command-line flags. If you want a fresh HloModule object and
+  // then add HloComputations to it, it's recommended to use this method in your
+  // tests.
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -80,17 +89,17 @@ class HloTestBase : public ::testing::Test {
 
   ~HloTestBase() override {}
 
-  // Creates a new HLO module for a test. The module created will have
-  // TestName() for its name; it will also automatically populate its debug
-  // options from command-line flags. If you want a fresh HloModule object and
-  // then add HloComputations to it, it's recommended to use this method in your
-  // tests.
-  static std::unique_ptr<HloModule> CreateNewModule();
-
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.
   static DebugOptions GetDebugOptionsForTest();
+
+  // Gets an HloModuleConfig with options appropriate for tests.
+  static HloModuleConfig GetModuleConfigForTest() {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    return config;
+  }
 
   // Executes the given module and return the result as a Literal.
   StatusOr<std::unique_ptr<Literal>> Execute(
@@ -157,6 +166,8 @@ class HloTestBase : public ::testing::Test {
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(const tensorflow::StringPiece hlo_string)
+      TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -189,6 +200,13 @@ class HloTestBase : public ::testing::Test {
     module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
+  }
+
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout, shape_index);
   }
 
   // Convenience method to clear the layout of the computation result in

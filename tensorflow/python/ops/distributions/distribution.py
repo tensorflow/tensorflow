@@ -212,7 +212,7 @@ class ReparameterizationType(object):
     reparameterized, and straight-through gradients are either partially
     unsupported or are not supported at all. In this case, for purposes of
     e.g. RL or variational inference, it is generally safest to wrap the
-    sample results in a `stop_gradients` call and instead use policy
+    sample results in a `stop_gradients` call and use policy
     gradients / surrogate loss instead.
   """
 
@@ -357,7 +357,7 @@ class Distribution(_BaseDistribution):
 
   For detailed usage examples of TensorFlow Distributions shapes, see
   [this tutorial](
-  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding%20TensorFlow%20Distributions%20Shapes.ipynb)
+  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding_TensorFlow_Distributions_Shapes.ipynb)
 
   #### Parameter values leading to undefined statistics or distributions.
 
@@ -524,7 +524,8 @@ class Distribution(_BaseDistribution):
   def parameters(self):
     """Dictionary of parameters used to instantiate this `Distribution`."""
     # Remove "self", "__class__", or other special variables. These can appear
-    # if the subclass used `parameters = locals()`.
+    # if the subclass used:
+    # `parameters = dict(locals())`.
     return dict((k, v) for k, v in self._parameters.items()
                 if not k.startswith("__") and k != "self")
 
@@ -721,11 +722,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._log_prob(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log(self._prob(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.log(self._prob(value, **kwargs))
 
   def log_prob(self, value, name="log_prob"):
     """Log probability density/mass function.
@@ -748,11 +746,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._prob(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.exp(self._log_prob(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.exp(self._log_prob(value, **kwargs))
 
   def prob(self, value, name="prob"):
     """Probability density/mass function.
@@ -775,11 +770,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._log_cdf(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log(self._cdf(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.log(self._cdf(value, **kwargs))
 
   def log_cdf(self, value, name="log_cdf"):
     """Log cumulative distribution function.
@@ -812,11 +804,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._cdf(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.exp(self._log_cdf(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.exp(self._log_cdf(value, **kwargs))
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function.
@@ -845,11 +834,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._log_survival_function(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log1p(-self.cdf(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.log1p(-self.cdf(value, **kwargs))
 
   def log_survival_function(self, value, name="log_survival_function"):
     """Log survival function.
@@ -883,11 +869,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._survival_function(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return 1. - self.cdf(value, **kwargs)
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return 1. - self.cdf(value, **kwargs)
 
   def survival_function(self, value, name="survival_function"):
     """Survival function.
@@ -932,10 +915,7 @@ class Distribution(_BaseDistribution):
   def _call_quantile(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
       value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._quantile(value, **kwargs)
-      except NotImplementedError as original_exception:
-        raise original_exception
+      return self._quantile(value, **kwargs)
 
   def quantile(self, value, name="quantile"):
     """Quantile function. Aka "inverse cdf" or "percent point function".
@@ -981,11 +961,8 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       try:
         return self._variance()
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.square(self._stddev())
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.square(self._stddev())
 
   def _stddev(self):
     raise NotImplementedError("stddev is not implemented")
@@ -1013,11 +990,8 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       try:
         return self._stddev()
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.sqrt(self._variance())
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.sqrt(self._variance())
 
   def _covariance(self):
     raise NotImplementedError("covariance is not implemented")

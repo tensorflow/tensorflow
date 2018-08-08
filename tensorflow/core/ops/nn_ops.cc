@@ -432,7 +432,7 @@ REGISTER_OP("FusedResizeAndPadConv2D")
     .Input("paddings: int32")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {float}")
+    .Attr("T: {half, float, double}")
     .Attr("resize_align_corners: bool = false")
     .Attr(GetMirrorPadModeAttrString())
     .Attr("strides: list(int)")
@@ -446,7 +446,7 @@ REGISTER_OP("FusedPadConv2D")
     .Input("paddings: int32")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {float}")
+    .Attr("T: {half, float, double}")
     .Attr(GetMirrorPadModeAttrString())
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
@@ -547,7 +547,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     });
 
 REGISTER_OP("Conv3DBackpropInputV2")
-    .Input("input_sizes: int32")
+    .Input("input_sizes: Tshape")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
@@ -556,6 +556,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -647,7 +648,7 @@ REGISTER_OP("MaxPool3DGradGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float}")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Pool3DShape(c));
       ShapeHandle unused;
@@ -1452,6 +1453,7 @@ REGISTER_OP("QuantizedReluX")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

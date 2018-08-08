@@ -19,27 +19,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
 using tensorflow::gtl::ArraySlice;
 
-std::unique_ptr<HloModule> CreateModuleWithProgramShape(
-    PrimitiveType primitive_type, ArraySlice<int64> input_shape_dims,
-    ArraySlice<int64> output_shape_dims, HloInstruction** param,
-    HloComputation** entry_computation) {
-  Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
-  Shape output_shape = ShapeUtil::MakeShape(primitive_type, output_shape_dims);
-  std::unique_ptr<HloModule> module = MakeUnique<HloModule>("test");
-  *entry_computation = module->AddEntryComputation(
-      CreateComputationWithSignature({&input_shape}, output_shape, "entry")
-          .ValueOrDie());
-  *param = (*entry_computation)->parameter_instruction(0);
-  return module;
-}
+class HloCreationUtilsTest : public HloTestBase {
+ protected:
+  static std::unique_ptr<HloModule> CreateModuleWithProgramShape(
+      PrimitiveType primitive_type, ArraySlice<int64> input_shape_dims,
+      ArraySlice<int64> output_shape_dims, HloInstruction** param,
+      HloComputation** entry_computation) {
+    Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
+    Shape output_shape =
+        ShapeUtil::MakeShape(primitive_type, output_shape_dims);
+    auto module = CreateNewModule("test");
+    *entry_computation = module->AddEntryComputation(
+        CreateComputationWithSignature({&input_shape}, output_shape, "entry")
+            .ValueOrDie());
+    *param = (*entry_computation)->parameter_instruction(0);
+    return module;
+  }
+};
 
-TEST(HloCreationUtilsTest, CollapseFirst1Dim) {
+TEST_F(HloCreationUtilsTest, CollapseFirst1Dim) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -55,11 +60,11 @@ TEST(HloCreationUtilsTest, CollapseFirst1Dim) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR1<int32>({3, 4})}));
-  CHECK_EQ(*result_literal, *Literal::CreateR1<int32>({3, 4}));
+                              *module, {LiteralUtil::CreateR1<int32>({3, 4})}));
+  CHECK_EQ(*result_literal, *LiteralUtil::CreateR1<int32>({3, 4}));
 }
 
-TEST(HloCreationUtilsTest, CollapseFirst2Dims) {
+TEST_F(HloCreationUtilsTest, CollapseFirst2Dims) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -77,14 +82,14 @@ TEST(HloCreationUtilsTest, CollapseFirst2Dims) {
       std::unique_ptr<Literal> result_literal,
       evaluator.Evaluate<std::unique_ptr<Literal>>(
           *module,
-          {Literal::CreateR3<int32>(
+          {LiteralUtil::CreateR3<int32>(
               {{{1, 2}, {3, 4}, {5, 6}}, {{-1, -2}, {-3, -4}, {-5, -6}}})}));
   CHECK_EQ(*result_literal,
-           *Literal::CreateR2<int32>(
+           *LiteralUtil::CreateR2<int32>(
                {{1, 2}, {3, 4}, {5, 6}, {-1, -2}, {-3, -4}, {-5, -6}}));
 }
 
-TEST(HloCreationUtilsTest, Prepend1DegenerateDim) {
+TEST_F(HloCreationUtilsTest, Prepend1DegenerateDim) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -98,13 +103,14 @@ TEST(HloCreationUtilsTest, Prepend1DegenerateDim) {
   entry_computation->set_root_instruction(with_1_degenerate_dim_prepended);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
-                          evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR1<int32>({9, 10})}));
-  CHECK_EQ(*result_literal, *Literal::CreateR2<int32>({{9, 10}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result_literal,
+      evaluator.Evaluate<std::unique_ptr<Literal>>(
+          *module, {LiteralUtil::CreateR1<int32>({9, 10})}));
+  CHECK_EQ(*result_literal, *LiteralUtil::CreateR2<int32>({{9, 10}}));
 }
 
-TEST(HloCreationUtilsTest, Prepend2DegenerateDims) {
+TEST_F(HloCreationUtilsTest, Prepend2DegenerateDims) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -118,13 +124,14 @@ TEST(HloCreationUtilsTest, Prepend2DegenerateDims) {
   entry_computation->set_root_instruction(with_2_degenerate_dims_prepended);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
-                          evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR1<int32>({9, 10})}));
-  CHECK_EQ(*result_literal, *Literal::CreateR3<int32>({{{9, 10}}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result_literal,
+      evaluator.Evaluate<std::unique_ptr<Literal>>(
+          *module, {LiteralUtil::CreateR1<int32>({9, 10})}));
+  CHECK_EQ(*result_literal, *LiteralUtil::CreateR3<int32>({{{9, 10}}}));
 }
 
-TEST(HloCreationUtilsTest, Prepend2DegenerateDimsToScalar) {
+TEST_F(HloCreationUtilsTest, Prepend2DegenerateDimsToScalar) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -140,11 +147,11 @@ TEST(HloCreationUtilsTest, Prepend2DegenerateDimsToScalar) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR0<int32>(9)}));
-  CHECK_EQ(*result_literal, *Literal::CreateR2<int32>({{9}}));
+                              *module, {LiteralUtil::CreateR0<int32>(9)}));
+  CHECK_EQ(*result_literal, *LiteralUtil::CreateR2<int32>({{9}}));
 }
 
-TEST(HloCreationUtilsTest, ExpandFirstDimInto3Dims) {
+TEST_F(HloCreationUtilsTest, ExpandFirstDimInto3Dims) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -161,12 +168,12 @@ TEST(HloCreationUtilsTest, ExpandFirstDimInto3Dims) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Literal> result_literal,
       evaluator.Evaluate<std::unique_ptr<Literal>>(
-          *module, {Literal::CreateR1<int32>({1, 2, 3, 4, 5, 6})}));
+          *module, {LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6})}));
   CHECK_EQ(*result_literal,
-           *Literal::CreateR3<int32>({{{1, 2}}, {{3, 4}}, {{5, 6}}}));
+           *LiteralUtil::CreateR3<int32>({{{1, 2}}, {{3, 4}}, {{5, 6}}}));
 }
 
-TEST(HloCreationUtilsTest, PadVectorWithZeros) {
+TEST_F(HloCreationUtilsTest, PadVectorWithZeros) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -183,11 +190,11 @@ TEST(HloCreationUtilsTest, PadVectorWithZeros) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR1<int32>({3, 4})}));
-  CHECK_EQ(*result_literal, *Literal::CreateR1<int32>({0, 0, 0, 3, 4, 0}));
+                              *module, {LiteralUtil::CreateR1<int32>({3, 4})}));
+  CHECK_EQ(*result_literal, *LiteralUtil::CreateR1<int32>({0, 0, 0, 3, 4, 0}));
 }
 
-TEST(HloCreationUtilsTest, BroadcastZeros_S32) {
+TEST_F(HloCreationUtilsTest, BroadcastZeros_S32) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -204,11 +211,11 @@ TEST(HloCreationUtilsTest, BroadcastZeros_S32) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR0<int32>(0)}));
-  CHECK_EQ(*result_literal, *Literal::CreateR2<int32>({{0, 0}, {0, 0}}));
+                              *module, {LiteralUtil::CreateR0<int32>(0)}));
+  CHECK_EQ(*result_literal, *LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}}));
 }
 
-TEST(HloCreationUtilsTest, BroadcastZeros_F32) {
+TEST_F(HloCreationUtilsTest, BroadcastZeros_F32) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
@@ -225,9 +232,9 @@ TEST(HloCreationUtilsTest, BroadcastZeros_F32) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           evaluator.Evaluate<std::unique_ptr<Literal>>(
-                              *module, {Literal::CreateR0<float>(0.0f)}));
+                              *module, {LiteralUtil::CreateR0<float>(0.0f)}));
   CHECK_EQ(*result_literal,
-           *Literal::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
+           *LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
 }
 
 }  // namespace

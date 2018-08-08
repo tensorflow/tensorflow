@@ -368,25 +368,41 @@ def random_gamma(shape,
   `alpha` is the shape parameter describing the distribution(s), and `beta` is
   the inverse scale parameter(s).
 
+  Note: Because internal calculations are done using `float64` and casting has
+  `floor` semantics, we must manually map zero outcomes to the smallest
+  possible positive floating-point value, i.e., `np.finfo(dtype).tiny`.  This
+  means that `np.finfo(dtype).tiny` occurs more frequently than it otherwise
+  should.  This bias can only happen for small values of `alpha`, i.e.,
+  `alpha << 1` or large values of `beta`, i.e., `beta >> 1`.
+
+  The samples are differentiable w.r.t. alpha and beta.
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+
   Example:
 
-    samples = tf.random_gamma([10], [0.5, 1.5])
-    # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
-    # the samples drawn from each distribution
+  ```python
+  samples = tf.random_gamma([10], [0.5, 1.5])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
 
-    samples = tf.random_gamma([7, 5], [0.5, 1.5])
-    # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
-    # represents the 7x5 samples drawn from each of the two distributions
+  samples = tf.random_gamma([7, 5], [0.5, 1.5])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
 
-    samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
-    # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
+  alpha = tf.constant([[1.],[3.],[5.]])
+  beta = tf.constant([[3., 4.]])
+  samples = tf.random_gamma([30], alpha=alpha, beta=beta)
+  # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
-    Note: Because internal calculations are done using `float64` and casting has
-    `floor` semantics, we must manually map zero outcomes to the smallest
-    possible positive floating-point value, i.e., `np.finfo(dtype).tiny`.  This
-    means that `np.finfo(dtype).tiny` occurs more frequently than it otherwise
-    should.  This bias can only happen for small values of `alpha`, i.e.,
-    `alpha << 1` or large values of `beta`, i.e., `beta >> 1`.
+  loss = tf.reduce_mean(tf.square(samples))
+  dloss_dalpha, dloss_dbeta = tf.gradients(loss, [alpha, beta])
+  # unbiased stochastic derivatives of the loss function
+  alpha.shape == dloss_dalpha.shape  # True
+  beta.shape == dloss_dbeta.shape  # True
+  ```
 
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output samples
@@ -406,8 +422,9 @@ def random_gamma(shape,
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
-      with values of type `dtype`.
+    samples: a `Tensor` of shape
+      `tf.concat([shape, tf.shape(alpha + beta)], axis=0)` with values of type
+      `dtype`.
   """
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
@@ -421,8 +438,6 @@ def random_gamma(shape,
         gen_random_ops.random_gamma(
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
-ops.NotDifferentiable("RandomGamma")
-
 
 @tf_export("random_poisson")
 def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
@@ -432,13 +447,15 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
 
   Example:
 
-    samples = tf.random_poisson([0.5, 1.5], [10])
-    # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
-    # the samples drawn from each distribution
+  ```python
+  samples = tf.random_poisson([0.5, 1.5], [10])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
 
-    samples = tf.random_poisson([12.2, 3.3], [7, 5])
-    # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
-    # represents the 7x5 samples drawn from each of the two distributions
+  samples = tf.random_poisson([12.2, 3.3], [7, 5])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+  ```
 
   Args:
     lam: A Tensor or Python value or N-D array of type `dtype`.
@@ -455,8 +472,8 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(lam))` with
-      values of type `dtype`.
+    samples: a `Tensor` of shape `tf.concat([shape, tf.shape(lam)], axis=0)`
+      with values of type `dtype`.
   """
   with ops.name_scope(name, "random_poisson", [lam, shape]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)

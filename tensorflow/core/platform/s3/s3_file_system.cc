@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
 #include "tensorflow/core/platform/s3/aws_logging.h"
-#include "tensorflow/core/platform/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/config/AWSProfileConfigLoader.h>
@@ -187,9 +187,7 @@ class S3RandomAccessFile : public RandomAccessFile {
       return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
     }
     n = getObjectOutcome.GetResult().GetContentLength();
-    std::stringstream ss;
-    ss << getObjectOutcome.GetResult().GetBody().rdbuf();
-    ss.read(scratch, n);
+    getObjectOutcome.GetResult().GetBody().read(scratch, n);
 
     *result = StringPiece(scratch, n);
     return Status::OK();
@@ -300,10 +298,10 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
 
     Aws::SDKOptions options;
     options.cryptoOptions.sha256Factory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256Factory>(AWSCryptoAllocationTag);
     };
     options.cryptoOptions.sha256HMACFactory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256HmacFactory>(AWSCryptoAllocationTag);
     };
     Aws::InitAPI(options);
 

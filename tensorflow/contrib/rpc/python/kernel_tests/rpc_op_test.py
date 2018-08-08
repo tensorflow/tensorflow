@@ -35,6 +35,7 @@ class RpcOpTest(test.TestCase, rpc_op_test_base.RpcOpTestBase):
   _protocol = 'grpc'
 
   invalid_method_string = 'Method not found'
+  connect_failed_string = 'Connect Failed'
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     super(RpcOpTest, self).__init__(methodName)

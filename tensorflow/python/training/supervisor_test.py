@@ -44,6 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import server_lib
@@ -83,7 +84,7 @@ class SupervisorTest(test.TestCase):
     end_time = time.time() + timeout_secs
     while time.time() < end_time:
       if for_checkpoint:
-        if saver_lib.checkpoint_exists(pattern):
+        if checkpoint_management.checkpoint_exists(pattern):
           return
       else:
         if len(gfile.Glob(pattern)) >= 1:

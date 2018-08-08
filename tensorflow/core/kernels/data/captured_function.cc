@@ -32,6 +32,20 @@ Status CapturedFunction::Create(
   return Status::OK();
 }
 
+/* static */
+Status CapturedFunction::Create(
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  OpInputList argument_inputs;
+  TF_RETURN_IF_ERROR(ctx->input_list(argument, &argument_inputs));
+  std::vector<Tensor> arguments_t;
+  arguments_t.reserve(argument_inputs.size());
+  for (const Tensor& t : argument_inputs) {
+    arguments_t.push_back(t);
+  }
+  return CapturedFunction::Create(func, std::move(arguments_t), out_function);
+}
+
 CapturedFunction::~CapturedFunction() {
   if (lib_ != nullptr && f_handle_ != kInvalidHandle) {
     lib_->ReleaseHandle(f_handle_).IgnoreError();
@@ -200,6 +214,9 @@ Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
   });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
+  if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
+    f_opts.create_rendezvous = true;
+  }
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -234,6 +251,9 @@ Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
   });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
+  if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
+    f_opts.create_rendezvous = true;
+  }
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -290,6 +310,9 @@ Status CapturedFunction::RunInstantiated(const std::vector<Tensor>& args,
   });
   f_opts.step_container = &step_container;
   f_opts.runner = runner;
+  if (lib->device()->device_type() != DEVICE_CPU) {
+    f_opts.create_rendezvous = true;
+  }
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -337,6 +360,9 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
       });
   f_opts.step_container = step_container;
   f_opts.runner = ctx->runner();
+  if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
+    f_opts.create_rendezvous = true;
+  }
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels

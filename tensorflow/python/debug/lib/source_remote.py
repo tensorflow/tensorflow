@@ -28,6 +28,7 @@ from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_service_pb2_grpc
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.profiler import tfprof_logger
 
 
@@ -95,6 +96,11 @@ def _source_file_paths_outside_tensorflow_py_library(code_defs, id_to_string):
   return non_tf_files
 
 
+def grpc_message_length_bytes():
+  """Maximum gRPC message length in bytes."""
+  return 4 * 1024 * 1024
+
+
 def _send_call_tracebacks(destinations,
                           origin_stack,
                           is_eager_execution=False,
@@ -155,17 +161,28 @@ def _send_call_tracebacks(destinations,
     source_file_paths.update(_source_file_paths_outside_tensorflow_py_library(
         [call_traceback.origin_stack], call_traceback.origin_id_to_string))
 
-    debugged_source_files = debug_pb2.DebuggedSourceFiles()
+    debugged_source_files = []
     for file_path in source_file_paths:
+      source_files = debug_pb2.DebuggedSourceFiles()
       _load_debugged_source_file(
-          file_path, debugged_source_files.source_files.add())
+          file_path, source_files.source_files.add())
+      debugged_source_files.append(source_files)
 
   for destination in destinations:
     channel = grpc.insecure_channel(destination)
     stub = debug_service_pb2_grpc.EventListenerStub(channel)
     stub.SendTracebacks(call_traceback)
     if send_source:
-      stub.SendSourceFiles(debugged_source_files)
+      for path, source_files in zip(
+          source_file_paths, debugged_source_files):
+        if source_files.ByteSize() < grpc_message_length_bytes():
+          stub.SendSourceFiles(source_files)
+        else:
+          tf_logging.warn(
+              "The content of the source file at %s is not sent to "
+              "gRPC debug server %s, because the message size exceeds "
+              "gRPC message length limit (%d bytes)." % (
+                  path, destination, grpc_message_length_bytes()))
 
 
 def send_graph_tracebacks(destinations,

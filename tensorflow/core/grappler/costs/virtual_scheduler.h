@@ -275,7 +275,6 @@ class VirtualScheduler {
   // Return per device peak memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
 
- protected:
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
     return &device_;
   }
@@ -283,6 +282,7 @@ class VirtualScheduler {
     return &node_map_;
   }
 
+ protected:
   // Returns the size of output at port_num (unit: bytes). A special case is
   // port_num -1, which is for control dependency and assumed to be 4 bytes.
   int64 CalculateOutputSize(
@@ -328,7 +328,7 @@ class VirtualScheduler {
   Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
-  // Auxilliary data structures for constructing NodeState and DeviceState.
+  // Auxiliary data structures for constructing NodeState and DeviceState.
   GraphProperties graph_properties_;
   Cluster* cluster_;  // Not owned.
 

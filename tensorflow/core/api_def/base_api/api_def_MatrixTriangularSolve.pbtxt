@@ -32,7 +32,7 @@ Boolean indicating whether to solve with `matrix` or its (block-wise)
          adjoint.
 
 @compatibility(numpy)
-Equivalent to np.linalg.triangular_solve
+Equivalent to scipy.linalg.solve_triangular
 @end_compatibility
 END
   }

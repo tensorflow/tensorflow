@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
 
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 
@@ -268,5 +269,70 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
 const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char GraphDatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
+
+BackgroundWorker::BackgroundWorker(Env* env, const string& name) {
+  thread_.reset(env->StartThread({} /* thread_options */, name,
+                                 [this]() { WorkerLoop(); }));
+}
+
+BackgroundWorker::~BackgroundWorker() {
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+  }
+  cond_var_.notify_one();
+  // Block until the background thread has terminated.
+  //
+  // NOTE(mrry): We explicitly free and join the thread here because
+  // `WorkerLoop()` uses other members of this object, and so we must join
+  // the thread before destroying them.
+  thread_.reset();
+}
+
+void BackgroundWorker::Schedule(std::function<void()> work_item) {
+  {
+    mutex_lock l(mu_);
+    work_queue_.push_back(std::move(work_item));
+  }
+  cond_var_.notify_one();
+}
+
+void BackgroundWorker::WorkerLoop() {
+  while (true) {
+    std::function<void()> work_item = nullptr;
+    {
+      mutex_lock l(mu_);
+      while (!cancelled_ && work_queue_.empty()) {
+        cond_var_.wait(l);
+      }
+      if (cancelled_) {
+        return;
+      }
+      DCHECK(!work_queue_.empty());
+      work_item = std::move(work_queue_.front());
+      work_queue_.pop_front();
+    }
+    DCHECK(work_item != nullptr);
+    work_item();
+  }
+}
+
+namespace dataset {
+
+IteratorContext MakeIteratorContext(OpKernelContext* ctx) {
+  IteratorContext::Params params;
+  params.env = ctx->env();
+  params.runner = *(ctx->runner());
+  params.lib = ctx->function_library();
+  // Note: must use reinterpret_cast because function.h forward-declares Device.
+  DeviceBase* device =
+      reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
+  params.allocator_getter = [device](AllocatorAttributes attrs) {
+    return device->GetAllocator(attrs);
+  };
+  return IteratorContext(params);
+}
+
+}  // namespace dataset
 
 }  // namespace tensorflow

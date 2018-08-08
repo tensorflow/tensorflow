@@ -31,7 +31,6 @@ using ops::AddN;
 using ops::BatchMatMul;
 using ops::Const;
 using ops::Div;
-using ops::Greater;
 using ops::MatMul;
 using ops::Max;
 using ops::Maximum;
@@ -46,7 +45,6 @@ using ops::RealDiv;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
-using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -477,11 +475,7 @@ TEST_F(CWiseUnaryGradTest, Tan_Complex) {
   auto x_fn = [this](const int i) {
     return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
   };
-  // TODO(kbsriram)
-  // Enable when tan kernel supports complex inputs
-  if (false) {
-    TestCWiseGrad<complex64, complex64>(TAN, x_fn);
-  }
+  TestCWiseGrad<complex64, complex64>(TAN, x_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Atan) {

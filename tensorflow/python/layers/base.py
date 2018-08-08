@@ -20,12 +20,12 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.keras._impl.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -152,10 +152,17 @@ class Layer(base_layer.Layer):
             scope, default_name=self._base_name) as captured_scope:
           self._scope = captured_scope
 
-  def add_weight(self, name, shape, dtype=None,
-                 initializer=None, regularizer=None,
-                 trainable=True, constraint=None,
+  def add_weight(self,
+                 name,
+                 shape,
+                 dtype=None,
+                 initializer=None,
+                 regularizer=None,
+                 trainable=None,
+                 constraint=None,
                  use_resource=None,
+                 synchronization=vs.VariableSynchronization.AUTO,
+                 aggregation=vs.VariableAggregation.NONE,
                  partitioner=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
@@ -170,9 +177,19 @@ class Layer(base_layer.Layer):
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
         Note, if the current variable scope is marked as non-trainable
         then this parameter is ignored and any added variables are also
-        marked as non-trainable.
+        marked as non-trainable. `trainable` defaults to `True` unless
+        `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
       use_resource: Whether to use `ResourceVariable`.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        @{tf.VariableAggregation}.
       partitioner: (optional) partitioner instance (callable).  If
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
@@ -190,7 +207,31 @@ class Layer(base_layer.Layer):
     Raises:
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
+      ValueError: When trainable has been set to True with synchronization
+        set as `ON_READ`.
     """
+    if synchronization == vs.VariableSynchronization.ON_READ:
+      if trainable:
+        raise ValueError(
+            'Synchronization value can be set to '
+            'VariableSynchronization.ON_READ only for non-trainable variables. '
+            'You have specified trainable=True and '
+            'synchronization=VariableSynchronization.ON_READ.')
+      else:
+        # Set trainable to be false when variable is to be synced on read.
+        trainable = False
+    elif trainable is None:
+      trainable = True
+
+    def _should_add_regularizer(variable, existing_variable_set):
+      if isinstance(variable, tf_variables.PartitionedVariable):
+        for var in variable:
+          if var in existing_variable_set:
+            return False
+        return True
+      else:
+        return variable not in existing_variable_set
+
     init_graph = None
     if not context.executing_eagerly():
       default_graph = ops.get_default_graph()
@@ -230,10 +271,13 @@ class Layer(base_layer.Layer):
             constraint=constraint,
             partitioner=partitioner,
             use_resource=use_resource,
+            synchronization=synchronization,
+            aggregation=aggregation,
             getter=vs.get_variable)
 
         if regularizer:
-          if context.executing_eagerly() or variable not in existing_variables:
+          if context.executing_eagerly() or _should_add_regularizer(
+              variable, existing_variables):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
@@ -308,7 +352,7 @@ class Layer(base_layer.Layer):
       try:
         call_has_scope_arg = self._call_has_scope_arg
       except AttributeError:
-        self._call_fn_args = estimator_util.fn_args(self.call)
+        self._call_fn_args = function_utils.fn_args(self.call)
         self._call_has_scope_arg = 'scope' in self._call_fn_args
         call_has_scope_arg = self._call_has_scope_arg
       if call_has_scope_arg:
@@ -353,4 +397,3 @@ def _add_elements_to_collection(elements, collection_list):
     for element in elements:
       if element not in collection_set:
         collection.append(element)
-

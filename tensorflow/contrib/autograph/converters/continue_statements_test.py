@@ -19,13 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import continue_statements
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
+from tensorflow.python.eager import context as tfe_ctx
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
-class ContinueCanonicalizationTest(converter_test_base.TestCase):
+class ContinueCanonicalizationTest(converter_testing.TestCase):
 
-  def test_basic_continue(self):
+  def assertTransformedEquivalent(self, test_fn, *inputs):
+    with self.converted(test_fn, continue_statements, {},
+                        constant_op.constant) as result:
+      self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
+
+  def test_basic(self):
 
     def test_fn(x):
       v = []
@@ -36,17 +43,13 @@ class ContinueCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = continue_statements.transform(node, self.ctx)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 1)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 4)
 
-    with self.compiled(node) as result:
-      self.assertEqual(test_fn(0), result.test_fn(0))
-      self.assertEqual(test_fn(1), result.test_fn(1))
-      self.assertEqual(test_fn(2), result.test_fn(2))
-      self.assertEqual(test_fn(3), result.test_fn(3))
-      self.assertEqual(test_fn(4), result.test_fn(4))
-
-  def test_basic_continue_for_loop(self):
+  def test_for_loop(self):
 
     def test_fn(a):
       v = []
@@ -57,16 +60,13 @@ class ContinueCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = continue_statements.transform(node, self.ctx)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, [])
+      self.assertTransformedEquivalent(test_fn, [1])
+      self.assertTransformedEquivalent(test_fn, [2])
+      self.assertTransformedEquivalent(test_fn, [1, 2, 3])
 
-    with self.compiled(node) as result:
-      self.assertEqual(test_fn([]), result.test_fn([]))
-      self.assertEqual(test_fn([1]), result.test_fn([1]))
-      self.assertEqual(test_fn([2]), result.test_fn([2]))
-      self.assertEqual(test_fn([1, 2, 3]), result.test_fn([1, 2, 3]))
-
-  def test_continue_deeply_nested(self):
+  def test_nested(self):
 
     def test_fn(x):
       v = []
@@ -83,15 +83,11 @@ class ContinueCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v, u, w
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = continue_statements.transform(node, self.ctx)
-
-    with self.compiled(node) as result:
-      self.assertEqual(test_fn(0), result.test_fn(0))
-      self.assertEqual(test_fn(1), result.test_fn(1))
-      self.assertEqual(test_fn(2), result.test_fn(2))
-      self.assertEqual(test_fn(3), result.test_fn(3))
-      self.assertEqual(test_fn(4), result.test_fn(4))
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 1)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 4)
 
 
 if __name__ == '__main__':

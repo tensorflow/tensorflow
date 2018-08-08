@@ -43,7 +43,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloComputation&, tensorflow::gtl::ArraySlice<llvm::Value*>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
-                        llvm::Module* module, llvm::IRBuilder<>* ir_builder,
+                        llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
   llvm_ir::ElementGenerator MakeElementGenerator(
@@ -64,6 +64,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                  llvm::Value* value) const override;
 
+  StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                   llvm::Value* value) const override;
+
   StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
                                  llvm::Value* value) const override;
 
@@ -72,6 +75,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
                                  llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                   llvm::Value* value) const override;
 
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
                                  llvm::Value* rhs) const override;

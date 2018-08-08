@@ -26,14 +26,21 @@ limitations under the License.
 
 namespace tflite {
 
-// Converts a `std::vector` to a `TfLiteIntArray`.
+// Converts a `std::vector` to a `TfLiteIntArray`. The caller takes ownership
+// of the returned pointer.
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 
+// Converts an array (of the given size) to a `TfLiteIntArray`. The caller
+// takes ownership of the returned pointer, and must make sure 'dims' has at
+// least 'rank' elemnts.
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims);
 
 // Checks whether a `TfLiteIntArray` and an int array have matching elements.
+// The caller must guarantee that 'b' has at least 'b_size' elements.
 bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
                                  const int* b);
+
+size_t CombineHashes(std::initializer_list<size_t> hashes);
 
 }  // namespace tflite
 

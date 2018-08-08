@@ -34,16 +34,86 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+
+// We have this pattern in dynamaic update slice fusion, which should be
+// supported:
+//
+// Parameters: p0, p1
+// Fusion
+//   ds = DynamicSlice(p0, p1)
+//   ROOT DynamicUpdateslice(p0, ds, p1)
+//
+// In this case, we should be able to reuse p0 and output, although p0 has
+// multiple uses.
+bool MultiDynamicSliceUseShareSameIndices(
+    tensorflow::gtl::ArraySlice<HloUse> uses) {
+  if (uses.empty()) {
+    return false;
+  }
+  const HloInstruction* indices = nullptr;
+  for (HloUse use : uses) {
+    auto user = use.instruction;
+    if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      if (indices == nullptr) {
+        indices = user->operand(2);
+      } else if (indices != user->operand(2)) {
+        return false;
+      }
+      if (use.operand_number != 0) {
+        return false;
+      }
+    } else if (user->opcode() == HloOpcode::kDynamicSlice) {
+      if (indices == nullptr) {
+        indices = user->operand(1);
+      } else if (indices != user->operand(1)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
 
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-HloDataflowAnalysis::HloDataflowAnalysis(const HloModule& module, bool ssa_form,
-                                         bool bitcast_defines_value)
+HloDataflowAnalysis::HloDataflowAnalysis(
+    const HloModule& module, bool ssa_form, bool bitcast_defines_value,
+    const FusionCanShareBufferFunction& fusion_can_share_buffer)
     : module_(module),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
-      call_graph_(CallGraph::Build(&module)) {}
+      call_graph_(CallGraph::Build(&module)),
+      fusion_can_share_buffer_(fusion_can_share_buffer) {}
+
+bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
+    const HloInstruction* inst) {
+  tensorflow::gtl::FlatSet<const HloInstruction*> visited;
+  tensorflow::gtl::InlinedVector<const HloInstruction*, 4> stack;
+  stack.push_back(inst);
+  while (!stack.empty()) {
+    const HloInstruction* current = stack.back();
+    stack.pop_back();
+    visited.insert(current);
+    for (const HloInstruction* user : current->users()) {
+      // Found a user that is non-elementwise on current instruction.
+      for (const int64 use_index : user->OperandIndices(current)) {
+        if (!user->IsElementwiseOnOperand(use_index) &&
+            user->opcode() != HloOpcode::kTuple) {
+          return false;
+        }
+      }
+      if (!visited.count(user)) {
+        stack.push_back(user);
+      }
+    }
+  }
+  return true;
+}
 
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
@@ -328,18 +398,17 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
 bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
   CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
   bool changed = false;
-  // RecvDone forwards the operand value at {0} to the output.
+  // RecvDone forwards the operand value at {0} to element {0} of its output.
   for (auto& pair : GetInstructionValueSet(recv_done)) {
     ShapeIndex& index = pair.first;
     HloValueSet& value_set = pair.second;
 
-    ShapeIndex operand_index = {0};
-    for (int64 i : index) {
-      operand_index.push_back(i);
+    if (index.empty() || index[0] != 0) {
+      continue;
     }
 
     const HloValueSet& operand_value_set =
-        GetValueSet(recv_done->operand(0), operand_index);
+        GetValueSet(recv_done->operand(0), index);
     if (value_set != operand_value_set) {
       value_set = operand_value_set;
       changed = true;
@@ -363,7 +432,7 @@ bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
 bool HloDataflowAnalysis::UpdateConditionalValueSet(
     HloInstruction* conditional) {
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
-  std::vector<const InstructionValueSet*> inputs = {
+  const InstructionValueSet* const inputs[] = {
       &GetInstructionValueSet(
           conditional->true_computation()->root_instruction()),
       &GetInstructionValueSet(
@@ -388,6 +457,24 @@ bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {
 
     HloValueSet& value_set = pair.second;
     HloValueSet& operand_value_set = GetValueSet(copy->operand(0), index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
+  // Domain instructions just forward their operand. Given that domains can have
+  // a tuple operand, we iterate through its indexes, like for copies.
+  // Unlike copies though we also propagate the top-level value.
+  CHECK_EQ(domain->opcode(), HloOpcode::kDomain);
+  bool changed = false;
+  for (auto& pair : GetInstructionValueSet(domain)) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+    HloValueSet& operand_value_set = GetValueSet(domain->operand(0), index);
     if (value_set != operand_value_set) {
       value_set = operand_value_set;
       changed = true;
@@ -490,17 +577,17 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   }
 }
 
-bool HloDataflowAnalysis::UpdateSelectValueSet(HloInstruction* select) {
-  CHECK_EQ(select->opcode(), HloOpcode::kSelect);
-  // A phi value is not defined at a kSelect instruction because kSelect does
-  // not create a new value. Rather it forwards a value from its operands. This
-  // contrasts with kWhile instruction (which does define a phi value) which has
-  // in-place update semantics.
+bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
+  CHECK_EQ(select->opcode(), HloOpcode::kTupleSelect);
+  // A phi value is not defined at a kTupleSelect instruction because
+  // kTupleSelect does not create a new value. Rather it forwards a value from
+  // its operands. This contrasts with kWhile instruction (which does define a
+  // phi value) which has in-place update semantics.
   bool changed = false;
   for (auto& pair : GetInstructionValueSet(select)) {
     const ShapeIndex& index = pair.first;
     if (index.empty()) {
-      // kSelect copies (not forwards) the top-level value.
+      // kTupleSelect copies (not forwards) the top-level value.
       continue;
     }
     HloValueSet& value_set = pair.second;
@@ -538,7 +625,7 @@ bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
 
 bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
   CHECK_EQ(xla_while->opcode(), HloOpcode::kWhile);
-  std::vector<const InstructionValueSet*> inputs = {
+  const InstructionValueSet* const inputs[] = {
       &GetInstructionValueSet(xla_while->while_body()->root_instruction()),
       &GetInstructionValueSet(xla_while->operand(0))};
   if (ssa_form_) {
@@ -556,12 +643,14 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kSlice:
       return UpdateSliceValueSet(instruction);
+    case HloOpcode::kDomain:
+      return UpdateDomainValueSet(instruction);
     case HloOpcode::kCopy:
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
       return UpdateGetTupleElementValueSet(instruction);
-    case HloOpcode::kSelect:
-      return UpdateSelectValueSet(instruction);
+    case HloOpcode::kTupleSelect:
+      return UpdateTupleSelectValueSet(instruction);
     case HloOpcode::kTuple:
       return UpdateTupleValueSet(instruction);
     case HloOpcode::kParameter:
@@ -734,6 +823,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kCall:
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
+        case HloOpcode::kDomain:
           // These instructions define no values. The values in their output
           // flow from their operands or from cross computation dataflow.
           break;
@@ -759,21 +849,25 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           break;
         case HloOpcode::kCopy:
-        case HloOpcode::kSelect:
+        case HloOpcode::kTupleSelect:
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
           define_top_level_only();
           break;
         case HloOpcode::kRecvDone:
-          // RecvDone aliases its input tuple element {0}, therefore does not
-          // define any values.
-          break;
-        case HloOpcode::kSend:
-          // Send produces a tuple of {aliased operand, U32 context}, therefore
-          // only defines the top-level tuple and the tuple element at {1}.
+          // RecvDone produces a two-element tuple. Element zero aliases its
+          // input tuple element {0}; element one is a token.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
+          break;
+        case HloOpcode::kSend:
+          // Send produces a tuple of {aliased operand, U32 context, token},
+          // therefore only defines the top-level tuple and the tuple elements
+          // at {1} and {2}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{1});
+          define_value_at(/*index=*/{2});
           break;
         default:
           define_all_values();
@@ -787,12 +881,13 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
 
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
-    const HloModule& module, bool ssa_form, bool bitcast_defines_value) {
+    const HloModule& module, bool ssa_form, bool bitcast_defines_value,
+    const FusionCanShareBufferFunction& fusion_can_share_buffer) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = WrapUnique(
-      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value));
+  auto dataflow_analysis = WrapUnique(new HloDataflowAnalysis(
+      module, ssa_form, bitcast_defines_value, fusion_can_share_buffer));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
@@ -876,6 +971,162 @@ Status HloDataflowAnalysis::Verify() const {
   }
 
   return Status::OK();
+}
+
+bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
+    const HloInstruction* operand, const ShapeIndex& index,
+    const HloInstruction* user) const {
+  CHECK(user->IsUserOf(operand))
+      << "user: " << user->ToString() << " operand: " << operand->ToString();
+  if (user->opcode() == HloOpcode::kFusion &&
+      user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    // Find fusion parameter associated with 'operand'.
+    HloInstruction* fusion_param =
+        user->fused_parameter(user->operand_index(operand));
+    // Iterate through all users of all uses of the fusion parameter value.
+    // Return false if any uses are detected, returns true otherwise.
+    const HloValue& value = GetValueDefinedAt(fusion_param, index);
+    return value.uses().empty();
+  } else {
+    // Return false if no value at 'operand' and 'index' is used at 'user'.
+    for (const HloValue* value : GetValueSet(operand, index).values()) {
+      for (const HloUse& use : value->uses()) {
+        if (use.instruction == user) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
+    HloInstruction* operand, const ShapeIndex& operand_index,
+    HloInstruction* user, const ShapeIndex& user_index) const {
+  CHECK(user->IsUserOf(operand))
+      << "user: " << user->ToString() << " operand: " << operand->ToString();
+  const Shape& operand_subshape =
+      ShapeUtil::GetSubshape(operand->shape(), operand_index);
+  const Shape& user_subshape =
+      ShapeUtil::GetSubshape(user->shape(), user_index);
+
+  // Check that operand and user emit the same shape and layout.
+  if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
+    return false;
+  }
+
+  if (user->opcode() == HloOpcode::kFusion) {
+    if (fusion_can_share_buffer_ != nullptr) {
+      return fusion_can_share_buffer_(user, operand);
+    }
+    // Get the parameter associated with 'operand';
+    HloInstruction* fusion_param =
+        user->fused_parameter(user->operand_index(operand));
+
+    const HloValue& value = GetValueDefinedAt(fusion_param, operand_index);
+    if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
+      return true;
+    }
+    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
+      if (user->fused_expression_root()->opcode() ==
+          HloOpcode::kDynamicUpdateSlice) {
+        // Loop fusion with kDynamicUpdateSlice fused root.
+        //
+        // Returns true iff there is exactly one use of 'operand' at shape index
+        // 'operand_index', and this singleton use is the fused root at operand
+        // index 0.
+        if (value.uses().size() == 1) {
+          const HloUse& use = value.uses()[0];
+          return use.instruction == user->fused_expression_root() &&
+                 use.operand_number == 0;
+        }
+        return false;
+      }
+      return AreTransitiveUsesElementwiseOrTuple(fusion_param);
+    }
+    if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+        user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
+      // Output fusion with kAdd fused root.
+
+      // Check if one operand of kAdd fused root is kDot or kConvolution.
+      auto* add = user->fused_expression_root();
+      auto add_operand_it =
+          std::find_if(add->operands().begin(), add->operands().end(),
+                       [&](HloInstruction* operand) {
+                         return operand->opcode() == HloOpcode::kConvolution ||
+                                operand->opcode() == HloOpcode::kDot;
+                       });
+      if (add_operand_it == add->operands().end()) {
+        return false;
+      }
+      auto* matched_add_operand = *add_operand_it;
+      // Calculate operand index of 'add' operand which was not matched above.
+      const int64 other_add_operand_index =
+          matched_add_operand == add->operand(0) ? 1 : 0;
+      // Returns true iff there is exactly one use of 'operand' at shape index
+      // 'operand_index', and this singleton use is the fused root (at operand
+      // index 'other_add_operand_index').
+      if (value.uses().size() == 1) {
+        const HloUse& use = value.uses()[0];
+        return use.instruction == user->fused_expression_root() &&
+               use.operand_number == other_add_operand_index;
+      }
+      return false;
+    }
+  }
+
+  if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kWhile) {
+    // We eliminated other users in BufferLiveness::live_range_strictly_before,
+    // so here we just need to check that the use is at operand index 0.
+    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    return operand_indices.size() == 1 && operand_indices[0] == 0;
+  }
+  if (user->opcode() == HloOpcode::kSort) {
+    // Only valid if there are no other users.
+    if (operand->users().size() != 1) {
+      return false;
+    }
+    // If we only sort keys, the output of sort is not a tuple, so we can always
+    // share the buffer.
+    if (user->operand_count() == 1) {
+      return true;
+    }
+    CHECK(!user_index.empty());
+    // Only share with the right tuple element buffer.
+    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
+  }
+  if (user->opcode() == HloOpcode::kCall) {
+    // Get all uses of value defined by 'operand' at 'operand_index'.
+    const auto& uses = GetValueDefinedAt(operand, operand_index).uses();
+    // Return true iff:
+    // *) There exists two uses of 'operand'.
+    // *) One use is by 'user' (caller).
+    // *) One use is by root instruction of called computation (callee root).
+    //    (Note: we check the root of the called computation, because the
+    //     root result buffer is required to alias with the Call result buffer).
+    // *) The root instruction of the called computation is element-wise on
+    //    'operand'.
+    const bool found_caller_use =
+        std::find_if(uses.begin(), uses.end(), [user](const HloUse& use) {
+          return use.instruction == user;
+        }) != uses.end();
+    auto* callee_root = user->to_apply()->root_instruction();
+    const bool found_elementwise_callee_use =
+        std::find_if(
+            uses.begin(), uses.end(), [callee_root](const HloUse& use) {
+              return use.instruction == callee_root &&
+                     callee_root->IsElementwiseOnOperand(use.operand_number);
+            }) != uses.end();
+    return uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
+  }
+
+  // Loop fusions that contain transposing copies won't reach here as they have
+  // different layouts, which fails the check in the beginning of this function.
+  return user->IsElementwiseOnOperand(user->operand_index(operand));
 }
 
 }  // namespace xla

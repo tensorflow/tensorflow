@@ -24,6 +24,7 @@ from tensorflow.contrib.distribute.python import values
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import distribute as distribute_lib
 
 
@@ -36,16 +37,13 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # doing something that won't work with other DistributionStrategy
   # implementations?
 
-  def __init__(self, device):
+  def __init__(self, device, prefetch_on_device=None):
     super(OneDeviceStrategy, self).__init__()
     self._device = device
+    self._prefetch_on_device = prefetch_on_device
+    self._default_device = device
 
   def _create_variable(self, next_creator, *args, **kwargs):
-    # No need to distinguish tower-local variables when not mirroring,
-    # we just enforce that they are not trainable.
-    if kwargs.pop("tower_local_reduce_method", None) is not None:
-      kwargs["trainable"] = False
-
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       with ops.device(self._device):
@@ -61,7 +59,9 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       return next_creator(*args, **kwargs)
 
   def distribute_dataset(self, dataset_fn):
-    return self._call_dataset_fn(dataset_fn)
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), [self._device],
+        self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
     return tensor
@@ -76,15 +76,15 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device):
       return values.MapOutput([fn(m, *args, **kwargs) for m in map_over])
 
-  def _reduce(self, method_string, value, destinations):
+  def _reduce(self, aggregation, value, destinations):
     if not isinstance(value, values.MapOutput):
       return value
     l = value.get()
     assert l
     with ops.device(self._device):
-      if method_string == "sum":
+      if aggregation == vs.VariableAggregation.SUM:
         return math_ops.add_n(l)
-      elif method_string == "mean":
+      elif aggregation == vs.VariableAggregation.MEAN:
         return math_ops.add_n(l) / len(l)
       else:
         assert False
@@ -98,15 +98,15 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
       return fn(*args, **kwargs)
 
-  def _fetch(self, val, destination, fn):
-    """Return a copy of `val` or `fn(val)` on `destination`."""
-    with ops.device(self._device):
-      v = fn(val)
-    with ops.device(destination):
-      return array_ops.identity(v)
+  def read_var(self, tower_local_var):
+    """Read the aggregate value of a tower-local variable."""
+    return array_ops.identity(tower_local_var)
 
   def _unwrap(self, value):
     return [value]
+
+  def value_container(self, value):
+    return value
 
   @property
   def is_single_tower(self):

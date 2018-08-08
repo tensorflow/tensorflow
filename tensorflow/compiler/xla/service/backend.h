@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -63,11 +63,9 @@ class BackendOptions {
 //
 // It also offers a pooling API for creation/use of initialized streams:
 //
-//    StreamPtr stream = backend->BorrowStream().ConsumeValueOrDie();
+//    StreamPool::Ptr stream = backend->BorrowStream().ConsumeValueOrDie();
 class Backend {
  public:
-  using StreamPtr = Pool<se::Stream>::SmartPtr;
-
   // Creates a new backend.
   static StatusOr<std::unique_ptr<Backend>> CreateBackend(
       const BackendOptions& options);
@@ -114,13 +112,13 @@ class Backend {
   // Borrows a stream for use by the caller, either by grabbing it from an
   // internal pool, or by constructing/initializating it, and returns the result
   // to the caller.
-  StatusOr<StreamPtr> BorrowStream(int device_ordinal);
-  StatusOr<StreamPtr> BorrowStream(se::StreamExecutor* executor);
+  StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal);
+  StatusOr<StreamPool::Ptr> BorrowStream(se::StreamExecutor* executor);
 
   // Returns a function to borrow a stream, as `BorrowStream` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<StreamPtr>(int)> StreamBorrower() {
+  std::function<StatusOr<StreamPool::Ptr>(int)> StreamBorrower() {
     return [this](int device_ordinal) { return BorrowStream(device_ordinal); };
   }
 
@@ -139,10 +137,6 @@ class Backend {
   // XLA's perspective. That is, an executable compiled for one device would
   // be equivalent to an executable compiled for the other.
   StatusOr<bool> devices_equivalent(int device_ordinal_a, int device_ordinal_b);
-
-  // For the host platform, returns the threadpool to use when scheduling
-  // parallel operators. For other platforms, returns NULL.
-  tensorflow::thread::ThreadPool* inter_op_thread_pool() const;
 
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
@@ -173,13 +167,10 @@ class Backend {
   tensorflow::mutex mu_;
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
-  std::map<se::StreamExecutor*, Pool<se::Stream>> stream_pools_ GUARDED_BY(mu_);
+  std::map<se::StreamExecutor*, StreamPool> stream_pools_ GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;
-
-  // For the CPU backend, a threadpool for scheduling parallel operators.
-  std::unique_ptr<tensorflow::thread::ThreadPool> inter_op_thread_pool_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
   std::unique_ptr<EigenThreadPoolWrapper> intra_op_thread_pool_wrapper_;

@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -108,20 +110,27 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const std::unordered_map<const HloInstruction*, const Literal*>&
           substitutions);
 
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseBinaryOp(
+      HloOpcode opcode, const Literal& lhs, const Literal& rhs);
+
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseUnaryOp(
+      HloOpcode opcode, const Literal& operand);
+
+  StatusOr<std::unique_ptr<Literal>> EvaluateDotOp(
+      const DotDimensionNumbers& dim_numbers, const Literal& lhs,
+      const Literal& rhs);
+
  protected:
-  // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
-  // literal type of each evaluated Handle* method of a TypedVisitor.
-  // There are however a few notable exceptions to this rule, notably:
-  // - HandleCompare and HandleIsFinite: where the resulting literal type is
-  // always boolean.
-  // These operations are handled outside of the parent HloEvaluator handlers
-  // instead of from within TypedVisitor.
+  // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
+  // class.
   //
-  // Type params:
-  //   - ReturnT: The type of input and output of each operation.
-  //   - ElementwiseT: The type in which internal computation are done.
-  template <typename ReturnT, typename ElementwiseT = ReturnT>
-  class TypedVisitor;
+  // A straightforward implementation would be to make it a nested class
+  // declared and defined in hlo_evaluator.cc.  Instead HloEvaluatorTypedVisitor
+  // lives as a separate class with its own header because its template gets
+  // instantiated many times and we want to use extern templates to shard out
+  // the compilation of those instantiations across multiple cc files.
+  template <typename ReturnT, typename ElementwiseT>
+  friend class HloEvaluatorTypedVisitor;
 
   // Wraps around instruction handling to infer types before dispatching to
   // the corresponding typed Visitor.
@@ -168,7 +177,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleSelect(HloInstruction* select) override;
 
- private:
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
+
+  Status HandleBroadcast(HloInstruction* broadcast) override;
+
+  Status HandleAfterAll(HloInstruction* token) override;
+
+  Status HandleSort(HloInstruction* sort) override;
+
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
   // returned directly without looking up the cache.
@@ -183,14 +199,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return *(it->second);
   }
 
-  // Map from a primitive type to its associated (templated) DfsHloVisitor.
-  // Note: the hash function here is only needed because current gcc std::hash
-  // does not specialize for enum types. This should however be fixed in the
-  // future: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60970#c5
-  tensorflow::gtl::FlatMap<PrimitiveType, std::unique_ptr<DfsHloVisitor>,
-                           std::hash<int>>
-      typed_visitors_;
-
   // Tracks the HLO instruction and its evaluated literal result.
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
@@ -198,6 +206,41 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Must be cleared for each evaluation.
   tensorflow::gtl::FlatMap<const HloInstruction*, std::unique_ptr<Literal>>
       evaluated_;
+
+ private:
+  template <typename ReturnT, typename NativeT>
+  static StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
+      HloInstruction* instruction,
+      const std::function<ReturnT(NativeT)>& unary_op,
+      const Literal& operand_literal) {
+    const auto shape = instruction->shape();
+    const auto* operand = instruction->operand(0);
+
+    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
+    // removed.
+    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
+      return Unimplemented(
+          "Implicit broadcasting is currently unsupported in HLO evaluator "
+          "Shape Mismatch: %s vs %s",
+          ShapeUtil::HumanString(shape).c_str(),
+          ShapeUtil::HumanString(operand->shape()).c_str());
+    }
+
+    auto result = MakeUnique<Literal>(shape);
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          return unary_op(operand_literal.Get<NativeT>(multi_index));
+        }));
+    return std::move(result);
+  }
+
+  // Map from a primitive type to its associated (templated) DfsHloVisitor.
+  // Note: the hash function here is only needed because current gcc std::hash
+  // does not specialize for enum types. This should however be fixed in the
+  // future: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60970#c5
+  tensorflow::gtl::FlatMap<PrimitiveType, std::unique_ptr<DfsHloVisitor>,
+                           std::hash<int>>
+      typed_visitors_;
 
   // Caches pointers to input literals, assuming they are in post-order.
   // Literals are not owned by this class, and they must outlive the lifetime of

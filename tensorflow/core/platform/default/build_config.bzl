@@ -71,6 +71,8 @@ def pyx_library(
         name = filename + "_cython_translation",
         srcs = [filename],
         outs = [filename.split(".")[0] + ".cpp"],
+        # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
+        # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
         cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
         tools = ["@cython//:cython_binary"] + pxd_srcs,
     )
@@ -82,7 +84,7 @@ def pyx_library(
     native.cc_binary(
         name=shared_object_name,
         srcs=[stem + ".cpp"],
-        deps=deps + ["//util/python:python_headers"],
+        deps=deps + ["//third_party/python_runtime:headers"],
         linkshared = 1,
     )
     shared_objects.append(shared_object_name)
@@ -200,7 +202,10 @@ def cc_proto_library(
   )
 
   if use_grpc_plugin:
-    cc_libs += ["//external:grpc_lib"]
+    cc_libs += select({
+        "//tensorflow:linux_s390x": ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
 
   if default_header:
     header_only_name = name
@@ -304,6 +309,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         cc_grpc_version = None,
                         j2objc_api_version = 1,
                         cc_api_version = 2,
+                        dart_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
                         js_api_version = 2, js_codegen = "jspb",
                         default_header = False):
@@ -319,10 +325,36 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
   use_grpc_plugin = None
   if cc_grpc_version:
     use_grpc_plugin = True
+
+  cc_deps = tf_deps(protodeps, "_cc")
+  cc_name = name + "_cc"
+  if not srcs:
+    # This is a collection of sub-libraries. Build header-only and impl
+    # libraries containing all the sources.
+    proto_gen(
+        name = cc_name + "_genproto",
+        deps = [s + "_genproto" for s in cc_deps],
+        protoc = "@protobuf_archive//:protoc",
+        visibility=["//visibility:public"],
+    )
+    native.cc_library(
+        name = cc_name,
+        deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
+               if_static([name + "_cc_impl"]),
+        testonly = testonly,
+        visibility = visibility,
+    )
+    native.cc_library(
+        name = cc_name + "_impl",
+        deps = [s + "_impl" for s in cc_deps] + ["@protobuf_archive//:cc_wkt_protos"],
+    )
+
+    return
+
   cc_proto_library(
-      name = name + "_cc",
+      name = cc_name,
       srcs = srcs,
-      deps = tf_deps(protodeps, "_cc") + ["@protobuf_archive//:cc_wkt_protos"],
+      deps = cc_deps + ["@protobuf_archive//:cc_wkt_protos"],
       cc_libs = cc_libs + if_static(
           ["@protobuf_archive//:protobuf"],
           ["@protobuf_archive//:protobuf_headers"]
@@ -341,11 +373,30 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
 
 def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
                         testonly=0, srcs_version="PY2AND3", use_grpc_plugin=False):
+  py_deps = tf_deps(protodeps, "_py")
+  py_name = name + "_py"
+  if not srcs:
+    # This is a collection of sub-libraries. Build header-only and impl
+    # libraries containing all the sources.
+    proto_gen(
+        name = py_name + "_genproto",
+        deps = [s + "_genproto" for s in py_deps],
+        protoc = "@protobuf_archive//:protoc",
+        visibility=["//visibility:public"],
+    )
+    native.py_library(
+        name = py_name,
+        deps = py_deps + ["@protobuf_archive//:protobuf_python"],
+        testonly = testonly,
+        visibility = visibility,
+    )
+    return
+
   py_proto_library(
-      name = name + "_py",
+      name = py_name,
       srcs = srcs,
       srcs_version = srcs_version,
-      deps = deps + tf_deps(protodeps, "_py") + ["@protobuf_archive//:protobuf_python"],
+      deps = deps + py_deps + ["@protobuf_archive//:protobuf_python"],
       protoc = "@protobuf_archive//:protoc",
       default_runtime = "@protobuf_archive//:protobuf_python",
       visibility = visibility,
@@ -364,13 +415,14 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, cc_grpc_version = None,
-                     j2objc_api_version = 1,
+                     dart_api_version = 2, j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb",
+                     provide_cc_alias = False,
                      default_header = False):
   """Make a proto library, possibly depending on other proto libraries."""
-  js_api_version = js_api_version  # unused argument
-  js_codegen = js_codegen  # unused argument
+  _ignore = (js_api_version, js_codegen, provide_cc_alias)
+
   tf_proto_library_cc(
       name = name,
       srcs = srcs,
@@ -391,6 +443,33 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
       use_grpc_plugin = has_services,
   )
+
+# A list of all files under platform matching the pattern in 'files'. In
+# contrast with 'tf_platform_srcs' below, which seletive collects files that
+# must be compiled in the 'default' platform, this is a list of all headers
+# mentioned in the platform/* files.
+def tf_platform_hdrs(files):
+  return native.glob(["platform/*/" + f for f in files])
+
+def tf_platform_srcs(files):
+  base_set = ["platform/default/" + f for f in files]
+  windows_set = base_set + ["platform/windows/" + f for f in files]
+  posix_set = base_set + ["platform/posix/" + f for f in files]
+
+  # Handle cases where we must also bring the posix file in. Usually, the list
+  # of files to build on windows builds is just all the stuff in the
+  # windows_set. However, in some cases the implementations in 'posix/' are
+  # just what is necessary and historically we choose to simply use the posix
+  # file instead of making a copy in 'windows'.
+  for f in files:
+    if f == "error.cc":
+      windows_set.append("platform/posix/" + f)
+
+  return select({
+    "//tensorflow:windows" : native.glob(windows_set),
+    "//tensorflow:windows_msvc" : native.glob(windows_set),
+    "//conditions:default" : native.glob(posix_set),
+  })
 
 def tf_additional_lib_hdrs(exclude = []):
   windows_hdrs = native.glob([
@@ -422,14 +501,6 @@ def tf_additional_lib_srcs(exclude = []):
       ], exclude = exclude),
   })
 
-# pylint: disable=unused-argument
-def tf_additional_framework_hdrs(exclude = []):
-  return []
-
-def tf_additional_framework_srcs(exclude = []):
-  return []
-# pylint: enable=unused-argument
-
 def tf_additional_minimal_lib_srcs():
   return [
       "platform/default/integral_types.h",
@@ -447,9 +518,11 @@ def tf_additional_proto_hdrs():
 
 def tf_additional_proto_srcs():
   return [
-      "platform/default/logging.cc",
       "platform/default/protobuf.cc",
   ]
+
+def tf_additional_human_readable_json_deps():
+  return []
 
 def tf_additional_all_protos():
   return ["//tensorflow/core:protos_all"]
@@ -469,25 +542,6 @@ def tf_protos_grappler():
   return if_static(
       extra_deps=tf_protos_grappler_impl(),
       otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
-
-def tf_env_time_hdrs():
-  return [
-      "platform/env_time.h",
-  ]
-
-def tf_env_time_srcs():
-  win_env_time = native.glob([
-    "platform/windows/env_time.cc",
-    "platform/env_time.cc",
-  ], exclude = [])
-  return select({
-    "//tensorflow:windows" : win_env_time,
-    "//tensorflow:windows_msvc" : win_env_time,
-    "//conditions:default" : native.glob([
-        "platform/posix/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
-  })
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
@@ -566,10 +620,10 @@ def tf_additional_core_deps():
       ],
       "//conditions:default": [],
   }) + select({
-      "//tensorflow:with_s3_support_windows_override": [],
-      "//tensorflow:with_s3_support_android_override": [],
-      "//tensorflow:with_s3_support_ios_override": [],
-      "//tensorflow:with_s3_support": [
+      "//tensorflow:with_aws_support_windows_override": [],
+      "//tensorflow:with_aws_support_android_override": [],
+      "//tensorflow:with_aws_support_ios_override": [],
+      "//tensorflow:with_aws_support": [
           "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],
@@ -583,6 +637,7 @@ def tf_additional_cloud_op_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
       ],
       "//conditions:default": [],
   })
@@ -595,6 +650,7 @@ def tf_additional_cloud_kernel_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+        "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
       ],
       "//conditions:default": [],
   })

@@ -19,7 +19,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -76,6 +76,7 @@ class DfsHloVisitorBase {
 
   virtual Status HandleClamp(HloInstructionPtr hlo) = 0;
   virtual Status HandleSelect(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTupleSelect(HloInstructionPtr hlo) = 0;
   virtual Status HandleMaximum(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -138,6 +139,9 @@ class DfsHloVisitorBase {
   virtual Status HandleExp(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleExpm1(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleFloor(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -148,6 +152,9 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleClz(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleLog1p(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleCos(HloInstructionPtr hlo) {
@@ -177,6 +184,9 @@ class DfsHloVisitorBase {
   virtual Status HandleOr(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual Status HandleXor(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
+  }
   virtual Status HandleShiftLeft(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -191,6 +201,10 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
 
+  virtual Status HandleDomain(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleHostCompute(HloInstructionPtr hlo) = 0;
@@ -198,6 +212,7 @@ class DfsHloVisitorBase {
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
+  virtual Status HandleIota(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetTupleElement(HloInstructionPtr hlo) = 0;
   virtual Status HandleReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;
@@ -218,6 +233,7 @@ class DfsHloVisitorBase {
   virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
   virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
   virtual Status HandleGather(HloInstructionPtr hlo) = 0;
+  virtual Status HandleScatter(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
@@ -232,6 +248,8 @@ class DfsHloVisitorBase {
   virtual Status HandleBatchNormInference(HloInstructionPtr hlo) = 0;
 
   virtual Status HandleBatchNormGrad(HloInstructionPtr hlo) = 0;
+
+  virtual Status HandleAfterAll(HloInstructionPtr token) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".

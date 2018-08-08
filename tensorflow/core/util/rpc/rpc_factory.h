@@ -32,10 +32,11 @@ class RPCFactory {
   RPCFactory() {}
   virtual ~RPCFactory() {}
 
-  // Start a Call() to methods `method_t` at addresses `address_t` with
+  // Asynchronously invokes methods `method_t` at addresses `address_t` with
   // request strings from `request_t`.  Any of these may be scalar
   // Tensors, in which case the operands are broadcasted.
-  // Upon completion of all requests, `response_t` will be populated.
+  // Upon completion of all requests, `response_t` will be populated and the
+  // `done` callback will be invoked.
   //
   // If `try_rpc` is `true`, then `status_message_t` and
   // `status_code_t` will be populated as well.

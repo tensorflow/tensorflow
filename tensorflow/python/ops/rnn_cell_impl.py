@@ -46,23 +46,14 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
 _BIAS_VARIABLE_NAME = "bias"
 _WEIGHTS_VARIABLE_NAME = "kernel"
-
-
-# TODO(jblespiau): Remove this function when we are sure there are no longer
-# any usage (even if protected, it is being used). Prefer assert_like_rnncell.
-def _like_rnncell(cell):
-  """Checks that a given object is an RNNCell by using duck typing."""
-  conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
-                hasattr(cell, "zero_state"), callable(cell)]
-  return all(conditions)
-
 
 # This can be used with self.assertRaisesRegexp for assert_like_rnncell.
 ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
@@ -525,9 +516,12 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
+# TODO(scottzhu): Stop exporting this class in TF 2.0.
 @tf_export("nn.rnn_cell.BasicLSTMCell")
 class BasicLSTMCell(LayerRNNCell):
-  """Basic LSTM recurrent network cell.
+  """DEPRECATED: Please use @{tf.nn.rnn_cell.LSTMCell} instead.
+
+  Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
 
@@ -541,6 +535,10 @@ class BasicLSTMCell(LayerRNNCell):
   that follows.
   """
 
+  @deprecated(None, "This class is deprecated, please use "
+                    "tf.nn.rnn_cell.LSTMCell, which supports all the feature "
+                    "this cell currently has. Please replace the existing code "
+                    "with tf.nn.rnn_cell.LSTMCell(name='basic_lstm_cell').")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -785,10 +783,14 @@ class LSTMCell(LayerRNNCell):
         shape=[input_depth + h_depth, 4 * self._num_units],
         initializer=self._initializer,
         partitioner=maybe_partitioner)
+    if self.dtype is None:
+      initializer = init_ops.zeros_initializer
+    else:
+      initializer = init_ops.zeros_initializer(dtype=self.dtype)
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=initializer)
     if self._use_peepholes:
       self._w_f_diag = self.add_variable("w_f_diag", shape=[self._num_units],
                                          initializer=self._initializer)
@@ -975,6 +977,7 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
+    super(DropoutWrapper, self).__init__()
     assert_like_rnncell("cell", cell)
 
     if (dropout_state_filter_visitor is not None
@@ -1001,6 +1004,8 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
 
@@ -1147,7 +1152,10 @@ class ResidualWrapper(RNNCell):
         Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
         and outputs.
     """
+    super(ResidualWrapper, self).__init__()
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
   @property
@@ -1202,7 +1210,10 @@ class DeviceWrapper(RNNCell):
       cell: An instance of `RNNCell`.
       device: A device string or function, for passing to `tf.device`.
     """
+    super(DeviceWrapper, self).__init__()
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
   @property
@@ -1257,6 +1268,11 @@ class MultiRNNCell(RNNCell):
     if not nest.is_sequence(cells):
       raise TypeError(
           "cells must be a list or tuple, but saw: %s." % cells)
+
+    if len(set([id(cell) for cell in cells])) < len(cells):
+      logging.log_first_n(logging.WARN,
+                          "At least two cells provided to MultiRNNCell "
+                          "are the same object and will share weights.", 1)
 
     self._cells = cells
     for cell_number, cell in enumerate(self._cells):
@@ -1316,48 +1332,3 @@ class MultiRNNCell(RNNCell):
                   array_ops.concat(new_states, 1))
 
     return cur_inp, new_states
-
-
-class _SlimRNNCell(RNNCell):
-  """A simple wrapper for slim.rnn_cells."""
-
-  def __init__(self, cell_fn):
-    """Create a SlimRNNCell from a cell_fn.
-
-    Args:
-      cell_fn: a function which takes (inputs, state, scope) and produces the
-        outputs and the new_state. Additionally when called with inputs=None and
-        state=None it should return (initial_outputs, initial_state).
-
-    Raises:
-      TypeError: if cell_fn is not callable
-      ValueError: if cell_fn cannot produce a valid initial state.
-    """
-    if not callable(cell_fn):
-      raise TypeError("cell_fn %s needs to be callable", cell_fn)
-    self._cell_fn = cell_fn
-    self._cell_name = cell_fn.func.__name__
-    init_output, init_state = self._cell_fn(None, None)
-    output_shape = init_output.get_shape()
-    state_shape = init_state.get_shape()
-    self._output_size = output_shape.with_rank(2)[1].value
-    self._state_size = state_shape.with_rank(2)[1].value
-    if self._output_size is None:
-      raise ValueError("Initial output created by %s has invalid shape %s" %
-                       (self._cell_name, output_shape))
-    if self._state_size is None:
-      raise ValueError("Initial state created by %s has invalid shape %s" %
-                       (self._cell_name, state_shape))
-
-  @property
-  def state_size(self):
-    return self._state_size
-
-  @property
-  def output_size(self):
-    return self._output_size
-
-  def __call__(self, inputs, state, scope=None):
-    scope = scope or self._cell_name
-    output, state = self._cell_fn(inputs, state, scope=scope)
-    return output, state

@@ -74,10 +74,12 @@ def record_summaries_every_n_global_steps(n, global_step=None):
     global_step = training_util.get_or_create_global_step()
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
-  with ops.device("cpu:0"):
-    collection_ref[:] = [math_ops.equal(global_step % n, 0)]
-  yield
-  collection_ref[:] = old
+  try:
+    with ops.device("cpu:0"):
+      collection_ref[:] = [math_ops.equal(global_step % n, 0)]
+    yield
+  finally:
+    collection_ref[:] = old
 
 
 @tf_contextlib.contextmanager
@@ -85,9 +87,11 @@ def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
-  collection_ref[:] = [True]
-  yield
-  collection_ref[:] = old
+  try:
+    collection_ref[:] = [True]
+    yield
+  finally:
+    collection_ref[:] = old
 
 
 @tf_contextlib.contextmanager
@@ -95,9 +99,11 @@ def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
-  collection_ref[:] = [False]
-  yield
-  collection_ref[:] = old
+  try:
+    collection_ref[:] = [False]
+    yield
+  finally:
+    collection_ref[:] = old
 
 
 class SummaryWriter(object):
@@ -127,12 +133,16 @@ class SummaryWriter(object):
       yield self
     else:
       old = context.context().summary_writer_resource
-      context.context().summary_writer_resource = self._resource
-      yield self
-      # Flushes the summary writer in eager mode or in graph functions, but not
-      # in legacy graph mode (you're on your own there).
-      self.flush()
-      context.context().summary_writer_resource = old
+      try:
+        context.context().summary_writer_resource = self._resource
+        yield self
+        # Flushes the summary writer in eager mode or in graph functions, but
+        # not in legacy graph mode (you're on your own there).
+        with ops.device("cpu:0"):
+          gen_summary_ops.flush_summary_writer(self._resource)
+      finally:
+        context.context().summary_writer_resource = old
+
 
   def init(self):
     """Operation to initialize the summary writer resource."""
@@ -296,10 +306,11 @@ def create_db_writer(db_uri,
 def _make_summary_writer(name, factory, **kwargs):
   resource = gen_summary_ops.summary_writer(shared_name=name)
   init_op_fn = lambda: factory(resource, **kwargs)
-  # TODO(apassos): Consider doing this instead.
-  # if not context.executing_eagerly():
-  #   ops.get_default_session().run(init_op)
-  ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op_fn())
+  init_op = init_op_fn()
+  if not context.executing_eagerly():
+    # TODO(apassos): Consider doing this instead.
+    #   ops.get_default_session().run(init_op)
+    ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op)
   return SummaryWriter(resource, init_op_fn)
 
 
@@ -370,7 +381,8 @@ def summary_writer_function(name, tensor, function, family=None):
   with ops.device("cpu:0"):
     op = smart_cond.smart_cond(
         should_record_summaries(), record, _nothing, name="")
-    ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
 
 
