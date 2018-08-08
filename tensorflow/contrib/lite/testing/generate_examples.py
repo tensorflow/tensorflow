@@ -226,6 +226,7 @@ _TF_TYPE_INFO = {
     tf.float16: (np.float16, "FLOAT"),
     tf.int32: (np.int32, "INT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
+    tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
     tf.bool: (np.bool, "BOOL"),
 }
@@ -239,7 +240,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value-min_value)*np.random.random_sample(shape)+min_value
-  elif dtype in (tf.int32, tf.uint8, tf.int64):
+  elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value+1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
@@ -255,7 +256,7 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value - min_value) * np.random.random() + min_value
-  elif dtype in (tf.int32, tf.uint8, tf.int64):
+  elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1)
   return np.array(value, dtype=dtype)
 
@@ -1356,6 +1357,7 @@ def make_concat_tests(zip_path):
       "base_shape": [[1, 3, 4, 3], [3, 4]],
       "num_tensors": [1, 2, 3, 4, 5, 6],
       "axis": [0, 1, 2, 3, -3, -2, -1],
+      "type": [tf.float32, tf.uint8, tf.int32, tf.int64],
   }]
 
   def get_shape(parameters, delta):
@@ -1371,7 +1373,8 @@ def make_concat_tests(zip_path):
   def build_graph(parameters):
     all_tensors = []
     for n in range(0, parameters["num_tensors"]):
-      input_tensor = tf.placeholder(dtype=tf.float32, name=("input%d" % n),
+      input_tensor = tf.placeholder(dtype=parameters["type"],
+                                    name=("input%d" % n),
                                     shape=get_shape(parameters, n))
       all_tensors.append(input_tensor)
     out = tf.concat(all_tensors, parameters["axis"])
@@ -1380,8 +1383,8 @@ def make_concat_tests(zip_path):
   def build_inputs(parameters, sess, inputs, outputs):
     all_values = []
     for n in range(0, parameters["num_tensors"]):
-      input_values = create_tensor_data(np.float32,
-                                        get_shape(parameters, n))
+      input_values = create_tensor_data(
+          parameters["type"], get_shape(parameters, n))
       all_values.append(input_values)
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
