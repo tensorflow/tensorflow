@@ -235,12 +235,14 @@ def add_dict_to_dict(add_from, add_to):
 
 # Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
-  return {'tf.test': ['mock']}
+  return {
+      'tf.contrib.autograph': ['utils', 'operators'],
+      'tf.test': ['mock']}
 
 
 # Exclude members of some libraries.
 def _get_default_do_not_descend_map():
-  # TODO(wicke): Shrink this list once the modules get sealed.
+  # TODO(markdaoust): Use docs_controls decorators, locally, instead.
   return {
       'tf': ['cli', 'lib', 'wrappers'],
       'tf.contrib': [
