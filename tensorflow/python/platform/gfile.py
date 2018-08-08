@@ -55,6 +55,8 @@ class GFile(_FileIO):
 class FastGFile(_FileIO):
   """File I/O wrappers without thread locking.
 
+  Exactly the same implementation as GFile. Use GFile instead.
+
   Note, that this  is somewhat like builtin Python  file I/O, but
   there are  semantic differences to  make it more  efficient for
   some backing filesystems.  For example, a write  mode file will
