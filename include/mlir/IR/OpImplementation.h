@@ -182,6 +182,14 @@ public:
   virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result,
                                   llvm::SMLoc *loc = nullptr) = 0;
 
+  /// Add the specified type to the end of the specified type list and return
+  /// false.  This is a helper designed to allow parse methods to be simple and
+  /// chain through || operators.
+  bool addTypeToList(Type *type, SmallVectorImpl<Type *> &result) {
+    result.push_back(type);
+    return false;
+  }
+
   /// Parse an arbitrary attribute and return it in result.  This also adds the
   /// attribute to the specified attribute list with the specified name.  this
   /// captures the location of the attribute in 'loc' if it is non-null.
@@ -263,18 +271,15 @@ public:
   /// Resolve an operand to an SSA value, emitting an error and returning true
   /// on failure.
   virtual bool resolveOperand(OperandType operand, Type *type,
-                              SSAValue *&result) = 0;
+                              SmallVectorImpl<SSAValue *> &result) = 0;
 
   /// Resolve a list of operands to SSA values, emitting an error and returning
   /// true on failure, or appending the results to the list on success.
   virtual bool resolveOperands(ArrayRef<OperandType> operand, Type *type,
                                SmallVectorImpl<SSAValue *> &result) {
-    for (auto elt : operand) {
-      SSAValue *value;
-      if (resolveOperand(elt, type, value))
+    for (auto elt : operand)
+      if (resolveOperand(elt, type, result))
         return true;
-      result.push_back(value);
-    }
     return false;
   }
 

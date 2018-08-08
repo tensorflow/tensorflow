@@ -63,15 +63,11 @@ parseDimAndSymbolList(OpAsmParser *parser,
 bool AddFOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type *type;
-  if (parser->parseOperandList(ops, 2) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperands(ops, type, result->operands))
-    return true;
-
-  // TODO(clattner): rework parseColonType to eliminate the need for this.
-  result->types.push_back(type);
-  return false;
+  return parser->parseOperandList(ops, 2) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->resolveOperands(ops, type, result->operands) ||
+         parser->addTypeToList(type, result->types);
 }
 
 void AddFOp::print(OpAsmPrinter *p) const {
@@ -197,13 +193,10 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
   Attribute *valueAttr;
   Type *type;
 
-  if (parser->parseAttribute(valueAttr, "value", result->attributes) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
-    return true;
-
-  result->types.push_back(type);
-  return false;
+  return parser->parseAttribute(valueAttr, "value", result->attributes) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->addTypeToList(type, result->types);
 }
 
 /// The constant op requires an attribute, and furthermore requires that it
@@ -267,17 +260,13 @@ bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
   IntegerAttr *indexAttr;
   Type *type;
 
-  // TODO(clattner): remove resolveOperand or change it to push onto the
-  // operands list.
-  if (parser->parseOperand(operandInfo) || parser->parseComma() ||
-      parser->parseAttribute(indexAttr, "index", result->attributes) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperands(operandInfo, type, result->operands))
-    return true;
-
-  result->types.push_back(parser->getBuilder().getAffineIntType());
-  return false;
+  return parser->parseOperand(operandInfo) || parser->parseComma() ||
+         parser->parseAttribute(indexAttr, "index", result->attributes) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->resolveOperand(operandInfo, type, result->operands) ||
+         parser->addTypeToList(parser->getBuilder().getAffineIntType(),
+                               result->types);
 }
 
 const char *DimOp::verify() const {
@@ -318,17 +307,14 @@ bool LoadOp::parse(OpAsmParser *parser, OperationState *result) {
   MemRefType *type;
 
   auto affineIntTy = parser->getBuilder().getAffineIntType();
-  if (parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      // TODO: use a new resolveOperand()
-      parser->resolveOperands(memrefInfo, type, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands))
-    return true;
-
-  result->types.push_back(type->getElementType());
-  return false;
+  return parser->parseOperand(memrefInfo) ||
+         parser->parseOperandList(indexInfo, -1,
+                                  OpAsmParser::Delimiter::Square) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->resolveOperand(memrefInfo, type, result->operands) ||
+         parser->resolveOperands(indexInfo, affineIntTy, result->operands) ||
+         parser->addTypeToList(type->getElementType(), result->types);
 }
 
 const char *LoadOp::verify() const {
@@ -372,10 +358,9 @@ bool StoreOp::parse(OpAsmParser *parser, OperationState *result) {
                                   OpAsmParser::Delimiter::Square) ||
          parser->parseOptionalAttributeDict(result->attributes) ||
          parser->parseColonType(memrefType) ||
-         parser->resolveOperands(storeValueInfo, memrefType->getElementType(),
-                                 result->operands) ||
-         // TODO: use a new resolveOperand().
-         parser->resolveOperands(memrefInfo, memrefType, result->operands) ||
+         parser->resolveOperand(storeValueInfo, memrefType->getElementType(),
+                                result->operands) ||
+         parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
          parser->resolveOperands(indexInfo, affineIntTy, result->operands);
 }
 

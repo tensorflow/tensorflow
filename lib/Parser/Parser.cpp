@@ -1798,11 +1798,14 @@ public:
   llvm::SMLoc getNameLoc() const override { return nameLoc; }
 
   bool resolveOperand(OperandType operand, Type *type,
-                      SSAValue *&result) override {
+                      SmallVectorImpl<SSAValue *> &result) override {
     FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
                                               operand.location};
-    result = parser.resolveSSAUse(operandInfo, type);
-    return result == nullptr;
+    if (auto *value = parser.resolveSSAUse(operandInfo, type)) {
+      result.push_back(value);
+      return false;
+    }
+    return true;
   }
 
   /// Emit a diagnostic at the specified location and return true.
