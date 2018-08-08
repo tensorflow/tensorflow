@@ -824,11 +824,13 @@ def make_binary_op_tests(zip_path, binary_operator):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_reduce_tests(reduce_op):
+def make_reduce_tests(reduce_op, min_value=-10, max_value=10):
   """Make a set of tests to do reduce operation.
 
   Args:
     reduce_op: TensorFlow reduce operation to test, i.e. `tf.reduce_mean`.
+    min_value: min value for created tensor data.
+    max_value: max value for created tensor data.
 
   Returns:
     a function representing the true generator with `reduce_op_in` curried.
@@ -891,10 +893,12 @@ def make_reduce_tests(reduce_op):
 
     def build_inputs(parameters, sess, inputs, outputs):
       values = [
-          create_tensor_data(parameters["input_dtype"],
-                             parameters["input_shape"],
-                             min_value=-10,
-                             max_value=10)]
+          create_tensor_data(
+              parameters["input_dtype"],
+              parameters["input_shape"],
+              min_value=min_value,
+              max_value=max_value)
+      ]
       if not parameters["const_axis"]:
         values.append(np.array(parameters["axis"]))
       return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
@@ -916,7 +920,8 @@ def make_sum_tests(zip_path):
 
 def make_reduce_prod_tests(zip_path):
   """Make a set of tests to do prod."""
-  return make_reduce_tests(tf.reduce_prod)(zip_path)
+  # set min max value to be -2, 2 to avoid overflow.
+  return make_reduce_tests(tf.reduce_prod, -2, 2)(zip_path)
 
 
 def make_reduce_max_tests(zip_path):
