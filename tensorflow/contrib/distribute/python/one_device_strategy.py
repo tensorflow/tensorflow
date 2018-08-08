@@ -21,11 +21,14 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.distribute.python import values
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.util import nest
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
@@ -65,6 +68,41 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
 
   def _broadcast(self, tensor, destinations):
     return tensor
+
+  # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
+  def _run_steps_on_dataset(self, fn, iterator, iterations,
+                            initial_loop_values=None):
+    if initial_loop_values is None:
+      initial_loop_values = {}
+    initial_loop_values = nest.flatten(initial_loop_values)
+
+    ctx = values.MultiStepContext()
+    def body(i, *args):
+      """A wrapper around `fn` to create the while loop body."""
+      del args
+      fn_result = fn(ctx, iterator.get_next())
+      flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
+      with ops.control_dependencies([fn_result]):
+        return [i + 1] + flat_last_step_outputs
+
+    cond = lambda i, *args: i < iterations
+    i = constant_op.constant(0)
+    # TODO(priyag): Use max_iterations instead of an explicit counter.
+    loop_result = control_flow_ops.while_loop(
+        cond, body, [i] + initial_loop_values, name="",
+        parallel_iterations=1, back_prop=False, swap_memory=False,
+        return_same_structure=True)
+
+    ctx.run_op = control_flow_ops.group(loop_result)
+
+    # Convert the last_step_outputs from a list to the original dict structure
+    # of last_step_outputs.
+    last_step_tensor_outputs = loop_result[1:]
+    last_step_tensor_outputs_dict = nest.pack_sequence_as(
+        ctx.last_step_outputs, last_step_tensor_outputs)
+
+    ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
+    return ctx
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     # We don't run `fn` in multiple threads in OneDeviceStrategy.

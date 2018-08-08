@@ -28,12 +28,14 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
@@ -79,7 +81,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     # TODO(priyag): Perhaps distribute across cores here.
     return self._call_dataset_fn(dataset_fn)
 
-  # TODO(priyag): Deal with OutOfRange errors.
+  # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
@@ -129,53 +131,90 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     # Wrap `fn` for repeat.
     if initial_loop_values is None:
-      initial_loop_values = []
-    ctx = values.MultiStepContext(initial_loop_values)
+      initial_loop_values = {}
+    initial_loop_values = nest.flatten(initial_loop_values)
+    ctx = values.MultiStepContext()
     def run_fn(*args, **kwargs):
       del args, kwargs
       fn_result = fn(ctx, dequeue_fn())
-      if ctx.last_step_outputs is None:
-        ctx.last_step_outputs = []
-      with ops.control_dependencies([fn_result]):
-        return array_ops.identity(ctx.last_step_outputs)
+      flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
+      if flat_last_step_outputs:
+        with ops.control_dependencies([fn_result]):
+          return [array_ops.identity(f) for f in flat_last_step_outputs]
+      else:
+        return fn_result
 
     # TODO(sourabhbajaj): The input to while loop should be based on the output
     # type of the step_fn
     def iterate_on_tpu():
-      return training_loop.repeat(iterations, run_fn, [initial_loop_values])
+      return training_loop.repeat(iterations, run_fn, initial_loop_values)
 
     replicate_inputs = [[]] * self.num_towers
-    outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
-    last_step_tensor_outputs = [list(x) for x in zip(*outputs)]
+    replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
+    ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
 
-    # Take index [0] of last_step_tensor_outputs as we wrapped
-    # initial_loop_values in a list in the `repeat` call.
-    return (control_flow_ops.group(last_step_tensor_outputs, enqueue_ops),
-            last_step_tensor_outputs[0], ctx)
+    # Filter out any ops from the outputs, typically this would be the case
+    # when there were no tensor outputs.
+    last_step_tensor_outputs = [x for x in replicate_outputs
+                                if not isinstance(x, ops.Operation)]
+
+    # Outputs are currently of the structure (grouped by device)
+    # [[output0_device0, output1_device0, output2_device0],
+    #  [output0_device1, output1_device1, output2_device1]]
+    # Convert this to the following structure instead: (grouped by output)
+    # [[output0_device0, output0_device1],
+    #  [output1_device0, output1_device1],
+    #  [output2_device0, output2_device1]]
+    last_step_tensor_outputs = [list(x) for x in zip(*last_step_tensor_outputs)]
+
+    # Convert replicate_outputs to the original dict structure of
+    # last_step_outputs.
+    last_step_tensor_outputs_dict = nest.pack_sequence_as(
+        ctx.last_step_outputs, last_step_tensor_outputs)
+
+    for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
+      output = last_step_tensor_outputs_dict[name]
+      # For outputs that have already been aggregated, take the first value
+      # from the list as each value should be the same. Else return the full
+      # list of values.
+      if aggregation is not variables_lib.VariableAggregation.NONE:
+        # TODO(priyag): Should this return the element or a list with 1 element
+        last_step_tensor_outputs_dict[name] = output[0]
+    ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
+
+    return ctx
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     kwargs.pop('run_concurrently', None)
     with one_device_strategy._OneDeviceTowerContext(self):  # pylint: disable=protected-access
       return fn(*args, **kwargs)
 
-  def get_initialization_ops(self):
-    return [tpu.initialize_system()]
+  def initialize(self):
+    if context.executing_eagerly():
+      # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
+      raise NotImplementedError('Eager mode not supported in TPUStrategy.')
+    else:
+      return [tpu.initialize_system()]
 
-  def get_finalize_ops(self):
-    return [tpu.shutdown_system()]
+  def finalize(self):
+    if context.executing_eagerly():
+      # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
+      raise NotImplementedError('Eager mode not supported in TPUStrategy.')
+    else:
+      return [tpu.shutdown_system()]
 
   def _reduce(self, aggregation, value, destinations):
     graph = ops.get_default_graph()
-    context = graph._get_control_flow_context()  # pylint: disable=protected-access
+    cf_context = graph._get_control_flow_context()  # pylint: disable=protected-access
     # If we're inside the ReplicateContext, reduction should be done using
     # CrossReplicaSum while outside we can directly use an add_n op.
-    while context:
-      if isinstance(context, tpu.TPUReplicateContext):
+    while cf_context:
+      if isinstance(cf_context, tpu.TPUReplicateContext):
         if aggregation == vs.VariableAggregation.MEAN:
           # TODO(jhseu):  Revisit once we support model-parallelism.
-          value *= (1. / self._num_cores_per_host)
+          value *= (1. / self.num_towers)
         return tpu_ops.cross_replica_sum(value)
-      context = context.outer_context
+      cf_context = cf_context.outer_context
 
     # Validate that the destination is same as the host device
     # Note we don't do this when in replicate context as the reduction is
@@ -191,6 +230,11 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     if aggregation == vs.VariableAggregation.MEAN:
       return output * (1. / len(value))
     return output
+
+  def _unwrap(self, value):
+    if isinstance(value, list):
+      return value
+    return [value]
 
   @property
   def num_towers(self):
