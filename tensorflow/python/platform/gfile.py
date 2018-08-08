@@ -52,8 +52,8 @@ class GFile(_FileIO):
     super(GFile, self).__init__(name=name, mode=mode)
 
 
-@tf_export('gfile.FastGFile')
 @deprecated(None, 'Use tf.gfile.GFile.')
+@tf_export('gfile.FastGFile')
 class FastGFile(_FileIO):
   """File I/O wrappers without thread locking.
 
