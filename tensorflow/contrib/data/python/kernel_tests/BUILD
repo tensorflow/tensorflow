@@ -206,6 +206,25 @@ py_test(
 )
 
 py_test(
+    name = "map_defun_op_test",
+    size = "small",
+    srcs = ["map_defun_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:map_defun",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+py_test(
     name = "optimize_dataset_op_test",
     size = "small",
     srcs = ["optimize_dataset_op_test.py"],
