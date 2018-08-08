@@ -30,8 +30,10 @@ using ops::Add;
 using ops::AddN;
 using ops::BatchMatMul;
 using ops::Cast;
+using ops::Ceil;
 using ops::Const;
 using ops::Div;
+using ops::Floor;
 using ops::MatMul;
 using ops::Max;
 using ops::Maximum;
@@ -43,6 +45,8 @@ using ops::Placeholder;
 using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
+using ops::Rint;
+using ops::Round;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
@@ -910,6 +914,49 @@ TEST_F(NaryGradTest, Prod) {
   // y's shape is the result of reducing x along axes 1
   TensorShape y_shape({2, 1, 2});
   RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+// Tests for ops that return NoGradient, but are really
+// zero nearly everywhere.
+// These tests use y = x + op(x) to avoid propagating a NoGradient
+// directly to y. Additional context is at:
+// https://github.com/tensorflow/tensorflow/issues/897
+// https://github.com/tensorflow/tensorflow/issues/783
+TEST_F(NaryGradTest, Floor) {
+  TensorShape shape({2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Add(scope_, x, Floor(scope_, x));
+  // Avoid integral values as grad(floor(x)) is undefined there.
+  Tensor x_init_value = test::AsTensor<float>({1.5f, -0.5f}, {2});
+  RunTest(x, x_init_value, y, shape);
+}
+TEST_F(NaryGradTest, Ceil) {
+  TensorShape shape({2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Add(scope_, x, Ceil(scope_, x));
+  // Avoid integral values as grad(ceil(x)) is undefined there.
+  Tensor x_init_value = test::AsTensor<float>({1.5f, -0.5f}, {2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NaryGradTest, Round) {
+  TensorShape shape({2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Add(scope_, x, Round(scope_, x));
+  // Avoid half-integral values like 1.5, 2.5 as grad(round(x)) is
+  // undefined there.
+  Tensor x_init_value = test::AsTensor<float>({1.0f, -2.0f}, {2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NaryGradTest, Rint) {
+  TensorShape shape({2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Add(scope_, x, Rint(scope_, x));
+  // Avoid half-integral values like 1.5, 2.5 as grad(rint(x)) is
+  // undefined there.
+  Tensor x_init_value = test::AsTensor<float>({1.0f, -2.0f}, {2});
+  RunTest(x, x_init_value, y, shape);
 }
 
 }  // namespace
