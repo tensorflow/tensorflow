@@ -188,6 +188,14 @@ class CoreLayersTest(test.TestCase):
     ld = keras.layers.Lambda.from_config(config)
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_multiple_inputs(self):
+    ld = keras.layers.Lambda(lambda x: x[0], output_shape=lambda x: x[0])
+    x1 = np.ones([3, 2], np.float32)
+    x2 = np.ones([3, 5], np.float32)
+    out = ld([x1, x2])
+    self.assertAllEqual(out.shape, [3, 2])
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dense(self):
     testing_utils.layer_test(
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 2))
