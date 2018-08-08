@@ -494,7 +494,7 @@ def remove_dropout_nodes(input_graph_def):
   Dropouts are used for neural network regularization during training,
   they are not useful for inference. This function removes all basic dropout
   layers from the graph. Resulting graph has structure like the dropout were
-  never present in the graph, but keeps all other layers untouched and
+  never present in the graph, but keeps other layers untouched and
   properly connected.
   Limitations:
     Does not remove dropout if it's the last layer in the graph. 
@@ -570,22 +570,20 @@ def remove_simple_dropout_nodes(input_graph_def):
 
         dropout_div_node = node_from_map(input_node_map, dropout_div_name)
 
-        pre_dropout_node_name = None
+        predecessor_node_name = None
         for inpt in dropout_div_node.input:
           parts = inpt.split('/')
           if not (parts[-1] == 'keep_prob' and\
                   parts[-2].startswith('dropout')):      
-            pre_dropout_node_name = inpt
+            predecessor_node_name = inpt
             break
 
-        if not pre_dropout_node_name:
-          tf_logging.warning("Could not find pre-dropout node")
+        if not predecessor_node_name:
+          tf_logging.warning("Could not find predecessor node")
           continue
-        print("Rewiring to", pre_dropout_node_name)
-        node.input[index] = pre_dropout_node_name
-        # include namespace prefix
+        node.input[index] = predecessor_node_name
         dropout_prefix_set.add(
-          extract_common_prefix(dropout_mul_name))
+          extract_dropout_prefix(dropout_mul_name))
 
     new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
@@ -593,12 +591,8 @@ def remove_simple_dropout_nodes(input_graph_def):
 
   result_graph_def = graph_pb2.GraphDef()
 
-  print ("Dropout prefixes simple")
-  for p in dropout_prefix_set:
-    print (p)
-
   for node in rewired_graph_def.node:
-    if node_to_skip(node.name, dropout_prefix_set):
+    if node_has_prefix(node, dropout_prefix_set):
       continue
     new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
@@ -681,15 +675,11 @@ def remove_conditional_dropout_nodes(input_graph_def):
         # input: "dropout_4/cond/pred_id"
 
         for inpt in switch_node.input:
-          print("XXXXXXXX input : ", inpt)
-          parts = inpt.split('/')   
-
-        for inpt in switch_node.input:
           parts = inpt.split('/')   
           if not len(parts) == 3 or not parts[-3].lower().startswith('dropout'):
             # rewire input to pre-dropout node
             node.input[index] = inpt
-            dropout_prefix_set.add(extract_common_prefix(dropout_merge_name))
+            dropout_prefix_set.add(extract_dropout_prefix(dropout_merge_name))
             break
 
     new_node = node_def_pb2.NodeDef()
@@ -698,12 +688,8 @@ def remove_conditional_dropout_nodes(input_graph_def):
 
   result_graph_def = graph_pb2.GraphDef()
 
-  print ("Dropout prefixes conditional")
-  for p in dropout_prefix_set:
-    print (p)
-
   for node in rewired_graph_def.node:
-    if node_to_skip(node.name, dropout_prefix_set):
+    if node_has_prefix(node, dropout_prefix_set):
       continue
     new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
@@ -745,15 +731,14 @@ def remove_identity_dropout_nodes(input_graph_def):
       if len(parts) < 2:
          continue     
 
-      print("XXXXXAAA :", input_name)
       if parts[-1].lower() == "identity" and \
          parts[-2].lower().startswith("dropout"):
         identity_dropout_name = input_name
         identity_dropout_node = node_from_map(input_node_map, 
             identity_dropout_name)      
-        # connect nodes directly,  pass over dropout
+        # pass over dropout
         node.input[index] = identity_dropout_node.input[0]
-        dropout_prefix_set.add(extract_common_prefix(identity_dropout_name))
+        dropout_prefix_set.add(extract_dropout_prefix(identity_dropout_name))
         
     new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
@@ -761,12 +746,8 @@ def remove_identity_dropout_nodes(input_graph_def):
 
   result_graph_def = graph_pb2.GraphDef()
 
-  print ("Dropout prefixes identity")
-  for p in dropout_prefix_set:
-    print (p)
-
   for node in rewired_graph_def.node:
-    if node_to_skip(node.name, dropout_prefix_set):
+    if node_has_prefix(node, dropout_prefix_set):
       continue
     new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
@@ -774,18 +755,17 @@ def remove_identity_dropout_nodes(input_graph_def):
 
   return result_graph_def
 
-def extract_common_prefix(node_name):
+def extract_dropout_prefix(node_name):
     parts = node_name.split('/')
     prefix = ""
     for part in parts:
+      prefix += part + '/'
       if part.lower().startswith("dropout"):
-        prefix += part
         break
-      else:
-        prefix += part + '/'
     return prefix
 
-def node_to_skip(node_name, prefixes):
-  if node_name_from_input(node_name).split('/')[0] in prefixes:   
-    return True
+def node_has_prefix(node, prefixes):
+  for px in prefixes:
+    if node_name_from_input(node.name).startswith(px):
+      return True
   return False

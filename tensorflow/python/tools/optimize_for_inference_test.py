@@ -138,9 +138,8 @@ class OptimizeForInferenceTest(test.TestCase):
 
 
   def testRemoveSimpleDropout(self):
-    self.setUp()
     optimized_graph_def = None
-    with self.test_session() as sess:
+    with self.session() as sess:
       input_node = array_ops.placeholder(dtypes.float32, shape=(1))
       n = nn_ops.relu(input_node)
       n = nn_ops.dropout(n, keep_prob=0.07)
@@ -150,9 +149,8 @@ class OptimizeForInferenceTest(test.TestCase):
       for node in optimized_graph_def.node:
         print (" : ", node.name)
         self.assertTrue(not node.name.lower().startswith("dropout"))
-    self.tearDown() 	
     optimized_graph_def = None
-    with self.test_session() as sess:
+    with self.session() as sess:
       with vs.variable_scope('prefix'):
         input_node = array_ops.placeholder(dtypes.float32, shape=(1))
         n = nn_ops.relu(input_node)
@@ -161,13 +159,11 @@ class OptimizeForInferenceTest(test.TestCase):
         optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
           sess.graph_def)
         for node in optimized_graph_def.node:
-          print("XXXXXXXXX 164", node.name)
           self.assertTrue(not node.name.lower().startswith("prefix/dropout"))
 
   def testRemoveConditionalDropouts(self):
-    self.setUp()
     optimized_graph_def = None
-    with self.test_session() as sess:
+    with self.session() as sess:
       is_training = array_ops.placeholder(dtypes.bool, shape=())
       input_node = array_ops.placeholder(dtypes.float32, shape=(1))
       n = nn_ops.relu(input_node)
@@ -178,9 +174,8 @@ class OptimizeForInferenceTest(test.TestCase):
       for node in optimized_graph_def.node:
         print (" : ", node.name)
         self.assertTrue(not node.name.lower().startswith("dropout"))
-    self.tearDown() 	
     optimized_graph_def = None
-    with self.test_session() as sess:
+    with self.session() as sess:
       with vs.variable_scope('prefix'):
         input_node = array_ops.placeholder(dtypes.float32, shape=(1))
         n = nn_ops.softmax(input_node)
@@ -191,13 +186,11 @@ class OptimizeForInferenceTest(test.TestCase):
         for node in optimized_graph_def.node:
           print ("a : ", node.name)
           self.assertTrue(not node.name.lower().startswith("prefix/dropout"))
-   
-  
-
+    
   def testRemoveNamespaceDropouts(self):
     self.setUp()
     optimized_graph_def = None
-    with self.test_session() as sess:
+    with self.session() as sess:
       with vs.variable_scope('prefix'):
         is_training = array_ops.placeholder(dtypes.bool, shape=())
         input_node = array_ops.placeholder(dtypes.float32, shape=(1))
@@ -229,12 +222,8 @@ class OptimizeForInferenceTest(test.TestCase):
       for node in optimized_graph_def.node:
         self.assertTrue(not node.name.lower().startswith("dropout"))
 
-    self.tearDown()
-
     # recreate the same graph topology without dropouts
-    self.setUp()
-    with self.test_session() as sess:  
-
+    with self.session() as sess:  
       with vs.variable_scope('prefixAA'):
         is_training = array_ops.placeholder(dtypes.bool, shape=())
         input_node = array_ops.placeholder(dtypes.float32, shape=(1))
@@ -247,11 +236,9 @@ class OptimizeForInferenceTest(test.TestCase):
         n = nn_ops.softmax(n)
         output_node = nn_ops.softmax(n)         
         no_dropout_graph_def = sess.graph_def
-
         # ensure the graph with removed dropouts is equal to graph without added dropouts
         self.assertEqual(optimized_graph_def.node, no_dropout_graph_def.node)
           
-
   def testRemoveDropouts(self):
 
     optimized_graph_def = None
@@ -495,6 +482,70 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("Conv2D", node.op)
       self.assertNotEqual("ResizeBilinear", node.op)
 
+
+  def testRemoveSimpleDropouts(self):
+    self.setUp()
+    with self.session() as sess:
+      with vs.variable_scope("ns1"):
+        with vs.variable_scope("ns2"):
+          input_node = array_ops.placeholder(dtypes.float32, shape=(1), name = "input")
+          n = nn_ops.relu(input_node)
+          n = nn_ops.dropout(n, keep_prob=0.00001)
+          n = nn_ops.dropout(n, keep_prob=0.00001)
+          output = math_ops.multiply(n, 2, name = "output")
+          optimized_graph_def = optimize_for_inference_lib.remove_simple_dropout_nodes(
+              sess.graph_def)
+          for node in optimized_graph_def.node: 
+            self.assertTrue(not node.name.lower().startswith("ns1/ns2/dropout"))
+      _ = importer.import_graph_def(
+         optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/ns1/ns2/output:0"], 
+        feed_dict = { "optimized/ns1/ns2/input:0" : [3] })
+      self.assertEqual(optimized_result[0], 6.0)
+    self.tearDown() 	
+
+  def testRemoveConditionalDropouts(self):
+    self.setUp()
+    with self.session() as sess:
+      with vs.variable_scope("ns1"):
+        with vs.variable_scope("ns2"):
+          input_node = array_ops.placeholder(dtypes.float32, shape=(1), name = "input")
+          is_training = array_ops.placeholder(dtypes.bool, shape=())
+          n = nn_ops.relu(input_node)
+          n = core.dropout(n, training=is_training)
+          n = core.dropout(n, training=is_training)
+          output = math_ops.multiply(n, 2, name = "output")
+          optimized_graph_def = optimize_for_inference_lib.remove_conditional_dropout_nodes(
+              sess.graph_def)
+          for node in optimized_graph_def.node: 
+            self.assertTrue(not node.name.lower().startswith("ns1/ns2/dropout"))
+      _ = importer.import_graph_def(
+         optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/ns1/ns2/output:0"], 
+        feed_dict = { "optimized/ns1/ns2/input:0" : [3] })
+      self.assertEqual(optimized_result[0], 6.0)
+    self.tearDown() 	
+
+  def testRemoveIdentityDropouts(self):
+    self.setUp()
+    with self.session() as sess:
+      with vs.variable_scope("ns1"):
+        with vs.variable_scope("ns2"):
+          input_node = array_ops.placeholder(dtypes.float32, shape=(1), name = "input")
+          n = nn_ops.relu(input_node)
+          n = core.dropout(n, training=False)
+          n = core.dropout(n, training=False)
+          output = math_ops.multiply(n, 2, name = "output")
+          optimized_graph_def = optimize_for_inference_lib.remove_identity_dropout_nodes(
+              sess.graph_def)
+          for node in optimized_graph_def.node: 
+            self.assertTrue(not node.name.lower().startswith("ns1/ns2/dropout"))
+      _ = importer.import_graph_def(
+         optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/ns1/ns2/output:0"], 
+        feed_dict = { "optimized/ns1/ns2/input:0" : [3] })
+      self.assertEqual(optimized_result[0], 6.0)
+    self.tearDown() 	
 
 if __name__ == "__main__":
   test.main()
