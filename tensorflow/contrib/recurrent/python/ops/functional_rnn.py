@@ -206,7 +206,7 @@ def _PickFinalStateFromHistory(acc_state, sequence_length):
     lengths = array_ops.tile(array_ops.reshape(sequence_length,
                                                [-1, 1]), [1, max_time])
     last_idx = math_ops.cast(math_ops.equal(output_time, lengths - 1),
-                             dtype=dtypes.float32)
+                             dtype=state_var.dtype)
     last_idx = array_ops.transpose(last_idx)
     last_idx_for_bcast = array_ops.expand_dims(last_idx, -1)
     sliced = math_ops.multiply(last_idx_for_bcast, state_var)
