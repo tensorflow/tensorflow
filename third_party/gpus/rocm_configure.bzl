@@ -297,7 +297,7 @@ def _find_libs(repository_ctx, rocm_config):
       "hip": _find_rocm_lib(
           "hip_hcc", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path),
       "rocblas": _find_rocm_lib(
-          "rocblas", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path),
+          "rocblas", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path + "/rocblas"),
       "rocfft": _find_rocm_lib(
           "rocfft", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path + "/rocfft"),
       "hiprand": _find_rocm_lib(
