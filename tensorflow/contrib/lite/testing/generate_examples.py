@@ -90,8 +90,6 @@ TEST_INPUT_DEPTH = 3
 # matching the expression will be considered due to the corresponding bug.
 KNOWN_BUGS = {
     # TOCO doesn't support scalars as input.
-    r"relu.*input_shape=\[\]": "67587484",
-    r"sigmoid.*input_shape=\[\]": "67645668",
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
     # Transposition in MatMul is not fully supported.
@@ -104,8 +102,6 @@ KNOWN_BUGS = {
     r"div.*int32": "72051395",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
-    # Scalar constants don't work.
-    r"constant.*shape=\[\]": "109811500",
 }
 
 
