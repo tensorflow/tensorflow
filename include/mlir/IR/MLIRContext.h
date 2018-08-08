@@ -35,9 +35,6 @@ class Attribute;
 /// interact with it.
 ///
 class MLIRContext {
-  const std::unique_ptr<MLIRContextImpl> impl;
-  MLIRContext(const MLIRContext&) = delete;
-  void operator=(const MLIRContext&) = delete;
 public:
   explicit MLIRContext();
   ~MLIRContext();
@@ -73,6 +70,11 @@ public:
   /// interact with this, it should use methods on Operation instead.
   void emitDiagnostic(Attribute *location, const Twine &message,
                       DiagnosticKind kind) const;
+
+private:
+  const std::unique_ptr<MLIRContextImpl> impl;
+  MLIRContext(const MLIRContext &) = delete;
+  void operator=(const MLIRContext &) = delete;
 };
 } // end namespace mlir
 
