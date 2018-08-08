@@ -19,10 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -86,7 +87,7 @@ class StackedRNNCells(Layer):
     # (assuming one LSTM has states [h, c])
     state_size = []
     for cell in self.cells[::-1]:
-      if hasattr(cell.state_size, '__len__'):
+      if _is_multiple_state(cell.state_size):
         state_size += list(cell.state_size)
       else:
         state_size.append(cell.state_size)
@@ -96,7 +97,7 @@ class StackedRNNCells(Layer):
     # Recover per-cell states.
     nested_states = []
     for cell in self.cells[::-1]:
-      if hasattr(cell.state_size, '__len__'):
+      if _is_multiple_state(cell.state_size):
         nested_states.append(states[:len(cell.state_size)])
         states = states[len(cell.state_size):]
       else:
@@ -133,11 +134,12 @@ class StackedRNNCells(Layer):
           cell.build([input_shape] + constants_shape)
         else:
           cell.build(input_shape)
-      if hasattr(cell.state_size, '__len__'):
+      if _is_multiple_state(cell.state_size):
         output_dim = cell.state_size[0]
       else:
         output_dim = cell.state_size
-      input_shape = (input_shape[0], output_dim)
+      input_shape = tuple([input_shape[0]] +
+                          tensor_shape.as_shape(output_dim).as_list())
     self.built = True
 
   def get_config(self):
@@ -242,13 +244,13 @@ class RNN(Layer):
               cell can also take the optional argument `constants`, see
               section "Note on passing external constants" below.
           - a `state_size` attribute. This can be a single integer
-              (single state) in which case it is
-              the size of the recurrent state
+              (single state) in which case it is the size of the recurrent state
               (which should be the same as the size of the cell output).
-              This can also be a list/tuple of integers
-              (one size per state). In this case, the first entry
-              (`state_size[0]`) should be the same as
-              the size of the cell output.
+              This can also be a list/tuple of integers (one size per state).
+              In this case, the first entry (`state_size[0]`) should be the same
+              as the size of the cell output.
+              The `state_size` can also be TensorShape or tuple/list of
+              TensorShape, to represent high dimension state.
           In the case that `cell` is a list of RNN cell instances, the cells
           will be stacked on after the other in the RNN, implementing an
           efficient stacked RNN.
@@ -268,9 +270,8 @@ class RNN(Layer):
           Unrolling can speed-up a RNN,
           although it tends to be more memory-intensive.
           Unrolling is only suitable for short sequences.
-      input_dim: dimensionality of the input (integer).
-          This argument (or alternatively,
-          the keyword argument `input_shape`)
+      input_dim: dimensionality of the input (integer or tuple of integers).
+          This argument (or alternatively, the keyword argument `input_shape`)
           is required when using this layer as the first layer in a model.
       input_length: Length of input sequences, to be specified
           when it is constant.
@@ -283,15 +284,18 @@ class RNN(Layer):
           (e.g. via the `input_shape` argument)
 
   Input shape:
-      3D tensor with shape `(batch_size, timesteps, input_dim)`.
+      N-D tensor with shape `(batch_size, timesteps, ...)`.
 
   Output shape:
       - if `return_state`: a list of tensors. The first tensor is
           the output. The remaining tensors are the last states,
-          each with shape `(batch_size, units)`.
-      - if `return_sequences`: 3D tensor with shape
-          `(batch_size, timesteps, units)`.
-      - else, 2D tensor with shape `(batch_size, units)`.
+          each with shape `(batch_size, ...)`, where `...` is in the shape of
+          `state_size`.
+      - if `return_sequences`: N-D tensor with shape
+          `(batch_size, timesteps, ...)`, where `...` is in the shape of output
+          size.
+      - else, N-D tensor with shape `(batch_size, ...)`, where `...` is in the
+          shape of output size.
 
   # Masking
       This layer supports masking for input data with a variable number
@@ -412,7 +416,7 @@ class RNN(Layer):
     self.unroll = unroll
 
     self.supports_masking = True
-    self.input_spec = [InputSpec(ndim=3)]
+    self.input_spec = [None]  # The input shape is unknown yet, at least rank 3.
     self.state_spec = None
     self._states = None
     self.constants_spec = None
@@ -421,11 +425,8 @@ class RNN(Layer):
   @property
   def states(self):
     if self._states is None:
-      if isinstance(self.cell.state_size, numbers.Integral):
-        num_states = 1
-      else:
-        num_states = len(self.cell.state_size)
-      return [None for _ in range(num_states)]
+      state = nest.map_structure(lambda _: None, self.cell.state_size)
+      return state if nest.is_sequence(self.cell.state_size) else [state]
     return self._states
 
   @states.setter
@@ -437,19 +438,23 @@ class RNN(Layer):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
 
-    if hasattr(self.cell.state_size, '__len__'):
+    if _is_multiple_state(self.cell.state_size):
       state_size = self.cell.state_size
     else:
       state_size = [self.cell.state_size]
-    output_dim = state_size[0]
+    # Note that state_size[0] could be a tensor_shape or int.
+    output_dim = tensor_shape.as_shape(state_size[0]).as_list()
 
     if self.return_sequences:
-      output_shape = (input_shape[0], input_shape[1], output_dim)
+      output_shape = tuple([input_shape[0], input_shape[1]] + output_dim)
     else:
-      output_shape = (input_shape[0], output_dim)
+      output_shape = tuple([input_shape[0]] + output_dim)
 
     if self.return_state:
-      state_shape = [(input_shape[0], dim) for dim in state_size]
+      state_shape = [
+          tuple([input_shape[0]] + tensor_shape.as_shape(dim).as_list())
+          for dim in state_size
+      ]
       return [output_shape] + state_shape
     else:
       return output_shape
@@ -477,49 +482,83 @@ class RNN(Layer):
       input_shape = input_shape[0]
 
     batch_size = input_shape[0] if self.stateful else None
-    input_dim = input_shape[-1]
-    self.input_spec[0] = InputSpec(shape=(batch_size, None, input_dim))
+    input_dim = input_shape[2:]
+    self.input_spec[0] = InputSpec(shape=(batch_size, None) + input_dim)
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
-      step_input_shape = (input_shape[0],) + input_shape[2:]
+      step_input_shape = (input_shape[0],) + input_dim
       if constants_shape is not None:
         self.cell.build([step_input_shape] + constants_shape)
       else:
         self.cell.build(step_input_shape)
 
     # set or validate state_spec
-    if hasattr(self.cell.state_size, '__len__'):
+    if _is_multiple_state(self.cell.state_size):
       state_size = list(self.cell.state_size)
     else:
       state_size = [self.cell.state_size]
 
     if self.state_spec is not None:
       # initial_state was passed in call, check compatibility
-      if [spec.shape[-1] for spec in self.state_spec] != state_size:
-        raise ValueError(
-            'An `initial_state` was passed that is not compatible with '
-            '`cell.state_size`. Received `state_spec`={}; '
-            'however `cell.state_size` is '
-            '{}'.format(self.state_spec, self.cell.state_size))
+      self._validate_state_spec(state_size, self.state_spec)
     else:
-      self.state_spec = [InputSpec(shape=(None, dim)) for dim in state_size]
+      self.state_spec = [
+          InputSpec(shape=[None] + tensor_shape.as_shape(dim).as_list())
+          for dim in state_size
+      ]
     if self.stateful:
       self.reset_states()
     self.built = True
 
-  def get_initial_state(self, inputs):
-    # build an all-zero tensor of shape (samples, output_dim)
-    initial_state = array_ops.zeros_like(inputs)
-    # shape of initial_state = (samples, timesteps, input_dim)
-    initial_state = math_ops.reduce_sum(initial_state, axis=(1, 2))
-    # shape of initial_state = (samples,)
-    initial_state = array_ops.expand_dims(initial_state, axis=-1)
-    # shape of initial_state = (samples, 1)
-    if hasattr(self.cell.state_size, '__len__'):
-      return [K.tile(initial_state, [1, dim]) for dim in self.cell.state_size]
+  @staticmethod
+  def _validate_state_spec(cell_state_sizes, init_state_specs):
+    """Validate the state spec between the initial_state and the state_size.
+
+    Args:
+      cell_state_sizes: list, the `state_size` attribute from the cell.
+      init_state_specs: list, the `state_spec` from the initial_state that is
+        passed in call()
+
+    Raises:
+      ValueError: When initial state spec is not compatible with the state size.
+    """
+    validation_error = ValueError(
+        'An `initial_state` was passed that is not compatible with '
+        '`cell.state_size`. Received `state_spec`={}; '
+        'however `cell.state_size` is '
+        '{}'.format(init_state_specs, cell_state_sizes))
+    if len(cell_state_sizes) == len(init_state_specs):
+      for i in range(len(cell_state_sizes)):
+        if not tensor_shape.TensorShape(
+            # Ignore the first axis for init_state which is for batch
+            init_state_specs[i].shape[1:]).is_compatible_with(
+                tensor_shape.TensorShape(cell_state_sizes[i])):
+          raise validation_error
     else:
-      return [K.tile(initial_state, [1, self.cell.state_size])]
+      raise validation_error
+
+  def get_initial_state(self, inputs):
+    # build an all-zero tensor of shape (batch, cell.state_size)
+    initial_state = array_ops.zeros_like(inputs)
+    # shape of initial_state = (batch, timesteps, ...)
+    initial_state = math_ops.reduce_sum(
+        initial_state, axis=list(range(1, len(inputs.shape))))
+    # shape of initial_state = (batch,)
+    if _is_multiple_state(self.cell.state_size):
+      states = []
+      for dims in self.cell.state_size:
+        state = initial_state
+        flat_dims = tensor_shape.as_shape(dims).as_list()
+        # reshape the state to (batch, 1, 1, ....) and then expand each state.
+        state = array_ops.reshape(state, [-1,] + [1] * len(flat_dims))
+        states.append(K.tile(state, [1] + flat_dims))
+      return states
+    else:
+      flat_dims = tensor_shape.as_shape(self.cell.state_size).as_list()
+      initial_state = array_ops.reshape(
+          initial_state, [-1] + [1] * len(flat_dims))
+      return [K.tile(initial_state, [1] + flat_dims)]
 
   def __call__(self, inputs, initial_state=None, constants=None, **kwargs):
     inputs, initial_state, constants = _standardize_args(inputs,
@@ -682,19 +721,26 @@ class RNN(Layer):
                        '`batch_shape` argument to your Input layer.')
     # initialize state if None
     if self.states[0] is None:
-      if hasattr(self.cell.state_size, '__len__'):
+      if _is_multiple_state(self.cell.state_size):
         self.states = [
-            K.zeros((batch_size, dim)) for dim in self.cell.state_size
+            K.zeros([batch_size] + tensor_shape.as_shape(dim).as_list())
+            for dim in self.cell.state_size
         ]
       else:
-        self.states = [K.zeros((batch_size, self.cell.state_size))]
+        self.states = [
+            K.zeros([batch_size] +
+                    tensor_shape.as_shape(self.cell.state_size).as_list())
+        ]
     elif states is None:
-      if hasattr(self.cell.state_size, '__len__'):
+      if _is_multiple_state(self.cell.state_size):
         for state, dim in zip(self.states, self.cell.state_size):
-          K.set_value(state, np.zeros((batch_size, dim)))
+          K.set_value(state,
+                      np.zeros([batch_size] +
+                               tensor_shape.as_shape(dim).as_list()))
       else:
-        K.set_value(self.states[0], np.zeros((batch_size,
-                                              self.cell.state_size)))
+        K.set_value(self.states[0], np.zeros(
+            [batch_size] +
+            tensor_shape.as_shape(self.cell.state_size).as_list()))
     else:
       if not isinstance(states, (list, tuple)):
         states = [states]
@@ -704,11 +750,12 @@ class RNN(Layer):
                          'but it received ' + str(len(states)) +
                          ' state values. Input received: ' + str(states))
       for index, (value, state) in enumerate(zip(states, self.states)):
-        if hasattr(self.cell.state_size, '__len__'):
+        if _is_multiple_state(self.cell.state_size):
           dim = self.cell.state_size[index]
         else:
           dim = self.cell.state_size
-        if value.shape != (batch_size, dim):
+        if value.shape != tuple([batch_size] +
+                                tensor_shape.as_shape(dim).as_list()):
           raise ValueError(
               'State ' + str(index) + ' is incompatible with layer ' +
               self.name + ': expected shape=' + str(
@@ -2272,3 +2319,9 @@ def _standardize_args(inputs, initial_state, constants, num_constants):
   constants = to_list_or_none(constants)
 
   return inputs, initial_state, constants
+
+
+def _is_multiple_state(state_size):
+  """Check whether the state_size contains multiple states."""
+  return (hasattr(state_size, '__len__') and
+          not isinstance(state_size, tensor_shape.TensorShape))
