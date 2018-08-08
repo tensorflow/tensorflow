@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
 #include "tensorflow/core/platform/cloud/compute_engine_metadata_client.h"
+#include "tensorflow/core/platform/cloud/compute_engine_zone_provider.h"
 #include "tensorflow/core/platform/cloud/expiring_lru_cache.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
@@ -81,14 +82,19 @@ class GcsFileSystem : public FileSystem {
  public:
   struct TimeoutConfig;
 
+  // Main constructor used (via RetryingFileSystem) throughout Tensorflow
   GcsFileSystem();
+  // Used mostly for unit testing or use cases which need to customize the
+  // filesystem from defaults
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t block_size, size_t max_bytes, uint64 max_staleness,
+                std::unique_ptr<ZoneProvider> zone_provider, size_t block_size,
+                size_t max_bytes, uint64 max_staleness,
                 uint64 stat_cache_max_age, size_t stat_cache_max_entries,
                 uint64 matching_paths_cache_max_age,
                 size_t matching_paths_cache_max_entries,
                 int64 initial_retry_delay_usec, TimeoutConfig timeouts,
+                const std::unordered_set<string>& allowed_locations,
                 std::pair<const string, const string>* additional_header);
 
   Status NewRandomAccessFile(
@@ -149,6 +155,9 @@ class GcsFileSystem : public FileSystem {
     return file_block_cache_->max_staleness();
   }
   TimeoutConfig timeouts() const { return timeouts_; }
+  std::unordered_set<string> allowed_locations() const {
+    return allowed_locations_;
+  }
   string additional_header_name() const {
     return additional_header_ ? additional_header_->first : "";
   }
@@ -230,6 +239,27 @@ class GcsFileSystem : public FileSystem {
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
   Status BucketExists(const string& bucket, bool* result);
 
+  /// \brief Retrieves the GCS bucket location. Returns OK if the location was
+  /// retrieved.
+  ///
+  /// Given a string bucket the GCS bucket metadata API will be called and the
+  /// location string filled with the location of the bucket.
+  ///
+  /// This requires the bucket metadata permission.
+  /// Repeated calls for the same bucket are cached so this function can be
+  /// called frequently without causing an extra API call
+  Status GetBucketLocation(const string& bucket, string* location);
+
+  /// \brief Check if the GCS buckets location is allowed with the current
+  /// constraint configuration
+  Status CheckBucketLocationConstraint(const string& bucket);
+
+  /// \brief Given the input bucket `bucket`, fills `result_buffer` with the
+  /// results of the metadata. Returns OK if the API call succeeds without
+  /// error.
+  Status GetBucketMetadata(const string& bucket,
+                           std::vector<char>* result_buffer);
+
   /// \brief Checks if the object exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
@@ -277,6 +307,7 @@ class GcsFileSystem : public FileSystem {
   mutex mu_;
   std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
+  std::unique_ptr<ZoneProvider> zone_provider_;
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
   mutex block_cache_lock_;
@@ -291,6 +322,10 @@ class GcsFileSystem : public FileSystem {
 
   using MatchingPathsCache = ExpiringLRUCache<std::vector<string>>;
   std::unique_ptr<MatchingPathsCache> matching_paths_cache_;
+
+  using BucketLocationCache = ExpiringLRUCache<string>;
+  std::unique_ptr<BucketLocationCache> bucket_location_cache_;
+  std::unordered_set<string> allowed_locations_;
 
   TimeoutConfig timeouts_;
 

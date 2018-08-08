@@ -844,7 +844,10 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         *elem_count *= dim;
       }
     }
-    if (elem_count.has_value() && *elem_count <= 8) {
+    // Allow HloDotDumper to print HloInstruction reconstructed from HloProto
+    // collected from profiling tools. Those constants may not have a valid
+    // literal.
+    if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
       return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }

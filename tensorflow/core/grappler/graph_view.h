@@ -115,6 +115,8 @@ class GraphView {
       const NodeDef& node, bool include_controlling_edges) const;
 
  protected:
+  // Add a new `node` to the graph.
+  void AddUniqueNodeOrDie(NodeDef* node);
   // Add fanout to every `node` input.
   void AddFanouts(NodeDef* node);
   std::unordered_map<string, NodeDef*>* MutableNodes() { return &nodes_; }

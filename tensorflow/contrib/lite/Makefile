@@ -95,6 +95,7 @@ ARFLAGS := -r
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/../../../ \
+-I$(MAKEFILE_DIR)/../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
@@ -177,7 +178,6 @@ $(MINIMAL_SRCS)
 ifeq ($(BUILD_TYPE),micro)
 CORE_CC_EXCLUDE_SRCS += \
 tensorflow/contrib/lite/mmap_allocation.cc \
-tensorflow/contrib/lite/model.cc \
 tensorflow/contrib/lite/nnapi_delegate.cc
 else
 CORE_CC_EXCLUDE_SRCS += \
@@ -219,8 +219,12 @@ all: $(LIB_PATH)  $(MINIMAL_PATH) $(BENCHMARK_BINARY)
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)
 
+# Hack for generating schema file bypassing flatbuffer parsing
+tensorflow/contrib/lite/schema/schema_generated.h:
+	@cp -u tensorflow/contrib/lite/schema/schema_generated.h.OPENSOURCE tensorflow/contrib/lite/schema/schema_generated.h
+
 # Gathers together all the objects we've compiled into a single '.a' archive.
-$(LIB_PATH): $(LIB_OBJS)
+$(LIB_PATH): tensorflow/contrib/lite/schema/schema_generated.h $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 

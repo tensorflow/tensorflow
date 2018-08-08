@@ -438,13 +438,14 @@ HloConcatenateInstruction::CloneWithNewOperandsImpl(
 }
 
 HloReduceInstruction::HloReduceInstruction(
-    const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> args,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
     HloComputation* reduce_computation)
     : HloInstruction(HloOpcode::kReduce, shape),
       dimensions_(dimensions_to_reduce.begin(), dimensions_to_reduce.end()) {
-  AppendOperand(arg);
-  AppendOperand(init_value);
+  for (HloInstruction* arg : args) {
+    AppendOperand(arg);
+  }
   AppendComputation(reduce_computation);
 }
 
@@ -477,8 +478,8 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
-  return MakeUnique<HloReduceInstruction>(
-      shape, new_operands[0], new_operands[1], dimensions(), to_apply());
+  return MakeUnique<HloReduceInstruction>(shape, new_operands, dimensions(),
+                                          to_apply());
 }
 
 HloSortInstruction::HloSortInstruction(const Shape& shape, int64 dimension,

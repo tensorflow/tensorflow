@@ -404,7 +404,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
-      ValueError: At most one of saver or scaffold should be set.
+      ValueError: At most one of `saver` or `scaffold` should be set.
     """
     logging.info("Create CheckpointSaverHook.")
     if saver is not None and scaffold is not None:

@@ -331,7 +331,7 @@ class HloConcatenateInstruction : public HloInstruction {
 class HloReduceInstruction : public HloInstruction {
  public:
   explicit HloReduceInstruction(
-      const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> args,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
   // Returns the dimension sizes or numbers associated with this instruction.
@@ -339,6 +339,18 @@ class HloReduceInstruction : public HloInstruction {
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+
+  // Returns the input tensors to be reduced.
+  tensorflow::gtl::ArraySlice<HloInstruction*> inputs() const {
+    return tensorflow::gtl::ArraySlice<HloInstruction*>(operands(), 0,
+                                                        operand_count() / 2);
+  }
+
+  // Returns the init values of the reduction.
+  tensorflow::gtl::ArraySlice<HloInstruction*> init_values() const {
+    return tensorflow::gtl::ArraySlice<HloInstruction*>(
+        operands(), operand_count() / 2, operand_count());
+  }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -534,6 +546,8 @@ class HloConstantInstruction : public HloInstruction {
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const { return literal_ != nullptr; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 

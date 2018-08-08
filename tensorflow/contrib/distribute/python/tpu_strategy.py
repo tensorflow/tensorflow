@@ -26,6 +26,7 @@ from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
+from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -34,18 +35,43 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_util
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
+
+
+def get_tpu_system_metadata(tpu_cluster_resolver):
+  """Retrieves TPU system metadata given a TPUClusterResolver."""
+  master = tpu_cluster_resolver.master()
+
+  # pylint: disable=protected-access
+  cluster_def = (tpu_cluster_resolver.cluster_spec()
+                 or server_lib.ClusterSpec({})).as_cluster_def()
+  tpu_system_metadata = (
+      tpu_system_metadata_lib._query_tpu_system_metadata(
+          master,
+          cluster_def=cluster_def,
+          query_topology=True))
+
+  return tpu_system_metadata
 
 
 class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   """Experimental TPU distribution strategy implementation."""
 
-  def __init__(self, num_cores_per_host=2):
+  def __init__(self, tpu_cluster_resolver):
+    """Initializes the TPUStrategy object.
+
+    Args:
+      tpu_cluster_resolver: A tf.contrib.cluster_resolver.TPUClusterResolver,
+          which provides information about the TPU cluster.
+    """
     # TODO(isaprykin): Generalize the defaults.  They are currently tailored for
     # the unit test.
     super(TPUStrategy, self).__init__('/device:CPU:0')
-    # TODO(isaprykin): Auto-detect number of cores and hosts.
-    self._num_cores_per_host = num_cores_per_host
+
+    self._tpu_cluster_resolver = tpu_cluster_resolver
+    self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+
     # TODO(priyag): This should not be hardcoded here.
     self._host = '/device:CPU:0'
 
@@ -72,7 +98,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       control_deps = []
       sharded_inputs = []
       with ops.device(self._host):
-        for _ in range(self._num_cores_per_host):
+        for _ in range(self.num_towers):
           # Use control dependencies to ensure a deterministic ordering.
           with ops.control_dependencies(control_deps):
             inputs = nest.flatten(iterator.get_next())
@@ -118,7 +144,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     def iterate_on_tpu():
       return training_loop.repeat(iterations, run_fn, [initial_loop_values])
 
-    replicate_inputs = [[]] * self._num_cores_per_host
+    replicate_inputs = [[]] * self.num_towers
     outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
     last_step_tensor_outputs = [list(x) for x in zip(*outputs)]
 
@@ -168,4 +194,4 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
   @property
   def num_towers(self):
-    return self._num_cores_per_host
+    return self._tpu_metadata.num_of_cores_per_host

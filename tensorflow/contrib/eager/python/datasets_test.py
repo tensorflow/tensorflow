@@ -37,7 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
@@ -314,7 +314,8 @@ class IteratorTest(test.TestCase):
     for i in range(5):
       iterator = datasets.Iterator(dataset)
       checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
-      checkpoint.restore(saver.latest_checkpoint(checkpoint_directory))
+      checkpoint.restore(checkpoint_management.latest_checkpoint(
+          checkpoint_directory))
       for j in range(2):
         self.assertEqual(i * 2 + j, iterator.get_next().numpy())
       checkpoint.save(file_prefix=checkpoint_prefix)

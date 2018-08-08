@@ -270,7 +270,7 @@ Clamp(min, operand, max) = s32[3]{0, 5, 6};
 
 See also
 [`XlaBuilder::Collapse`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
-and the @{tf.reshape} operation.
+and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
 
@@ -291,7 +291,7 @@ same position in the dimension sequence as those they replace, with the new
 dimension size equal to the product of original dimension sizes. The lowest
 dimension number in `dimensions` is the slowest varying dimension (most major)
 in the loop nest which collapses these dimension, and the highest dimension
-number is fastest varying (most minor). See the @{tf.reshape} operator
+number is fastest varying (most minor). See the `tf.reshape` operator
 if more general collapse ordering is needed.
 
 For example, let v be an array of 24 elements:
@@ -490,8 +490,8 @@ array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
 Dilation of the rhs is also called atrous convolution. For more details, see
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
-convolution. For more details, see @{tf.nn.conv2d_transpose}.
+`tf.nn.atrous_conv2d`. Dilation of the lhs is also called transposed
+convolution. For more details, see `tf.nn.conv2d_transpose`.
 
 The output shape has these dimensions, in this order:
 
@@ -1270,7 +1270,7 @@ let t: (f32[10], s32) = tuple(v, s);
 let element_1: s32 = gettupleelement(t, 1);  // Inferred shape matches s32.
 ```
 
-See also @{tf.tuple}.
+See also `tf.tuple`.
 
 ## Infeed
 
@@ -1431,19 +1431,29 @@ complete and returns the received data.
 See also
 [`XlaBuilder::Reduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Applies a reduction function to an array.
+Applies a reduction function to one or more arrays in parallel.
 
-<b> `Reduce(operand, init_value, computation, dimensions)` </b>
+<b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type             | Semantics
-------------- | ---------------- | ---------------------------------------
-`operand`     | `XlaOp`          | array of type `T`
-`init_value`  | `XlaOp`          | scalar of type `T`
-`computation` | `XlaComputation` | computation of type `T, T -> T`
-`dimensions`  | `int64` array    | unordered array of dimensions to reduce
+Arguments     | Type                  | Semantics
+------------- | --------------------- | ---------------------------------------
+`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
+`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
+`computation` | `XlaComputation`      | computation of type
+              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
+`dimensions`  | `int64` array         | unordered array of dimensions to reduce
 
-This operation reduces one or more dimensions of the input array into scalars.
-The rank of the returned array is `rank(operand) - len(dimensions)`.
+Where:
+* N is required to be greater or equal to 1.
+* All input arrays must have the same dimensions.
+* If `N = 1`, `Collate(T)` is `T`.
+* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
+
+The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
+`T_i`, the dimensions of which are described below.
+
+This operation reduces one or more dimensions of each input array into scalars.
+The rank of each returned array is `rank(operand) - len(dimensions)`.
 `init_value` is the initial value used for every reduction and may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
 identity of the reduction function (for example, 0 for addition). The applied
@@ -1459,9 +1469,9 @@ enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
 incorrect or unpredictable results in XLA reductions.
 
-As an example, when reducing across the one dimension in a 1D array with values
-[10, 11, 12, 13], with reduction function `f` (this is `computation`) then that
-could be computed as
+As an example, when reducing across one dimension in a single 1D array with
+values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
 
@@ -1542,6 +1552,34 @@ We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
+
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. For example, consider the following
+reduction function, which can be used to compute the max and the argmax of a
+a 1-D tensor in parallel:
+
+```
+f: (Float, Int, Float, Int) -> Float, Int
+f(max, argmax, value, index):
+  if value >= argmax:
+    return (value, index)
+  else:
+    return (max, argmax)
+```
+
+For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
+`I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
+input dimension is equivalent to the following recursive application:
+```
+f_0 = f(I_V, I_K, V_0, K_0)
+f_1 = f(f_0.first, f_0.second, V_1, K_1)
+...
+f_(N-1) = f(f_(N-2).first, f_(N-2).second, V_(N-1), K_(N-1))
+```
+
+Applying this reduction to an array of values, and an array of sequential
+indices (i.e. iota), will co-iterate over the arrays, and return a tuple
+containing the maximal value and the matching index.
 
 ## ReducePrecision
 
@@ -1809,7 +1847,7 @@ tensor `operand`, with several slices (at indices specified by
 `update_computation`.
 
 See also
-[`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `scatter(operand, scatter_indices, updates, update_computation, index_vector_dim, update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims)` </b>
 
@@ -2212,7 +2250,7 @@ element types.
 
 ## Transpose
 
-See also the @{tf.reshape} operation.
+See also the `tf.reshape` operation.
 
 <b>`Transpose(operand)`</b>
 

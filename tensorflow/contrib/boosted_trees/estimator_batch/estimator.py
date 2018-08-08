@@ -22,8 +22,10 @@ from tensorflow.contrib.boosted_trees.estimator_batch import model
 from tensorflow.contrib.boosted_trees.python.utils import losses
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.python.estimator.canned import head as core_head_lib
 from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import losses as core_losses
 
 
 # ================== Old estimator interface===================================
@@ -402,6 +404,25 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
 # ================== New Estimator interface===================================
 # The estimators below use new core Estimator interface and must be used with
 # new feature columns and heads.
+
+# For multiclass classification, use the following head since it uses loss
+# that is twice differentiable.
+def core_multiclass_head(n_classes):
+  """Core head for multiclass problems."""
+
+  def loss_fn(labels, logits):
+    result = losses.per_example_maxent_loss(
+        labels=labels, logits=logits, weights=None, num_classes=n_classes)
+    return result[0]
+
+  # pylint:disable=protected-access
+  head_fn = core_head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+      n_classes=n_classes,
+      loss_fn=loss_fn,
+      loss_reduction=core_losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+  # pylint:enable=protected-access
+
+  return head_fn
 
 
 class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):

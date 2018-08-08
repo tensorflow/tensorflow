@@ -687,12 +687,20 @@ def make_relu6_tests(zip_path):
 def make_prelu_tests(zip_path):
   """Make a set of tests to do PReLU."""
 
-  test_parameters = [{
-      # The canonical case for image processing is having a 4D `input` (NHWC)
-      # and `shared_axes`=[1, 2], so the alpha parameter is per channel.
-      "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
-      "shared_axes": [[1, 2], [1]],
-  }]
+  test_parameters = [
+      {
+          # The canonical case for image processing is having a 4D `input`
+          # (NHWC)and `shared_axes`=[1, 2], so the alpha parameter is per
+          # channel.
+          "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
+          "shared_axes": [[1, 2], [1]],
+      },
+      {
+          # 2D-3D example. Share the 2nd axis.
+          "input_shape": [[20, 20], [20, 20, 20]],
+          "shared_axes": [[1]],
+      }
+  ]
 
   def build_graph(parameters):
     """Build the graph for the test case."""
@@ -816,11 +824,13 @@ def make_binary_op_tests(zip_path, binary_operator):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_reduce_tests(reduce_op):
+def make_reduce_tests(reduce_op, min_value=-10, max_value=10):
   """Make a set of tests to do reduce operation.
 
   Args:
     reduce_op: TensorFlow reduce operation to test, i.e. `tf.reduce_mean`.
+    min_value: min value for created tensor data.
+    max_value: max value for created tensor data.
 
   Returns:
     a function representing the true generator with `reduce_op_in` curried.
@@ -883,10 +893,12 @@ def make_reduce_tests(reduce_op):
 
     def build_inputs(parameters, sess, inputs, outputs):
       values = [
-          create_tensor_data(parameters["input_dtype"],
-                             parameters["input_shape"],
-                             min_value=-10,
-                             max_value=10)]
+          create_tensor_data(
+              parameters["input_dtype"],
+              parameters["input_shape"],
+              min_value=min_value,
+              max_value=max_value)
+      ]
       if not parameters["const_axis"]:
         values.append(np.array(parameters["axis"]))
       return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
@@ -908,7 +920,8 @@ def make_sum_tests(zip_path):
 
 def make_reduce_prod_tests(zip_path):
   """Make a set of tests to do prod."""
-  return make_reduce_tests(tf.reduce_prod)(zip_path)
+  # set min max value to be -2, 2 to avoid overflow.
+  return make_reduce_tests(tf.reduce_prod, -2, 2)(zip_path)
 
 
 def make_reduce_max_tests(zip_path):
@@ -2989,33 +3002,55 @@ def make_pack_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def _make_logical_tests(op):
+  """Make a set of tests to do logical operations."""
+
+  def logical(zip_path):
+    """Generate examples."""
+    test_parameters = [{
+        "input_shape_pair": [([], []), ([1, 1, 1, 3], [1, 1, 1, 3]),
+                             ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
+                             ([5, 5], [1]), ([10], [2, 4, 10])],
+    }]
+
+    def build_graph(parameters):
+      """Build the logical testing graph."""
+      input_value1 = tf.placeholder(
+          dtype=tf.bool, name="input1", shape=parameters["input_shape_pair"][0])
+      input_value2 = tf.placeholder(
+          dtype=tf.bool, name="input2", shape=parameters["input_shape_pair"][1])
+      out = op(input_value1, input_value2)
+      return [input_value1, input_value2], [out]
+
+    def build_inputs(parameters, sess, inputs, outputs):
+      input_value1 = create_tensor_data(tf.bool,
+                                        parameters["input_shape_pair"][0])
+      input_value2 = create_tensor_data(tf.bool,
+                                        parameters["input_shape_pair"][1])
+      return [input_value1, input_value2], sess.run(
+          outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+    make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+  return logical
+
+
 def make_logical_or_tests(zip_path):
   """Make a set of tests to do logical_or."""
+  return _make_logical_tests(tf.logical_or)(zip_path)
 
-  test_parameters = [{
-      "input_shape_pair": [([], []), ([1, 1, 1, 3], [1, 1, 1, 3]),
-                           ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
-                           ([5, 5], [1]), ([10], [2, 4, 10])],
-  }]
 
-  def build_graph(parameters):
-    """Build the logical_or op testing graph."""
-    input_value1 = tf.placeholder(
-        dtype=tf.bool, name="input1", shape=parameters["input_shape_pair"][0])
-    input_value2 = tf.placeholder(
-        dtype=tf.bool, name="input2", shape=parameters["input_shape_pair"][1])
-    out = tf.logical_or(input_value1, input_value2)
-    return [input_value1, input_value2], [out]
+def make_logical_and_tests(zip_path):
+  """Make a set of tests to do logical_and."""
+  return _make_logical_tests(tf.logical_and)(zip_path)
 
-  def build_inputs(parameters, sess, inputs, outputs):
-    input_value1 = create_tensor_data(tf.bool,
-                                      parameters["input_shape_pair"][0])
-    input_value2 = create_tensor_data(tf.bool,
-                                      parameters["input_shape_pair"][1])
-    return [input_value1, input_value2], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+def make_logical_xor_tests(zip_path):
+  """Make a set of tests to do logical_xor.
+
+    Test logical_not as well.
+  """
+  return _make_logical_tests(tf.logical_xor)(zip_path)
 
 
 # Toco binary path provided by the generate rule.

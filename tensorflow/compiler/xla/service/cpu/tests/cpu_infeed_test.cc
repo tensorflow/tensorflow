@@ -220,7 +220,7 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   // The body adds the reduced value of the Infeed data (first tuple element)
   // to the previous accumulator, and returns the accumulator and the continue
   // flag (second tuple element) as a tuple.
-  const auto build_body = [this, &result_shape](const Shape& infeed_shape) {
+  const auto build_body = [&result_shape](const Shape& infeed_shape) {
     XlaComputation body;
     XlaBuilder builder("body");
     auto prev = Parameter(&builder, 0, result_shape, "prev");

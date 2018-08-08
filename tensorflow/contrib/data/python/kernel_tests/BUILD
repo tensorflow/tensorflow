@@ -198,6 +198,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -210,9 +211,14 @@ py_test(
     srcs = ["optimize_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":stats_dataset_test_base",
         "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/contrib/data/python/ops:stats_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -239,7 +245,7 @@ cuda_py_test(
     tags = [
         "manual",
         "no_oss",
-        "no_windows_gpu" +
+        "no_windows_gpu",
         "notap",
     ],
 )
@@ -431,14 +437,24 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":reader_dataset_ops_test_base",
+        ":stats_dataset_test_base",
         "//tensorflow/contrib/data/python/ops:stats_ops",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "stats_dataset_test_base",
+    srcs = ["stats_dataset_test_base.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

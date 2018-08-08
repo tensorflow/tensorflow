@@ -47,7 +47,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
@@ -877,7 +877,7 @@ class IteratorCheckpointingTest(test.TestCase):
     checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
     for i in range(5):
       with self.test_session() as sess:
-        checkpoint.restore(saver.latest_checkpoint(
+        checkpoint.restore(checkpoint_management.latest_checkpoint(
             checkpoint_directory)).initialize_or_restore(sess)
         for j in range(2):
           self.assertEqual(i * 2 + j, sess.run(get_next))

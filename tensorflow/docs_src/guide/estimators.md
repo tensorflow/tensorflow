@@ -1,6 +1,6 @@
 # Estimators
 
-This document introduces @{tf.estimator$**Estimators**}--a high-level TensorFlow
+This document introduces `tf.estimator`--a high-level TensorFlow
 API that greatly simplifies machine learning programming. Estimators encapsulate
 the following actions:
 
@@ -11,10 +11,10 @@ the following actions:
 
 You may either use the pre-made Estimators we provide or write your
 own custom Estimators.  All Estimators--whether pre-made or custom--are
-classes based on the @{tf.estimator.Estimator} class.
+classes based on the `tf.estimator.Estimator` class.
 
 Note: TensorFlow also includes a deprecated `Estimator` class at
-@{tf.contrib.learn.Estimator}, which you should not use.
+`tf.contrib.learn.Estimator`, which you should not use.
 
 
 ## Advantages of Estimators
@@ -29,7 +29,7 @@ Estimators provide the following benefits:
 *   You can develop a state of the art model with high-level intuitive code.
     In short, it is generally much easier to create models with Estimators
     than with the low-level TensorFlow APIs.
-*   Estimators are themselves built on @{tf.layers}, which
+*   Estimators are themselves built on `tf.layers`, which
     simplifies customization.
 *   Estimators build the graph for you.
 *   Estimators provide a safe distributed training loop that controls how and
@@ -52,9 +52,9 @@ Pre-made Estimators enable you to work at a much higher conceptual level
 than the base TensorFlow APIs. You no longer have to worry about creating
 the computational graph or sessions since Estimators handle all
 the "plumbing" for you.  That is, pre-made Estimators create and manage
-@{tf.Graph$`Graph`} and @{tf.Session$`Session`} objects for you.  Furthermore,
+`tf.Graph` and `tf.Session` objects for you.  Furthermore,
 pre-made Estimators let you experiment with different model architectures by
-making only minimal code changes.  @{tf.estimator.DNNClassifier$`DNNClassifier`},
+making only minimal code changes.  `tf.estimator.DNNClassifier`,
 for example, is a pre-made Estimator class that trains classification models
 based on dense, feed-forward neural networks.
 
@@ -83,7 +83,7 @@ of the following four steps:
 
     (See @{$guide/datasets} for full details.)
 
-2.  **Define the feature columns.** Each @{tf.feature_column}
+2.  **Define the feature columns.** Each `tf.feature_column`
     identifies a feature name, its type, and any input pre-processing.
     For example, the following snippet creates three feature
     columns that hold integer or floating-point data.  The first two
@@ -155,7 +155,7 @@ We recommend the following workflow:
 
 You can convert existing Keras models to Estimators. Doing so enables your Keras
 model to access Estimator's strengths, such as distributed training. Call
-@{tf.keras.estimator.model_to_estimator} as in the
+`tf.keras.estimator.model_to_estimator` as in the
 following sample:
 
 ```python
@@ -190,4 +190,4 @@ and similarly, the predicted output names can be obtained from
 `keras_inception_v3.output_names`.
 
 For more details, please refer to the documentation for
-@{tf.keras.estimator.model_to_estimator}.
+`tf.keras.estimator.model_to_estimator`.

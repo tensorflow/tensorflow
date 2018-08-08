@@ -42,6 +42,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import adam
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base
@@ -467,7 +468,8 @@ class CheckpointingTests(test.TestCase):
       root = checkpointable_utils.Checkpoint(
           optimizer=optimizer, model=model,
           optimizer_step=training_util.get_or_create_global_step())
-      root.restore(saver_lib.latest_checkpoint(checkpoint_directory))
+      root.restore(checkpoint_management.latest_checkpoint(
+          checkpoint_directory))
       for _ in range(num_training_steps):
         # TODO(allenl): Use a Dataset and serialize/checkpoint it.
         input_value = constant_op.constant([[3.]])
@@ -495,7 +497,8 @@ class CheckpointingTests(test.TestCase):
           train_op = optimizer.minimize(
               model(input_value),
               global_step=root.global_step)
-          checkpoint_path = saver_lib.latest_checkpoint(checkpoint_directory)
+          checkpoint_path = checkpoint_management.latest_checkpoint(
+              checkpoint_directory)
           with self.test_session(graph=ops.get_default_graph()) as session:
             status = root.restore(save_path=checkpoint_path)
             status.initialize_or_restore(session=session)
@@ -528,7 +531,8 @@ class CheckpointingTests(test.TestCase):
         root = checkpointable_utils.Checkpoint(
             optimizer=optimizer, model=model,
             global_step=training_util.get_or_create_global_step())
-        checkpoint_path = saver_lib.latest_checkpoint(checkpoint_directory)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            checkpoint_directory)
         status = root.restore(save_path=checkpoint_path)
         input_value = constant_op.constant([[3.]])
         train_fn = functools.partial(
@@ -561,7 +565,8 @@ class CheckpointingTests(test.TestCase):
         root = checkpointable_utils.Checkpoint(
             optimizer=optimizer, model=model,
             global_step=training_util.get_or_create_global_step())
-        checkpoint_path = saver_lib.latest_checkpoint(checkpoint_directory)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            checkpoint_directory)
         status = root.restore(save_path=checkpoint_path)
         def train_fn():
           @function.defun
@@ -1180,7 +1185,8 @@ class CheckpointingTests(test.TestCase):
       optimizer_checkpoint = checkpointable_utils.Checkpoint(
           optimizer=optimizer)
 
-      checkpoint_path = saver_lib.latest_checkpoint(checkpoint_directory)
+      checkpoint_path = checkpoint_management.latest_checkpoint(
+          checkpoint_directory)
       status = root.restore(save_path=checkpoint_path)
       input_value = constant_op.constant([[3.]])
       train_fn = functools.partial(

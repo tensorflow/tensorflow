@@ -152,7 +152,7 @@ class StopAfterNTrees(session_run_hook.SessionRunHook):
   """Stop training after building N full trees."""
 
   def __init__(self, n, num_attempted_trees_tensor, num_finalized_trees_tensor,
-               override_global_step_value):
+               override_global_step_value=None):
     self._num_trees = n
     # num_attempted_trees_tensor and num_finalized_trees_tensor are both
     # tensors.

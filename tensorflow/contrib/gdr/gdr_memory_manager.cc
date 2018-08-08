@@ -174,7 +174,7 @@ class GdrMemoryManager : public RemoteMemoryManager {
   // Client side endpoints
   mutex client_mu_;
   std::map<std::pair<string, string>, RdmaEndpointPtr> clients_
-      GUARDED_BY(cient_mu_);
+      GUARDED_BY(client_mu_);
 
   // Managed memory regions
   mutex alloc_mu_;

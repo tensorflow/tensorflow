@@ -70,19 +70,25 @@ _VERBOSE_DIFFS_HELP = """
      false, only print which libraries have differences.
 """
 
-_API_GOLDEN_FOLDER = 'tensorflow/tools/api/golden'
+_API_GOLDEN_FOLDER_V1 = 'tensorflow/tools/api/golden/v1'
+_API_GOLDEN_FOLDER_V2 = 'tensorflow/tools/api/golden/v2'
 _TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
 _UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
 
 
-def _KeyToFilePath(key):
-  """From a given key, construct a filepath."""
+def _KeyToFilePath(key, api_version):
+  """From a given key, construct a filepath.
+
+  Filepath will be inside golden folder for api_version.
+  """
   def _ReplaceCapsWithDash(matchobj):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
   case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
-  return os.path.join(_API_GOLDEN_FOLDER, '%s.pbtxt' % case_insensitive_key)
+  api_folder = (
+      _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
+  return os.path.join(_API_GOLDEN_FOLDER_V1, '%s.pbtxt' % case_insensitive_key)
 
 
 def _FileNameToKey(filename):
@@ -120,7 +126,8 @@ class ApiCompatibilityTest(test.TestCase):
                              actual_dict,
                              verbose=False,
                              update_goldens=False,
-                             additional_missing_object_message=''):
+                             additional_missing_object_message='',
+                             api_version=2):
     """Diff given dicts of protobufs and report differences a readable way.
 
     Args:
@@ -133,6 +140,7 @@ class ApiCompatibilityTest(test.TestCase):
       update_goldens: Whether to update goldens when there are diffs found.
       additional_missing_object_message: Message to print when a symbol is
           missing.
+      api_version: TensorFlow API version to test.
     """
     diffs = []
     verbose_diffs = []
@@ -158,6 +166,8 @@ class ApiCompatibilityTest(test.TestCase):
         diff_message = 'New object %s found (added).' % key
         verbose_diff_message = diff_message
       else:
+        # Do not truncate diff
+        self.maxDiffs = None  # pylint: disable=invalid-name
         # Now we can run an actual proto diff.
         try:
           self.assertProtoEquals(expected_dict[key], actual_dict[key])
@@ -188,13 +198,13 @@ class ApiCompatibilityTest(test.TestCase):
         # If the keys are only in expected, some objects are deleted.
         # Remove files.
         for key in only_in_expected:
-          filepath = _KeyToFilePath(key)
+          filepath = _KeyToFilePath(key, api_version)
           file_io.delete_file(filepath)
 
         # If the files are only in actual (current library), these are new
         # modules. Write them to files. Also record all updates in files.
         for key in only_in_actual | set(updated_keys):
-          filepath = _KeyToFilePath(key)
+          filepath = _KeyToFilePath(key, api_version)
           file_io.write_string_to_file(
               filepath, text_format.MessageToString(actual_dict[key]))
       else:
@@ -223,8 +233,8 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     traverse.traverse(tf, visitor)
 
-  def checkBackwardsCompatibility(self, root, golden_file_pattern):
-     # Extract all API stuff.
+  def checkBackwardsCompatibility(self, root, golden_file_pattern, api_version):
+    # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
@@ -254,16 +264,18 @@ class ApiCompatibilityTest(test.TestCase):
         golden_proto_dict,
         proto_dict,
         verbose=FLAGS.verbose_diffs,
-        update_goldens=FLAGS.update_goldens)
+        update_goldens=FLAGS.update_goldens,
+        api_version=api_version)
 
   @unittest.skipUnless(
       sys.version_info.major == 2,
       'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibility(self):
+    api_version = 2
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*'))
-    self.checkBackwardsCompatibility(tf, golden_file_pattern)
+        _KeyToFilePath('*', api_version))
+    self.checkBackwardsCompatibility(tf, golden_file_pattern, api_version)
 
   @unittest.skipUnless(
       sys.version_info.major == 2,
@@ -271,10 +283,11 @@ class ApiCompatibilityTest(test.TestCase):
   def testAPIBackwardsCompatibilityV1(self):
     if not tf_v1:
       return
+    api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*'))
-    self.checkBackwardsCompatibility(tf_v1, golden_file_pattern)
+        _KeyToFilePath('*', api_version))
+    self.checkBackwardsCompatibility(tf_v1, golden_file_pattern, api_version)
 
 
 if __name__ == '__main__':

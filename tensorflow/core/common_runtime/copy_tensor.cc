@@ -340,4 +340,30 @@ Status CopyTensor::Register(DeviceType sender_device_type,
   return Status::OK();
 }
 
+namespace {
+
+// The following registrations enable a DT_VARIANT tensor element that contains
+// a wrapped `tensorflow::Tensor` to be copied between devices.
+static Status WrappedTensorDeviceCopy(
+    const Tensor& from, Tensor* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  if (DMAHelper::CanUseDMA(&from)) {
+    TF_RETURN_IF_ERROR(copy(from, to));
+  } else {
+    *to = from;
+  }
+
+  return Status::OK();
+}
+
+#define REGISTER_WRAPPED_TENSOR_COPY(DIRECTION)         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      Tensor, DIRECTION, "tensorflow::Tensor", WrappedTensorDeviceCopy)
+
+REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+}  // namespace
+
 }  // namespace tensorflow

@@ -33,6 +33,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import weights_broadcast_ops
 
 
 def _map_nested(data, func):
@@ -577,15 +578,25 @@ def weighted_masked_objective(fn):
       #  to the number of unmasked samples.
       score_array /= K.mean(mask)
 
-    # apply sample weighting
+    # Apply sample weighting.
     if weights is not None:
-      # reduce score_array to same ndim as weight array
-      ndim = K.ndim(score_array)
-      weight_ndim = K.ndim(weights)
-      score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
-      score_array *= weights
-      score_array /= K.mean(
-          math_ops.cast(math_ops.not_equal(weights, 0), K.floatx()))
+
+      # Update dimensions of weights to match with values if possible.
+      score_array, _, weights = metrics_module.squeeze_or_expand_dimensions(
+          score_array, None, weights)
+      try:
+        # Broadcast weights if possible.
+        weights = weights_broadcast_ops.broadcast_weights(weights, score_array)
+      except ValueError:
+        # Reduce values to same ndim as weight array.
+        ndim = K.ndim(score_array)
+        weight_ndim = K.ndim(weights)
+        score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
+
+      score_array = math_ops.multiply(score_array, weights)
+      score_array = math_ops.reduce_sum(score_array)
+      weights = math_ops.reduce_sum(weights)
+      score_array = metrics_module.safe_div(score_array, weights)
     return K.mean(score_array)
 
   return weighted

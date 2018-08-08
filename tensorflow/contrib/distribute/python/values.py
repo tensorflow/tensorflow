@@ -995,3 +995,27 @@ class MultiStepContext(object):
         assert o.dtype == i.dtype, (
             "Dtype {} of left {} doesn't match dtype {} of right {}.".
             format(o.dtype, o, i.dtype, i))
+
+
+def value_container(val):
+  """Returns the container that this per-device `value` belongs to.
+
+  Args:
+    val: A value returned by `call_for_each_tower()` or a variable
+      created in `scope()`.
+
+  Returns:
+    A container that `value` belongs to.
+    If value does not belong to any container (including the case of
+    container having been destroyed), returns the value itself.
+  """
+  # pylint: disable=protected-access
+  if (hasattr(val, "_distributed_container") and
+      # DistributedVariable has _distributed_container defined
+      # but we don't want to return it.
+      not isinstance(val, DistributedVariable)):
+    container = val._distributed_container()
+    # pylint: disable=protected-access
+    if container is not None:
+      return container
+  return val
