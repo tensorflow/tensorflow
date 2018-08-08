@@ -25,6 +25,7 @@ py_library(
         "applications/inception_resnet_v2.py",
         "applications/inception_v3.py",
         "applications/mobilenet.py",
+        "applications/mobilenet_v2.py",
         "applications/nasnet.py",
         "applications/resnet50.py",
         "applications/vgg16.py",

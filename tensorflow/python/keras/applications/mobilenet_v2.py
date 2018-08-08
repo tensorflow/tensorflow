@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,27 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for preprocessing sequence data.
-"""
 # pylint: disable=invalid-name
+"""MobileNet v2 models for Keras.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from keras_preprocessing import sequence
+from keras_applications import mobilenet_v2
 
 from tensorflow.python.util.tf_export import tf_export
 
-pad_sequences = sequence.pad_sequences
-make_sampling_table = sequence.make_sampling_table
-skipgrams = sequence.skipgrams
-# TODO(fchollet): consider making `_remove_long_seq` public.
-_remove_long_seq = sequence._remove_long_seq  # pylint: disable=protected-access
-TimeseriesGenerator = sequence.TimeseriesGenerator
+MobileNetV2 = mobilenet_v2.MobileNetV2
+decode_predictions = mobilenet_v2.decode_predictions
+preprocess_input = mobilenet_v2.preprocess_input
 
-tf_export('keras.preprocessing.sequence.pad_sequences')(pad_sequences)
-tf_export(
-    'keras.preprocessing.sequence.make_sampling_table')(make_sampling_table)
-tf_export('keras.preprocessing.sequence.skipgrams')(skipgrams)
-tf_export(
-    'keras.preprocessing.sequence.TimeseriesGenerator')(TimeseriesGenerator)
+tf_export('keras.applications.mobilenet_v2.MobileNetV2',
+          'keras.applications.MobileNetV2')(MobileNetV2)
+tf_export('keras.applications.mobilenet_v2.preprocess_input')(preprocess_input)

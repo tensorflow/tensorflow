@@ -51,6 +51,8 @@ REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
+    'keras_applications == 1.0.4',
+    'keras_preprocessing == 1.0.2',
     'numpy >= 1.13.3, <= 1.14.5',
     'six >= 1.10.0',
     'protobuf >= 3.6.0',
