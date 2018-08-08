@@ -19,7 +19,7 @@
 * `tf.data`:
   * `tf.contrib.data.group_by_reducer()` is now available via the public API.
   * `tf.contrib.data.choose_from_datasets()` is now available via the public API.
-  * Adding `drop_remainder` argument to `tf.data.Dataset.batch()` and `tf.data.Dataset.padded_batch()`, deprecating tf.contrib.data.batch_and_drop_remainder()` and `tf.contrib.data.padded_batch_and_drop_remainder()`.
+  * Adding `drop_remainder` argument to `tf.data.Dataset.batch()` and `tf.data.Dataset.padded_batch()`, deprecating `tf.contrib.data.batch_and_drop_remainder()` and `tf.contrib.data.padded_batch_and_drop_remainder()`.
 * `tf.estimator`:
   * `Estimator`s now use custom savers included in `EstimatorSpec` scaffolds for saving SavedModels during export.
   * `EstimatorSpec` will now add a default prediction output for export if no `export_output` is provided, eliminating the need to explicitly include a `PredictOutput` object in the `model_fn` for simple use-cases.
