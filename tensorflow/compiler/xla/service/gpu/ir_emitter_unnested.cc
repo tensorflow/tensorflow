@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/while_transformer.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -1963,19 +1963,13 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  auto result = CanTransformWhileToFor(xla_while);
-  if (result.ok()) {
-    auto tuple = result.ConsumeValueOrDie();
-    // loop_trip_count = (limit - start + increment - 1) / increment
-    const int64 loop_trip_count =
-        (std::get<1>(tuple) - std::get<0>(tuple) + std::get<2>(tuple) - 1) /
-        std::get<2>(tuple);
-    thunk_sequence_->emplace_back(BuildForThunk(xla_while, loop_trip_count));
+  // TODO(b/112163966): Move trip count computation earlier in the pipeline.
+  if (auto loop_trip_count = ComputeWhileLoopTripCount(xla_while)) {
+    thunk_sequence_->emplace_back(BuildForThunk(xla_while, *loop_trip_count));
     VLOG(3) << "Built ForThunk for while: " << xla_while->name();
   } else {
     thunk_sequence_->emplace_back(BuildWhileThunk(xla_while));
-    VLOG(3) << "Built WhileThunk for while: " << xla_while->name()
-            << " while-to-for transform status: " << result.status();
+    VLOG(3) << "Built WhileThunk for while: " << xla_while->name();
   }
   return Status::OK();
 }
