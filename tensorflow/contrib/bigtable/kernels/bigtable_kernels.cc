@@ -276,7 +276,7 @@ class ToBigtableOp : public AsyncOpKernel {
         }
         OP_REQUIRES_ASYNC(
             ctx, failures.empty() && mutation_status.ok(),
-            errors::Unknown("Failure while writing to BigTable: ",
+            errors::Unknown("Failure while writing to Cloud Bigtable: ",
                             mutation_status.error_code(), " - ",
                             mutation_status.error_message(), " (",
                             mutation_status.error_details(),

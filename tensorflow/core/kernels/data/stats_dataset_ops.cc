@@ -390,7 +390,7 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
 
         for (const auto& feature_list :
              example.feature_lists().feature_list()) {
-          stats_aggregator->IncrementCounter("feature_lists_count", "reainer",
+          stats_aggregator->IncrementCounter("feature_lists_count", "trainer",
                                              1);
           for (const auto& feature : feature_list.second.feature()) {
             feature_values_list_size_sum += AddStatsFeatureValues(feature);

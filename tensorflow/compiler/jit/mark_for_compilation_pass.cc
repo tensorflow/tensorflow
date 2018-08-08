@@ -462,6 +462,7 @@ Status MarkForCompilationPass::Run(
 
   VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
+  VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
   std::unique_ptr<DeadnessAnalysis> deadness;
@@ -474,15 +475,6 @@ Status MarkForCompilationPass::Run(
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
                                              &registration)) {
-      return false;
-    }
-
-    // TODO(b/111570009): This bailout for ControlTrigger is probably not
-    // needed.
-    //
-    // Don't compile control trigger nodes. We won't preserve their deadness
-    // semantics correctly, so it's safest not to compile them.
-    if (node->IsControlTrigger()) {
       return false;
     }
 

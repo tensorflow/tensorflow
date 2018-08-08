@@ -43,6 +43,8 @@ Status ForThunk::Initialize(const GpuExecutable& executable,
 Status ForThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                  se::Stream* stream,
                                  HloExecutionProfiler* profiler) {
+  VLOG(2) << "Executing ForThunk with " << loop_limit_ << " iters for "
+          << (hlo_instruction() ? hlo_instruction()->ToString() : "<null>");
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   for (int64 i = 0; i < loop_limit_; ++i) {
     profiler->StartHloComputation();

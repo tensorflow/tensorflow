@@ -29,6 +29,11 @@ from tensorflow.contrib.eager.python.examples.revnet import revnet
 tfe = tf.contrib.eager
 
 
+def apply_gradients(optimizer, grads, vars_, global_step=None):
+  """Functional style apply_grads for `tfe.defun`."""
+  optimizer.apply_gradients(zip(grads, vars_), global_step=global_step)
+
+
 def main(_):
   """Eager execution workflow with RevNet trained on CIFAR-10."""
   tf.enable_eager_execution()
@@ -45,6 +50,14 @@ def main(_):
       learning_rate, momentum=config.momentum)
   checkpointer = tf.train.Checkpoint(
       optimizer=optimizer, model=model, optimizer_step=global_step)
+
+  if FLAGS.use_defun:
+    model.call = tfe.defun(model.call)
+    model.compute_gradients = tfe.defun(model.compute_gradients)
+    model.get_moving_stats = tfe.defun(model.get_moving_stats)
+    model.restore_moving_stats = tfe.defun(model.restore_moving_stats)
+    global apply_gradients  # pylint:disable=global-variable-undefined
+    apply_gradients = tfe.defun(apply_gradients)
 
   if FLAGS.train_dir:
     summary_writer = tf.contrib.summary.create_file_writer(FLAGS.train_dir)
@@ -69,7 +82,7 @@ def main(_):
         acc_validation, loss_validation = evaluate(model, it_validation)
         print("Iter {}, "
               "training set accuracy {:.4f}, loss {:.4f}; "
-              "validation set accuracy {:.4f}, loss {:4.f}"
+              "validation set accuracy {:.4f}, loss {:.4f}; "
               "test accuracy {:.4f}, loss {:.4f}".format(
                   global_step.numpy(), acc_train, loss_train, acc_validation,
                   loss_validation, acc_test, loss_test))
@@ -81,11 +94,11 @@ def main(_):
       if FLAGS.train_dir:
         with summary_writer.as_default():
           with tf.contrib.summary.always_record_summaries():
-            tf.contrib.summary.scalar("Training accuracy", acc_train)
             tf.contrib.summary.scalar("Test accuracy", acc_test)
-            tf.contrib.summary.scalar("Training loss", loss_train)
             tf.contrib.summary.scalar("Test loss", loss_test)
             if FLAGS.validate:
+              tf.contrib.summary.scalar("Training accuracy", acc_train)
+              tf.contrib.summary.scalar("Training loss", loss_train)
               tf.contrib.summary.scalar("Validation accuracy", acc_validation)
               tf.contrib.summary.scalar("Validation loss", loss_validation)
 
@@ -194,9 +207,13 @@ def get_datasets(data_dir, config):
 
 def train_one_iter(model, inputs, labels, optimizer, global_step=None):
   """Train for one iteration."""
-  grads, vars_, logits, loss = model.compute_gradients(
-      inputs, labels, training=True)
-  optimizer.apply_gradients(zip(grads, vars_), global_step=global_step)
+  logits, saved_hiddens = model(inputs, training=True)
+  values = model.get_moving_stats()
+  grads, loss = model.compute_gradients(saved_hiddens, labels)
+  # Restore moving averages when executing eagerly to avoid updating twice
+  model.restore_moving_stats(values)
+  apply_gradients(
+      optimizer, grads, model.trainable_variables, global_step=global_step)
 
   return logits, loss
 
@@ -240,5 +257,9 @@ if __name__ == "__main__":
       default="revnet-38",
       help="[Optional] Architecture of network. "
       "Other options include `revnet-110` and `revnet-164`")
+  flags.DEFINE_boolean(
+      "use_defun",
+      default=False,
+      help="[Optional] Use `tfe.defun` to boost performance.")
   FLAGS = flags.FLAGS
   tf.app.run(main)

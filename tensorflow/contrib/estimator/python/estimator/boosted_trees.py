@@ -50,7 +50,8 @@ class _BoostedTreesEstimator(estimator.Estimator):
                tree_complexity=0.,
                min_node_weight=0.,
                config=None,
-               center_bias=False):
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesEstimator` instance.
 
     Args:
@@ -89,13 +90,18 @@ class _BoostedTreesEstimator(estimator.Estimator):
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     """
     # pylint:disable=protected-access
     # HParams for the model.
     tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity, min_node_weight, center_bias)
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return canned_boosted_trees._bt_model_fn(
@@ -129,7 +135,8 @@ def boosted_trees_classifier_train_in_memory(
     min_node_weight=0.,
     config=None,
     train_hooks=None,
-    center_bias=False):
+    center_bias=False,
+    pruning_mode='none'):
   """Trains a boosted tree classifier with in memory dataset.
 
   Example:
@@ -208,6 +215,11 @@ def boosted_trees_classifier_train_in_memory(
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
+    pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
   Returns:
     a `BoostedTreesClassifier` instance created with the given arguments and
@@ -228,7 +240,7 @@ def boosted_trees_classifier_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity, min_node_weight, center_bias)
+      tree_complexity, min_node_weight, center_bias, pruning_mode)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(
@@ -269,7 +281,8 @@ def boosted_trees_regressor_train_in_memory(
     min_node_weight=0.,
     config=None,
     train_hooks=None,
-    center_bias=False):
+    center_bias=False,
+    pruning_mode='none'):
   """Trains a boosted tree regressor with in memory dataset.
 
   Example:
@@ -341,6 +354,11 @@ def boosted_trees_regressor_train_in_memory(
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
+    pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
   Returns:
     a `BoostedTreesClassifier` instance created with the given arguments and
@@ -360,7 +378,7 @@ def boosted_trees_regressor_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity, min_node_weight, center_bias)
+      tree_complexity, min_node_weight, center_bias, pruning_mode)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(

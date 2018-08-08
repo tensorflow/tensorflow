@@ -30,6 +30,7 @@ from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -76,6 +77,13 @@ class DistributedValues(object):
   @property
   def devices(self):
     return list(self._index.keys())
+
+  @property
+  def is_tensor_like(self):
+    for v in self._index.values():
+      if not tensor_util.is_tensor(v):
+        return False
+    return True
 
   def __str__(self):
     return "%s:%s" % (self.__class__.__name__, self._index)
@@ -202,6 +210,11 @@ class DistributedVariable(DistributedDelegate):
     # without this it will use `__getattr__` which will delegate to a component
     # variable.
     self._keras_initialized = False
+    # Typically, a `DistributedVariable`'s initializer is composed of the
+    # initializers of the components variables. However, in some cases, such as
+    # when restoring from a checkpoint, we may set the _initializer_op
+    # property on the entire `DistributedVariable`.
+    self._initializer_op = None
     super(DistributedVariable, self).__init__(index)
 
   def is_initialized(self, name=None):
@@ -231,9 +244,14 @@ class DistributedVariable(DistributedDelegate):
 
   @property
   def initializer(self):
-    # return grouped ops of all the var initializations of component values of
-    # the mirrored variable
-    return control_flow_ops.group([v.initializer for v in self._index.values()])
+    if self._initializer_op:
+      init_op = self._initializer_op
+    else:
+      # return grouped ops of all the var initializations of component values of
+      # the mirrored variable
+      init_op = control_flow_ops.group(
+          [v.initializer for v in self._index.values()])
+    return init_op
 
   @property
   def graph(self):
@@ -275,6 +293,9 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.graph,
                               self._primary_var.op.type)
     return self.get().op
+
+  def read_value(self):
+    return distribute_lib.get_distribution_strategy().read_var(self)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -352,6 +373,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
       return distribute_lib.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:
+      _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
       # context.
       # We reduce the value we want to assign/add/sub. More details about how we
@@ -448,14 +470,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    # To preserve the sum across save and restore, we have to divide the
-    # total across all devices when restoring a variable that was summed
-    # when saving.
-    if self._tower_local_variable.aggregation == vs.VariableAggregation.SUM:
-      tensor *= 1. / len(self._tower_local_variable.devices)
-    return control_flow_ops.group([
-        _assign_on_device(d, v, tensor)
-        for d, v in six.iteritems(self._tower_local_variable._index)])  # pylint: disable=protected-access
+    return self._tower_local_variable.assign(tensor)
 
 
 def _assert_tower_context():
@@ -482,8 +497,19 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    _assert_tower_context()
-    return self.get().assign(*args, **kwargs)
+    if distribute_lib.get_cross_tower_context():
+      # To preserve the sum across save and restore, we have to divide the
+      # total across all devices when restoring a variable that was summed
+      # when saving.
+      tensor = args[0]
+      if self._aggregation == vs.VariableAggregation.SUM:
+        tensor *= 1. / len(self.devices)
+      return control_flow_ops.group(
+          [_assign_on_device(d, v, tensor)
+           for d, v in six.iteritems(self._index)])
+    else:
+      _assert_tower_context()
+      return self.get().assign(*args, **kwargs)
 
   @property
   def aggregation(self):
@@ -969,3 +995,27 @@ class MultiStepContext(object):
         assert o.dtype == i.dtype, (
             "Dtype {} of left {} doesn't match dtype {} of right {}.".
             format(o.dtype, o, i.dtype, i))
+
+
+def value_container(val):
+  """Returns the container that this per-device `value` belongs to.
+
+  Args:
+    val: A value returned by `call_for_each_tower()` or a variable
+      created in `scope()`.
+
+  Returns:
+    A container that `value` belongs to.
+    If value does not belong to any container (including the case of
+    container having been destroyed), returns the value itself.
+  """
+  # pylint: disable=protected-access
+  if (hasattr(val, "_distributed_container") and
+      # DistributedVariable has _distributed_container defined
+      # but we don't want to return it.
+      not isinstance(val, DistributedVariable)):
+    container = val._distributed_container()
+    # pylint: disable=protected-access
+    if container is not None:
+      return container
+  return val

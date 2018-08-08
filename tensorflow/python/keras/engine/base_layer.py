@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -173,6 +174,12 @@ class Layer(checkpointable.CheckpointableBase):
     self._outbound_nodes = []
 
     self.supports_masking = False
+
+    call_argspec = tf_inspect.getfullargspec(self.call)
+    if 'training' in call_argspec.args:
+      self._expects_training_arg = True
+    else:
+      self._expects_training_arg = False
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -723,9 +730,19 @@ class Layer(checkpointable.CheckpointableBase):
             self._dtype = input_list[0].dtype.base_dtype.name
           except AttributeError:
             pass
+
         if all(hasattr(x, 'shape') for x in input_list):
           input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-        self.build(input_shapes)
+
+        if (not hasattr(self, '_is_graph_network') or
+            self.__class__.__name__ == 'Sequential' or
+            not hasattr(self.build, '_is_default')):
+          # Only if self is a layer, an instance of a sequential model, or
+          # the user has manually overwritten the build method do we need to
+          # build it.
+          self.build(input_shapes)
+        # We must set self.built since user defined build functions are not
+        # constrained to set self.built.
         self.built = True
 
       # Check input assumptions set after layer building, e.g. input shape.
@@ -756,7 +773,6 @@ class Layer(checkpointable.CheckpointableBase):
 
       if build_graph:
         self._handle_activity_regularization(inputs, outputs)
-        # TODO(fchollet): consider enabling masking for Eager mode.
         self._set_mask_metadata(inputs, outputs, previous_mask)
 
       if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
@@ -778,16 +794,7 @@ class Layer(checkpointable.CheckpointableBase):
     if hasattr(self, '_initial_weights') and self._initial_weights is not None:
       self.set_weights(self._initial_weights)
       del self._initial_weights
-    self._post_build_cleanup()
     return outputs
-
-  def _post_build_cleanup(self):
-    """Hooks to run after all sub-Layers are built."""
-    # Note that in addition to Layer.__call__, this method is called by Model
-    # after building a graph network (which skips __call__). It should be called
-    # when possible if self.built may have switched from False to True, and is
-    # idempotent.
-    pass  # No-op for Layers which don't override this method.
 
   def apply(self, inputs, *args, **kwargs):
     """Apply the layer on a input.
@@ -822,21 +829,27 @@ class Layer(checkpointable.CheckpointableBase):
         pass
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    if hasattr(self, 'compute_mask'):
+    # In some cases the mask of the outputs has already been computed by
+    # inner layers and does not need to be recomputed by this layer.
+    mask_already_computed = all(
+        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
+    if hasattr(self, 'compute_mask') and not mask_already_computed:
       output_mask = self.compute_mask(inputs, previous_mask)
-      if isinstance(outputs, (list, tuple)):
-        if output_mask is None:
-          output_mask = [None for _ in range(len(outputs))]
-        for x, m in zip(outputs, output_mask):
-          try:
-            x._keras_mask = m  # pylint: disable=protected-access
-          except AttributeError:
-            pass  # C type such as dict. Masking not supported in this case.
-      else:
+    else:
+      output_mask = None
+    if isinstance(outputs, (list, tuple)):
+      if output_mask is None:
+        output_mask = [None for _ in range(len(outputs))]
+      for x, m in zip(outputs, output_mask):
         try:
-          outputs._keras_mask = output_mask  # pylint: disable=protected-access
+          x._keras_mask = m  # pylint: disable=protected-access
         except AttributeError:
           pass  # C type such as dict. Masking not supported in this case.
+    else:
+      try:
+        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+      except AttributeError:
+        pass  # C type such as dict. Masking not supported in this case.
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(self, '_call_convention',
@@ -898,7 +911,7 @@ class Layer(checkpointable.CheckpointableBase):
       assert len(call_args) == 1  # TypeError raised earlier in __call__.
       return call_args[0], call_kwargs
     else:
-      call_arg_spec = tf_inspect.getargspec(self.call)
+      call_arg_spec = tf_inspect.getfullargspec(self.call)
       # There is no explicit "inputs" argument expected or provided to
       # call(). Arguments which have default values are considered non-inputs,
       # and arguments without are considered inputs.
@@ -918,8 +931,8 @@ class Layer(checkpointable.CheckpointableBase):
       _, unwrapped_call = tf_decorator.unwrap(self.call)
       bound_args = inspect.getcallargs(
           unwrapped_call, *call_args, **call_kwargs)
-      if call_arg_spec.keywords is not None:
-        var_kwargs = bound_args.pop(call_arg_spec.keywords)
+      if call_arg_spec.varkw is not None:
+        var_kwargs = bound_args.pop(call_arg_spec.varkw)
         bound_args.update(var_kwargs)
         keyword_arg_names = keyword_arg_names.union(var_kwargs.keys())
       all_args = call_arg_spec.args
@@ -962,6 +975,39 @@ class Layer(checkpointable.CheckpointableBase):
     Returns:
         An input shape tuple.
     """
+    if context.executing_eagerly():
+      # In this case we build the model first in order to do shape inference.
+      # This is acceptable because the framework only calls
+      # `compute_output_shape` on shape values that the layer would later be
+      # built for. It would however cause issues in case a user attempts to
+      # use `compute_output_shape` manually (these users will have to
+      # implement `compute_output_shape` themselves).
+      self.build(input_shape)
+
+      with context.graph_mode():
+        graph = eager_function.CapturingGraph()
+        with graph.as_default():
+          if isinstance(input_shape, list):
+            inputs = [generate_placeholders_from_shape(shape)
+                      for shape in input_shape]
+          else:
+            inputs = generate_placeholders_from_shape(input_shape)
+
+          try:
+            if self._expects_training_arg:
+              outputs = self(inputs, training=False)
+            else:
+              outputs = self(inputs)
+          except TypeError:
+            raise NotImplementedError('We could not automatically infer '
+                                      'the static shape of the layer\'s output.'
+                                      ' Please implement the '
+                                      '`compute_output_shape` method on your '
+                                      'layer (%s).' % self.__class__.__name__)
+      if isinstance(outputs, list):
+        return [output.shape for output in outputs]
+      else:
+        return outputs.shape
     raise NotImplementedError
 
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
@@ -1917,3 +1963,13 @@ def make_variable(name,
       synchronization=synchronization,
       aggregation=aggregation)
   return v
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True
+  return method
+
+
+def generate_placeholders_from_shape(shape):
+  return array_ops.placeholder(shape=shape, dtype=backend.floatx())

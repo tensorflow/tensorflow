@@ -662,6 +662,7 @@ cc_library(
         "lib/random/random_distributions.h",
         "lib/random/simple_philox.h",
         "lib/strings/numbers.h",
+        "lib/strings/proto_serialization.h",
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
@@ -1655,6 +1656,7 @@ cc_library(
     copts = tf_copts(android_optimization_level_override = None) + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
+    linkopts = if_android(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -1678,6 +1680,7 @@ cc_library(
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
+    linkopts = if_android(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -2235,6 +2238,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2263,6 +2267,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2289,6 +2294,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
         "@png_archive//:png",
     ],
 )
@@ -2922,6 +2928,14 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "session_ref",
+    srcs = ["common_runtime/session_ref.cc"],
+    hdrs = ["common_runtime/session_ref.h"],
+    copts = tf_copts(),
+    deps = [":core_cpu_base"],
+)
+
+cc_library(
     name = "gpu_id",
     hdrs = [
         "common_runtime/gpu/gpu_id.h",
@@ -3222,6 +3236,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/mutex_test.cc",
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
@@ -3479,6 +3494,7 @@ tf_cc_tests(
         "framework/tensor_shape_test.cc",
         "framework/tensor_slice_test.cc",
         "framework/tensor_test.cc",
+        "framework/tensor_testutil_test.cc",
         "framework/tensor_util_test.cc",
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",

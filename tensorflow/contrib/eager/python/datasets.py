@@ -22,12 +22,9 @@ from tensorflow.contrib.data.python.ops import prefetching_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.saver import BaseSaverBuilder
 
 
-class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
+class Iterator(iterator_ops.EagerIterator):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   NOTE: Unlike the iterator created by the
@@ -82,30 +79,3 @@ class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
     # TODO(b/77291417): Fix
     with context.execution_mode(context.SYNC):
       return super(Iterator, self)._next_internal()
-
-  # TODO(shivaniagrawal): Expose checkpointable stateful objects from dataset
-  # attributes(potential).
-
-  class _Saveable(BaseSaverBuilder.SaveableObject):
-    """SaveableObject for saving/restoring iterator state."""
-
-    def __init__(self, iterator_resource, name):
-      serialized_iterator = gen_dataset_ops.serialize_iterator(
-          iterator_resource)
-      specs = [
-          BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
-      ]
-      # pylint: disable=protected-access
-      super(Iterator._Saveable, self).__init__(iterator_resource, specs, name)
-
-    def restore(self, restored_tensors, restored_shapes):
-      with ops.colocate_with(self.op):
-        return gen_dataset_ops.deserialize_iterator(self.op,
-                                                    restored_tensors[0])
-
-  def _gather_saveables_for_checkpoint(self):
-
-    def _saveable_factory(name):
-      return self._Saveable(self._resource, name)
-
-    return {"ITERATOR": _saveable_factory}

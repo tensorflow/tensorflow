@@ -328,9 +328,8 @@ class MklConv2DBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(
-      const MklConvBwdFilterParams& convBwdFilterDims) {
-    std::string prefix = "conv2d_bwd_filter";
+  static string CreateKey(const MklConvBwdFilterParams& convBwdFilterDims) {
+    string prefix = "conv2d_bwd_filter";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convBwdFilterDims.src_dims);
@@ -346,13 +345,13 @@ class MklConv2DBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
 
   MklPrimitive* GetConv2dBwdFilter(
       const MklConvBwdFilterParams& convBwdFilterDims) {
-    std::string key = CreateKey(convBwdFilterDims);
+    string key = CreateKey(convBwdFilterDims);
     return this->GetOp(key);
   }
 
   void SetConv2dBwdFilter(
       const MklConvBwdFilterParams& convBwdFilterDims, MklPrimitive* op) {
-    std::string key = CreateKey(convBwdFilterDims);
+    string key = CreateKey(convBwdFilterDims);
     this->SetOp(key, op);
   }
 };

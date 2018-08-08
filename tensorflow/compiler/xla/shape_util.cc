@@ -596,8 +596,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     };
 
     auto comma_list_to_int64s =
-        [&s,
-         string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
+        [string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
       std::vector<int64> results;
       for (const string& piece : tensorflow::str_util::Split(input, ',')) {
         TF_ASSIGN_OR_RETURN(int64 element, string_to_int64(piece));
@@ -682,7 +681,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                            CompatibleIgnoringElementType);
   } else {
     // Opaque, token, etc types are vacuously compatible.
-    return true;
+    return lhs.element_type() == rhs.element_type();
   }
 }
 
@@ -697,7 +696,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                            CompatibleIgnoringFpPrecision);
   } else {
     // Opaque, token, etc types are vacuously compatible.
-    return true;
+    return lhs.element_type() == rhs.element_type();
   }
 }
 
@@ -792,7 +791,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   if (LayoutUtil::IsSparseArray(shape)) {
     allocated_element_count = LayoutUtil::MaxSparseElements(shape.layout());
   } else {
-    CHECK(LayoutUtil::IsDenseArray(shape));
+    CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
     tensorflow::gtl::ArraySlice<int64> padded_dimensions =
         LayoutUtil::PaddedDimensions(shape);
     if (!padded_dimensions.empty()) {

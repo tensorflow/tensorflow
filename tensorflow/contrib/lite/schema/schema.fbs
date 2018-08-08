@@ -165,6 +165,10 @@ enum BuiltinOperator : byte {
   REDUCE_PROD = 81,
   REDUCE_MAX = 82,
   PACK = 83,
+  LOGICAL_OR = 84,
+  ONE_HOT = 85,
+  LOGICAL_AND = 86,
+  LOGICAL_NOT = 87,
 }
 
 // Options for the builtin operators.
@@ -228,6 +232,10 @@ union BuiltinOptions {
   ArgMinOptions,
   FakeQuantOptions,
   PackOptions,
+  LogicalOrOptions,
+  OneHotOptions,
+  LogicalAndOptions,
+  LogicalNotOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -542,6 +550,19 @@ table FakeQuantOptions {
 table PackOptions {
   values_count:int;
   axis:int;
+}
+
+table LogicalOrOptions {
+}
+
+table OneHotOptions {
+  axis:int;
+}
+
+table LogicalAndOptions {
+}
+
+table LogicalNotOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

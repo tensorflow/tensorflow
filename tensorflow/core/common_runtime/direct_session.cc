@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
@@ -235,7 +236,11 @@ void DirectSession::SchedClosure(thread::ThreadPool* pool,
   // safe given the reasoning above.
   c();
 #else
-  pool->Schedule(std::move(c));
+  if (pool != nullptr) {
+    pool->Schedule(std::move(c));
+  } else {
+    c();
+  }
 #endif  // __ANDROID__
 }
 
@@ -522,8 +527,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
   }
 
-  if (run_options.inter_op_thread_pool() < 0 ||
-      run_options.inter_op_thread_pool() >= thread_pools_.size()) {
+  if (run_options.inter_op_thread_pool() < -1 ||
+      run_options.inter_op_thread_pool() >=
+          static_cast<int32>(thread_pools_.size())) {
     run_state.executors_done.Notify();
     delete barrier;
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
@@ -548,7 +554,19 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   }
 
   thread::ThreadPool* pool =
-      thread_pools_[run_options.inter_op_thread_pool()].first;
+      run_options.inter_op_thread_pool() >= 0
+          ? thread_pools_[run_options.inter_op_thread_pool()].first
+          : nullptr;
+
+  if (pool == nullptr) {
+    // We allow using the caller thread only when having a single executor
+    // specified.
+    if (executors_and_keys->items.size() > 1) {
+      pool = thread_pools_[0].first;
+    } else {
+      VLOG(1) << "Executing Session::Run() synchronously!";
+    }
+  }
 
   Executor::Args::Runner default_runner = [this,
                                            pool](Executor::Args::Closure c) {
@@ -700,7 +718,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   if (outputs) {
     std::vector<Tensor> sorted_outputs;
-    const Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    const Status s = call_frame.ConsumeRetvals(
+        &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
       return errors::InvalidArgument(s.error_message());
     } else if (!s.ok()) {
@@ -1205,10 +1224,9 @@ Status DirectSession::CreateExecutors(
     item->graph = partition_graph.get();
     item->executor = nullptr;
     item->device = device;
-    Executor* executor;
-    TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, std::move(partition_graph), &executor));
-    item->executor.reset(executor);
+    auto executor_type = options_.config.experimental().executor_type();
+    TF_RETURN_IF_ERROR(NewExecutor(
+        executor_type, params, std::move(partition_graph), &item->executor));
   }
 
   // Cache the mapping from input/output names to graph elements to

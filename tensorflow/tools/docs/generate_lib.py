@@ -284,10 +284,13 @@ def _get_default_do_not_descend_map():
   }
 
 
-def extract(py_modules, private_map, do_not_descend_map):
+def extract(py_modules,
+            private_map,
+            do_not_descend_map,
+            visitor_cls=doc_generator_visitor.DocGeneratorVisitor):
   """Extract docs from tf namespace and write them to disk."""
   # Traverse the first module.
-  visitor = doc_generator_visitor.DocGeneratorVisitor(py_modules[0][0])
+  visitor = visitor_cls(py_modules[0][0])
   api_visitor = public_api.PublicAPIVisitor(visitor)
   api_visitor.set_root_name(py_modules[0][0])
   add_dict_to_dict(private_map, api_visitor.private_map)

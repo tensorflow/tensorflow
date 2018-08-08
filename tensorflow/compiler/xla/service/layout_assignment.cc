@@ -874,8 +874,8 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
     // HostCompute module.
     // Otherwise it is preferable to leave the new instruction without device,
     // and let the automatic device placer to choose the best location.
-    if (!sharding.HasUniqueDevice() ||
-        HloSharding::IsReservedDevice(sharding.UniqueDevice().ValueOrDie())) {
+    auto device = sharding.UniqueDevice();
+    if (!device || HloSharding::IsReservedDevice(*device)) {
       copy->set_sharding(sharding);
     }
   }
@@ -1228,7 +1228,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   const PointsToSet& points_to_set =
       constraints->points_to_analysis().GetPointsToSet(instruction);
   return points_to_set.ForEachElementWithStatus(
-      [this, &shape_layout, constraints](
+      [&shape_layout, constraints](
           const ShapeIndex& index,
           const PointsToSet::BufferList& buffers) -> Status {
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {

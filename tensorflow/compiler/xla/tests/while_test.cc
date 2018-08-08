@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1234,6 +1234,35 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
   ComputeAndCompareR2<float>(
       &builder, {{-0.76159416, -0.96402758}, {0.76159416, 0.96402758}},
       {param_value.get()}, ErrorSpec(4e-5));
+}
+
+TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
+  auto while_shape = ShapeUtil::MakeShape(S32, {});
+
+  XlaComputation condition;
+  {
+    XlaBuilder builder("condition");
+    Parameter(&builder, 0, while_shape, "state");
+    Infeed(&builder, ShapeUtil::MakeShape(PRED, {}));
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+  }
+
+  XlaComputation body;
+  {
+    XlaBuilder builder("body");
+    auto indvar = Parameter(&builder, 0, while_shape, "state");
+    Add(indvar, ConstantR0<int32>(&builder, 1));
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+  }
+
+  XlaBuilder builder(TestName());
+  While(condition, body, ConstantR0<int32>(&builder, 0));
+
+  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
+  TF_ASSERT_OK(client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(false)));
+
+  ComputeAndCompareR0<int32>(&builder, 2, {});
 }
 
 void BM_WhileLoop(int num_iters) {

@@ -11,6 +11,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
+    "tf_copts",
 )
 
 tf_proto_library_cc(
@@ -305,7 +306,7 @@ cc_library(
         "tensorflow_util.h",
         "toco_tooling.h",
     ],
-    copts = select({
+    copts = tf_copts() + select({
         "//tensorflow:darwin": ["-DTOCO_SUPPORT_PORTABLE_PROTOS=0"],
         "//conditions:default": [],
     }),

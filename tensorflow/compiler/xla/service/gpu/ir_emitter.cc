@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -82,19 +81,6 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  const Literal& literal = constant->literal();
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-  llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-      *module_, initializer->getType(),
-      /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
-      /*Name=*/"");
-  VLOG(2) << "HandleConstant: " << constant->ToString() << std::endl
-          << "  emitted_value: " << llvm_ir::DumpToString(*global_for_const)
-          << std::endl
-          << "  its type: "
-          << llvm_ir::DumpToString(*global_for_const->getType());
-  bindings_.BindHloToIrValue(*constant, global_for_const);
   return Status::OK();
 }
 
@@ -123,17 +109,6 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleSort(HloInstruction* sort) {
-  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
-  if (values != nullptr) {
-    // TODO(b/26783907): Also sort the values by their corresponding key.
-    return Unimplemented("Key/Value Sort is not implemented on GPU");
-  }
-  int dimension_to_sort = sort->dimensions(0);
-  return llvm_ir::EmitSortInPlace(dimension_to_sort, GetIrArray(*sort, *sort),
-                                  IrName(sort), &b_);
-}
-
 Status IrEmitter::HandleSend(HloInstruction*) {
   return Unimplemented("Send is not implemented on GPU");
 }
@@ -148,6 +123,10 @@ Status IrEmitter::HandleRecv(HloInstruction*) {
 
 Status IrEmitter::HandleRecvDone(HloInstruction*) {
   return Unimplemented("Recv-done is not implemented on GPU");
+}
+
+Status IrEmitter::HandleScatter(HloInstruction*) {
+  return Unimplemented("Scatter is not implemented on GPUs.");
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -475,6 +454,9 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   const Shape& lhs_shape = lhs_instruction->shape();
   const Shape& rhs_shape = rhs_instruction->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+  CHECK_EQ(dnums.lhs_batch_dimensions_size(),
+           dnums.rhs_batch_dimensions_size());
 
   // TODO(b/110211620): Convert to use i32 index_type when it is possible.
   llvm::Type* index_type = b_.getInt64Ty();
@@ -510,9 +492,15 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   const int64 lhs_reduction_dimension =
       ShapeUtil::GetDimensionNumber(lhs_shape, -1);
   const int64 rhs_reduction_dimension =
-      ShapeUtil::Rank(rhs_shape) >= 2
+      ShapeUtil::Rank(rhs_shape) >= 2 + dnums.lhs_batch_dimensions_size()
           ? ShapeUtil::GetDimensionNumber(rhs_shape, -2)
-          : 0;
+          : dnums.lhs_batch_dimensions_size();
+
+  // Check that the batch dims don't cover the last two dims.
+  for (int64 batch_dim : dnums.lhs_batch_dimensions()) {
+    CHECK_NE(lhs_reduction_dimension, batch_dim);
+    CHECK_NE(rhs_reduction_dimension, batch_dim);
+  }
 
   // Verify the reduction dimension in the two operands are the same size.
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
@@ -526,6 +514,13 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       lhs_array, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
       rhs_array, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
+
+  // We don't have to iterate over the batch dimensions in both arrays, simplify
+  // the loop nest of the rhs.
+  for (int i = 0; i != dnums.lhs_batch_dimensions_size(); ++i) {
+    DCHECK(c_linear_search(dnums.lhs_batch_dimensions(), i));
+    rhs_index[i] = lhs_index[i];
+  }
 
   // Create the reduction loop which does the sum of products reduction.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
@@ -589,7 +584,9 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       target_index.push_back(lhs_index[dimension]);
     }
   }
-  for (size_t dimension = 0; dimension < rhs_index.size(); ++dimension) {
+  // Skip over the batch dimensions to not have them in the index twice.
+  for (size_t dimension = dnums.lhs_batch_dimensions_size();
+       dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
       target_index.push_back(rhs_index[dimension]);
     }
@@ -726,23 +723,6 @@ Status IrEmitter::HandleInfeed(HloInstruction*) {
 Status IrEmitter::HandleOutfeed(HloInstruction*) {
   // TODO(b/34359662): Implement outfeed on GPU.
   return Unimplemented("Outfeed is not supported on GPU.");
-}
-
-Status IrEmitter::HandleRng(HloInstruction* random) {
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : random->operands()) {
-    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArray(*operand, *random).EmitReadArrayElement(index, &b_);
-    };
-  }
-  // Emits a single-threaded loop because the loop body generated by the element
-  // generator for Rng can't be parallelized (b/32333178).
-  return llvm_ir::LoopEmitter(
-             GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
-                                   GetNestedComputer())
-                 .MakeElementGenerator(random, operand_to_generator),
-             GetIrArray(*random, *random), &b_)
-      .EmitLoop(IrName(random));
 }
 
 Status IrEmitter::HandleBatchNormInference(HloInstruction*) {

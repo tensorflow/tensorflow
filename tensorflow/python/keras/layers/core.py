@@ -466,7 +466,7 @@ class Permute(Layer):
   Arguments:
       dims: Tuple of integers. Permutation pattern, does not include the
           samples dimension. Indexing starts at 1.
-          For instance, `(2, 1)` permutes the first and second dimension
+          For instance, `(2, 1)` permutes the first and second dimensions
           of the input.
 
   Input shape:
@@ -482,6 +482,11 @@ class Permute(Layer):
   def __init__(self, dims, **kwargs):
     super(Permute, self).__init__(**kwargs)
     self.dims = tuple(dims)
+    if sorted(dims) != list(range(1, len(dims) + 1)):
+      raise ValueError(
+          'Invalid permutation `dims` for Permute Layer: %s. '
+          'The set of indices in `dims` must be consecutive and start from 1.' %
+          (dims,))
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
 
   def compute_output_shape(self, input_shape):

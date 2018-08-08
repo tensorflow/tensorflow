@@ -1481,8 +1481,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                  ShapeUtil::Rank(arg->shape()) - dimensions.size());
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
                         ShapeInference::InferReduceShape(
-                            /*arg=*/arg->shape(),
-                            /*init_value=*/init_value->shape(),
+                            {&arg->shape(), &init_value->shape()},
                             /*dimensions_to_reduce=*/dimensions,
                             /*to_apply=*/function->ComputeProgramShape()));
     TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))
@@ -2078,10 +2077,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                              start_indices_typed.end());
 
     // Clamp the start indices so the slice is in-bounds w.r.t the operand.
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     for (int64 i = 0; i < start.size(); ++i) {
       start[i] = std::min<int64>(
           std::max(int64{0}, start[i]),
@@ -2115,10 +2110,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                              start_indices_typed.end());
     // Clamp the update start indices so the slice is in-bounds w.r.t the
     // operand.
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to oficially document different behavior.
     for (int64 i = 0; i < rank; ++i) {
       start[i] = std::min<int64>(
           std::max<int64>(0, start[i]),
