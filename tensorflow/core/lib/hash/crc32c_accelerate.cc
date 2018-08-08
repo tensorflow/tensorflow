@@ -39,7 +39,7 @@ limitations under the License.
 #include <nmmintrin.h>
 #endif
 
-#include <tensorflow/core/platform/cpu_info.h>
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace crc32c {
