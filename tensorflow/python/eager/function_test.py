@@ -1464,6 +1464,18 @@ class AutomaticControlDependenciesTest(test.TestCase):
     value = train()
     self.assertEqual(value.numpy(), -1.0)
 
+  def testReturningNonTensorRaisesError(self):
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
+    optimizer.apply_gradients = function.defun(optimizer.apply_gradients)
+    v = resource_variable_ops.ResourceVariable(1.0)
+    grad = backprop.implicit_grad(lambda v: v**2)(v)
+
+    with self.assertRaisesRegexp(TypeError,
+                                 '.*must return zero or more Tensors.*'):
+      # TODO(akshayka): We might want to allow defun-ing Python functions
+      # that return operations (and just execute the op instead of running it).
+      optimizer.apply_gradients(grad)
+
   # TODO(b/111663004): This should work when the outer context is graph
   # building.
   def testOptimizerNonSlotVarsInDefunNoError(self):
