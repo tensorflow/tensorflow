@@ -250,13 +250,6 @@ class EntryVisitor : public FullVisitor {
       }
     }
 
-    for (size_t o = 0; o < outputs.size(); o++) {
-      if (!output_streamed[o] && output_map.count(o) == 0) {
-        LOG(WARNING) << "Warning: Output " << GetOutputCopyHandle(o)
-                     << " is not streamed, but not an alias of an input.";
-      }
-    }
-
     if (inst->opcode() == HloOpcode::kParameter) {
       all_outputs_are_parameters = true;
     } else if (inst->opcode() == HloOpcode::kTuple) {
