@@ -60,7 +60,6 @@ class PruningHParamsTest(test.TestCase):
     self.assertEqual(p._weight_sparsity_map["conv1"], 0.8)
     self.assertEqual(p._weight_sparsity_map["conv2/kernel"], 0.8)
 
-
   def testInitWithExternalSparsity(self):
     with self.test_session():
       p = pruning.Pruning(spec=self.pruning_hparams, sparsity=self.sparsity)
