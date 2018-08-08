@@ -50,6 +50,7 @@ cc_library(
         ":buffer_map",
         ":delegate_data",
         ":kernel",
+        ":util",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:util",
@@ -154,6 +155,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
+        ":constants",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
