@@ -17,22 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
-
-from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
+from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import constant_op
 
 LOCAL_VARIABLE_NAME = 'local_center_variable'
 GLOBAL_VARIABLE_NAME = 'global_center_variable'
+GLOBAL_SHARE_VARS = 'global_share_var'
+GLOBAL_STEP = 'global_step'
 
 
 class ElasticAverageCustomGetter(object):
@@ -52,16 +56,32 @@ class ElasticAverageCustomGetter(object):
   with tf.device(
     tf.train.replica_device_setter(
       worker_device=worker_device,
-      ps_device="/job:ps/cpu:0",
+      ps_device="/job:ps",
       cluster=cluster)),
     tf.variable_scope('',custom_getter=ea_custom_getter):
-    hid_w = tf.get_variable(
-      initializer=tf.truncated_normal(
-          [IMAGE_PIXELS * IMAGE_PIXELS, FLAGS.hidden_units],
-          stddev=1.0 / IMAGE_PIXELS),
-      name="hid_w")
-    hid_b = tf.get_variable(initializer=tf.zeros([FLAGS.hidden_units]),
-                            name="hid_b")
+    ...
+    create your model here
+    ...
+    with tf.device(worker_device):
+      opt = tf.train.MomentumOptimizer(...)
+      optimizer = ElasticAverageOptimizer(
+            opt,
+            num_worker=2,
+            moving_rate=0.01, # or use default value
+            communication_period=20,
+            ea_custom_getter=ea_custom_getter)
+      ...
+      train_op = optimizer.apply_gradients(
+        grads_vars,
+        global_step=global_step)
+    ...
+    hooks = [optimizer.make_session_run_hook(is_chief, task_index)]
+    ...
+    with tf.train.MonitoredTrainingSession(master=server.target,
+                                           is_chief=is_chief,
+                                           checkpoint_dir=("...),
+                                           save_checkpoint_secs=600,
+                                           hooks=hooks) as mon_sess:
   """
 
   def __init__(self, worker_device):
@@ -83,24 +103,50 @@ class ElasticAverageCustomGetter(object):
             collections=[ops.GraphKeys.LOCAL_VARIABLES],
             *args,
             **kwargs)
-      global_center_variable = variable_scope.variable(
+      if kwargs['reuse'] == True:
+        return local_var
+      global_center_variable = getter(
           name='%s/%s' % (GLOBAL_VARIABLE_NAME, name),
-          initial_value=local_var.initialized_value(),
           trainable=False,
-          collections=[ops.GraphKeys.GLOBAL_VARIABLES])
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+          *args,
+          **kwargs)
 
       with ops.device(self._worker_device):
-        local_center_variable = variable_scope.variable(
+        local_center_variable = getter(
             name='%s/%s' % (LOCAL_VARIABLE_NAME, name),
-            initial_value=local_var.initialized_value(),
             trainable=False,
-            collections=[ops.GraphKeys.LOCAL_VARIABLES])
-
-      self._local_map[local_var] = local_center_variable
-      self._global_map[local_var] = global_center_variable
+            collections=[ops.GraphKeys.LOCAL_VARIABLES],
+            *args,
+            **kwargs)
+      if kwargs['partitioner'] is None:
+        self._local_map[local_var] = local_center_variable
+        self._global_map[local_var] = global_center_variable
+      else:
+        v_list = list(local_var)
+        for i in range(len(v_list)):
+          self._local_map[v_list[i]] \
+              = list(local_center_variable)[i]
+          self._global_map[v_list[i]] \
+              = list(global_center_variable)[i]
       return local_var
     else:
-      return getter(name, trainable, collections, *args, **kwargs)
+      # 1. default to LOCAL_VARIABLES (instead of GLOBAL_VARIABLES)
+      # 2. put to global if explicitly defined (GLOBAL_SHARE_VARS)
+      # 3. other GLOBAL_VARIABLES put to LOCAL_VARIABLES
+      #    exept global_step, which must be global
+      if collections is None or len(collections) == 0:
+        collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      elif GLOBAL_SHARE_VARS in collections:
+        collections = list(collections)
+        if ops.GraphKeys.GLOBAL_VARIABLES not in collections:
+          collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+      elif ops.GraphKeys.GLOBAL_VARIABLES in collections \
+          and GLOBAL_STEP not in name.split('/'):
+        collections = list(collections)
+        collections.append(ops.GraphKeys.LOCAL_VARIABLES)
+        collections.remove(ops.GraphKeys.GLOBAL_VARIABLES)
+      return getter(name, trainable=trainable, collections=collections, *args, **kwargs)
 
 
 class ElasticAverageOptimizer(optimizer.Optimizer):
@@ -123,8 +169,9 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
                ea_custom_getter,
                communication_period=10,
                moving_rate=None,
-               rho=None,
+               rho=0.0,
                use_locking=True,
+               sync_flag=False,
                name='ElasticAverageOptimizer'):
     """Construct a new gradient descent optimizer.
 
@@ -139,6 +186,8 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       rho: the amount of exploration we allow ine the model. The default
         value is moving_rate/learning_rate
       use_locking: If True use locks for update operations.
+      sync_flag: Add_sync_queues_and_barrier or not, default to False, in case of
+                 restarting a worker,the worker won't hung there.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "ElasticAverageOptimizer".
     """
@@ -148,6 +197,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     self._period = communication_period
     self._local_map = ea_custom_getter._local_map
     self._global_map = ea_custom_getter._global_map
+    self._sync_flag = sync_flag
 
     if moving_rate is None:
       self._moving_rate = self.BETA / communication_period / num_worker
@@ -246,6 +296,25 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       local_update = state_ops.assign_add(
           self._local_step, 1, name='local_step_update').op
 
+    # this is for place the variables created by optimizer to local collection
+    # e.g., AdamOptimizer will create beta as global variables
+    def _adjust_optimizer_variable_collection():
+      g = ops.get_default_graph()
+      # global to local & clear global
+      idx = 0
+      for _ in range(len(g._collections[ops.GraphKeys.GLOBAL_VARIABLES])):
+        var = g._collections[ops.GraphKeys.GLOBAL_VARIABLES][idx]
+        name = var.op.name
+        if GLOBAL_STEP not in name.split('/') \
+            and var not in ops.get_collection(GLOBAL_SHARE_VARS) \
+            and name.find(GLOBAL_VARIABLE_NAME) == -1:
+          ops.add_to_collection(ops.GraphKeys.LOCAL_VARIABLES, var)
+          del g._collections[ops.GraphKeys.GLOBAL_VARIABLES][idx]
+        else:
+          idx += 1
+
+    _adjust_optimizer_variable_collection()
+
     # update global variables.
     def _Update_global_variables():
       local_vars = [v for g, v in grads_and_vars if g is not None]
@@ -290,7 +359,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     variables equal to the global center variables before the training begins"""
 
     def _Add_sync_queues_and_barrier(enqueue_after_list):
-      """Adds ops to enqueu on all worker queues"""
+      """Adds ops to enqueue on all worker queues"""
       sync_queues = [
           data_flow_ops.FIFOQueue(
               self._num_worker, [dtypes.bool],
@@ -324,6 +393,9 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       init_ops.append(state_ops.assign(lc_var, gc_var))
 
     init_op = control_flow_ops.group(*(init_ops))
+    if self._sync_flag == False:
+      return init_op
+
     sync_queue_op = _Add_sync_queues_and_barrier([init_op])
     return sync_queue_op
 
@@ -331,6 +403,59 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     """Creates a hook to handle ElasticAverageOptimizerHook ops such as initialization."""
     return _ElasticAverageOptimizerHook(self, is_chief, task_index)
 
+  def swapping_saver(self, var_list=None, name='swapping_saver', **kwargs):
+    """Create a saver copy global_center_variable to trainable variables
+    Please call this function after all your variables created with EACustomGetter.
+    For evaluations or inference, use this saver during training.  It will save the
+    global_center_variable of the trained parameters under the original parameter names.
+    Args:
+      var_list: List of variables to save, as per `Saver()`.
+                If set to None, will save all the trainable_variables that have been
+                created before this call.
+      name: The name of the saver.
+      **kwargs: Keyword arguments of `Saver()`.
+    Returns:
+      A `tf.train.Saver` object.
+    Raises:
+      RuntimeError: global_center_variable is empty, please make sure
+                    this is called after model created and
+                    EACustomGetter is used when declaring you model
+    """
+    if not self._global_map:
+      raise RuntimeError('global_center_variable is empty, please make sure '
+                         'this is called after model created and '
+                         'ElasticAverageCustomGetter is used when declaring you model')
+
+    if var_list is None:
+      var_list = variables.trainable_variables()
+    if not isinstance(var_list, dict):
+      var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
+
+    swapped_var_list = {}
+    has_global_step = False
+    for key, var in var_list.items():
+      tensor = var
+      if False == has_global_step\
+          and GLOBAL_STEP in key.split('/'):
+        has_global_step = True
+
+      if isinstance(var, list) == False:
+        for tvar in variables.trainable_variables():
+          if tvar.op.name == var.op.name:
+            tensor = self._global_map.get(tvar, var)
+            break
+      else: #partitioned variable
+        tensor = [self._global_map.get(lvar, lvar) for lvar in var]
+
+      swapped_var_list[key] = tensor
+
+    # find global_step and add it if missing
+    if False == has_global_step:
+      for ele in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES):
+        if GLOBAL_STEP in ele.op.name.split('/'):
+          swapped_var_list[ele.op.name] = ele
+
+    return saver.Saver(swapped_var_list, name=name, **kwargs)
 
 class _ElasticAverageOptimizerHook(session_run_hook.SessionRunHook):
 
@@ -351,3 +476,7 @@ class _ElasticAverageOptimizerHook(session_run_hook.SessionRunHook):
     if self._is_chief:
       self._global_init_op = variables.global_variables_initializer()
     self._variable_init_op = self._ea_optimizer.get_init_op(self._task_index)
+
+  def after_create_session(self, session, coord):
+    """Run initialization ops"""
+    session.run(self._variable_init_op)
