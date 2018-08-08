@@ -153,6 +153,10 @@ class EagerContext {
   void SetShouldStoreMetadata(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
 
+  void StartStep();
+  void EndStep();
+  ScopedStepContainer* StepContainer();
+
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
 #ifndef __ANDROID__
@@ -235,6 +239,10 @@ class EagerContext {
   const bool log_device_placement_;
   // EagerExecutor for async execution.
   EagerExecutor executor_;
+
+  // Information related to step containers.
+  std::atomic<int> num_active_steps_;
+  std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
 
   // True if the default value for execution mode is async. Note that this value
   // can be overridden per thread based on `thread_local_async` overrides.

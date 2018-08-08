@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -46,6 +47,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
           local_device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION,
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
+      num_active_steps_(0),
       async_default_(async),
       env_(opts.env),
       use_send_tensor_rpc_(false) {
@@ -192,6 +194,35 @@ Status EagerContext::FindDeviceByName(const string& name, Device** result) {
   }
   *result = it->second;
   return Status::OK();
+}
+
+void EagerContext::StartStep() {
+  mutex_lock ml(metadata_mu_);
+  num_active_steps_++;
+  if (step_container_ == nullptr) {
+    step_container_.reset(
+        new ScopedStepContainer(0, [this](const string& name) {
+          for (Device* device : devices_) {
+            device->resource_manager()->Cleanup(name).IgnoreError();
+          }
+        }));
+  }
+}
+
+void EagerContext::EndStep() {
+  mutex_lock ml(metadata_mu_);
+  num_active_steps_--;
+  if (num_active_steps_ == 0) {
+    step_container_.reset();
+  }
+}
+
+ScopedStepContainer* EagerContext::StepContainer() {
+  if (num_active_steps_.load() == 0) {
+    return nullptr;
+  }
+  mutex_lock ml(metadata_mu_);
+  return step_container_.get();
 }
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
