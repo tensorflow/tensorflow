@@ -66,8 +66,9 @@ class ShampooOptimizer(optimizer.Optimizer):
   a lambda function that depends on step.
   """
 
-  def __init__(self, global_step=0,
-               max_matrix_size=500,
+  def __init__(self,
+               global_step=0,
+               max_matrix_size=768,
                gbar_decay=0.0,
                gbar_weight=1.0,
                mat_gbar_decay=1.0,
@@ -149,18 +150,27 @@ class ShampooOptimizer(optimizer.Optimizer):
           _ = self._get_or_make_slot(v, mat_g_init, "Gbar_" + str(i),
                                      self._name)
 
+  def _resource_apply_dense(self, grad, var):
+    return self._apply_dense(grad, var)
+
   def _apply_dense(self, grad, var):
     return self._apply_gradient(grad, var)
 
+  def _resource_apply_sparse(self, grad_values, var, grad_indices):
+    return self._apply_sparse_shared(grad_values, grad_indices, var)
+
   def _apply_sparse(self, grad, var):
+    return self._apply_sparse_shared(grad.values, grad.indices, var)
+
+  def _apply_sparse_shared(self, grad_values, grad_indices, var):
     if var.get_shape()[0] < self._max_matrix_size or self._gbar_decay != 0.0:
       # The dimension is small enough, we can make the variable dense and
       # do a dense update
       dense_grad = array_ops.scatter_nd(
-          array_ops.expand_dims(grad.indices, axis=1),
-          grad.values, array_ops.shape(var, out_type=grad.indices.dtype))
+          array_ops.expand_dims(grad_indices, axis=1), grad_values,
+          array_ops.shape(var, out_type=grad_indices.dtype))
       return self._apply_gradient(dense_grad, var)
-    return self._apply_gradient(grad.values, var, grad.indices)
+    return self._apply_gradient(grad_values, var, grad_indices)
 
   def _weighted_average(self, var, weight, weight_t, rest):
     """Computes exponential weighted average: var = weight_t * var + rest.
@@ -304,7 +314,7 @@ class ShampooOptimizer(optimizer.Optimizer):
       mat_h = math_ops.pow(mat_g + self._epsilon, alpha)
     else:
       damped_mat_g = mat_g + self._epsilon * identity
-      z = (1 - 1/alpha) / (2 * linalg_ops.norm(damped_mat_g, ord=2))
+      z = (1 - 1 / alpha) / (2 * linalg_ops.norm(damped_mat_g))
       # The best value for z is
       # (1 - 1/alpha) * (c_max^{-alpha} - c_min^{-alpha}) /
       #                 (c_max^{1-alpha} - c_min^{1-alpha})
@@ -326,12 +336,13 @@ class ShampooOptimizer(optimizer.Optimizer):
 
   def _compute_power(self, var, mat_g, mat_g_size, alpha, mat_h_slot_name=None):
     """Just a switch between the iterative power vs svd."""
-    if self._use_iterative_root:
-      return self._compute_power_iter(var, mat_g, mat_g_size, alpha,
-                                      mat_h_slot_name)
-    else:
-      return self._compute_power_svd(var, mat_g, mat_g_size, alpha,
-                                     mat_h_slot_name)
+    with ops.name_scope("matrix_iterative_power"):
+      if self._use_iterative_root:
+        return self._compute_power_iter(var, mat_g, mat_g_size, alpha,
+                                        mat_h_slot_name)
+      else:
+        return self._compute_power_svd(var, mat_g, mat_g_size, alpha,
+                                       mat_h_slot_name)
 
   def _apply_gradient(self, grad, var, indices=None):
     """The main function to update a variable.
@@ -455,8 +466,8 @@ class ShampooOptimizer(optimizer.Optimizer):
     # Update the variable based on the Shampoo update
     learning_rate_t = GetParam(self._learning_rate, global_step)
     if indices is not None:
-      var_updated = state_ops.scatter_sub(var, indices,
-                                          learning_rate_t * preconditioned_grad)
+      var_updated = state_ops.scatter_add(
+          var, indices, -learning_rate_t * preconditioned_grad)
     else:
       var_updated = state_ops.assign_sub(var,
                                          learning_rate_t * preconditioned_grad)
