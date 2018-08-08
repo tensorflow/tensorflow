@@ -166,6 +166,8 @@ class ApiCompatibilityTest(test.TestCase):
         diff_message = 'New object %s found (added).' % key
         verbose_diff_message = diff_message
       else:
+        # Do not truncate diff
+        self.maxDiffs = None  # pylint: disable=invalid-name
         # Now we can run an actual proto diff.
         try:
           self.assertProtoEquals(expected_dict[key], actual_dict[key])
