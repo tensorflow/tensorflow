@@ -22,7 +22,7 @@ Alltoall is a collective operation that sends data from all cores to all cores.
 It has two phases:
 
 1.  the scatter phase. On each core, the operand is split into `split_count`
-    number of blocks along the `split_dimensions`, and the blocks are scatterd
+    number of blocks along the `split_dimensions`, and the blocks are scattered
     to all cores, e.g., the ith block is send to the ith core.
 2.  the gather phase. Each core concatenates the received blocks along the
     `concat_dimension`.

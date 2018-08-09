@@ -649,7 +649,7 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
     ```
 
     Lists can be combined with other lists and single types.  The following
-    op allows attr `t` to be any of the numberic types, or the bool type:
+    op allows attr `t` to be any of the numeric types, or the bool type:
 
     ```c++
     REGISTER_OP("NumberOrBooleanType")
