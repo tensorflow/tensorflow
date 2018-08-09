@@ -399,6 +399,7 @@ cuda_py_tests(
         # "test/vgg_block_nchw_test.py",
         # "test/vgg_block_test.py",
         "test/memory_alignment_test.py",
+        "test/no_device_assignment_test.py",
     ],
     additional_deps = [
         ":tf_trt_integration_test_base",
