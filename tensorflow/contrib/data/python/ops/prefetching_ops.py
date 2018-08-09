@@ -92,7 +92,7 @@ def function_buffering_resource_reset(function_buffer_resource, name=None):
 
 # pylint: disable=protected-access
 class _PrefetchToDeviceIterator(object):
-  """A replacement for @{tf.data.Iterator} that prefetches to another device.
+  """A replacement for `tf.data.Iterator` that prefetches to another device.
 
   Args:
     input_dataset: The input dataset
@@ -158,7 +158,7 @@ class _PrefetchToDeviceIterator(object):
             self._input_dataset)
 
   def get_next(self, name=None):
-    """See @{tf.data.Iterator.get_next}."""
+    """See `tf.data.Iterator.get_next`."""
     self._get_next_call_count += 1
     if self._get_next_call_count > iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE)
@@ -199,7 +199,7 @@ class _PrefetchToDeviceIterator(object):
 
 
 class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
-  """A replacement for @{tf.data.Iterator} that prefetches to another device.
+  """A replacement for `tf.data.Iterator` that prefetches to another device.
 
   Args:
     input_dataset: The input dataset
@@ -334,7 +334,7 @@ class _PrefetchToDeviceDataset(dataset_ops.Dataset):
 def prefetch_to_device(device, buffer_size=None):
   """A transformation that prefetches dataset values to the given `device`.
 
-  NOTE: Although the transformation creates a @{tf.data.Dataset}, the
+  NOTE: Although the transformation creates a `tf.data.Dataset`, the
   transformation must be the final `Dataset` in the input pipeline.
 
   Args:
@@ -344,7 +344,7 @@ def prefetch_to_device(device, buffer_size=None):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
     return _PrefetchToDeviceDataset(dataset, device, buffer_size)
@@ -361,7 +361,7 @@ def copy_to_device(target_device, source_device="/cpu:0"):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):

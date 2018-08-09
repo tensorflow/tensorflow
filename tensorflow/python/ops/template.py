@@ -128,7 +128,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the @{tf.get_variable} `custom_getter` documentation for
+      the `tf.get_variable` `custom_getter` documentation for
       more information.
     **kwargs: Keyword arguments to apply to `func_`.
 
@@ -176,7 +176,7 @@ def make_template_internal(name_,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None. If executing eagerly, must be None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the @{tf.get_variable} `custom_getter` documentation for
+      the `tf.get_variable` `custom_getter` documentation for
       more information.
     create_graph_function_: When True, `func_` will be executed as a graph
       function. This implies that `func_` must satisfy the properties that

@@ -864,7 +864,7 @@ class DistributionStrategy(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value: A per-device value with one value per tower.
       destinations: An optional mirrored variable, a device string,
         list of device strings. The return value will be copied to all
@@ -893,7 +893,7 @@ class DistributionStrategy(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 

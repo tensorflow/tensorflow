@@ -128,7 +128,7 @@ class Estimator(object):
     ```
 
     For more details on warm-start configuration, see
-    @{tf.estimator.WarmStartSettings$WarmStartSettings}.
+    `tf.estimator.WarmStartSettings`.
 
     Args:
       model_fn: Model function. Follows the signature:
@@ -1027,7 +1027,7 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection @{tf.GraphKeys.GLOBAL_STEP}.
+    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
 
     Args:
       graph: The graph in which to create the global step tensor.

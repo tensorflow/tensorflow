@@ -47,7 +47,7 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   Args:
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-          @{tf.set_random_seed} for behavior.
+          `tf.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:
@@ -98,7 +98,7 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
     mode: String.  'FAN_IN', 'FAN_OUT', 'FAN_AVG'.
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-          @{tf.set_random_seed} for behavior.
+          `tf.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:

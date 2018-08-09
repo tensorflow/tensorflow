@@ -17,8 +17,8 @@
 TensorFlow has support for reading from and writing to Cloud Bigtable. To use
 TensorFlow + Cloud Bigtable integration, first create a BigtableClient to
 configure your connection to Cloud Bigtable, and then create a BigtableTable
-object to allow you to create numerous @{tf.data.Dataset}s to read data, or
-write a @{tf.data.Dataset} object to the underlying Cloud Bigtable table.
+object to allow you to create numerous `tf.data.Dataset`s to read data, or
+write a `tf.data.Dataset` object to the underlying Cloud Bigtable table.
 
 For background on Cloud Bigtable, see: https://cloud.google.com/bigtable .
 """
@@ -203,7 +203,7 @@ class BigtableTable(object):
         be retrieved. If end is None, all subsequent row keys will be retrieved.
 
     Returns:
-      A @{tf.data.Dataset} containing `tf.string` Tensors corresponding to all
+      A `tf.data.Dataset` containing `tf.string` Tensors corresponding to all
       of the row keys between `start` and `end`.
     """
     # TODO(saeta): Make inclusive / exclusive configurable?
@@ -219,7 +219,7 @@ class BigtableTable(object):
         retrieved.
 
     Returns:
-      A @{tf.data.Dataset}. containing `tf.string` Tensors corresponding to all
+      A `tf.data.Dataset`. containing `tf.string` Tensors corresponding to all
       of the row keys matching that prefix.
     """
     return _BigtablePrefixKeyDataset(self, prefix)
@@ -228,11 +228,11 @@ class BigtableTable(object):
     """Retrieves a sampling of row keys from the Bigtable table.
 
     This dataset is most often used in conjunction with
-    @{tf.contrib.data.parallel_interleave} to construct a set of ranges for
+    `tf.contrib.data.parallel_interleave` to construct a set of ranges for
     scanning in parallel.
 
     Returns:
-      A @{tf.data.Dataset} returning string row keys.
+      A `tf.data.Dataset` returning string row keys.
     """
     return _BigtableSampleKeysDataset(self)
 
@@ -272,7 +272,7 @@ class BigtableTable(object):
         that are treated as the column qualifier (column name).
 
     Returns:
-      A @{tf.data.Dataset} returning the row keys and the cell contents.
+      A `tf.data.Dataset` returning the row keys and the cell contents.
 
     Raises:
       ValueError: If the configured probability is unexpected.
@@ -317,7 +317,7 @@ class BigtableTable(object):
         that are treated as the column qualifier (column name).
 
     Returns:
-      A @{tf.data.Dataset} returning the row keys and the cell contents.
+      A `tf.data.Dataset` returning the row keys and the cell contents.
 
     Raises:
       ValueError: If the configured probability is unexpected.
@@ -373,7 +373,7 @@ class BigtableTable(object):
         that are treated as the column qualifier (column name).
 
     Returns:
-      A @{tf.data.Dataset} returning the row keys and the cell contents.
+      A `tf.data.Dataset` returning the row keys and the cell contents.
 
     Raises:
       ValueError: If the configured probability is unexpected.
@@ -435,7 +435,7 @@ class BigtableTable(object):
         that are treated as the column qualifier (column name).
 
     Returns:
-      A @{tf.data.Dataset} returning the row keys and the cell contents.
+      A `tf.data.Dataset` returning the row keys and the cell contents.
 
     Raises:
       ValueError: If the configured probability is unexpected.
@@ -450,12 +450,12 @@ class BigtableTable(object):
     """Writes a dataset to the table.
 
     Args:
-      dataset: A @{tf.data.Dataset} to be written to this table. It must produce
+      dataset: A `tf.data.Dataset` to be written to this table. It must produce
         a list of number-of-columns+1 elements, all of which must be strings.
         The first value will be used as the row key, and subsequent values will
         be used as cell values for the corresponding columns from the
         corresponding column_families and columns entries.
-      column_families: A @{tf.Tensor} of `tf.string`s corresponding to the
+      column_families: A `tf.Tensor` of `tf.string`s corresponding to the
         column names to store the dataset's elements into.
       columns: A `tf.Tensor` of `tf.string`s corresponding to the column names
         to store the dataset's elements into.
@@ -463,7 +463,7 @@ class BigtableTable(object):
         Leave as None to use server-provided timestamps.
 
     Returns:
-      A @{tf.Operation} that can be run to perform the write.
+      A `tf.Operation` that can be run to perform the write.
 
     Raises:
       ValueError: If there are unexpected or incompatible types, or if the
@@ -502,7 +502,7 @@ class BigtableTable(object):
       normalized_columns: The column families and column qualifiers to retrieve.
 
     Returns:
-      A @{tf.data.Dataset} representing the result of the parallel scan.
+      A `tf.data.Dataset` representing the result of the parallel scan.
     """
     if num_parallel_scans is None:
       num_parallel_scans = 50

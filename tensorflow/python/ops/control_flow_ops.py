@@ -3069,7 +3069,7 @@ def while_loop(cond,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  @{tf.Tensor.set_shape}
+  `tf.Tensor.set_shape`
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
@@ -3320,7 +3320,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   no guarantee that `output_tensor` will be evaluated after any `dependencies`
   have run.
 
-  See also @{tf.tuple$tuple} and @{tf.group$group}.
+  See also `tf.tuple` and `tf.group`.
 
   Args:
     dependencies: Iterable of operations to run before this op finishes.
@@ -3365,8 +3365,8 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
-  See also @{tf.tuple$tuple} and
-  @{tf.control_dependencies$control_dependencies}.
+  See also `tf.tuple` and
+  `tf.control_dependencies`.
 
   Args:
     *inputs: Zero or more tensors to group.
@@ -3435,8 +3435,8 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
   returned by `tuple` are only available after all the parallel computations
   are done.
 
-  See also @{tf.group$group} and
-  @{tf.control_dependencies$control_dependencies}.
+  See also `tf.group` and
+  `tf.control_dependencies`.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
