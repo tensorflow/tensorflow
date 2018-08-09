@@ -1529,9 +1529,7 @@ class Saver(object):
       # 1. The checkpoint would not be loaded successfully as is. Try to parse
       # it as an object-based checkpoint.
       try:
-        reader = pywrap_tensorflow.NewCheckpointReader(save_path)
-        object_graph_string = reader.get_tensor(
-            checkpointable.OBJECT_GRAPH_PROTO_KEY)
+        names_to_keys = object_graph_key_mapping(save_path)
       except errors.NotFoundError:
         # 2. This is not an object-based checkpoint, which likely means there
         # is a graph mismatch. Re-raise the original error with
@@ -1546,41 +1544,18 @@ class Saver(object):
           "may be somewhat fragile, and will re-build the Saver. Instead, "
           "consider loading object-based checkpoints using "
           "tf.train.Checkpoint().")
-      self._restore_from_object_based_checkpoint(
-          sess=sess, save_path=save_path,
-          object_graph_string=object_graph_string)
+      self._object_restore_saver = saver_from_object_based_checkpoint(
+          checkpoint_path=save_path,
+          var_list=self._var_list,
+          builder=self._builder,
+          names_to_keys=names_to_keys,
+          cached_saver=self._object_restore_saver)
+      self._object_restore_saver.restore(sess=sess, save_path=save_path)
     except errors.InvalidArgumentError as err:
       # There is a mismatch between the graph and the checkpoint being loaded.
       # We add a more reasonable error message here to help users (b/110263146)
       raise _wrap_restore_error_with_msg(
           err, "a mismatch between the current graph and the graph")
-
-  def _restore_from_object_based_checkpoint(self, sess, save_path,
-                                            object_graph_string):
-    """A compatibility mode for reading object-based checkpoints."""
-    object_graph_proto = (
-        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
-    object_graph_proto.ParseFromString(object_graph_string)
-    names_to_keys = {}
-    for node in object_graph_proto.nodes:
-      for attribute in node.attributes:
-        names_to_keys[attribute.full_name] = attribute.checkpoint_key
-    saveables = self._builder._ValidateAndSliceInputs(self._var_list)  # pylint: disable=protected-access
-    for saveable in saveables:
-      for spec in saveable.specs:
-        if spec.name not in names_to_keys:
-          raise errors.NotFoundError(
-              None, None,
-              message=("Attempting to load an object-based checkpoint using "
-                       "variable names, but could not find %s in the "
-                       "checkpoint.") % spec.name)
-        spec.name = names_to_keys[spec.name]
-    if self._object_restore_saver is None:
-      # Cache the Saver so multiple restore() calls don't pollute the graph when
-      # graph building. This assumes keys are consistent (i.e. this is the same
-      # type of object-based checkpoint we saw previously).
-      self._object_restore_saver = Saver(saveables)
-    self._object_restore_saver.restore(sess=sess, save_path=save_path)
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):
@@ -1815,3 +1790,92 @@ ops.register_proto_function(
     proto_type=saver_pb2.SaverDef,
     to_proto=Saver.to_proto,
     from_proto=Saver.from_proto)
+
+
+def object_graph_key_mapping(checkpoint_path):
+  """Return name to key mappings from the checkpoint.
+
+  Args:
+    checkpoint_path: string, path to object-based checkpoint
+
+  Returns:
+    Dictionary mapping tensor names to checkpoint keys.
+  """
+  reader = pywrap_tensorflow.NewCheckpointReader(checkpoint_path)
+  object_graph_string = reader.get_tensor(
+      checkpointable.OBJECT_GRAPH_PROTO_KEY)
+  object_graph_proto = (
+      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+  object_graph_proto.ParseFromString(object_graph_string)
+  names_to_keys = {}
+  for node in object_graph_proto.nodes:
+    for attribute in node.attributes:
+      names_to_keys[attribute.full_name] = attribute.checkpoint_key
+  return names_to_keys
+
+
+def saver_from_object_based_checkpoint(
+    checkpoint_path, var_list=None, builder=None, names_to_keys=None,
+    cached_saver=None):
+  """Return a `Saver` which reads from an object-based checkpoint.
+
+  This function validates that all variables in the variables list are remapped
+  in the object-based checkpoint (or `names_to_keys` dict if provided). A
+  saver will be created with the list of remapped variables.
+
+  The `cached_saver` argument allows the user to pass in a previously created
+  saver, so multiple `saver.restore()` calls don't pollute the graph when graph
+  building. This assumes that keys are consistent, meaning that the
+    1) `checkpoint_path` checkpoint, and
+    2) checkpoint used to create the `cached_saver`
+  are the same type of object-based checkpoint. If this argument is set, this
+  function will simply validate that all variables have been remapped by the
+  checkpoint at `checkpoint_path`.
+
+  Note that in general, `tf.train.Checkpoint` should be used to restore/save an
+  object-based checkpoint.
+
+  Args:
+    checkpoint_path: string, path to object-based checkpoint
+    var_list: list of `Variables` that appear in the checkpoint. If `None`,
+      `var_list` will be set to all saveable objects.
+    builder: a `BaseSaverBuilder` instance. If `None`, a new `BulkSaverBuilder`
+      will be created.
+    names_to_keys: dict mapping string tensor names to checkpooint keys. If
+      `None`, this dict will be generated from the checkpoint file.
+    cached_saver: Cached `Saver` object with remapped variables.
+
+  Returns:
+    `Saver` with remapped variables for reading from an object-based checkpoint.
+
+  Raises:
+    ValueError if the checkpoint provided is not an object-based checkpoint.
+    NotFoundError: If one of the variables in `var_list` can not be found in the
+      checkpoint. This could mean the checkpoint or `names_to_keys` mapping is
+      missing the variable.
+  """
+  if names_to_keys is None:
+    try:
+      names_to_keys = object_graph_key_mapping(checkpoint_path)
+    except errors.NotFoundError:
+      raise ValueError("Checkpoint in %s not an object-based checkpoint."
+                       % checkpoint_path)
+  if var_list is None:
+    var_list = variables._all_saveable_objects()  # pylint: disable=protected-access
+  if builder is None:
+    builder = BulkSaverBuilder()
+
+  saveables = builder._ValidateAndSliceInputs(var_list)  # pylint: disable=protected-access
+  for saveable in saveables:
+    for spec in saveable.specs:
+      if spec.name not in names_to_keys:
+        raise errors.NotFoundError(
+            None, None,
+            message=("Attempting to load an object-based checkpoint using "
+                     "variable names, but could not find %s in the "
+                     "checkpoint.") % spec.name)
+      spec.name = names_to_keys[spec.name]
+
+  if cached_saver is None:
+    return Saver(saveables)
+  return cached_saver
