@@ -676,6 +676,14 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       ArgsHandleMap arg_map;
       CreateArgsHandleMap(arg_map, args, executable);
 
+      for (const auto& arg : arg_map) {
+        if (std::find(allocations_.begin(), allocations_.end(),
+                      arg.second.tc) == allocations_.end()) {
+          return tensorflow::errors::InvalidArgument(
+              "Argument isn't allocated on device: ", (void*)arg.second.tc);
+        }
+      }
+
       // Pull previous execution output back from device if:
       // a) it is on the device _and_
       // b)   the engine is changing _or_
