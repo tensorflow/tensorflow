@@ -57,7 +57,7 @@ class GemmThunk : public Thunk {
   // introduce noise in our results.
   bool ShouldHaltAllActivityBeforeRunning(se::Stream* stream) override {
     return autotune_results_.count(
-               stream->parent()->GetDeviceDescription().name()) != 0;
+               stream->parent()->GetDeviceDescription().name()) == 0;
   }
 
  private:
@@ -75,6 +75,8 @@ class GemmThunk : public Thunk {
   // results.  The map's value is the best algorithm we've found for this thunk
   // on this device, or an error if none of the algorithms worked and we should
   // use the regular gemm without an algorithm.
+  //
+  // TODO(b/112415150):  Make this thread safe.
   std::unordered_map<string, StatusOr<se::blas::AlgorithmType>>
       autotune_results_;
 };
