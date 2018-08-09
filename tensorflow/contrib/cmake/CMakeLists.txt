@@ -90,7 +90,7 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
-  option(systemlin_GRPC "Use the system installed library as shared objects instead of downloading GRPC and statically linking to it: GRPC" OFF)
+  option(systemlib_GRPC "Use the system installed library as shared objects instead of downloading GRPC and statically linking to it: GRPC" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
