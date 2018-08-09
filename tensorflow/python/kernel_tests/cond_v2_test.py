@@ -78,6 +78,20 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  def testMultipleOutputs(self):
+    x = constant_op.constant(1.0, name="x")
+    y = constant_op.constant(3.0, name="y")
+
+    def true_fn():
+      return x * y, y
+
+    def false_fn():
+      return x, y * 3.0
+
+    self._testCond(true_fn, false_fn, [x])
+    self._testCond(true_fn, false_fn, [x, y])
+    self._testCond(true_fn, false_fn, [y])
+
   def testBasic2(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -104,8 +118,8 @@ class CondV2Test(test.TestCase):
 
       out = cond_v2.cond_v2(pred, true_fn, false_fn)
 
-      self.assertEqual(sess.run(out, {pred: True}), [1.0])
-      self.assertEqual(sess.run(out, {pred: False}), [2.0])
+      self.assertEqual(sess.run(out, {pred: True}), (1.0,))
+      self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
     pred = constant_op.constant(True, name="pred")
