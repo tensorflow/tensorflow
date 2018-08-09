@@ -124,6 +124,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
 // If the following is set, all servers identified by the
 // ServerDef must be up when the context is created.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
+                                                   int keep_alive_secs,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status);
