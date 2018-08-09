@@ -139,7 +139,7 @@ class ShampooOptimizer(optimizer.Optimizer):
         shape = np.array(v.get_shape())
         for i, d in enumerate(shape):
           d_tensor = ops.convert_to_tensor(d)
-          if d < self._max_matrix_size:
+          if d <= self._max_matrix_size:
             mat_g_init = array_ops.zeros_like(linalg_ops.eye(d_tensor))
             if self._svd_interval > 1:
               _ = self._get_or_make_slot(v, linalg_ops.eye(d_tensor),
@@ -163,7 +163,7 @@ class ShampooOptimizer(optimizer.Optimizer):
     return self._apply_sparse_shared(grad.values, grad.indices, var)
 
   def _apply_sparse_shared(self, grad_values, grad_indices, var):
-    if var.get_shape()[0] < self._max_matrix_size or self._gbar_decay != 0.0:
+    if var.get_shape()[0] <= self._max_matrix_size or self._gbar_decay != 0.0:
       # The dimension is small enough, we can make the variable dense and
       # do a dense update
       dense_grad = array_ops.scatter_nd(
@@ -408,7 +408,7 @@ class ShampooOptimizer(optimizer.Optimizer):
     for i, mat_g in enumerate(mat_g_list):
       # axes is the list of indices to reduce - everything but the current i.
       axes = list(range(i)) + list(range(i+1, v_rank))
-      if shape[i] < self._max_matrix_size:
+      if shape[i] <= self._max_matrix_size:
         # If the tensor size is sufficiently small perform full Shampoo update
         # Note if precond_update_interval > 1 and mat_gbar_decay_t != 1, this
         # is not strictly correct. However we will use it for now, and
