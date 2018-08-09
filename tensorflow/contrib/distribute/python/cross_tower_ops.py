@@ -157,7 +157,7 @@ class CrossTowerOps(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       per_device_value: a PerDevice object.
       destinations: the reduction destinations.
 
@@ -181,7 +181,7 @@ class CrossTowerOps(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: a list or a tuple of tuples of PerDevice objects
         and destinations. If a destination is None, then the destinations
         are set to match the devices of the input PerDevice object.
@@ -305,7 +305,7 @@ def _ungroup_and_make_mirrored(grouped_reduced,
       cross_tower_utils.aggregate_gradients_using*.
     destinations: a list of device strings for returned Mirrored objects.
     aggregation: Indicates how a variable will be aggregated. Accepted values
-      are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+      are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
     num_between_graph_workers: number of workers in the between-graph
       replication.
 

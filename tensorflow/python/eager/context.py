@@ -663,7 +663,7 @@ def internal_operation_seed():
 def executing_eagerly():
   """Returns True if the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via @{tf.enable_eager_execution},
+  Eager execution is typically enabled via `tf.enable_eager_execution`,
   but may also be enabled within the context of a Python function via
   tf.contrib.eager.py_func.
   """
