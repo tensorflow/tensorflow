@@ -361,6 +361,7 @@ cc_library(
         "dump_graphviz.h",
         "tooling_util.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":model",
