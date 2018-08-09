@@ -1116,8 +1116,8 @@ class Identity(Initializer):
   def get_config(self):
     return {"gain": self.gain, "dtype": self.dtype.name}
 
-
-@tf_export("glorot_uniform_initializer")
+@tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
+           "initializers.glorot_uniform")
 class GlorotUniform(VarianceScaling):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -1130,7 +1130,7 @@ class GlorotUniform(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -1151,7 +1151,8 @@ class GlorotUniform(VarianceScaling):
     }
 
 
-@tf_export("glorot_normal_initializer")
+@tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
+           "initializers.glorot_normal")
 class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
@@ -1164,7 +1165,7 @@ class GlorotNormal(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -1174,7 +1175,7 @@ class GlorotNormal(VarianceScaling):
     super(GlorotNormal, self).__init__(
         scale=1.0,
         mode="fan_avg",
-        distribution="normal",
+        distribution="truncated_normal",
         seed=seed,
         dtype=dtype)
 
@@ -1183,6 +1184,7 @@ class GlorotNormal(VarianceScaling):
         "seed": self.seed,
         "dtype": self.dtype.name
     }
+
 
 
 # Aliases.
@@ -1205,60 +1207,6 @@ convolutional_orthogonal_1d = ConvolutionOrthogonal1D
 convolutional_orthogonal_2d = ConvolutionOrthogonal2D
 convolutional_orthogonal_3d = ConvolutionOrthogonal3D
 # pylint: enable=invalid-name
-
-
-@tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
-           "initializers.glorot_uniform")
-def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
-  """The Glorot uniform initializer, also called Xavier uniform initializer.
-
-  It draws samples from a uniform distribution within [-limit, limit]
-  where `limit` is `sqrt(6 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
-
-  Reference: http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
-
-  Args:
-    seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
-    dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer.
-  """
-  return variance_scaling_initializer(
-      scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
-
-
-@tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
-           "initializers.glorot_normal")
-def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
-  """The Glorot normal initializer, also called Xavier normal initializer.
-
-  It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
-
-  Reference: http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
-
-  Args:
-    seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
-    dtype: The data type. Only floating point types are supported.
-
-  Returns:
-    An initializer.
-  """
-  return variance_scaling_initializer(
-      scale=1.0,
-      mode="fan_avg",
-      distribution="truncated_normal",
-      seed=seed,
-      dtype=dtype)
 
 
 @tf_export("keras.initializers.lecun_normal", "initializers.lecun_normal")
