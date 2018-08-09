@@ -1458,6 +1458,48 @@ class EstimatorEvaluateTest(test.TestCase):
     self.assertProtoEquals(expected_tensor_proto,
                            next(summaries).value[0].tensor)
 
+  def test_summary_writing_with_tensor(self):
+
+    def model_fn_with_prediction_mean_tensor_eval_metric_ops(
+        features, labels, mode, params):
+      _, _ = features, labels
+      global_step = training.get_global_step()
+
+      metric_name = params.get('metric_name') or 'metric'
+      predictions = constant_op.constant([1., .5, 0.])
+      eval_metric_ops = {metric_name: metrics_lib.mean_tensor(predictions)}
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(1.),
+          predictions={'predictions': predictions},
+          train_op=state_ops.assign_add(global_step, 1),
+          eval_metric_ops=eval_metric_ops)
+
+    metric_key = 'PMT'
+    params = {
+        'metric_name': metric_key,
+    }
+    est = estimator.Estimator(
+        model_fn=model_fn_with_prediction_mean_tensor_eval_metric_ops,
+        params=params,
+        config=run_config.RunConfig(save_summary_steps=1))
+    est.train(input_fn=dummy_input_fn, steps=10)
+    est.evaluate(
+        input_fn=dummy_input_fn,
+        steps=10,
+    )
+
+    writer_cache.FileWriterCache.clear()
+
+    self.assertTrue(
+        check_eventfile_for_keyword(metric_key, est.eval_dir()),
+        '{} should be part of reported summaries.'.format(metric_key))
+
+    summaries = summaries_with_matching_keyword(metric_key, est.eval_dir())
+    for value in next(summaries).value:
+      if value.tag == metric_key:
+        self.assertTrue(value.HasField('tensor'))
+
 
 class EstimatorPredictTest(test.TestCase):
 
