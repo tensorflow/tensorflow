@@ -96,7 +96,7 @@ class TcpClient(Readable):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         if certfile is not None:
-            context = ssl.SSLContext()
+            context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             context.load_cert_chain(certfile, keyfile, password)
             self.sock = context.wrap_socket(self.sock)
         else:
