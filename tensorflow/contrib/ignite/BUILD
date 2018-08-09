@@ -26,7 +26,6 @@ py_library(
 tf_custom_op_library(
     name = "_dataset_ops.so",
     srcs = ["ops/dataset_ops.cc"],
-    linkopts = ["-lssl", "-lcrypto"],
     deps = [":dataset_kernels"],
 )
 
@@ -53,6 +52,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@boringssl//:crypto",
         "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
