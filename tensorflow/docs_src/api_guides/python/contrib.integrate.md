@@ -38,4 +38,4 @@ plt.plot(x, z)
 
 ## Ops
 
-*   @{tf.contrib.integrate.odeint}
+*   `tf.contrib.integrate.odeint`

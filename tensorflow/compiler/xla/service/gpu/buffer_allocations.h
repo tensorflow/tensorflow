@@ -107,6 +107,12 @@ class BufferAllocations {
   bool torn_down_ = false;
 };
 
+// LLVM and PTXAS don't deal well with large constants, so we only emit very
+// small constants directly in LLVM IR.  Larger constants are emitted with zero
+// initializers in LLVM IR and are later overwritten when the PTX/CUBIN is
+// loaded.
+bool ShouldEmitLiteralInLlvmIr(const Literal& literal);
+
 }  // namespace gpu
 }  // namespace xla
 

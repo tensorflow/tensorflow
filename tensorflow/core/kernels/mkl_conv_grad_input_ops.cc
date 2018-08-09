@@ -265,9 +265,8 @@ class MklConv2DBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(
-      const MklConvBwdInputParams& convBwdInputDims) {
-    std::string prefix = "conv2d_bwd_input";
+  static string CreateKey(const MklConvBwdInputParams& convBwdInputDims) {
+    string prefix = "conv2d_bwd_input";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convBwdInputDims.diff_src_dims);
@@ -282,13 +281,13 @@ class MklConv2DBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
 
   MklPrimitive* GetConv2dBwdInput(
       const MklConvBwdInputParams& convBwdInputDims) {
-    std::string key = CreateKey(convBwdInputDims);
+    string key = CreateKey(convBwdInputDims);
     return this->GetOp(key);
   }
 
   void SetConv2dBwdInput(
       const MklConvBwdInputParams& convBwdInputDims, MklPrimitive *op) {
-    std::string key = CreateKey(convBwdInputDims);
+    string key = CreateKey(convBwdInputDims);
     this->SetOp(key, op);
   }
 };

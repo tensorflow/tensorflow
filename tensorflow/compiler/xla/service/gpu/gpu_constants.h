@@ -28,6 +28,9 @@ extern const int64 kEntryParameterAlignBytes;
 // out (result) buffers.
 extern const int64 kXlaAllocatedBufferAlignBytes;
 
+// Minimum alignment for constant buffers.
+extern const int64 kConstantBufferAlignBytes;
+
 }  // namespace gpu
 }  // namespace xla
 

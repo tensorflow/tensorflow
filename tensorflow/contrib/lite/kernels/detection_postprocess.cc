@@ -40,8 +40,8 @@ constexpr int kOutputTensorDetectionClasses = 1;
 constexpr int kOutputTensorDetectionScores = 2;
 constexpr int kOutputTensorNumDetections = 3;
 
-constexpr size_t kNumCoordBox = 4;
-constexpr size_t kBatchSize = 1;
+constexpr int kNumCoordBox = 4;
+constexpr int kBatchSize = 1;
 
 // Object Detection model produces axis-aligned boxes in two formats:
 // BoxCorner represents the upper right (xmin, ymin) and

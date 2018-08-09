@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -2389,6 +2390,12 @@ void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
 
 void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
                      TF_Output* dx, TF_Status* status, TF_Output* dy) {
+  TF_AddGradientsWithPrefix(g, nullptr, y, ny, x, nx, dx, status, dy);
+}
+
+void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
+                               int ny, TF_Output* x, int nx, TF_Output* dx,
+                               TF_Status* status, TF_Output* dy) {
 #ifdef __ANDROID__
   status->status = tensorflow::errors::Unimplemented(
       "Adding gradients is not supported in Android. File a bug at "
@@ -2405,9 +2412,29 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 
     const int first_new_node_id = g->graph.num_node_ids();
 
+    string prefix_cmp;
+    const char* child_scope_name;
+    if (prefix == nullptr) {
+      child_scope_name = "gradients";
+    } else {
+      prefix_cmp = string(prefix) + "/";
+      // The operation should fail if the provided name prefix has already been
+      // used in this graph
+      for (const auto& pair : g->name_map) {
+        const string& name = pair.first;
+        if (name.compare(prefix) == 0 ||
+            tensorflow::str_util::StartsWith(name, prefix_cmp)) {
+          status->status = InvalidArgument(
+              "prefix [", prefix,
+              "] conflicts with existing node in the graph named [", name, "]");
+          return;
+        }
+      }
+      child_scope_name = prefix;
+    }
     tensorflow::Scope scope =
         NewInternalScope(&g->graph, &status->status, &g->refiner)
-            .NewSubScope("gradients");
+            .NewSubScope(child_scope_name);
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg = OutputsFromTFOutputs(dx, ny);
@@ -2422,6 +2449,18 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
     for (int i = first_new_node_id; i < g->graph.num_node_ids(); ++i) {
       Node* n = g->graph.FindNodeId(i);
       if (n == nullptr) continue;
+
+      // Adding the gradients to the graph can alter the prefix to prevent
+      // name collisions only if this prefix has not been provided explicitly
+      // by the user. If it was provided, assert that it remained intact.
+      if (prefix != nullptr &&
+          !tensorflow::str_util::StartsWith(n->name(), prefix_cmp)) {
+        status->status = tensorflow::errors::Internal(
+            "BUG: The gradients prefix have been unexpectedly altered when "
+            "adding the nodes to the graph. This is a bug. Please file an "
+            "issue at https://github.com/tensorflow/tensorflow/issues.");
+        return;
+      }
       // We have a convoluted scheme here: Using the C++ graph construction API
       // to add potentially many nodes to the graph without running the checks
       // (such as uniqueness of the names of nodes) we run with other functions

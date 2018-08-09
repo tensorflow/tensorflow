@@ -133,6 +133,7 @@ _nest_allowed_symbols = [
     'flatten_dict_items',
     'pack_sequence_as',
     'map_structure',
+    'map_structure_with_paths',
     'assert_shallow_structure',
     'flatten_up_to',
     'map_structure_up_to',

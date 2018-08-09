@@ -86,12 +86,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleRng(HloInstruction* random) override;
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;

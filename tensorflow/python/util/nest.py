@@ -377,6 +377,62 @@ def map_structure(func, *structure, **check_types_dict):
       structure[0], [func(*x) for x in entries])
 
 
+def map_structure_with_paths(func, *structure, **kwargs):
+  """Applies `func` to each entry in `structure` and returns a new structure.
+
+  Applies `func(path, x[0], x[1], ..., **kwargs)` where x[i] is an entry in
+  `structure[i]` and `path` is the common path to x[i] in the structures.  All
+  structures in `structure` must have the same arity, and the return value will
+  contain the results in the same structure. Special kwarg `check_types`
+  determines whether the types of iterables within the structure must be the
+  same-- see **kwargs definition below.
+
+  Args:
+    func: A callable with the signature func(path, *values, **kwargs) that is
+      evaluated on the leaves of the structure.
+    *structure: A variable number of compatible structures to process.
+    **kwargs: Optional kwargs to be passed through to func. Special kwarg
+      `check_types` is not passed to func, but instead determines whether the
+      types of iterables within the structures have to be same (e.g.,
+      `map_structure(func, [1], (1,))` raises a `TypeError` exception). By
+      default, the types must match. To allow iteration over structures of
+      different types (but common arity), set this kwarg to `False`.
+
+  Returns:
+    A structure of the same form as the input structures whose leaves are the
+    result of evaluating func on corresponding leaves of the input structures.
+
+  Raises:
+    TypeError: If `func` is not callable or if the structures do not match
+      each other by depth tree.
+    TypeError: If `check_types` is not `False` and the two structures differ in
+      the type of sequence in any of their substructures.
+    ValueError: If no structures are provided.
+  """
+  if not callable(func):
+    raise TypeError("func must be callable, got: %s" % func)
+  if not structure:
+    raise ValueError("Must provide at least one structure")
+
+  check_types = kwargs.pop("check_types", True)
+  for other in structure[1:]:
+    assert_same_structure(structure[0], other, check_types=check_types)
+
+  # First set paths_and_values to:
+  # [[(p11, v11), ... (p1n, v1n)], ... [(pm1, vm1), ... (pmn, vmn)]]
+  paths_and_values = [flatten_with_joined_string_paths(s) for s in structure]
+
+  # Now zip(*paths_and_values) would be:
+  # [((p11, v11), ... (pm1, vm1)), ... ((p1n, v1n), ... (pmn, vmn))]
+  # so grouped_by_path is set to:
+  # [[(p11, ... pm1), (v11, ... vm1)], ... [(p1n, ... pmn), (v1n, ... vmn)]]
+  # Note that p1i, ... pmi must all be equal since the structures are the same.
+  grouped_by_path = [zip(*p_v) for p_v in zip(*paths_and_values)]
+
+  return pack_sequence_as(structure[0], [
+      func(paths[0], *values, **kwargs) for paths, values in grouped_by_path])
+
+
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
   if is_sequence(shallow_tree):

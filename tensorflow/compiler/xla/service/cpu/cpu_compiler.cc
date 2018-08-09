@@ -562,7 +562,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-          BufferSizeBytesFunction(), memory_alignment));
+          BufferSizeBytesFunction(), memory_alignment,
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
   XLA_VLOG_LINES(2, assignment->ToString());
@@ -583,6 +585,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
                        &target_machine_features);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
   for (auto embedded_computation :
        entry_computation->MakeEmbeddedComputationsList()) {
@@ -747,7 +751,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         BufferAssigner::Run(
             module,
             xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
-            BufferSizeBytesFunction(), memory_alignment));
+            BufferSizeBytesFunction(), memory_alignment,
+            /*allow_input_output_aliasing=*/false,
+            /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -776,6 +782,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
                          &target_machine_features);
+
+    TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -831,17 +840,29 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     BufferSizes buffer_sizes;
     for (const BufferAllocation& allocation : assignment->Allocations()) {
-      // Callers don't need to allocate temporary buffers for parameters.
-      if (allocation.is_entry_computation_parameter()) {
-        buffer_sizes.push_back(-1);
-        continue;
-      }
       // Callers don't need to allocate anything for thread-local temporary
       // buffers.  They are lowered to allocas.
       if (allocation.is_thread_local()) {
         buffer_sizes.push_back(-1);
         continue;
       }
+
+      // Callers don't need to allocate anything for constant buffers.  They are
+      // lowered to globals.
+      if (allocation.is_constant()) {
+        buffer_sizes.push_back(-1);
+        continue;
+      }
+
+      // Callers don't need to allocate anything for entry computation buffers,
+      // but they do need to stash the pointer to the entry computation buffer
+      // in the temp buffer table.  See the comment on
+      // XlaCompiledCpuFunction::StaticData::temp_sizes.
+      if (allocation.is_entry_computation_parameter()) {
+        buffer_sizes.push_back(-allocation.parameter_number() - 2);
+        continue;
+      }
+
       buffer_sizes.push_back(allocation.size());
     }
 

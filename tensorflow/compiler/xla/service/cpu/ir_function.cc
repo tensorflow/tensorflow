@@ -80,9 +80,16 @@ void IrFunction::Initialize(const string& function_name,
   //   void function(i8* retval, i8* run_options, i8** params, i8** temps,
   //                 i64* dynamic_loop_bounds, i64* prof_counters)
   //
-  // retval: points to the returned value.
-  // params: address of an array with pointers to parameters.
-  // temps: address of an array with pointers to temporary buffers.
+  // For thread local functions:
+  //   retval: points to the returned value.
+  //   params: address of an array with pointers to parameters.
+  //   temps: is null
+  //
+  // For global functions:
+  //   retval: is null
+  //   params: is null
+  //   temps: address of an array with pointers to temporary buffers and entry
+  //          computation parameters.
   //
   // Therefore, the generated function's signature (FunctionType) is statically
   // determined - parameter unpacking is done in code generated into the
@@ -196,18 +203,25 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     llvm::IRBuilder<>* b, tensorflow::StringPiece name,
     llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
     llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg) {
-  llvm::Value* parameter_addresses_buffer =
-      llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-          b->getInt8PtrTy(), b->getInt32(parameter_addresses.size()),
-          tensorflow::strings::StrCat(name, "_parameter_addresses"), b);
-  for (size_t i = 0; i < parameter_addresses.size(); ++i) {
-    llvm::Value* parameter_as_i8ptr =
-        b->CreateBitCast(parameter_addresses[i], b->getInt8PtrTy(),
-                         AsStringRef(tensorflow::strings::StrCat(
-                             name, "_parameter_", i, "_address_as_i8ptr")));
-    llvm::Value* slot_in_param_addresses =
-        b->CreateInBoundsGEP(parameter_addresses_buffer, {b->getInt64(i)});
-    b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
+  llvm::Value* parameter_addresses_buffer;
+
+  if (parameter_addresses.empty()) {
+    parameter_addresses_buffer =
+        llvm::Constant::getNullValue(b->getInt8PtrTy()->getPointerTo());
+  } else {
+    parameter_addresses_buffer = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+        b->getInt8PtrTy(), b->getInt32(parameter_addresses.size()),
+        tensorflow::strings::StrCat(name, "_parameter_addresses"), b);
+
+    for (size_t i = 0; i < parameter_addresses.size(); ++i) {
+      llvm::Value* parameter_as_i8ptr =
+          b->CreateBitCast(parameter_addresses[i], b->getInt8PtrTy(),
+                           AsStringRef(tensorflow::strings::StrCat(
+                               name, "_parameter_", i, "_address_as_i8ptr")));
+      llvm::Value* slot_in_param_addresses =
+          b->CreateInBoundsGEP(parameter_addresses_buffer, {b->getInt64(i)});
+      b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
+    }
   }
 
   const auto to_int8_ptr = [=](llvm::Value* ptr) {

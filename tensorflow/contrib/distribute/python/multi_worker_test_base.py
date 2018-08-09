@@ -20,12 +20,48 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import threading
+import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.eager import test
+from tensorflow.python.estimator import run_config
+from tensorflow.python.platform import test
 from tensorflow.python.framework import test_util
+
+
+def create_in_process_cluster(num_workers, num_ps):
+  """Create an in-process cluster that consists of only standard server."""
+  # Leave some memory for cuda runtime.
+  gpu_mem_frac = 0.7 / num_workers
+  worker_config = config_pb2.ConfigProto()
+  worker_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
+
+  # Enable collective ops which has no impact on non-collective ops.
+  # TODO(yuefengz, tucker): removing this after we move the initialization of
+  # collective mgr to the session level.
+  worker_config.experimental.collective_group_leader = (
+      '/job:worker/replica:0/task:0')
+
+  ps_config = config_pb2.ConfigProto()
+  ps_config.device_count['GPU'] = 0
+
+  # Create in-process servers. Once an in-process tensorflow server is created,
+  # there is no way to terminate it. So we create one cluster per test process.
+  # We could've started the server in another process, we could then kill that
+  # process to terminate the server. The reasons why we don't want multiple
+  # processes are
+  # 1) it is more difficult to manage these processes;
+  # 2) there is something global in CUDA such that if we initialize CUDA in the
+  # parent process, the child process cannot initialize it again and thus cannot
+  # use GPUs (https://stackoverflow.com/questions/22950047).
+  return test_util.create_local_cluster(
+      num_workers,
+      num_ps=num_ps,
+      worker_config=worker_config,
+      ps_config=ps_config,
+      protocol='grpc')
 
 
 class MultiWorkerTestBase(test.TestCase):
@@ -34,21 +70,18 @@ class MultiWorkerTestBase(test.TestCase):
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    num_workers = 2
-    # Leave some memory for cuda runtime.
-    gpu_mem_frac = 0.7 / num_workers
-    default_config = config_pb2.ConfigProto()
-    default_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
+    cls._workers, cls._ps = create_in_process_cluster(num_workers=2, num_ps=0)
 
-    # The local cluster takes some portion of the local GPUs and there is no way
-    # for the cluster to terminate unless using multiple processes. Therefore,
-    # we have to only create only one cluster throughout a test process.
-    workers, _ = test_util.create_local_cluster(
-        num_workers, num_ps=0, worker_config=default_config)
-    cls._master_target = workers[0].target
+  def setUp(self):
+    # We only cache the session in one test because another test may have a
+    # different session config or master target.
+    self._thread_local = threading.local()
+    self._thread_local.cached_session = None
+    self._result = 0
+    self._lock = threading.Lock()
 
   @contextlib.contextmanager
-  def test_session(self, graph=None, config=None):
+  def test_session(self, graph=None, config=None, target=None):
     """Create a test session with master target set to the testing cluster.
 
     This overrides the base class' method, removes arguments that are not needed
@@ -59,6 +92,7 @@ class MultiWorkerTestBase(test.TestCase):
       graph: Optional graph to use during the returned session.
       config: An optional config_pb2.ConfigProto to use to configure the
         session.
+      target: the target of session to connect to.
 
     Yields:
       A Session object that should be used as a context manager to surround
@@ -78,13 +112,46 @@ class MultiWorkerTestBase(test.TestCase):
         rewriter_config_pb2.RewriterConfig.OFF)
 
     if graph is None:
-      if self._cached_session is None:  # pylint: disable=access-member-before-definition
-        self._cached_session = session.Session(
-            graph=None, config=config, target=self._master_target)
-      sess = self._cached_session
+      if getattr(self._thread_local, 'cached_session', None) is None:
+        self._thread_local.cached_session = session.Session(
+            graph=None, config=config, target=target or self._workers[0].target)
+      sess = self._thread_local.cached_session
       with sess.graph.as_default(), sess.as_default():
         yield sess
     else:
       with session.Session(
-          graph=graph, config=config, target=self._master_target) as sess:
+          graph=graph, config=config, target=target or
+          self._workers[0].target) as sess:
         yield sess
+
+  def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
+                  **kwargs):
+    result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+    if np.all(result):
+      with self._lock:
+        self._result += 1
+
+  def _run_between_graph_clients(self, client_fn, cluster_spec, num_gpus, *args,
+                                 **kwargs):
+    """Runs several clients for between-graph replication.
+
+    Args:
+      client_fn: a function that needs to accept `task_type`, `task_id`,
+        `num_gpus` and returns True if it succeeds.
+      cluster_spec: a dict specifying jobs in a cluster.
+      num_gpus: number of GPUs per worker.
+      *args: will be passed to `client_fn`.
+      **kwargs: will be passed to `client_fn`.
+    """
+    threads = []
+    for task_type in [run_config.TaskType.CHIEF, run_config.TaskType.WORKER]:
+      for task_id in range(len(cluster_spec.get(task_type, []))):
+        t = threading.Thread(
+            target=self._run_client,
+            args=(client_fn, task_type, task_id, num_gpus) + args,
+            kwargs=kwargs)
+        t.start()
+        threads.append(t)
+    for t in threads:
+      t.join()
+    self.assertEqual(self._result, len(threads))

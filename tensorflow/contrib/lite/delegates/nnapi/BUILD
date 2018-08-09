@@ -22,7 +22,10 @@ tf_cc_test(
     name = "nnapi_delegate_test",
     size = "small",
     srcs = ["nnapi_delegate_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "noasan",  # TODO(b/112326936): re-enable for asan once fixed.
+    ],
     deps = [
         ":nnapi_delegate",
         "//tensorflow/contrib/lite:framework",

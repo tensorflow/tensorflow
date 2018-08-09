@@ -44,12 +44,22 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
       num_buffers, device_ordinal, memory_allocator, buffer_assignment));
 
   for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
+    const BufferAllocation& allocation = buffer_assignment->GetAllocation(i);
+    const int64 expected_alignment = [&] {
+      if (allocation.is_entry_computation_parameter()) {
+        return kEntryParameterAlignBytes;
+      } else if (allocation.is_constant()) {
+        return kConstantBufferAlignBytes;
+      } else {
+        return kXlaAllocatedBufferAlignBytes;
+      }
+    }();
+
     // If buffer #i's address is already registered (e.g. external arguments or
     // result buffers), use that registered buffer.
     if (registered_buffers_.count(i)) {
       se::DeviceMemoryBase address = FindOrDie(registered_buffers_, i);
-      if (reinterpret_cast<uintptr_t>(address.opaque()) %
-              kEntryParameterAlignBytes !=
+      if (reinterpret_cast<uintptr_t>(address.opaque()) % expected_alignment !=
           0) {
         return InternalError(
             "Address of registered buffer %lld must be a multiple of %llx, but "
@@ -62,7 +72,6 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
 
     // Allocate each allocation that might escape, or is the temp buffer.
     bool seen_temp_buffer = false;
-    const BufferAllocation& allocation = buffer_assignment->GetAllocation(i);
     if (allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer()) {
       const int64 buffer_size = allocation.size();
       se::DeviceMemoryBase buffer_address;
@@ -70,8 +79,7 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
         OwningDeviceMemory buffer;
         TF_ASSIGN_OR_RETURN(
             buffer, memory_allocator->Allocate(device_ordinal, buffer_size));
-        if (reinterpret_cast<uintptr_t>(buffer.opaque()) %
-                kXlaAllocatedBufferAlignBytes !=
+        if (reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment !=
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
@@ -163,6 +171,11 @@ void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
   buffers_[buffer_index] = buffer;
+}
+
+bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {
+  // LLVM can sometimes do interesting optimizations using scalar constants.
+  return ShapeUtil::IsScalar(literal.shape());
 }
 
 }  // namespace gpu

@@ -102,6 +102,16 @@ TEST(UtilTest, TypeConversions) {
   EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
 }
 
+TEST(UtilTest, IsEagerOp) {
+  EXPECT_TRUE(IsEagerOp("Eager"));
+  EXPECT_TRUE(IsEagerOp("EagerOp"));
+  EXPECT_FALSE(IsEagerOp("eager"));
+  EXPECT_FALSE(IsEagerOp("Eage"));
+  EXPECT_FALSE(IsEagerOp("OpEager"));
+  EXPECT_FALSE(IsEagerOp(nullptr));
+  EXPECT_FALSE(IsEagerOp(""));
+}
+
 }  // namespace
 }  // namespace eager
 }  // namespace tflite

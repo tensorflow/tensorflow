@@ -121,6 +121,7 @@ from tensorflow.contrib.layers.python.layers import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['bias_add',
+                    'conv1d',
                     'conv2d',
                     'conv3d',
                     'elu',

@@ -49,7 +49,8 @@ _DEFAULT_REPLACEABLE_LIST = [
     'log_step_count_steps',
     'train_distribute',
     'device_fn',
-    'protocol'
+    'protocol',
+    'eval_distribute',
 ]
 
 _SAVE_CKPT_ERR = (
@@ -329,7 +330,8 @@ class RunConfig(object):
                log_step_count_steps=100,
                train_distribute=None,
                device_fn=None,
-               protocol=None):
+               protocol=None,
+               eval_distribute=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -463,6 +465,10 @@ class RunConfig(object):
         with round-robin strategy.
       protocol: An optional argument which specifies the protocol used when
         starting server. None means default to grpc.
+      eval_distribute: An optional instance of
+        `tf.contrib.distribute.DistributionStrategy`. If specified,
+        then Estimator will distribute the user's model during evaluation,
+        according to the policy specified by that strategy.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -501,7 +507,8 @@ class RunConfig(object):
         log_step_count_steps=log_step_count_steps,
         train_distribute=train_distribute,
         device_fn=device_fn,
-        protocol=protocol)
+        protocol=protocol,
+        eval_distribute=eval_distribute)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -770,9 +777,15 @@ class RunConfig(object):
 
   @property
   def train_distribute(self):
-    """Returns the optional `tf.contrib.distribute.DistributionStrategy` object.
+    """Optional `tf.contrib.distribute.DistributionStrategy` for training.
     """
     return self._train_distribute
+
+  @property
+  def eval_distribute(self):
+    """Optional `tf.contrib.distribute.DistributionStrategy` for evaluation.
+    """
+    return self._eval_distribute
 
   @property
   def protocol(self):
@@ -796,6 +809,7 @@ class RunConfig(object):
       - `train_distribute`,
       - `device_fn`,
       - `protocol`.
+      - `eval_distribute`,
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

@@ -56,10 +56,6 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, output_dim_size - update_dim_size)
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     llvm::Value* max_bound = b->CreateSub(output_dim_size, update_dim_size);
     llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
     start_index[i] =

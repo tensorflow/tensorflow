@@ -55,7 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -714,7 +714,8 @@ def make_best_model_export_strategy(
       #  as soon as contrib is cleaned up and we can thus be sure that
       #  estimator is a tf.estimator.Estimator and not a
       #  tf.contrib.learn.Estimator
-      checkpoint_path = saver.latest_checkpoint(estimator.model_dir)
+      checkpoint_path = checkpoint_management.latest_checkpoint(
+          estimator.model_dir)
     export_checkpoint_path, export_eval_result = best_model_selector.update(
         checkpoint_path, eval_result)
 

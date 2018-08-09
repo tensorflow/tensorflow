@@ -549,6 +549,11 @@ class StreamExecutor {
   // See Stream::ThenDoHostCallback for full details.
   bool HostCallback(Stream *stream, std::function<void()> callback);
 
+  // Entrains on a stream a user-specified function to be run on the host.
+  // See Stream::ThenDoHostCallback for full details.
+  // This is the preferred form for a callback that may return an error.
+  bool HostCallback(Stream *stream, std::function<port::Status()> callback);
+
   // Performs platform-specific allocation and initialization of an event.
   port::Status AllocateEvent(Event *event);
 

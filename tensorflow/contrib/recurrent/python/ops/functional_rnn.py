@@ -206,7 +206,7 @@ def _PickFinalStateFromHistory(acc_state, sequence_length):
     lengths = array_ops.tile(array_ops.reshape(sequence_length,
                                                [-1, 1]), [1, max_time])
     last_idx = math_ops.cast(math_ops.equal(output_time, lengths - 1),
-                             dtype=dtypes.float32)
+                             dtype=state_var.dtype)
     last_idx = array_ops.transpose(last_idx)
     last_idx_for_bcast = array_ops.expand_dims(last_idx, -1)
     sliced = math_ops.multiply(last_idx_for_bcast, state_var)
@@ -284,8 +284,13 @@ def functional_rnn(cell, inputs, sequence_length=None,
       inputs=inputs,
       cell_fn=func_cell.cell_step,
       use_tpu=use_tpu)
-  return _PostProcessOutput(extended_acc_state, extended_final_state,
-                            func_cell, inputs_flat[0].shape[0], sequence_length)
+  tf_output, tf_state = _PostProcessOutput(
+      extended_acc_state, extended_final_state, func_cell,
+      inputs_flat[0].shape[0], sequence_length)
+
+  if time_major:
+    tf_output = array_ops.transpose(tf_output, [1, 0, 2])
+  return tf_output, tf_state
 
 
 def bidirectional_functional_rnn(

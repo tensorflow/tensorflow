@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 import timeit
 
@@ -46,6 +47,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -275,6 +277,27 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
+  def testBasicLSTMCellInterchangeWithLSTMCell(self):
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      basic_cell = rnn_cell_impl.BasicLSTMCell(1)
+      basic_cell(array_ops.ones([1, 1]),
+                 state=basic_cell.zero_state(batch_size=1,
+                                             dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in basic_cell.variables])
+      self.evaluate(basic_cell._bias.assign([10.] * 4))
+      save = saver.Saver()
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = save.save(sess, prefix)
+
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      lstm_cell = rnn_cell_impl.LSTMCell(1, name="basic_lstm_cell")
+      lstm_cell(array_ops.ones([1, 1]),
+                state=lstm_cell.zero_state(batch_size=1,
+                                           dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in lstm_cell.variables])
+      save = saver.Saver()
+      save.restore(sess, save_path)
+      self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
 
 ######### Benchmarking RNN code
 

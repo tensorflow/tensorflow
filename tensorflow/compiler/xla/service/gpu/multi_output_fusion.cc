@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -112,17 +113,25 @@ bool IsInputFusibleReduction(HloInstruction* instr) {
 // of input parameters differ. In such situtations it is beneficial not to fuse.
 // We consider input params with maximum rank only. Params with smaller ranks
 // will be broadcasted and have not been observed to cause data locality issues.
-// TODO(b/110927656): Improve reduce emitters to remove this limitation.
+// TODO(b/111977086): Improve reduce emitters to remove this limitation.
 bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
+  std::vector<HloInstruction*> params;
+  if (instr->opcode() == HloOpcode::kFusion) {
+    params = instr->fused_parameters();
+  } else {
+    for (HloInstruction* operand : instr->operands()) {
+      params.push_back(operand);
+    }
+  }
   int64 max_rank = 0;
   const Layout* max_rank_layout;
-  for (HloInstruction* param : instr->fused_parameters()) {
+  for (HloInstruction* param : params) {
     if (ShapeUtil::Rank(param->shape()) > max_rank) {
       max_rank = ShapeUtil::Rank(param->shape());
       max_rank_layout = &param->shape().layout();
     }
   }
-  return c_all_of(instr->fused_parameters(), [&](HloInstruction* param) {
+  return c_all_of(params, [&](HloInstruction* param) {
     return (ShapeUtil::Rank(param->shape()) < max_rank) ||
            (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
   });
@@ -163,16 +172,22 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   if (!MultiOutputFusion::LegalToFuse(instr1, instr2)) {
     return false;
   }
+
   // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
   // merge into bigger loop fusions and input (reduce) fusions become fusions
   // with multiple reduce outputs. We could fuse reduce and loop fusions
   // together too (the result being an input fusion) if we find cases where this
   // improves things.
   CHECK(instr1->opcode() == HloOpcode::kFusion);
-  if (instr2->opcode() == HloOpcode::kFusion) {
-    return instr1->fusion_kind() == instr2->fusion_kind();
+  if ((instr2->opcode() == HloOpcode::kFusion &&
+       instr1->fusion_kind() != instr2->fusion_kind()) ||
+      (instr2->opcode() != HloOpcode::kFusion &&
+       instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
+    return false;
   }
-  return instr1->fusion_kind() != HloInstruction::FusionKind::kLoop;
+
+  // Do this check last, as it may be expensive.
+  return !GpuInstructionFusion::FusionWouldBeTooLarge(instr1, instr2);
 }
 
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
@@ -214,7 +229,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       const bool is_loop_fusion =
           producer->opcode() == HloOpcode::kFusion &&
           producer->fusion_kind() == HloInstruction::FusionKind::kLoop;
-      if (!is_loop_fusion) {
+      if (!producer->IsElementwise() && !is_loop_fusion) {
         VLOG(3) << producer->name() << " is not a loop fusion.";
         continue;
       }

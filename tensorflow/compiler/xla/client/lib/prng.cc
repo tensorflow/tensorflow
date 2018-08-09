@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 
@@ -56,7 +56,7 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
 
   // Performs a single round of the Threefry2x32 algorithm, with a rotation
   // amount 'rotation'.
-  auto round = [builder](ThreeFry2x32State v, int rotation) {
+  auto round = [](ThreeFry2x32State v, int rotation) {
     v[0] = v[0] + v[1];
     v[1] = RotateLeftS32(v[1], rotation);
     v[1] = v[0] ^ v[1];

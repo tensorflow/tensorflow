@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
@@ -52,9 +51,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -74,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
-#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -146,7 +146,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // support BF16 operations without directly implementing a BF16 lowering for
     // most ops.
     pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
-    pipeline.AddPass<DotDecomposer>();
 
     {
       auto& pass =
@@ -199,6 +198,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
+    if (IsVoltaOrLater(*stream_exec)) {
+      pipeline.AddPass<PadForTensorCores>();
+      // PadForTensorCores leaves behind unnecessary tuple/get-tuple-element
+      // pairs that TupleSimplifier fixes.
+      pipeline.AddPass<TupleSimplifier>();
+    }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -275,14 +280,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     }
   }
 
-  {
-    // Do an aggressive LICM pass over while loops.  In particular, this hoists
-    // constants that were sunk by WhileLoopConstantSinking.  Leaving them in
-    // the while loop may result in unnecessary copies.
-    HloPassPipeline pipeline("while-loop-licm");
-    pipeline.AddPass<WhileLoopInvariantCodeMotion>(true);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
   return Status::OK();
 }
 
@@ -540,11 +537,13 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(),
-                          /*color_alignment=*/[](LogicalBuffer::Color) {
-                            return kXlaAllocatedBufferAlignBytes;
-                          }));
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
@@ -565,6 +564,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));

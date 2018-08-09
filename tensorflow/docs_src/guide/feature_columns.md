@@ -6,10 +6,10 @@ enabling you to transform a diverse range of raw data into formats that
 Estimators can use, allowing easy experimentation.
 
 In @{$premade_estimators$Premade Estimators}, we used the premade
-Estimator, @{tf.estimator.DNNClassifier$`DNNClassifier`} to train a model to
+Estimator, `tf.estimator.DNNClassifier` to train a model to
 predict different types of Iris flowers from four input features. That example
 created only numerical feature columns (of type
-@{tf.feature_column.numeric_column}). Although numerical feature columns model
+`tf.feature_column.numeric_column`). Although numerical feature columns model
 the lengths of petals and sepals effectively, real world data sets contain all
 kinds of features, many of which are non-numerical.
 
@@ -59,7 +59,7 @@ Feature columns bridge raw data with the data your model needs.
 </div>
 
 To create feature columns, call functions from the
-@{tf.feature_column} module. This document explains nine of the functions in
+`tf.feature_column` module. This document explains nine of the functions in
 that module. As the following figure shows, all nine functions return either a
 Categorical-Column or a Dense-Column object, except `bucketized_column`, which
 inherits from both classes:
@@ -75,7 +75,7 @@ Let's look at these functions in more detail.
 
 ### Numeric column
 
-The Iris classifier calls the @{tf.feature_column.numeric_column} function for
+The Iris classifier calls the `tf.feature_column.numeric_column` function for
 all input features:
 
   * `SepalLength`
@@ -119,7 +119,7 @@ matrix_feature_column = tf.feature_column.numeric_column(key="MyMatrix",
 
 Often, you don't want to feed a number directly into the model, but instead
 split its value into different categories based on numerical ranges.  To do so,
-create a @{tf.feature_column.bucketized_column$bucketized column}. For
+create a `tf.feature_column.bucketized_column`. For
 example, consider raw data that represents the year a house was built. Instead
 of representing that year as a scalar numeric column, we could split the year
 into the following four buckets:
@@ -194,7 +194,7 @@ value. That is:
 * `1="electronics"`
 * `2="sport"`
 
-Call @{tf.feature_column.categorical_column_with_identity} to implement a
+Call `tf.feature_column.categorical_column_with_identity` to implement a
 categorical identity column. For example:
 
 ``` python
@@ -230,8 +230,8 @@ As you can see, categorical vocabulary columns are kind of an enum version of
 categorical identity columns. TensorFlow provides two different functions to
 create categorical vocabulary columns:
 
-* @{tf.feature_column.categorical_column_with_vocabulary_list}
-* @{tf.feature_column.categorical_column_with_vocabulary_file}
+* `tf.feature_column.categorical_column_with_vocabulary_list`
+* `tf.feature_column.categorical_column_with_vocabulary_file`
 
 `categorical_column_with_vocabulary_list` maps each string to an integer based
 on an explicit vocabulary list. For example:
@@ -281,7 +281,7 @@ categories can be so big that it's not possible to have individual categories
 for each vocabulary word or integer because that would consume too much memory.
 For these cases, we can instead turn the question around and ask, "How many
 categories am I willing to have for my input?"  In fact, the
-@{tf.feature_column.categorical_column_with_hash_bucket} function enables you
+`tf.feature_column.categorical_column_with_hash_bucket` function enables you
 to specify the number of categories. For this type of feature column the model
 calculates a hash value of the input, then puts it into one of
 the `hash_bucket_size` categories using the modulo operator, as in the following
@@ -349,7 +349,7 @@ equal size.
 </div>
 
 For the solution, we used a combination of the `bucketized_column` we looked at
-earlier, with the @{tf.feature_column.crossed_column} function.
+earlier, with the `tf.feature_column.crossed_column` function.
 
 <!--TODO(markdaoust) link to full example-->
 
@@ -440,7 +440,7 @@ Representing data in indicator columns.
 </div>
 
 Here's how you create an indicator column by calling
-@{tf.feature_column.indicator_column}:
+`tf.feature_column.indicator_column`:
 
 ``` python
 categorical_column = ... # Create any type of categorical column.
@@ -521,7 +521,7 @@ number of dimensions is 3:
 Note that this is just a general guideline; you can set the number of embedding
 dimensions as you please.
 
-Call @{tf.feature_column.embedding_column} to create an `embedding_column` as
+Call `tf.feature_column.embedding_column` to create an `embedding_column` as
 suggested by the following snippet:
 
 ``` python
@@ -543,15 +543,15 @@ columns.
 As the following list indicates, not all Estimators permit all types of
 `feature_columns` argument(s):
 
-* @{tf.estimator.LinearClassifier$`LinearClassifier`} and
-  @{tf.estimator.LinearRegressor$`LinearRegressor`}: Accept all types of
+* `tf.estimator.LinearClassifier` and
+  `tf.estimator.LinearRegressor`: Accept all types of
   feature column.
-* @{tf.estimator.DNNClassifier$`DNNClassifier`} and
-  @{tf.estimator.DNNRegressor$`DNNRegressor`}: Only accept dense columns. Other
+* `tf.estimator.DNNClassifier` and
+  `tf.estimator.DNNRegressor`: Only accept dense columns. Other
   column types must be wrapped in either an `indicator_column` or
   `embedding_column`.
-* @{tf.estimator.DNNLinearCombinedClassifier$`DNNLinearCombinedClassifier`} and
-  @{tf.estimator.DNNLinearCombinedRegressor$`DNNLinearCombinedRegressor`}:
+* `tf.estimator.DNNLinearCombinedClassifier` and
+  `tf.estimator.DNNLinearCombinedRegressor`:
     * The `linear_feature_columns` argument accepts any feature column type.
     * The `dnn_feature_columns` argument only accepts dense columns.
 

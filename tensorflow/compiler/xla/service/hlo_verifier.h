@@ -45,6 +45,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
@@ -83,6 +84,7 @@ class ShapeVerifier : public DfsHloVisitor {
       HloInstruction* batch_norm_inference) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleGather(HloInstruction* gather) override;
+  Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* token) override;
 
   Status FinishVisit(HloInstruction*) override { return Status::OK(); }

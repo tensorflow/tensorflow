@@ -241,14 +241,6 @@ TEST(BasicFlatBufferModel, TestWithNullVerifier) {
       "tensorflow/contrib/lite/testdata/test_model.bin", nullptr));
 }
 
-struct TestErrorReporter : public ErrorReporter {
-  int Report(const char* format, va_list args) override {
-    calls++;
-    return 0;
-  }
-  int calls = 0;
-};
-
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to
 // the Interpreter.
 TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
@@ -262,7 +254,7 @@ TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
   TrivialResolver resolver;
   InterpreterBuilder(*model, resolver)(&interpreter);
   ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(reporter.calls, 1);
+  ASSERT_EQ(reporter.num_calls(), 1);
 }
 
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to

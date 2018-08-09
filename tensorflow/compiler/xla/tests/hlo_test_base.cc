@@ -233,6 +233,29 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                        reference_preprocessor);
 }
 
+::testing::AssertionResult HloTestBase::Run(const StringPiece hlo_string) {
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
+  }
+  const auto& fake_arguments =
+      MakeFakeArguments(module_or_status.ValueOrDie().get())
+          .ConsumeValueOrDie();
+  std::vector<Literal*> fake_argument_ptrs;
+  c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+  return test_runner_
+                 .Execute(std::move(module_or_status.ValueOrDie()),
+                          fake_argument_ptrs, /*run_hlo_passes=*/true)
+                 .ok()
+             ? ::testing::AssertionSuccess()
+             : ::testing::AssertionFailure();
+}
+
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {

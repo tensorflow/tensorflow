@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -55,10 +56,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/while_transformer.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -75,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -168,40 +171,6 @@ Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
   return DfsHloVisitor::Postprocess(hlo);
 }
 
-namespace {
-bool ImplementedAsHostToDeviceMemcpy(const BufferAssignment& buffer_assignment,
-                                     const HloInstruction& hlo) {
-  // `hlo` needs to satisfy the following conditions to be implemented as a
-  // host-to-device cuMemcpy.
-  //
-  // 1. `hlo` is a kCopy instruction.
-  // 2. `hlo`'s only operand is a kConstant instruction.
-  // 3. `hlo` and its operand have the same shape (thus the same layout too).
-  // 4. The address of `hlo`'s buffer is known at runtime (without dereferencing
-  //    pointers in a tuple).
-  return hlo.opcode() == HloOpcode::kCopy &&
-         hlo.operand(0)->opcode() == HloOpcode::kConstant &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.GetUniqueTopLevelSlice(&hlo).ok();
-}
-
-bool ImplementedAsDeviceToDeviceMemcpy(
-    const BufferAssignment& buffer_assignment, const HloInstruction& hlo) {
-  // `hlo` needs to satisfy three conditions to be implemented as a
-  // device-to-device cuMemcpy.
-  //
-  // 1. `hlo` is a kCopy instruction.
-  // 2. `hlo` and its operand have the same shape (thus the same layout too).
-  // 3. `hlo` and its operand have a statically-known buffer assignment
-  //     (constants do not, for instance), which means the source buffer also
-  //     resides on the device.
-  return hlo.opcode() == HloOpcode::kCopy &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.GetUniqueTopLevelSlice(&hlo).ok() &&
-         buffer_assignment.GetUniqueTopLevelSlice(hlo.operand(0)).ok();
-}
-}  // namespace
-
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     const HloInstruction& inst,
     tensorflow::gtl::ArraySlice<const BufferAllocation*> args) {
@@ -230,11 +199,20 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     ++arg_it;
 
     kernel->addDereferenceableAttr(arg_no + 1, alloc->size());
+
+    const int64 alignment = [&] {
+      if (alloc->is_entry_computation_parameter()) {
+        return kEntryParameterAlignBytes;
+      } else if (alloc->is_constant()) {
+        return kConstantBufferAlignBytes;
+      } else {
+        return kXlaAllocatedBufferAlignBytes;
+      }
+    }();
+
     kernel->addParamAttr(
-        arg_no, llvm::Attribute::get(context, llvm::Attribute::Alignment,
-                                     alloc->is_entry_computation_parameter()
-                                         ? kEntryParameterAlignBytes
-                                         : kXlaAllocatedBufferAlignBytes));
+        arg_no,
+        llvm::Attribute::get(context, llvm::Attribute::Alignment, alignment));
 
     if (alloc->IsPreallocatedTempBuffer()) {
       fn_arg->setName("temp_buf");
@@ -367,11 +345,6 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() > 0 ||
-      dnums.rhs_batch_dimensions_size() > 0) {
-    return Unimplemented("Dot with batch dimensions not implemented.");
-  }
   if (ImplementedAsGemm(*dot)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(dot));
     return Status::OK();
@@ -718,13 +691,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 }
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
-  if (ImplementedAsHostToDeviceMemcpy(ir_emitter_context_->buffer_assignment(),
-                                      *copy)) {
-    thunk_sequence_->emplace_back(BuildHostToDeviceCopyThunk(copy));
-    return Status::OK();
-  }
-  if (ImplementedAsDeviceToDeviceMemcpy(
-          ir_emitter_context_->buffer_assignment(), *copy)) {
+  CHECK(ShapeUtil::Compatible(copy->operand(0)->shape(), copy->shape()));
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context_->buffer_assignment();
+  if (LayoutUtil::Equal(copy->operand(0)->shape().layout(),
+                        copy->shape().layout()) &&
+      buffer_assignment.GetUniqueTopLevelSlice(copy->operand(0)).ok()) {
     thunk_sequence_->emplace_back(BuildDeviceToDeviceCopyThunk(copy));
     return Status::OK();
   }
@@ -1762,6 +1734,8 @@ Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
             .GetUniqueTopLevelSlice(tuple_element)
             .ok();
       });
+  // TODO(b/111689850): This logic isn't quite correct.
+  //
   // Tuples (especially tuples that are the final result of a computation) can
   // be so huge that if we were to emit a kernel that took each tuple element as
   // a parameter, we would exceed the max allowable number of parameters to a
@@ -1769,9 +1743,9 @@ Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
   // buffer, we collect their buffer addresses in a host array, and then copy
   // that array to the tuple's buffer.
   //
-  // Some tuple elements (e.g. const or bitcast of const) might not have a
-  // buffer -- their contents are stored in code. In that case, we fall back to
-  // emitting kernels which have access to their buffer addresses in code.
+  // Some tuple elements might not have an unambiguous buffer (like the result
+  // of a select-tuple). In that case, we fall back to emitting kernels which
+  // have access to their buffer addresses in code.
   if (all_tuple_elements_have_buffer) {
     std::vector<BufferAllocation::Slice> tuple_element_buffers;
     for (const HloInstruction* tuple_element : tuple->operands()) {
@@ -1989,27 +1963,55 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  auto result = CanTransformWhileToFor(xla_while);
-  if (result.ok()) {
-    auto tuple = result.ConsumeValueOrDie();
-    // loop_trip_count = (limit - start + increment - 1) / increment
-    const int64 loop_trip_count =
-        (std::get<1>(tuple) - std::get<0>(tuple) + std::get<2>(tuple) - 1) /
-        std::get<2>(tuple);
-    thunk_sequence_->emplace_back(BuildForThunk(xla_while, loop_trip_count));
+  // TODO(b/112163966): Move trip count computation earlier in the pipeline.
+  if (auto loop_trip_count = ComputeWhileLoopTripCount(xla_while)) {
+    thunk_sequence_->emplace_back(BuildForThunk(xla_while, *loop_trip_count));
     VLOG(3) << "Built ForThunk for while: " << xla_while->name();
   } else {
     thunk_sequence_->emplace_back(BuildWhileThunk(xla_while));
-    VLOG(3) << "Built WhileThunk for while: " << xla_while->name()
-            << " while-to-for transform status: " << result.status();
+    VLOG(3) << "Built WhileThunk for while: " << xla_while->name();
   }
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleRng(HloInstruction* random) {
-  thunk_sequence_->push_back(
-      BuildKernelThunk(random, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleRng(random);
+Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
+  // Build the kernel to generate the random numbers.
+  //
+  // Unroll the kernel so that the duplicated computation that calculates the
+  // 128 bit sample can be optimized away by LLVM.
+  thunk_sequence_->emplace_back(
+      BuildKernelThunk(rng, /*implements_whole_instruction=*/false,
+                       ComputeMaxUnrollFactor(rng)));
+  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  for (const HloInstruction* operand : rng->operands()) {
+    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
+      return GetIrArray(*operand, *rng).EmitReadArrayElement(index, &b_);
+    };
+  }
+  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
+      *rng, GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
+                                  GetNestedComputer())
+                .MakeElementGenerator(rng, operand_to_generator)));
+  std::unique_ptr<Thunk> rng_thunk = std::move(thunk_sequence_->back());
+  thunk_sequence_->pop_back();
+
+  // Emit a kernel to increment the global state for Philox RNG algorithm.
+  thunk_sequence_->emplace_back(
+      BuildKernelThunk(rng, /*implements_whole_instruction=*/false));
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+  std::unique_ptr<Thunk> increment_seed_thunk =
+      std::move(thunk_sequence_->back());
+  thunk_sequence_->pop_back();
+
+  // Build the SequentialThunk for the RNG hlo.
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.reserve(2);
+  thunks.push_back(std::move(rng_thunk));
+  thunks.push_back(std::move(increment_seed_thunk));
+  thunk_sequence_->emplace_back(
+      MakeUnique<SequentialThunk>(std::move(thunks), rng));
+
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
@@ -2020,28 +2022,34 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
+  auto keys = sort->operand(0);
   auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  ShapeIndex keys_shape_index({});
+  ShapeIndex values_shape_index({});
   if (values != nullptr) {
-    // TODO(b/26783907): Also sort the values by their corresponding key.
-    return Unimplemented("Key/Value Sort is not implemented on GPU");
+    keys_shape_index = ShapeIndex({0});
+    values_shape_index = ShapeIndex({1});
   }
+  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
+  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
 
-  // First copy the operand to the output, so that we can sort in-place.
-  // TODO(b/26783907): Share buffer of output and operand when it is possible.
-  if (sort->operand(0)->IsConstant()) {
-    thunks.push_back(MakeUnique<HostToDeviceCopyThunk>(
-        /*source_address=*/sort->operand(0)->literal().untyped_data(),
-        /*destination_buffer=*/GetAllocationSlice(*sort),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
-  } else {
+  if (keys_destination != GetAllocationSlice(*keys)) {
     thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*sort->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*sort),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
+        /*source_address=*/GetAllocationSlice(*keys),
+        /*destination_buffer=*/keys_destination,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(keys->shape()), nullptr));
+  }
+  if (values != nullptr && values_destination != GetAllocationSlice(*values)) {
+    // TODO(b/26783907): Figure out why we never seem to share buffers for
+    // key/value sort.
+    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/GetAllocationSlice(*values),
+        /*destination_buffer=*/values_destination,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(values->shape()), nullptr));
   }
 
   int64 dimension_to_sort = sort->dimensions(0);
-  int64 dimension_to_sort_bound = sort->shape().dimensions(dimension_to_sort);
+  int64 dimension_to_sort_bound = keys->shape().dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   auto index_type = b_.getInt64Ty();
 
@@ -2065,7 +2073,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       thunks.push_back(
           BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
       LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-          sort->shape(), ir_emitter_context_->device_description());
+          keys->shape(), ir_emitter_context_->device_description());
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
 
@@ -2077,8 +2085,11 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       }
 
       TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
-          dimension_to_sort, GetIrArray(*sort, *sort), IrName(sort), xor_mask,
-          &b_, &launch_dimensions));
+          dimension_to_sort, GetIrArray(*sort, *sort, keys_shape_index),
+          values != nullptr ? tensorflow::gtl::make_optional<IrArray>(
+                                  GetIrArray(*sort, *sort, values_shape_index))
+                            : tensorflow::gtl::nullopt,
+          IrName(sort), xor_mask, &b_, &launch_dimensions));
     }
   }
 
@@ -2240,11 +2251,6 @@ GetHloBufferSlices(const HloInstruction* hlo,
 
   // Adds entries for all subshapes of instr to `slices`.
   auto add_slices_for = [&](const HloInstruction* instr) {
-    // GPU constants don't have buffers; don't bother looking for one.
-    if (instr->IsConstant()) {
-      return;
-    }
-
     ShapeUtil::ForEachSubshape(
         instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
           if (slices.count({instr, index})) {
@@ -2306,21 +2312,25 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
 
   // We'll pass a pointer to each of the elements of `buffers` to our kernel, in
   // this order.
-  std::vector<const BufferAllocation*> buffers(buffers_needed.begin(),
-                                               buffers_needed.end());
-  std::sort(buffers.begin(), buffers.end(),
+  std::vector<const BufferAllocation*> non_constant_buffers;
+  c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
+            [](const BufferAllocation* allocation) {
+              return !allocation->is_constant();
+            });
+
+  std::sort(non_constant_buffers.begin(), non_constant_buffers.end(),
             [](const BufferAllocation* a, const BufferAllocation* b) {
               return a->index() < b->index();
             });
 
-  llvm::Function* kernel = BuildKernelPrototype(*inst, buffers);
+  llvm::Function* kernel = BuildKernelPrototype(*inst, non_constant_buffers);
 
   // Build a map from a BufferAllocation to the corresponding argument in our
   // kernel.
   std::unordered_map<const BufferAllocation*, llvm::Value*> kernel_args;
   {
     auto arg_it = kernel->arg_begin();
-    auto buffers_it = buffers.begin();
+    auto buffers_it = non_constant_buffers.begin();
     for (; arg_it != kernel->arg_end(); ++arg_it, ++buffers_it) {
       kernel_args[*buffers_it] = arg_it;
     }
@@ -2338,8 +2348,16 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
             << " is found in slice " << slice.ToString() << " at GTE index "
             << gte_index.ToString();
 
-    llvm::Value* loc = b_.CreateInBoundsGEP(kernel_args.at(slice.allocation()),
-                                            {b_.getInt64(slice.offset())});
+    llvm::Value* loc;
+    if (slice.allocation()->is_constant()) {
+      loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
+          llvm_ir::AsStringRef(llvm_ir::ConstantBufferAllocationToGlobalName(
+              *slice.allocation())));
+      CHECK_NE(loc, nullptr);
+    } else {
+      loc = b_.CreateInBoundsGEP(kernel_args.at(slice.allocation()),
+                                 {b_.getInt64(slice.offset())});
+    }
 
     // If gte_index is nonempty, we have to dereference `loc` to get to the
     // value we're ultimately interested in.
@@ -2362,9 +2380,9 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
         llvm::ConstantPointerNull::get(b_.getInt8PtrTy()));
   }
 
-  return MakeUnique<KernelThunk>(buffers, llvm_ir::AsString(kernel->getName()),
-                                 implements_whole_instruction ? inst : nullptr,
-                                 unroll_factor);
+  return MakeUnique<KernelThunk>(
+      non_constant_buffers, llvm_ir::AsString(kernel->getName()),
+      implements_whole_instruction ? inst : nullptr, unroll_factor);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
@@ -2601,7 +2619,17 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   // If the init_value was fused into this reduce we have to generate it first.
   if (fused && init_value_operand->opcode() != HloOpcode::kParameter) {
     CHECK_EQ(HloOpcode::kConstant, init_value_operand->opcode());
-    TF_RETURN_IF_ERROR(HandleConstant(const_cast<HloInstruction*>(init_value)));
+
+    const Literal& literal = init_value_operand->literal();
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        *module_, initializer->getType(),
+        /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
+        /*Name=*/"");
+    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    bindings_.BindHloToIrValue(*init_value_operand, global_for_const);
   }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const IrArray::Index& index) {
@@ -2719,13 +2747,13 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
   HloComputation* condition = hlo->while_condition();
   IrEmitterUnnested ir_emitter_condition(hlo_module_config_, condition,
                                          ir_emitter_context_);
-  TF_CHECK_OK(condition->root_instruction()->Accept(&ir_emitter_condition));
+  TF_CHECK_OK(condition->Accept(&ir_emitter_condition));
 
   // Generate thunk sequence for while 'body'.
   HloComputation* body = hlo->while_body();
   IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
                                     ir_emitter_context_);
-  TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
+  TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return MakeUnique<WhileThunk>(
       GetAllocationSlice(*condition->root_instruction()),  // cond result
@@ -2743,7 +2771,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
   HloComputation* body = hlo->while_body();
   IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
                                     ir_emitter_context_);
-  TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
+  TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return MakeUnique<ForThunk>(loop_limit,
                               ir_emitter_body.ConsumeThunkSequence(), hlo);
@@ -2759,12 +2787,12 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
   HloComputation* true_computation = hlo->true_computation();
   IrEmitterUnnested ir_emitter_true(hlo_module_config_, true_computation,
                                     ir_emitter_context_);
-  TF_CHECK_OK(true_computation->root_instruction()->Accept(&ir_emitter_true));
+  TF_CHECK_OK(true_computation->Accept(&ir_emitter_true));
 
   HloComputation* false_computation = hlo->false_computation();
   IrEmitterUnnested ir_emitter_false(hlo_module_config_, false_computation,
                                      ir_emitter_context_);
-  TF_CHECK_OK(false_computation->root_instruction()->Accept(&ir_emitter_false));
+  TF_CHECK_OK(false_computation->Accept(&ir_emitter_false));
 
   return MakeUnique<ConditionalThunk>(
       GetAllocationSlice(*hlo->operand(0)),
@@ -3331,6 +3359,48 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
                          ir_emitter_context_->llvm_module());
 
   return true;
+}
+
+Status IrEmitterUnnested::EmitConstantGlobals() {
+  for (const BufferAllocation& allocation :
+       ir_emitter_context_->buffer_assignment().Allocations()) {
+    if (!allocation.is_constant()) {
+      continue;
+    }
+
+    const Literal& literal = llvm_ir::LiteralForConstantAllocation(allocation);
+    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
+    llvm::ArrayType* global_type =
+        llvm::ArrayType::get(b_.getInt8Ty(), allocation.size());
+    llvm::Constant* initializer =
+        should_emit_initializer
+            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
+            : llvm::ConstantAggregateZero::get(global_type);
+    if (should_emit_initializer) {
+      VLOG(3) << "Emitted initializer for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+    }
+
+    // These globals will be looked up by name by GpuExecutable so we need to
+    // give them an external linkage.  Not all of their uses are visible in the
+    // LLVM IR (e.g. TupleThunk) so we can't give then a linkage that merely
+    // preserves their names (like available_externally), we also need to ensure
+    // that they stick around even if they're "unused".
+    //
+    // We may have to be more more clever here in the future if we notice that
+    // we're keeping around too many globals because of their linkage.
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        global_type, /*isConstant=*/should_emit_initializer,
+        llvm::GlobalValue::ExternalLinkage,
+        /*Initializer=*/initializer,
+        llvm_ir::AsStringRef(
+            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)));
+    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
+        global_for_const);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace gpu

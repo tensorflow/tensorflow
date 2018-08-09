@@ -105,6 +105,15 @@ Status ShapeVerifier::HandleCrossReplicaSum(HloInstruction* crs) {
                     ShapeInference::InferCrossReplicaSumShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(hlo,
+                    ShapeInference::InferAllToAllTupleShape(operand_shapes));
+}
+
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
   return CheckShape(reduce_precision, ShapeInference::InferReducePrecisionShape(
                                           reduce_precision->operand(0)->shape(),
@@ -119,7 +128,7 @@ Status CheckIsTokenOperand(const HloInstruction* instruction,
   const HloInstruction* token = instruction->operand(operand_no);
   if (!ShapeUtil::Equal(token->shape(), ShapeUtil::MakeTokenShape())) {
     return InternalError(
-        "Expected operand %lld to be token-shaped, actual shape is"
+        "Expected operand %lld to be token-shaped, actual shape is "
         "%s:\n%s",
         operand_no, ShapeUtil::HumanString(token->shape()).c_str(),
         instruction->ToString().c_str());
@@ -224,10 +233,13 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 }
 
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return InvalidArgument("Variadic reduce is not supported.");
+  }
   return CheckShape(
       reduce,
       ShapeInference::InferReduceShape(
-          reduce->operand(0)->shape(), reduce->operand(1)->shape(),
+          {&reduce->operand(0)->shape(), &reduce->operand(1)->shape()},
           reduce->dimensions(), reduce->to_apply()->ComputeProgramShape()));
 }
 
@@ -508,6 +520,15 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
       ShapeInference::InferGatherShape(
           gather->operand(0)->shape(), gather->operand(1)->shape(),
           gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
+
+Status ShapeVerifier::HandleScatter(HloInstruction* scatter) {
+  return CheckShape(
+      scatter, ShapeInference::InferScatterShape(
+                   scatter->operand(0)->shape(), scatter->operand(1)->shape(),
+                   scatter->operand(2)->shape(),
+                   scatter->to_apply()->ComputeProgramShape(),
+                   scatter->scatter_dimension_numbers()));
 }
 
 Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
