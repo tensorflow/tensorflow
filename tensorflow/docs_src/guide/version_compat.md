@@ -79,6 +79,7 @@ backward incompatible ways between minor releases. These include:
     [`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc)).
   - [Java](../api_docs/java/reference/org/tensorflow/package-summary),
   - [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
+  - [JavaScript](https://js.tensorflow.org)
 
 *   **Details of composite ops:** Many public functions in Python expand to
     several primitive ops in the graph, and these details will be part of any
