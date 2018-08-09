@@ -730,15 +730,18 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           if (!arg.second.streamed) {
             if (tc->on_device == false || tc->input_handle != arg.first ||
                 engine_changed) {
-              ConversionFn fn = arg.second.fn;
-              if (fn != nullptr) {
-                std::vector<char> converted = fn(buf, tc->size, 0);
-                current_engine_->writeTensor(arg.first, converted.data());
-              } else {
-                current_engine_->writeTensor(arg.first, buf);
+
+              if (arg.second.fn != nullptr) {
+                tc->converted_data = arg.second.fn(buf, tc->size, 0);
+                buf = tc->converted_data.data();
               }
+
+              current_engine_->writeTensor(arg.first, buf);
+
               tc->on_device = true;
               tc->input_handle = arg.first;
+              tc->converted_data.clear();
+
               if (current_config_.profiling().enable_io_trace()) {
                 AddEventRecord(
                     tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
