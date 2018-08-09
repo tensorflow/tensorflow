@@ -175,7 +175,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
