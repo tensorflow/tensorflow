@@ -34,13 +34,6 @@ import sys
 import unittest
 
 import tensorflow as tf
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.compat import v1 as tf_v1
-  # We import compat.v1 as tf_v1 instead.
-  del tf.compat.v1
-except ImportError:
-  tf_v1 = None
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -53,8 +46,6 @@ from tensorflow.tools.api.lib import api_objects_pb2
 from tensorflow.tools.api.lib import python_object_to_proto_visitor
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
-# pylint: enable=g-import-not-at-top
-
 
 # FLAGS defined at the bottom:
 FLAGS = None
@@ -102,6 +93,21 @@ def _FileNameToKey(filename):
   api_object_key = re.sub(
       '((-[a-z]){1})', _ReplaceDashWithCaps, base_filename_without_ext)
   return api_object_key
+
+
+def _VerifyNoSubclassOfMessageVisitor(path, parent, unused_children):
+  """A Visitor that crashes on subclasses of generated proto classes."""
+  # If the traversed object is a proto Message class
+  if not (isinstance(parent, type) and
+          issubclass(parent, message.Message)):
+    return
+  if parent is message.Message:
+    return
+  # Check that it is a direct subclass of Message.
+  if message.Message not in parent.__bases__:
+    raise NotImplementedError(
+        'Object tf.%s is a subclass of a generated proto Message. '
+        'They are not yet supported by the API tools.' % path)
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -215,33 +221,40 @@ class ApiCompatibilityTest(test.TestCase):
       logging.info('No differences found between API and golden.')
 
   def testNoSubclassOfMessage(self):
-
-    def Visit(path, parent, unused_children):
-      """A Visitor that crashes on subclasses of generated proto classes."""
-      # If the traversed object is a proto Message class
-      if not (isinstance(parent, type) and
-              issubclass(parent, message.Message)):
-        return
-      if parent is message.Message:
-        return
-      # Check that it is a direct subclass of Message.
-      if message.Message not in parent.__bases__:
-        raise NotImplementedError(
-            'Object tf.%s is a subclass of a generated proto Message. '
-            'They are not yet supported by the API tools.' % path)
-    visitor = public_api.PublicAPIVisitor(Visit)
+    visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
+    # Skip compat.v1 and compat.v2 since they are validated in separate tests.
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf, visitor)
 
-  def checkBackwardsCompatibility(self, root, golden_file_pattern, api_version):
+  def testNoSubclassOfMessageV1(self):
+    if not hasattr(tf.compat, 'v1'):
+      return
+    visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
+    visitor.do_not_descend_map['tf'].append('contrib')
+    traverse.traverse(tf.compat.v1, visitor)
+
+  def testNoSubclassOfMessageV2(self):
+    if not hasattr(tf.compat, 'v2'):
+      return
+    visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
+    visitor.do_not_descend_map['tf'].append('contrib')
+    traverse.traverse(tf.compat.v2, visitor)
+
+  def _checkBackwardsCompatibility(
+      self, root, golden_file_pattern, api_version,
+      additional_private_map=None):
     # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
     public_api_visitor.do_not_descend_map['tf'].append('contrib')
-    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
-    traverse.traverse(root, public_api_visitor)
+    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = [
+        'Experimental']
+    if additional_private_map:
+      public_api_visitor.private_map.update(additional_private_map)
 
+    traverse.traverse(root, public_api_visitor)
     proto_dict = visitor.GetProtos()
 
     # Read all golden files.
@@ -271,23 +284,43 @@ class ApiCompatibilityTest(test.TestCase):
       sys.version_info.major == 2,
       'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibility(self):
-    api_version = 2
+    api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self.checkBackwardsCompatibility(tf, golden_file_pattern, api_version)
+    self._checkBackwardsCompatibility(
+        tf,
+        golden_file_pattern,
+        api_version,
+        # Skip compat.v1 and compat.v2 since they are validated
+        # in separate tests.
+        additional_private_map={'tf.compat': ['v1', 'v2']})
 
   @unittest.skipUnless(
       sys.version_info.major == 2,
       'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibilityV1(self):
-    if not tf_v1:
+    if not hasattr(tf.compat, 'v1'):
       return
     api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self.checkBackwardsCompatibility(tf_v1, golden_file_pattern, api_version)
+    self._checkBackwardsCompatibility(
+        tf.compat.v1, golden_file_pattern, api_version)
+
+  @unittest.skipUnless(
+      sys.version_info.major == 2,
+      'API compabitility test goldens are generated using python2.')
+  def testAPIBackwardsCompatibilityV2(self):
+    if not hasattr(tf.compat, 'v2'):
+      return
+    api_version = 1
+    golden_file_pattern = os.path.join(
+        resource_loader.get_root_dir_with_all_resources(),
+        _KeyToFilePath('*', api_version))
+    self._checkBackwardsCompatibility(
+        tf.compat.v2, golden_file_pattern, api_version)
 
 
 if __name__ == '__main__':

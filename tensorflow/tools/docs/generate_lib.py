@@ -237,7 +237,9 @@ def add_dict_to_dict(add_from, add_to):
 def _get_default_private_map():
   return {
       'tf.contrib.autograph': ['utils', 'operators'],
-      'tf.test': ['mock']}
+      'tf.test': ['mock'],
+      'tf.compat': ['v1', 'v2'],
+  }
 
 
 # Exclude members of some libraries.
