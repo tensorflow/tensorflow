@@ -34,13 +34,6 @@ namespace gpu {
 using se::dnn::DataLayout;
 using se::dnn::FilterLayout;
 
-static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
-  int major, minor;
-  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
-                                                                       &minor));
-  return major >= 7;
-}
-
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
@@ -182,6 +175,38 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     if (IsCustomCallToDnnConvolution(*instruction)) {
       TF_RETURN_IF_ERROR(
           AddBackendConstraintsToDnnConvCustomCall(instruction, constraints));
+    }
+
+    // For batched dot we require the default layout.
+    // TODO(b/112111608): This is overly conservative, the only real restriction
+    // is that batch dimensions must be major.
+    if (instruction->opcode() == HloOpcode::kDot &&
+        ImplementedAsGemm(*instruction) &&
+        instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
+      // Verify that the batch dims come before the row and col dims.
+      const DotDimensionNumbers& dim_nums =
+          instruction->dot_dimension_numbers();
+      CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
+               dim_nums.rhs_batch_dimensions_size());
+      CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
+               ShapeUtil::Rank(instruction->shape()));
+      for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+        CHECK_LT(batch_dim, ShapeUtil::Rank(instruction->shape()) - 2);
+      }
+
+      // Set both inputs and the output to default layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape op1_shape = instruction->operand(1)->shape();
+      LayoutUtil::SetToDefaultLayout(&op1_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     }
   }
   return Status::OK();

@@ -172,7 +172,7 @@ TEST_F(ShapeTreeTest, TupleShape) {
 
   // Write zero to all data elements.
   shape_tree.ForEachMutableElement(
-      [&sum](const ShapeIndex& /*index*/, int* data) { *data = 0; });
+      [](const ShapeIndex& /*index*/, int* data) { *data = 0; });
   EXPECT_EQ(0, shape_tree.element({}));
   EXPECT_EQ(0, shape_tree.element({0}));
   EXPECT_EQ(0, shape_tree.element({1}));

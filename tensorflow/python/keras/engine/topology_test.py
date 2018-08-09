@@ -24,6 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
@@ -1067,6 +1068,101 @@ class DefaultShapeInferenceBehaviorTest(test.TestCase):
       # the graph of layers.
       outputs = LayerWithAdditionalArg()(inputs, some_arg=0)
       _ = keras.Model(inputs, outputs)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNoneInShape(self):
+
+    class Model(keras.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.conv1 = keras.layers.Conv2D(8, 3)
+        self.pool = keras.layers.GlobalAveragePooling2D()
+        self.fc = keras.layers.Dense(3)
+
+      def call(self, x):
+        x = self.conv1(x)
+        x = self.pool(x)
+        x = self.fc(x)
+        return x
+
+    model = Model()
+    model.build(tensor_shape.TensorShape((None, None, None, 1)))
+    self.assertTrue(model.built, 'Model should be built')
+    self.assertTrue(model.weights,
+                    'Model should have its weights created as it '
+                    'has been built')
+    sample_input = array_ops.ones((1, 10, 10, 1))
+    output = model(sample_input)
+    self.assertEqual(output.shape, (1, 3))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNoneInShapeWithCompoundModel(self):
+
+    class BasicBlock(keras.Model):
+
+      def __init__(self):
+        super(BasicBlock, self).__init__()
+        self.conv1 = keras.layers.Conv2D(8, 3)
+        self.pool = keras.layers.GlobalAveragePooling2D()
+        self.dense = keras.layers.Dense(3)
+
+      def call(self, x):
+        x = self.conv1(x)
+        x = self.pool(x)
+        x = self.dense(x)
+        return x
+
+    class CompoundModel(keras.Model):
+
+      def __init__(self):
+        super(CompoundModel, self).__init__()
+        self.block = BasicBlock()
+
+      def call(self, x):
+        x = self.block(x)  # pylint: disable=not-callable
+        return x
+
+    model = CompoundModel()
+    model.build(tensor_shape.TensorShape((None, None, None, 1)))
+    self.assertTrue(model.built, 'Model should be built')
+    self.assertTrue(model.weights,
+                    'Model should have its weights created as it '
+                    'has been built')
+    sample_input = array_ops.ones((1, 10, 10, 1))
+    output = model(sample_input)  # pylint: disable=not-callable
+    self.assertEqual(output.shape, (1, 3))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNoneInShapeWithFunctinalAPI(self):
+
+    class BasicBlock(keras.Model):
+      # Inherting from keras.layers.Layer since we are calling this layer
+      # inside a model created using functional API.
+
+      def __init__(self):
+        super(BasicBlock, self).__init__()
+        self.conv1 = keras.layers.Conv2D(8, 3)
+
+      def call(self, x):
+        x = self.conv1(x)
+        return x
+
+    input_layer = keras.layers.Input(shape=(None, None, 1))
+    x = BasicBlock()(input_layer)
+    x = keras.layers.GlobalAveragePooling2D()(x)
+    output_layer = keras.layers.Dense(3)(x)
+
+    model = keras.Model(inputs=input_layer, outputs=output_layer)
+
+    model.build(tensor_shape.TensorShape((None, None, None, 1)))
+    self.assertTrue(model.built, 'Model should be built')
+    self.assertTrue(model.weights,
+                    'Model should have its weights created as it '
+                    'has been built')
+    sample_input = array_ops.ones((1, 10, 10, 1))
+    output = model(sample_input)
+    self.assertEqual(output.shape, (1, 3))
 
 
 class GraphUtilsTest(test.TestCase):

@@ -734,11 +734,11 @@ class ControlFlowTest(test.TestCase):
 
       def body_fn(i):
         with ops.control_dependencies([increment]):
-          return i + i
+          return i + 1
 
-      result = control_flow_ops.while_loop(cond=lambda i: i < 1,
+      result = control_flow_ops.while_loop(cond=lambda i: i < 2,
                                            body=body_fn, loop_vars=[1])
-      result.eval()
+      self.assertAllEqual(result.eval(), 2)
       self.assertAllEqual(v.eval(), 1.0)
 
   def testWhileExternalControlDependenciesNoInput(self):

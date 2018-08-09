@@ -393,6 +393,10 @@ message ConfigProto {
     // Whether the client will format templated errors. For example, the string:
     // "The node was defined on ^^node:Foo:${file}:${line}^^".
     bool client_handles_error_formatting = 2;
+
+    // Which executor to use, the default executor will be used
+    // if it is an empty string or "DEFAULT"
+    string executor_type = 3;
   };
 
   Experimental experimental = 16;

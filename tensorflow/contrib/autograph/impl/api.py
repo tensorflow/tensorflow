@@ -68,7 +68,8 @@ def convert(recursive=False, verbose=False, arg_types=None):
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-      return converted_call(f, recursive, verbose, arg_types, *args, **kwargs)
+      return converted_call(f, recursive, verbose, True, arg_types, *args,
+                            **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -129,12 +130,12 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
-def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
+def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
+                   **kwargs):
   """Compiles a function call inline."""
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
-
-  if conversion.is_whitelisted_for_graph(f):
+  if not force_conversion and conversion.is_whitelisted_for_graph(f):
     return f(*args, **kwargs)
 
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
@@ -258,25 +259,27 @@ def to_graph(e,
     # Avoid overwriting entities that have been transformed.
     if key not in compiled_module.__dict__:
       compiled_module.__dict__[key] = val
-  compiled_fn = getattr(compiled_module, name)
+  compiled = getattr(compiled_module, name)
 
   # Need this so the source_mapping attribute is available for the context
   # manager to access for runtime errors.
   #
   # Note that compiler.ast_to_object attaches the source map 'ag_source_map__'
   # symbol to the compiled module.
+  # TODO(mdan): Record this statically in the generated code.
+  # TODO(mdan): Rename this attribute to 'autograph_info__'
   source_map_attribute_name = 'ag_source_map'
-  if getattr(compiled_fn, source_map_attribute_name, None) is not None:
+  if getattr(compiled, source_map_attribute_name, None) is not None:
     raise ValueError('cannot convert %s because is has an attribute '
                      '"%s", which is reserved for AutoGraph.' %
-                     (compiled_fn, source_map_attribute_name))
-  setattr(compiled_fn, source_map_attribute_name,
+                     (compiled, source_map_attribute_name))
+  setattr(compiled, source_map_attribute_name,
           compiled_module.__dict__['ag_source_map__'])
 
   if verbose:
     logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
 
-  return compiled_fn
+  return compiled
 
 
 def to_code(e,

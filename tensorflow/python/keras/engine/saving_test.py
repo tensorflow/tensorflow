@@ -35,6 +35,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training as training_module
 
 try:
@@ -662,6 +663,22 @@ class SubclassedModel(training.Model):
 
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase):
+
+  def test_keras_optimizer_warning(self):
+    graph = ops.Graph()
+    with graph.as_default(), self.test_session(graph):
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+      model._make_train_function()
+      temp_dir = self.get_temp_dir()
+      prefix = os.path.join(temp_dir, 'ckpt')
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.save_weights(prefix)
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Keras optimizer')
 
   @test_util.run_in_graph_and_eager_modes
   def test_tensorflow_format_overwrite(self):

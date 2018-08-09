@@ -736,9 +736,10 @@ def is_keras_tensor(x):
       True
   ```
   """
-  if not isinstance(x, (ops.Tensor,
-                        variables_module.Variable,
-                        sparse_tensor.SparseTensor)):
+  if (not isinstance(x, (ops.Tensor,
+                         variables_module.Variable,
+                         sparse_tensor.SparseTensor)) and
+      x.__class__.__name__ != 'DeferredTensor'):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')
@@ -2934,8 +2935,8 @@ def function(inputs, outputs, updates=None, **kwargs):
   """
   if kwargs:
     for key in kwargs:
-      if (key not in tf_inspect.getargspec(session_module.Session.run)[0] and
-          key not in tf_inspect.getargspec(Function.__init__)[0]):
+      if (key not in tf_inspect.getfullargspec(session_module.Session.run)[0]
+          and key not in tf_inspect.getfullargspec(Function.__init__)[0]):
         msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)

@@ -211,8 +211,7 @@ class ImageNetInput(object):
     dataset = tf.data.Dataset.range(1).repeat().map(self._get_null_input)
     dataset = dataset.prefetch(batch_size)
 
-    dataset = dataset.apply(
-        tf.contrib.data.batch_and_drop_remainder(batch_size))
+    dataset = dataset.batch(batch_size, drop_remainder=True)
     if self.transpose_input:
       dataset = dataset.map(
           lambda images, labels: (tf.transpose(images, [1, 2, 3, 0]), labels),

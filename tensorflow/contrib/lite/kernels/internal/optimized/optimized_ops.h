@@ -168,6 +168,18 @@ ArrayMap<Scalar> MapAsArrayWithFirstDimAsRows(Scalar* data,
   return ArrayMap<Scalar>(data, rows, cols);
 }
 
+// Copied from tensorflow/core/framework/tensor_types.h
+template <typename T, int NDIMS = 1, typename IndexType = Eigen::DenseIndex>
+struct TTypes {
+  // Rank-1 tensor (vector) of scalar type T.
+  typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, IndexType>,
+                           Eigen::Aligned>
+      Flat;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
+      UnalignedConstMatrix;
+};
+
 // TODO(b/62193649): this function is only needed as long
 // as we have the --variable_batch hack.
 template <typename Scalar, int N>
@@ -1018,10 +1030,10 @@ inline void FullyConnectedAsGEMV(
 struct GemmlowpOutputPipeline {
   typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
       ColVectorMap;
-  typedef std::tuple<
-      gemmlowp::OutputStageBiasAddition<ColVectorMap>,
-      gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint,
-      gemmlowp::OutputStageClamp, gemmlowp::OutputStageSaturatingCastToUint8>
+  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
+                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
+                     gemmlowp::OutputStageClamp,
+                     gemmlowp::OutputStageSaturatingCastToUint8>
       Pipeline;
   static Pipeline MakeExp(const int32* bias_data, int output_rows,
                           int32 output_offset, int32 output_multiplier,
@@ -1030,11 +1042,10 @@ struct GemmlowpOutputPipeline {
     ColVectorMap bias_vector(bias_data, output_rows);
     gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
     bias_addition_stage.bias_vector = bias_vector;
-    gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint
-        quantize_down_stage;
+    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
     quantize_down_stage.result_offset_after_shift = output_offset;
     quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_shift = -output_left_shift;
+    quantize_down_stage.result_exponent = output_left_shift;
     gemmlowp::OutputStageClamp clamp_stage;
     clamp_stage.min = output_activation_min;
     clamp_stage.max = output_activation_max;

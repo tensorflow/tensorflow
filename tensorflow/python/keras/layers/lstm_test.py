@@ -197,6 +197,7 @@ class LSTMLayerTest(test.TestCase):
       self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
       self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_with_masking_layer_LSTM(self):
     layer_class = keras.layers.LSTM
     with self.test_session():
@@ -206,7 +207,8 @@ class LSTMLayerTest(test.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Masking(input_shape=(3, 4)))
       model.add(layer_class(units=5, return_sequences=True, unroll=False))
-      model.compile(loss='categorical_crossentropy', optimizer='adam')
+      model.compile(loss='categorical_crossentropy',
+                    optimizer=RMSPropOptimizer(0.01))
       model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_from_config_LSTM(self):
@@ -311,7 +313,8 @@ class LSTMLayerTest(test.TestCase):
       output = keras.layers.LSTM(units)(inputs, initial_state=initial_state)
 
       model = keras.models.Model([inputs] + initial_state, output)
-      model.compile(loss='categorical_crossentropy', optimizer='adam')
+      model.compile(loss='categorical_crossentropy',
+                    optimizer=RMSPropOptimizer(0.01))
 
       inputs = np.random.random((num_samples, timesteps, embedding_dim))
       initial_state = [np.random.random((num_samples, units))

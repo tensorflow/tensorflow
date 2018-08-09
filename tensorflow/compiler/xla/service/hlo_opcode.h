@@ -118,6 +118,7 @@ namespace xla {
   V(kReverse, "reverse")                                     \
   V(kRng, "rng")                                             \
   V(kRoundNearestAfz, "round-nearest-afz")                   \
+  V(kScatter, "scatter")                                     \
   V(kSelect, "select")                                       \
   V(kSelectAndScatter, "select-and-scatter")                 \
   V(kSend, "send")                                           \

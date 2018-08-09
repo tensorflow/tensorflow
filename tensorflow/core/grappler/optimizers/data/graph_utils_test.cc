@@ -167,10 +167,34 @@ TEST(GraphUtilsTest, FindNodeWithOp) {
   EXPECT_EQ(FindNodeWithOp("OpA", *graph.GetGraph()), -1);
 
   AddNode("A", "OpA", {}, {}, &graph);
-  EXPECT_NE(FindNodeWithOp("OpA", *graph.GetGraph()), -1);
+  AddNode("B", "OpB", {"A"}, {}, &graph);
+  AddNode("A2", "OpA", {"B"}, {}, &graph);
+  EXPECT_EQ(FindNodeWithOp("OpA", *graph.GetGraph()), 0);
 
-  graph.DeleteNodes({"A"});
+  graph.DeleteNodes({"B"});
+  EXPECT_EQ(FindNodeWithOp("OpB", *graph.GetGraph()), -1);
+  EXPECT_EQ(FindGraphNodeWithName("A2", *graph.GetGraph()), 1);
+}
+
+TEST(GraphUtilsTest, FindAllGraphNodesWithOp) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
   EXPECT_EQ(FindNodeWithOp("OpA", *graph.GetGraph()), -1);
+
+  AddNode("A", "OpA", {}, {}, &graph);
+  AddNode("B", "OpB", {"A"}, {}, &graph);
+  AddNode("A2", "OpA", {"B"}, {}, &graph);
+  std::vector<int> result_indices =
+      FindAllGraphNodesWithOp("OpA", *graph.GetGraph());
+  EXPECT_EQ(result_indices.size(), 2);
+  EXPECT_EQ(result_indices.at(0), 0);
+  EXPECT_EQ(result_indices.at(1), 2);
+
+  graph.DeleteNodes({"A2"});
+  std::vector<int> result_indices_new =
+      FindAllGraphNodesWithOp("OpA", *graph.GetGraph());
+  EXPECT_EQ(result_indices_new.size(), 1);
+  EXPECT_EQ(result_indices_new.at(0), 0);
 }
 
 TEST(GraphUtilsTest, SetUniqueGraphNodeName) {

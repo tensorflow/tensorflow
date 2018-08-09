@@ -33,8 +33,6 @@ import traceback
 
 from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.util import tf_inspect
-
 
 # TODO(mdan): Add a superclass common to all errors.
 
@@ -68,45 +66,27 @@ class TfRuntimeError(Exception):
     return message + ''.join(traceback.format_list(self.custom_traceback))
 
 
-def _rewrite_tb(source_map, tb, filter_function_name=None):
+def _rewrite_tb(source_map, tb):
   """Rewrites code references in a traceback.
 
   Args:
     source_map: Dict[origin_info.LineLocation, origin_info.OriginInfo], mapping
         locations to their origin
     tb: List[Tuple[Text, Text, Text, Text]], consistent with
-        traceback.extract_tb
-    filter_function_name: Optional[Text], allows restricting restricts the
-        frames to rewrite to a particular function name
+        traceback.extract_tb.
   Returns:
     List[Tuple[Text, Text, Text, Text]], the rewritten traceback
   """
   new_tb = []
   for frame in tb:
-    filename, lineno, function_name, _ = frame
+    filename, lineno, _, _ = frame
     loc = origin_info.LineLocation(filename, lineno)
     origin = source_map.get(loc)
-    # TODO(mdan): We shouldn't need the function name at all.
-    # filename + lineno should be sufficient, even if there are multiple source
-    # maps.
     if origin is not None:
-      if filter_function_name == function_name or filter_function_name is None:
-        new_tb.append(origin.as_frame())
-      else:
-        new_tb.append(frame)
+      new_tb.append(origin.as_frame())
     else:
       new_tb.append(frame)
   return new_tb
-
-
-# TODO(znado): Make more robust to name changes in the rewriting logic.
-def _remove_rewrite_frames(tb):
-  """Remove stack frames containing the error rewriting logic."""
-  cleaned_tb = []
-  for f in tb:
-    if 'ag__.rewrite_graph_construction_error' not in f[3]:
-      cleaned_tb.append(f)
-  return cleaned_tb
 
 
 # TODO(mdan): rename to raise_*
@@ -132,20 +112,17 @@ def rewrite_graph_construction_error(source_map):
   _, original_error, e_traceback = error_info
   assert original_error is not None
   try:
-    _, _, _, func_name, _, _ = tf_inspect.stack()[1]
+    current_traceback = _cut_traceback_loops(source_map,
+                                             traceback.extract_tb(e_traceback))
     if isinstance(original_error, GraphConstructionError):
       # TODO(mdan): This is incomplete.
       # The error might have bubbled through a non-converted function.
-      cleaned_traceback = traceback.extract_tb(e_traceback)
       previous_traceback = original_error.custom_traceback
-      cleaned_traceback = [cleaned_traceback[0]] + previous_traceback
+      cleaned_traceback = [current_traceback[0]] + previous_traceback
     else:
-      cleaned_traceback = traceback.extract_tb(e_traceback)
+      cleaned_traceback = current_traceback
 
-    # Remove the frame corresponding to this function call.
-    cleaned_traceback = cleaned_traceback[1:]
-
-    cleaned_traceback = _rewrite_tb(source_map, cleaned_traceback, func_name)
+    cleaned_traceback = _rewrite_tb(source_map, cleaned_traceback)
 
     if isinstance(original_error, GraphConstructionError):
       original_error.custom_traceback = cleaned_traceback
@@ -163,6 +140,60 @@ def rewrite_graph_construction_error(source_map):
     del e_traceback
 
 
+def _cut_traceback_loops(source_map, original_traceback):
+  """Check for cases where we leave a user method and re-enter it.
+
+  This is done by looking at the function names when the filenames are from any
+  files the user code is in.  If we find a case where we return to a user method
+  after leaving it then we cut out the frames in between because we assume this
+  means these in between frames are from internal AutoGraph code that shouldn't
+  be included.
+
+  An example of this is:
+
+   File "file1.py", line 57, in my_func
+     ...
+   File "control_flow_ops.py", line 231, in cond
+     ...
+   File "control_flow_ops.py", line 1039, in inner_cond
+     ...
+   File "file1.py", line 68, in my_func
+     ...
+
+  Where we would remove the control_flow_ops.py frames because we re-enter
+  my_func in file1.py.
+
+  The source map keys are (file_path, line_number) so get the set of all user
+  file_paths.
+
+  Args:
+    source_map: Dict[origin_info.LineLocation, origin_info.OriginInfo], mapping
+      locations to their origin
+    original_traceback: List[Tuple[Text, Text, Text, Text]], consistent with
+      traceback.extract_tb.
+
+  Returns:
+    List[Tuple[Text, Text, Text, Text]], the traceback with any loops removed.
+  """
+  all_user_files = set(loc.filename for loc in source_map)
+  cleaned_traceback = []
+  last_user_frame_index = None
+  last_user_user_file_path = None
+  # TODO(mdan): Simplify this logic.
+  for fi, frame in enumerate(original_traceback):
+    frame_file_path, lineno, _, _ = frame
+    src_map_key = origin_info.LineLocation(frame_file_path, lineno)
+    if frame_file_path in all_user_files:
+      if src_map_key in source_map:
+        if (last_user_frame_index is not None and
+            last_user_user_file_path == frame_file_path):
+          cleaned_traceback = cleaned_traceback[:last_user_frame_index]
+      last_user_frame_index = fi
+      last_user_user_file_path = frame_file_path
+    cleaned_traceback.append(frame)
+  return cleaned_traceback
+
+
 # TODO(mdan): This should be consistent with rewrite_graph_construction_error
 # Both should either raise or return.
 def rewrite_tf_runtime_error(error, source_map):
@@ -175,56 +206,9 @@ def rewrite_tf_runtime_error(error, source_map):
   Returns:
     TfRuntimeError, the rewritten underlying error.
   """
-  # Check for cases where we leave a user method and re-enter it in the
-  # traceback.  This is done by looking at the function names when the
-  # filenames are from any files the user code is in.  If we find a case where
-  # we return to a user method after leaving it then we cut out the frames in
-  # between because we assume this means these in between frames are from
-  # internal AutoGraph code that shouldn't be included.
-  #
-  # An example of this is:
-  #
-  #  File "file1.py", line 57, in my_func
-  #    ...
-  #  File "control_flow_ops.py", line 231, in cond
-  #    ...
-  #  File "control_flow_ops.py", line 1039, in inner_cond
-  #    ...
-  #  File "file1.py", line 68, in my_func
-  #    ...
-  #
-  # Where we would remove the control_flow_ops.py frames because we re-enter
-  # my_func in file1.py.
-  #
-  # The source map keys are (file_path, line_number) so get the set of all user
-  # file_paths.
   try:
-    all_user_files = set(loc.filename for loc in source_map)
-    cleaned_traceback = []
-    last_user_frame_index = None
-    last_user_user_file_path = None
-    last_user_user_fn_name = None
-    # TODO(mdan): Simplify this logic.
-    for fi, frame in enumerate(error.op.traceback):
-      frame_file_path, lineno, _, _ = frame
-      lineno -= 1  # Frame line numbers are 1-based.
-      src_map_key = origin_info.LineLocation(frame_file_path, lineno)
-      if frame_file_path in all_user_files:
-        if src_map_key in source_map:
-          original_fn_name = source_map[src_map_key].function_name
-          if (last_user_frame_index is not None and
-              last_user_user_file_path == frame_file_path):
-            if last_user_user_fn_name == original_fn_name:
-              cleaned_traceback = cleaned_traceback[:last_user_frame_index]
-            else:
-              cleaned_traceback = cleaned_traceback[:last_user_frame_index + 1]
-          last_user_user_fn_name = original_fn_name
-        else:
-          last_user_user_fn_name = None
-        last_user_frame_index = fi
-        last_user_user_file_path = frame_file_path
-      cleaned_traceback.append(frame)
-
+    cleaned_traceback = _cut_traceback_loops(source_map, error.op.traceback)
+    # cleaned_traceback = error.op.traceback
     cleaned_traceback = _rewrite_tb(source_map, cleaned_traceback)
 
     op_name = error.op.name

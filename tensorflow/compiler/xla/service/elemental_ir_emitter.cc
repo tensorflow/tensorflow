@@ -2134,7 +2134,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
       };
     default:
-      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+      return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
                              HloOpcodeString(hlo->opcode()).c_str());
       };
