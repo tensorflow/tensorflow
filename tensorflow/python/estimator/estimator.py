@@ -988,7 +988,7 @@ class Estimator(object):
   def _get_features_and_labels_from_input_fn(self, input_fn, mode,
                                              distribution=None):
     """Extracts the `features` and labels from return values of `input_fn`."""
-    if distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+    if distribution is not None:
       result = distribution.distribute_dataset(
           lambda: self._call_input_fn(input_fn, mode))
     else:
