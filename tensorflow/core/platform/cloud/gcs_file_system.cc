@@ -618,9 +618,11 @@ bool StringPieceIdentity(StringPiece str, StringPiece* value) {
 }
 
 /// \brief Utility function to split a comma delimited list of strings to an
-/// unordered set
-bool SplitByCommaToSet(StringPiece list, std::unordered_set<string>* set) {
-  std::vector<string> vector = str_util::Split(list, ",");
+/// unordered set, lowercasing all values.
+bool SplitByCommaToLowercaseSet(StringPiece list,
+                                std::unordered_set<string>* set) {
+  std::vector<string> vector =
+      str_util::Split(tensorflow::str_util::Lowercase(list), ",");
   *set = std::unordered_set<string>(vector.begin(), vector.end());
   return true;
 }
@@ -778,7 +780,8 @@ GcsFileSystem::GcsFileSystem() {
     throttle_.SetConfig(config);
   }
 
-  GetEnvVar(kAllowedBucketLocations, SplitByCommaToSet, &allowed_locations_);
+  GetEnvVar(kAllowedBucketLocations, SplitByCommaToLowercaseSet,
+            &allowed_locations_);
 }
 
 GcsFileSystem::GcsFileSystem(
@@ -1155,8 +1158,11 @@ Status GcsFileSystem::GetBucketLocation(const string& bucket,
     Status status = GetBucketMetadata(bucket, &result_buffer);
     Json::Value result;
     TF_RETURN_IF_ERROR(ParseJson(result_buffer, &result));
+    string bucket_location;
     TF_RETURN_IF_ERROR(
-        GetStringValue(result, kBucketMetadataLocationKey, location));
+        GetStringValue(result, kBucketMetadataLocationKey, &bucket_location));
+    // Lowercase the GCS location to be case insensitive for allowed locations.
+    *location = tensorflow::str_util::Lowercase(bucket_location);
     return Status::OK();
   };
 
