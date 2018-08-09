@@ -79,7 +79,7 @@ tensorflow::Status IgniteDatasetIterator::EstablishConnection() {
 }
 
 tensorflow::Status IgniteDatasetIterator::CloseConnection() {
-  if (cursor_id != -1) {
+  if (cursor_id != -1 && !last_page) {
     tensorflow::Status conn_status = EstablishConnection();
     if (!conn_status.ok())
       return conn_status;
@@ -112,6 +112,9 @@ tensorflow::Status IgniteDatasetIterator::CloseConnection() {
     cursor_id = -1;
 
     return client->Disconnect();
+  }
+  else {
+    LOG(INFO) << "Query Cursor " << cursor_id << " is already closed";
   }
   
   return client->IsConnected() ? client->Disconnect() : tensorflow::Status::OK();
