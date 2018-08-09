@@ -3319,6 +3319,42 @@ func Unbatch(scope *Scope, batched_tensor tf.Output, batch_index tf.Output, id t
 	return op.Output(0)
 }
 
+// Elementwise computes the bitwise left-shift of `x` and `y`.
+//
+// If `y` is negative, or greater than or equal to the width of `x` in bits the
+// result is implementation defined.
+func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LeftShift",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Elementwise computes the bitwise XOR of `x` and `y`.
+//
+// The result will have those bits set, that are different in `x` and `y`. The
+// computation is performed on the underlying representations of `x` and `y`.
+func BitwiseXor(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BitwiseXor",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
@@ -12660,24 +12696,6 @@ func Fact(scope *Scope) (fact tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "Fact",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Elementwise computes the bitwise XOR of `x` and `y`.
-//
-// The result will have those bits set, that are different in `x` and `y`. The
-// computation is performed on the underlying representations of `x` and `y`.
-func BitwiseXor(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BitwiseXor",
-		Input: []tf.Input{
-			x, y,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -31891,24 +31909,6 @@ func BitwiseAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "BitwiseAnd",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Elementwise computes the bitwise left-shift of `x` and `y`.
-//
-// If `y` is negative, or greater than or equal to the width of `x` in bits the
-// result is implementation defined.
-func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LeftShift",
 		Input: []tf.Input{
 			x, y,
 		},
