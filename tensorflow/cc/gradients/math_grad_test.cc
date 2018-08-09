@@ -860,7 +860,8 @@ TEST_F(NaryGradTest, UnsafeDiv) {
     const auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
     // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
     // division errors in the numeric estimator used by the gradient checker.
-    const auto y = UnsafeDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+    const auto y = UnsafeDiv(
+        scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
     RunTest({x}, {x_shape}, {y}, {x_shape});
   }
   {
@@ -873,7 +874,8 @@ TEST_F(NaryGradTest, UnsafeDiv) {
     TF_EXPECT_OK(AddSymbolicGradients(scope_, {y}, {x}, &grad_outputs));
     ClientSession session(scope_);
     std::vector<Tensor> grad_result;
-    TF_EXPECT_OK(session.Run({{x, {-3.0f, 0.0f, 3.0f}}}, grad_outputs, &grad_result));
+    TF_EXPECT_OK(
+        session.Run({{x, {-3.0f, 0.0f, 3.0f}}}, grad_outputs, &grad_result));
     EXPECT_EQ(grad_result.size(), 1);
     EXPECT_EQ(grad_result[0].NumElements(), 3);
     EXPECT_EQ(grad_result[0].flat<float>()(0), 0.0f);
