@@ -654,6 +654,30 @@ class RNNTest(test.TestCase):
                                                'however `cell.state_size` is'):
         layer(x, initial_state=s)
 
+  def test_inconsistent_output_state_size(self):
+    with self.test_session():
+      batch = 32
+      time_step = 4
+      state_size = 5
+      input_size = 6
+      cell = PlusOneRNNCell(state_size)
+      x = keras.Input((None, input_size))
+      layer = keras.layers.RNN(cell)
+      y = layer(x)
+
+      self.assertEqual(cell.state_size, state_size)
+      init_state = layer.get_initial_state(x)
+      self.assertEqual(len(init_state), 1)
+      self.assertEqual(init_state[0].get_shape().as_list(),
+                       [None, state_size])
+
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, input_size)),
+          np.zeros((batch, input_size)))
+      self.assertEqual(model.output_shape, (None, input_size))
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
@@ -666,6 +690,7 @@ class Minimal2DRNNCell(keras.layers.Layer):
     self.unit_a = unit_a
     self.unit_b = unit_b
     self.state_size = tensor_shape.as_shape([unit_a, unit_b])
+    self.output_size = tensor_shape.as_shape([unit_a, unit_b])
     super(Minimal2DRNNCell, self).__init__(**kwargs)
 
   def build(self, input_shape):
@@ -690,6 +715,22 @@ class Minimal2DRNNCell(keras.layers.Layer):
     output = h + special_math_ops.einsum('bij,ijkl->bkl', prev_output,
                                          self.recurring_kernel)
     return output, [output]
+
+
+class PlusOneRNNCell(keras.layers.Layer):
+  """Add one to the input and state.
+
+  This cell is used for testing state_size and output_size."""
+
+  def __init__(self, num_unit, **kwargs):
+    self.state_size = num_unit
+    super(PlusOneRNNCell, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    self.output_size = input_shape[-1]
+
+  def call(self, inputs, states):
+    return inputs + 1, [states[0] + 1]
 
 
 if __name__ == '__main__':
