@@ -82,10 +82,10 @@ unsigned CastsElimination::ReplaceNodes() {
     for (HloMatcherMatched& match : matches_[pattern_index]) {
       if (match.ok) {
         auto* convert_out = match.instructions[0];
-        auto* reduction = match.instructions[1];
-        auto* to_reduce_convert = match.instructions[2];
-        auto* init_val = match.instructions[3];
-        auto* value_in = match.instructions[4];
+        auto* reduction = convert_out->mutable_operand(0);
+        auto* to_reduce_convert = reduction->mutable_operand(0);
+        auto* init_val = reduction->mutable_operand(1);
+        auto* value_in = to_reduce_convert->mutable_operand(0);
 
         // Create a new reduce_computation
         // Check the reduction op is elementwise binary and takes in two
@@ -120,11 +120,12 @@ unsigned CastsElimination::ReplaceNodes() {
           // convert a constant from F32 to F16 and add it to the graph
           const auto shape_init_val_fp16 =
               ShapeUtil::ChangeElementType(init_val->shape(), F16);
-          // std::unique_ptr<Literal> literal_f16;
           auto literal_f16 =
               init_val->literal().ConvertToShape(shape_init_val_fp16);
-          // TF_ASSIGN_OR_RETURN(literal_f16,
-          //                     );
+          // If we can't convert shape then skip this one
+          if (!literal_f16.ok()) {
+            continue;
+          }
           new_init_val =
               match.computation->AddInstruction(HloInstruction::CreateConstant(
                   std::move(literal_f16.ValueOrDie())));
@@ -160,10 +161,10 @@ unsigned CastsElimination::ReplaceNodes() {
     for (HloMatcherMatched& match : matches_[pattern_index]) {
       if (match.ok) {
         auto* convert_out = match.instructions[0];
-        auto* convert_in = match.instructions[1];
-        auto* val_in = match.instructions[2];
+        auto* convert_in = convert_out->mutable_operand(0);
+        auto* val_in = convert_in->mutable_operand(0);
 
-        // Replace all uses with the new reduction
+        // Replace all uses with val_in
         OutlinedInfo outlined_info;
         outlined_info.removed_instructions.push_back(convert_out);
         TF_CHECK_OK(convert_out->ReplaceAllUsesWith(val_in));
