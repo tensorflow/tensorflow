@@ -66,7 +66,7 @@ patch versions.  The public APIs consist of
 Some API functions are explicitly marked as "experimental" and can change in
 backward incompatible ways between minor releases. These include:
 
-*   **Experimental APIs**: The @{tf.contrib} module and its submodules in Python
+*   **Experimental APIs**: The `tf.contrib` module and its submodules in Python
     and any functions in the C API or fields in protocol buffers that are
     explicitly commented as being experimental. In particular, any field in a
     protocol buffer which is called "experimental" and all its fields and
@@ -79,6 +79,7 @@ backward incompatible ways between minor releases. These include:
     [`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc)).
   - [Java](../api_docs/java/reference/org/tensorflow/package-summary),
   - [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
+  - [JavaScript](https://js.tensorflow.org)
 
 *   **Details of composite ops:** Many public functions in Python expand to
     several primitive ops in the graph, and these details will be part of any
@@ -252,13 +253,13 @@ ops has not changed:
 
 1. If forward compatibility is desired,  set `strip_default_attrs` to `True`
    while exporting the model using either the
-   @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`add_meta_graph_and_variables`}
-   and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`add_meta_graph`}
+   `tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables`
+   and `tf.saved_model.builder.SavedModelBuilder.add_meta_graph`
    methods of the `SavedModelBuilder` class, or
-   @{tf.estimator.Estimator.export_savedmodel$`Estimator.export_savedmodel`}
+   `tf.estimator.Estimator.export_savedmodel`
 2. This strips off the default valued attributes at the time of
    producing/exporting the models. This makes sure that the exported
-   @{tf.MetaGraphDef} does not contain the new op-attribute when the default
+   `tf.MetaGraphDef` does not contain the new op-attribute when the default
    value is used.
 3. Having this control could allow out-of-date consumers (for example, serving
    binaries that lag behind training binaries) to continue loading the models
@@ -301,8 +302,10 @@ existing producer scripts will not suddenly use the new functionality.
 #### Change an op's functionality
 
 1.  Add a new similar op named `SomethingV2` or similar and go through the
-    process of adding it and switching existing Python wrappers to use it, which
-    may take three weeks if forward compatibility is desired.
+    process of adding it and switching existing Python wrappers to use it.
+    To ensure forward compatibility use the checks suggested in
+    [compat.py](https://www.tensorflow.org/code/tensorflow/python/compat/compat.py)
+    when changing the Python wrappers.
 2.  Remove the old op (Can only take place with a major version change due to
     backward compatibility).
 3.  Increase `min_consumer` to rule out consumers with the old op, add back the

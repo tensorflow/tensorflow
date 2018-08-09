@@ -1956,7 +1956,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -2731,7 +2731,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
       try:
         self._ResizeImageWithPad(x, target_height, target_width,
                                  use_tensor_inputs)
-      except Exception as e:
+      except Exception as e:  # pylint: disable=broad-except
         if err_msg not in str(e):
           raise
       else:
@@ -2985,7 +2985,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(

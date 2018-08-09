@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -29,8 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+
+using tensorflow::strings::StrAppend;
+using tensorflow::strings::StrCat;
 
 namespace xla {
 
@@ -69,6 +73,19 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
     }
   }
   return std::move(assignment);
+}
+
+string DeviceAssignment::ToString() const {
+  string output = StrCat("Computations: ", computation_count(),
+                         " Replicas: ", replica_count(), "\n");
+  for (int computation = 0; computation < computation_count(); ++computation) {
+    StrAppend(&output, "Computation ", computation, ": ");
+    for (int replica = 0; replica < replica_count(); ++replica) {
+      StrAppend(&output, operator()(replica, computation), " ");
+    }
+    StrAppend(&output, "\n");
+  }
+  return output;
 }
 
 StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,

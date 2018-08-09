@@ -50,6 +50,7 @@ py_library(
     deps = [
         ":gen_bigquery_reader_ops",
         ":gen_gcs_config_ops",
+        "//tensorflow/contrib/bigtable",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",

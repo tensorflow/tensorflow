@@ -42,6 +42,12 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
 
   virtual ~RpcCollectiveExecutorMgr();
 
+  // This function should only be called at the group_leader, by an RPC.
+  // Other needs for StepIds should be satisfied by NextStepId.
+  void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                            GetStepSequenceResponse* response,
+                            const StatusCallback& done) override;
+
   void RefreshStepIdSequenceAsync(int64 graph_key,
                                   const StatusCallback& done) override;
 

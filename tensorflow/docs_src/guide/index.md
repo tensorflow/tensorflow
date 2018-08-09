@@ -9,22 +9,18 @@ works. The units are as follows:
     training deep learning models.
   * @{$guide/eager}, an API for writing TensorFlow code
     imperatively, like you would use Numpy.
-  * @{$guide/estimators}, a high-level API that provides
-    fully-packaged models ready for large-scale training and production.
   * @{$guide/datasets}, easy input pipelines to bring your data into
     your TensorFlow program.
+  * @{$guide/estimators}, a high-level API that provides
+    fully-packaged models ready for large-scale training and production.
 
 ## Estimators
 
-* @{$estimators} provides an introduction.
-* @{$premade_estimators}, introduces Estimators for machine learning.
-* @{$custom_estimators}, which demonstrates how to build and train models you
-  design yourself.
-* @{$feature_columns}, which shows how an Estimator can handle a variety of input
-  data types without changes to the model.
-* @{$datasets_for_estimators} describes using tf.data with estimators.
-* @{$checkpoints}, which explains how to save training progress and resume where
-  you left off.
+* @{$premade_estimators}, the basics of premade Estimators.
+* @{$checkpoints}, save training progress and resume where you left off.
+* @{$feature_columns}, handle a variety of input data types without changes to the model.
+* @{$datasets_for_estimators}, use `tf.data` to input data.
+* @{$custom_estimators}, write your own Estimator.
 
 ## Accelerators
 

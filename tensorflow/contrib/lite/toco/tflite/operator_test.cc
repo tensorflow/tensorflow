@@ -127,6 +127,12 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
   CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
+  CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",
+                                         OperatorType::kLogicalOr);
+  CheckSimpleOperator<LogicalAndOperator>("LOGICAL_AND",
+                                          OperatorType::kLogicalAnd);
+  CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
+                                          OperatorType::kLogicalNot);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -416,6 +422,13 @@ TEST_F(OperatorTest, BuiltinArgMax) {
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
 }
 
+TEST_F(OperatorTest, BuiltinArgMin) {
+  ArgMinOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MIN", OperatorType::kArgMin), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
 TEST_F(OperatorTest, BuiltinTransposeConv) {
   TransposeConvOperator op;
   op.stride_width = 123;
@@ -443,6 +456,38 @@ TEST_F(OperatorTest, BuiltinSparseToDense) {
       SerializeAndDeserialize(
           GetOperator("SPARSE_TO_DENSE", OperatorType::kSparseToDense), op);
   EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
+}
+
+TEST_F(OperatorTest, BuiltinPack) {
+  PackOperator op;
+  op.values_count = 3;
+  op.axis = 1;
+  std::unique_ptr<toco::PackOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("PACK", OperatorType::kPack), op);
+  EXPECT_EQ(op.values_count, output_toco_op->values_count);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
+TEST_F(OperatorTest, BuiltinOneHot) {
+  OneHotOperator op;
+  op.axis = 2;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ONE_HOT", OperatorType::kOneHot), op);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
+TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
+  CTCBeamSearchDecoderOperator op;
+  op.beam_width = 3;
+  op.top_paths = 2;
+  op.merge_repeated = false;
+  std::unique_ptr<toco::CTCBeamSearchDecoderOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("CTC_BEAM_SEARCH_DECODER",
+                                          OperatorType::kCTCBeamSearchDecoder),
+                              op);
+  EXPECT_EQ(op.beam_width, output_toco_op->beam_width);
+  EXPECT_EQ(op.top_paths, output_toco_op->top_paths);
+  EXPECT_EQ(op.merge_repeated, output_toco_op->merge_repeated);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

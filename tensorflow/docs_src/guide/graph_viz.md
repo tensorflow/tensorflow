@@ -15,7 +15,7 @@ variable names can be scoped and the visualization uses this information to
 define a hierarchy on the nodes in the graph.  By default, only the top of this
 hierarchy is shown. Here is an example that defines three operations under the
 `hidden` name scope using
-@{tf.name_scope}:
+`tf.name_scope`:
 
 ```python
 import tensorflow as tf
@@ -248,7 +248,8 @@ The images below show the CIFAR-10 model with tensor shape information:
 Often it is useful to collect runtime metadata for a run, such as total memory
 usage, total compute time, and tensor shapes for nodes. The code example below
 is a snippet from the train and test section of a modification of the
-@{$layers$simple MNIST tutorial}, in which we have recorded summaries and
+[Estimators MNIST tutorial](../tutorials/estimators/cnn.md), in which we have
+recorded summaries and
 runtime statistics. See the
 @{$summaries_and_tensorboard#serializing-the-data$Summaries Tutorial}
 for details on how to record summaries.

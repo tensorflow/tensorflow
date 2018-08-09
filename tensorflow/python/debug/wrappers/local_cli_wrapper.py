@@ -596,7 +596,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       # Register tab completion for the filter names.
       curses_cli.register_tab_comp_context(["run", "r"],
                                            list(self._tensor_filters.keys()))
-    if self._feed_dict:
+    if self._feed_dict and hasattr(self._feed_dict, "keys"):
       # Register tab completion for feed_dict keys.
       feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]

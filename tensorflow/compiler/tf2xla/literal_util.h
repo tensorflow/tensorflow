@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -30,6 +30,16 @@ namespace tensorflow {
 // 'host_tensor'.
 Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
                                     xla::BorrowingLiteral* literal);
+// Returns a MutableBorrowingLiteral that utilizes the same underlying buffer
+// owned by 'host_tensor', but is mutable via the xla::Literal methods.
+Status HostTensorToMutableBorrowingLiteral(
+    Tensor* host_tensor, xla::MutableBorrowingLiteral* literal);
+// Similar as above, except the literal shape is explicitly provided and used
+// instead of obtaining it from the 'host_tensor'. The provided literal shape
+// 'xla_shape' must be compatible with the shape of 'host_tensor'.
+Status HostTensorToMutableBorrowingLiteral(
+    const xla::Shape& xla_shape, Tensor* host_tensor,
+    xla::MutableBorrowingLiteral* literal);
 
 // Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
 // owned by 'host_tensors'.

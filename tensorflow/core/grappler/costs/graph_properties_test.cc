@@ -783,7 +783,7 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
-TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
+TEST_F(GraphPropertiesTest, SimpleFunctionStaticShapeInference) {
   // Test graph produced in python using:
   /*
     @function.Defun(*[tf.float32] * 2, noinline=True)
@@ -796,7 +796,6 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
       z = MyAdd(x, y)
       z = MyAdd(x, z)
   */
-  // Check that the shape inference code infers what it can.
   GrapplerItem item;
   string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
                                  "simple_function.pbtxt");
@@ -806,15 +805,296 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   const auto out_props = properties.GetOutputProperties("MyAdd_55e046a8");
   const OpInfo::TensorProperties& out_prop = out_props[0];
   EXPECT_EQ(DT_FLOAT, out_prop.dtype());
-  EXPECT_TRUE(out_prop.shape().unknown_rank());
+  EXPECT_FALSE(out_prop.shape().unknown_rank());
+  EXPECT_EQ(2, out_prop.shape().dim_size());
+  EXPECT_EQ(1, out_prop.shape().dim(0).size());
+  EXPECT_EQ(2, out_prop.shape().dim(1).size());
 
   const auto in_props = properties.GetInputProperties("MyAdd_55e046a8");
+  EXPECT_EQ(2, in_props.size());
+
   const OpInfo::TensorProperties& in_prop = in_props[0];
   EXPECT_EQ(DT_FLOAT, in_prop.dtype());
   EXPECT_FALSE(in_prop.shape().unknown_rank());
   EXPECT_EQ(2, in_prop.shape().dim_size());
   EXPECT_EQ(1, in_prop.shape().dim(0).size());
   EXPECT_EQ(2, in_prop.shape().dim(1).size());
+
+  const OpInfo::TensorProperties& in_prop1 = in_props[1];
+  EXPECT_EQ(DT_FLOAT, in_prop1.dtype());
+  EXPECT_FALSE(in_prop1.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop1.shape().dim_size());
+  EXPECT_EQ(1, in_prop1.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop1.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, LargeFunctionStaticShapeInference) {
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "large_function_graph.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto out_props = properties.GetOutputProperties("y0");
+  EXPECT_EQ(2, out_props.size());
+
+  const OpInfo::TensorProperties& out_prop0 = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop0.dtype());
+  EXPECT_EQ(4, out_prop0.shape().dim_size());
+  EXPECT_EQ(128, out_prop0.shape().dim(0).size());
+  EXPECT_EQ(112, out_prop0.shape().dim(1).size());
+  EXPECT_EQ(112, out_prop0.shape().dim(2).size());
+  EXPECT_EQ(64, out_prop0.shape().dim(3).size());
+
+  const OpInfo::TensorProperties& out_prop1 = out_props[1];
+  EXPECT_EQ(DT_FLOAT, out_prop1.dtype());
+  EXPECT_EQ(128, out_prop1.shape().dim(0).size());
+  EXPECT_EQ(112, out_prop1.shape().dim(1).size());
+  EXPECT_EQ(112, out_prop1.shape().dim(2).size());
+  EXPECT_EQ(24, out_prop1.shape().dim(3).size());
+
+  const auto in_props = properties.GetInputProperties("y0");
+  EXPECT_EQ(4, in_props.size());
+
+  const OpInfo::TensorProperties& in_prop0 = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop0.dtype());
+  EXPECT_EQ(1, in_prop0.shape().dim_size());
+  EXPECT_EQ(64, in_prop0.shape().dim(0).size());
+
+  const OpInfo::TensorProperties& in_prop1 = in_props[1];
+  EXPECT_EQ(DT_FLOAT, in_prop1.dtype());
+  EXPECT_EQ(4, in_prop1.shape().dim_size());
+  EXPECT_EQ(1, in_prop1.shape().dim(0).size());
+  EXPECT_EQ(1, in_prop1.shape().dim(1).size());
+  EXPECT_EQ(24, in_prop1.shape().dim(2).size());
+  EXPECT_EQ(64, in_prop1.shape().dim(3).size());
+
+  const OpInfo::TensorProperties& in_prop2 = in_props[2];
+  EXPECT_EQ(DT_FLOAT, in_prop2.dtype());
+  EXPECT_EQ(4, in_prop2.shape().dim_size());
+  EXPECT_EQ(128, in_prop2.shape().dim(0).size());
+  EXPECT_EQ(224, in_prop2.shape().dim(1).size());
+  EXPECT_EQ(224, in_prop2.shape().dim(2).size());
+  EXPECT_EQ(3, in_prop2.shape().dim(3).size());
+
+  const OpInfo::TensorProperties& in_prop3 = in_props[3];
+  EXPECT_EQ(DT_FLOAT, in_prop3.dtype());
+  EXPECT_EQ(4, in_prop3.shape().dim_size());
+  EXPECT_EQ(7, in_prop3.shape().dim(0).size());
+  EXPECT_EQ(7, in_prop3.shape().dim(1).size());
+  EXPECT_EQ(3, in_prop3.shape().dim(2).size());
+  EXPECT_EQ(8, in_prop3.shape().dim(3).size());
+}
+
+TEST_F(GraphPropertiesTest, LargeFunctionWithMultipleOutputs) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(noinline=True)
+    def MyFunc():
+      @function.Defun(*[tf.float32] * 2)
+      def Cond(n, unused_x):
+        return n > 0
+
+      @function.Defun(*[tf.float32] * 2)
+      def Body(n, x):
+        return n - 1, x + n
+
+      i = tf.constant(10)
+      return functional_ops.While([i, 0.], Cond, Body)
+
+    with tf.Graph().as_default():
+      z = MyFunc()
+  */
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "function_functional_while.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto out_props = properties.GetOutputProperties("MyFunc_AenMyWWx1Us");
+  EXPECT_EQ(2, out_props.size());
+
+  const OpInfo::TensorProperties& out_prop0 = out_props[0];
+  EXPECT_EQ(DT_INT32, out_prop0.dtype());
+  EXPECT_FALSE(out_prop0.shape().unknown_rank());
+
+  const OpInfo::TensorProperties& out_prop1 = out_props[1];
+  EXPECT_EQ(DT_FLOAT, out_prop1.dtype());
+  EXPECT_FALSE(out_prop1.shape().unknown_rank());
+}
+
+TEST_F(GraphPropertiesTest, FunctionWithErrorStaticShapeInference) {
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "function_error.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto out_props = properties.GetOutputProperties("MyAdd_yabA4wXEdM4");
+  EXPECT_EQ(1, out_props.size());
+
+  const OpInfo::TensorProperties& out_prop = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop.dtype());
+  EXPECT_TRUE(out_prop.shape().unknown_rank());
+
+  const auto in_props = properties.GetInputProperties("MyAdd_yabA4wXEdM4");
+  EXPECT_EQ(2, in_props.size());
+
+  const OpInfo::TensorProperties& in_prop = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+  EXPECT_FALSE(in_prop.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop.shape().dim_size());
+  EXPECT_EQ(1, in_prop.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop.shape().dim(1).size());
+
+  const OpInfo::TensorProperties& in_prop1 = in_props[1];
+  EXPECT_EQ(DT_FLOAT, in_prop1.dtype());
+  EXPECT_FALSE(in_prop1.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop1.shape().dim_size());
+  EXPECT_EQ(1, in_prop1.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop1.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, FunctionSwitchStaticShapeInference) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(*[tf.float32] * 2, noinline=True)
+    def MyAdd(x, y):
+      return tf.add(x, y)
+
+    with tf.Graph().as_default():
+      x = lambda: tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      y = lambda: tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z2 = MyAdd(tf.case([(tf.less(0, 1), x)], default=y), z)
+  */
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "function_switch.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto out_props = properties.GetOutputProperties("MyAdd_MPaeanipb7o");
+  const OpInfo::TensorProperties& out_prop = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop.dtype());
+  EXPECT_FALSE(out_prop.shape().unknown_rank());
+  EXPECT_EQ(2, out_prop.shape().dim_size());
+  EXPECT_EQ(1, out_prop.shape().dim(0).size());
+  EXPECT_EQ(2, out_prop.shape().dim(1).size());
+
+  const auto in_props = properties.GetInputProperties("MyAdd_MPaeanipb7o");
+  EXPECT_EQ(2, in_props.size());
+
+  const OpInfo::TensorProperties& in_prop = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+  EXPECT_FALSE(in_prop.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop.shape().dim_size());
+  EXPECT_EQ(1, in_prop.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop.shape().dim(1).size());
+
+  const OpInfo::TensorProperties& in_prop1 = in_props[1];
+  EXPECT_EQ(DT_FLOAT, in_prop1.dtype());
+  EXPECT_FALSE(in_prop1.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop1.shape().dim_size());
+  EXPECT_EQ(1, in_prop1.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop1.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, FunctionSwitch2StaticShapeInference) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(*[tf.float32] * 2, noinline=True)
+    def MyAdd(x, y):
+      return tf.add(x, y)
+
+    with tf.Graph().as_default():
+      x = lambda: tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      y = lambda: tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z2 = MyAdd(tf.case([(tf.less(1, 0), x)], default=y), z)
+  */
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "function_switch_2.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto out_props = properties.GetOutputProperties("MyAdd_MPaeanipb7o");
+  const OpInfo::TensorProperties& out_prop = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop.dtype());
+  EXPECT_FALSE(out_prop.shape().unknown_rank());
+  EXPECT_EQ(2, out_prop.shape().dim_size());
+  EXPECT_EQ(1, out_prop.shape().dim(0).size());
+  EXPECT_EQ(2, out_prop.shape().dim(1).size());
+
+  const auto in_props = properties.GetInputProperties("MyAdd_MPaeanipb7o");
+  EXPECT_EQ(2, in_props.size());
+
+  const OpInfo::TensorProperties& in_prop = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+  EXPECT_FALSE(in_prop.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop.shape().dim_size());
+  EXPECT_EQ(1, in_prop.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop.shape().dim(1).size());
+
+  const OpInfo::TensorProperties& in_prop1 = in_props[1];
+  EXPECT_EQ(DT_FLOAT, in_prop1.dtype());
+  EXPECT_FALSE(in_prop1.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop1.shape().dim_size());
+  EXPECT_EQ(1, in_prop1.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop1.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, FunctionSwitchShapesStaticShapeInference) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(*[tf.float32] * 2, noinline=True)
+    def MyAdd(x, y):
+      a = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      b = tf.constant(2.0, shape=[1, 3], dtype=tf.float32)
+      c = tf.add(x, a)
+      d = tf.add(y, b)
+      return c
+
+    with tf.Graph().as_default():
+      x = lambda: tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      y = lambda: tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z = tf.constant(2.0, shape=[1, 3], dtype=tf.float32)
+      z2 = MyAdd(tf.case([(tf.less(1, 0), x)], default=y), z)
+  */
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "function_switch_shapes.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto out_props = properties.GetOutputProperties("MyAdd_lEKAAnIwI5I");
+  const OpInfo::TensorProperties& out_prop = out_props[0];
+  EXPECT_EQ(DT_FLOAT, out_prop.dtype());
+  EXPECT_FALSE(out_prop.shape().unknown_rank());
+  EXPECT_EQ(2, out_prop.shape().dim_size());
+  EXPECT_EQ(1, out_prop.shape().dim(0).size());
+  EXPECT_EQ(2, out_prop.shape().dim(1).size());
+
+  const auto in_props = properties.GetInputProperties("MyAdd_lEKAAnIwI5I");
+  EXPECT_EQ(2, in_props.size());
+
+  const OpInfo::TensorProperties& in_prop = in_props[0];
+  EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+  EXPECT_FALSE(in_prop.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop.shape().dim_size());
+  EXPECT_EQ(1, in_prop.shape().dim(0).size());
+  EXPECT_EQ(2, in_prop.shape().dim(1).size());
+
+  const OpInfo::TensorProperties& in_prop1 = in_props[1];
+  EXPECT_EQ(DT_FLOAT, in_prop1.dtype());
+  EXPECT_FALSE(in_prop1.shape().unknown_rank());
+  EXPECT_EQ(2, in_prop1.shape().dim_size());
+  EXPECT_EQ(1, in_prop1.shape().dim(0).size());
+  EXPECT_EQ(3, in_prop1.shape().dim(1).size());
 }
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {

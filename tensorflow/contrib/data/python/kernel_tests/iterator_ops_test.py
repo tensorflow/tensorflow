@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 
@@ -55,7 +56,7 @@ class CheckpointInputPipelineHookTest(test.TestCase):
   def _read_vars(self, model_dir):
     """Returns (global_step, latest_feature)."""
     with ops.Graph().as_default() as g:
-      ckpt_path = saver_lib.latest_checkpoint(model_dir)
+      ckpt_path = checkpoint_management.latest_checkpoint(model_dir)
       meta_filename = ckpt_path + '.meta'
       saver_lib.import_meta_graph(meta_filename)
       saver = saver_lib.Saver()
