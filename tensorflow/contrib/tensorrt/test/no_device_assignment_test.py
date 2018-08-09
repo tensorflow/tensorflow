@@ -18,14 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.contrib.tensorrt.python import trt_convert
 # pylint: disable=unused-import
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
 from tensorflow.python.client import session
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,6 +34,8 @@ class NoDeviceAssignmentTest(googletest.TestCase):
 
   def testNoDeviceAssignment(self):
     """Test that conversion should succeed when device is not specified."""
+    if not trt_convert.is_tensorrt_enabled():
+      return
     sess = session.Session()  # By default this will consume all the gpu memory.
     used_bytes = 0
     for device in sess.list_devices():
