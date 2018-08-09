@@ -81,13 +81,13 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 | Build Type      | Status | Artifacts |
 | ---             | ---    | ---       |
-| **Linux CPU**   | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-cc.png) | [pypi](https://pypi.org/project/tf-nightly/) |
-| **Linux GPU**   | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-gpu-py3.png) | [pypi](https://pypi.org/project/tf-nightly-gpu/) |
-| **Linux XLA**   | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-xla.png) | TBA |
-| **MacOS**       | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/macos-py2-cc.png) | [pypi](https://pypi.org/project/tf-nightly/) |
-| **Windows CPU** | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/windows-cpu.png) | [pypi](https://pypi.org/project/tf-nightly/) |
-| **Windows GPU** | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/windows-gpu.png) | [pypi](https://pypi.org/project/tf-nightly-gpu/) |
-| **Android**     | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/android.png) | [![Download](https://api.bintray.com/packages/google/tensorflow/tensorflow/images/download.svg)](https://bintray.com/google/tensorflow/tensorflow/_latestVersion) |
+| **Linux CPU**   | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-cc.svg) | [pypi](https://pypi.org/project/tf-nightly/) |
+| **Linux GPU**   | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-gpu-py3.svg) | [pypi](https://pypi.org/project/tf-nightly-gpu/) |
+| **Linux XLA**   | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-xla.svg) | TBA |
+| **MacOS**       | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/macos-py2-cc.svg) | [pypi](https://pypi.org/project/tf-nightly/) |
+| **Windows CPU** | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/windows-cpu.svg) | [pypi](https://pypi.org/project/tf-nightly/) |
+| **Windows GPU** | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/windows-gpu.svg) | [pypi](https://pypi.org/project/tf-nightly-gpu/) |
+| **Android**     | ![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/android.svg) | [![Download](https://api.bintray.com/packages/google/tensorflow/tensorflow/images/download.svg)](https://bintray.com/google/tensorflow/tensorflow/_latestVersion) |
 
 
 ### Community Supported Builds
