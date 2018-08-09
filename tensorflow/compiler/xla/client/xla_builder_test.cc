@@ -305,6 +305,21 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, AllToAll) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0,
+           /*split_count=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is decomposed into slices -> all-to-all -> gte -> concat.
+  EXPECT_EQ(root->opcode(), HloOpcode::kConcatenate);
+  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kAllToAll);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
+}
+
 TEST_F(XlaBuilderTest, ReportError) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");

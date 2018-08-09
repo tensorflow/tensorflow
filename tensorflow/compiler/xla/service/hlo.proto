@@ -151,8 +151,11 @@ message HloInstructionProto {
   // Backend configuration for the instruction. Has backend-specific meaning.
   string backend_config = 43;
 
-  // Cross Replica Sum fields.
+  // Cross replica op fields.
+  // TODO(b/112107579): remove replica_group_ids field and always use
+  // replica_groups.
   repeated int64 replica_group_ids = 44;
+  repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
   string cross_replica_sum_barrier = 46;
 

@@ -47,6 +47,7 @@ namespace xla {
 #define HLO_OPCODE_LIST(V)                                   \
   V(kAbs, "abs")                                             \
   V(kAdd, "add")                                             \
+  V(kAllToAll, "all-to-all")                                 \
   V(kAtan2, "atan2")                                         \
   V(kBatchNormGrad, "batch-norm-grad")                       \
   V(kBatchNormInference, "batch-norm-inference")             \

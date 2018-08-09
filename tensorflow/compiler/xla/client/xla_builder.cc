@@ -1881,6 +1881,61 @@ XlaOp XlaBuilder::CrossReplicaSum(
   });
 }
 
+XlaOp XlaBuilder::AllToAll(const XlaOp& operand, int64 split_dimension,
+                           int64 concat_dimension, int64 split_count,
+                           const std::vector<ReplicaGroup>& replica_groups) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+
+    // The HloInstruction for Alltoall currently only handles the data
+    // communication: it accepts N already split parts and scatters them to N
+    // cores, and each core gathers the N received parts into a tuple as the
+    // output. So here we explicitly split the operand before the hlo alltoall,
+    // and concat the tuple elements.
+    //
+    // First, run shape inference to make sure the shapes are valid.
+    TF_RETURN_IF_ERROR(
+        ShapeInference::InferAllToAllShape(operand_shape, split_dimension,
+                                           concat_dimension, split_count)
+            .status());
+
+    // Split into N parts.
+    std::vector<XlaOp> slices;
+    slices.reserve(split_count);
+    const int64 block_size =
+        operand_shape.dimensions(split_dimension) / split_count;
+    for (int i = 0; i < split_count; i++) {
+      slices.push_back(SliceInDim(operand, /*start_index=*/i * block_size,
+                                  /*limit_index=*/(i + 1) * block_size,
+                                  /*stride=*/1, /*dimno=*/split_dimension));
+    }
+
+    // Handle data communication.
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(auto slice_shapes, this->GetOperandShapes(slices));
+    std::vector<const Shape*> slice_shape_ptrs;
+    c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
+                [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    TF_ASSIGN_OR_RETURN(
+        XlaOp alltoall,
+        AddInstruction(std::move(instr), HloOpcode::kAllToAll, slices));
+
+    // Concat the N received parts.
+    std::vector<XlaOp> received;
+    received.reserve(split_count);
+    for (int i = 0; i < split_count; i++) {
+      received.push_back(this->GetTupleElement(alltoall, i));
+    }
+    return this->ConcatInDim(received, concat_dimension);
+  });
+}
+
 XlaOp XlaBuilder::SelectAndScatter(
     const XlaOp& operand, const XlaComputation& select,
     tensorflow::gtl::ArraySlice<int64> window_dimensions,
@@ -2675,6 +2730,13 @@ XlaOp CrossReplicaSum(
     const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
   return operand.builder()->CrossReplicaSum(operand, computation,
                                             replica_group_ids, channel_id);
+}
+
+XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
+               int64 concat_dimension, int64 split_count,
+               const std::vector<ReplicaGroup>& replica_groups) {
+  return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
+                                     split_count, replica_groups);
 }
 
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,

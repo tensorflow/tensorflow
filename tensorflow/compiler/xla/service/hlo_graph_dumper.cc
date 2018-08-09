@@ -1048,6 +1048,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMap:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:
