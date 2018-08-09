@@ -280,6 +280,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     std::string input_handle;
     std::string output_handle;
     ConversionFn output_convertor;
+    std::vector<char> converted_data;
     char data[0];
   };
   struct InputDef {

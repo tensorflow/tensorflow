@@ -127,6 +127,7 @@ void* PoplarExecutor::Allocate(uint64 size) {
   allocated->input_handle.clear();
   allocated->output_handle.clear();
   allocated->output_convertor = nullptr;
+  allocated->converted_data.clear();
   {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
@@ -683,12 +684,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       for (const auto& tc : allocations_) {
         if (tc->on_device == true) {
           if (!tc->output_handle.empty()) {
-            if (engine_changed) {
-              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-            } else if (tc->input_handle.empty()) {
-              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-            } else if (arg_map.count(tc->input_handle) > 0 &&
-                       tc != arg_map.at(tc->input_handle).tc) {
+            if (engine_changed ||
+                arg_map.count(tc->input_handle) == 0 ||
+                tc != arg_map.at(tc->input_handle).tc) {
               TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
             }
           } else {
@@ -705,47 +703,46 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       if (engine_changed) {
         try {
           engine->load(poplar_device_);
+
+          if (current_config_.profiling().enable_io_trace()) {
+            AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
+                           executable.module().name(), "", 0);
+          }
+
+          executable.OnEngineLoaded();
+
+          current_engine_ = engine;
+
         } catch (std::logic_error e) {
           return tensorflow::errors::Internal("Poplar engine load error ",
                                               e.what());
         }
-
-        if (current_config_.profiling().enable_io_trace()) {
-          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
-                         executable.module().name(), "", 0);
-        }
-
-        executable.OnEngineLoaded();
       }
-
-      current_engine_ = engine;
 
       // Put data on the device if:
       // a) the engine has changed
       // b) it is not on the device
       // c) it is on the device, but in the wrong place
       try {
-        for (auto mem : arg_map) {
-          TensorControl* tc = mem.second.tc;
+        for (auto arg : arg_map) {
+          TensorControl* tc = arg.second.tc;
           void* buf(static_cast<void*>(tc->data));
-          if (mem.second.streamed) {
-            current_engine_->connectStream(mem.first, buf);
-          } else {
-            if (tc->on_device == false || tc->input_handle != mem.first ||
+          if (!arg.second.streamed) {
+            if (tc->on_device == false || tc->input_handle != arg.first ||
                 engine_changed) {
-              ConversionFn fn = mem.second.fn;
+              ConversionFn fn = arg.second.fn;
               if (fn != nullptr) {
                 std::vector<char> converted = fn(buf, tc->size, 0);
-                current_engine_->writeTensor(mem.first, converted.data());
+                current_engine_->writeTensor(arg.first, converted.data());
               } else {
-                current_engine_->writeTensor(mem.first, buf);
+                current_engine_->writeTensor(arg.first, buf);
               }
               tc->on_device = true;
-              tc->input_handle = mem.first;
+              tc->input_handle = arg.first;
               if (current_config_.profiling().enable_io_trace()) {
                 AddEventRecord(
                     tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
-                    mem.first, 0);
+                    arg.first, 0);
               }
             }
           }
@@ -762,6 +759,16 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       VLOG(1) << "Executing on poplar device type " << GetDeviceTargetName();
 
       try {
+        // Input streams
+        for (auto arg : arg_map) {
+          TensorControl *tc = arg.second.tc;
+          void *buf(static_cast<void *>(tc->data));
+          if (arg.second.streamed) {
+            current_engine_->connectStream(arg.first, buf);
+          }
+        }
+
+        // Output streams
         const auto& streamed = executable.OutputStreamed();
         std::vector<void*> bufs;
         FlattenedOutputDeviceMemoryList(bufs, output_shape, retbuf.opaque());
