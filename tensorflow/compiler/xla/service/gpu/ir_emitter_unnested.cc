@@ -545,6 +545,11 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     switch (root->opcode()) {
       case HloOpcode::kTuple:
       case HloOpcode::kReduce: {
+        if (root->opcode() == HloOpcode::kReduce &&
+            ShapeUtil::IsTuple(root->shape())) {
+          // TODO(b/112040122): Support variadic reduce.
+          return Unimplemented("Variadic reduce is not supported on GPU");
+        }
         VLOG(3) << "Emitting fused reduction to vector: " << fusion->ToString();
         std::vector<std::unique_ptr<Thunk>> thunks;
         ArraySlice<HloInstruction*> output_instructions =
@@ -1694,6 +1699,10 @@ Status IrEmitterUnnested::EmitReductionToVector(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
+  // TODO(b/112040122): Support multi-output reduce.
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return Unimplemented("Multi-output reduce is not supported on GPU");
+  }
   auto input = reduce->operand(0);
   auto init_value = reduce->operand(1);
   tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce(reduce->dimensions());
