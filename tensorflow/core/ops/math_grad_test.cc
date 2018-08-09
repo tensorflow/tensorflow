@@ -754,10 +754,8 @@ TEST_F(MathGradTest, Div) {
 }
 
 TEST_F(MathGradTest, UnsafeDiv) {
-  auto x = test::AsTensor<float>({0.f, -3.f, -2.f,
-                                  -1.f, 0.f, 1.f,
-                                  2.f, 3.f, 0.f},
-                                 TensorShape({3, 3}));
+  auto x = test::AsTensor<float>(
+      {0.f, -3.f, -2.f, -1.f, 0.f, 1.f, 2.f, 3.f, 0.f}, TensorShape({3, 3}));
   auto y = test::AsTensor<float>({-10.f, 0.f, 10.f}, TensorShape({3, 1}));
   Tensor dx;
   Tensor dy;
@@ -781,8 +779,7 @@ TEST_F(MathGradTest, UnsafeDiv) {
       auto g = [](float x, float y) {
         if (y == 0.f) {
           return 0.f;
-        }
-        else {
+        } else {
           return -x / (y * y);
         }
       };
@@ -804,18 +801,18 @@ TEST_F(MathGradTest, UnsafeDiv) {
           return 1.f / y;
         }
       };
-      test::ExpectClose(dy, test::AsTensor<float>(
-                                {g(-10.f, 0.f) + g(-10.f, -3.f) + g(-10.f, -2.f),
-                                 g(0.f, -1.f) + g(0.f, 0.f) + g(0.f, 1.f),
-                                 g(10.f, 2.f) + g(10.f, 3.f) + g(10.f, 0.f)},
-                                TensorShape({3, 1})));
+      test::ExpectClose(dy,
+                        test::AsTensor<float>(
+                            {g(-10.f, 0.f) + g(-10.f, -3.f) + g(-10.f, -2.f),
+                             g(0.f, -1.f) + g(0.f, 0.f) + g(0.f, 1.f),
+                             g(10.f, 2.f) + g(10.f, 3.f) + g(10.f, 0.f)},
+                            TensorShape({3, 1})));
     }
     {
       auto g = [](float x, float y) {
         if (y == 0.f) {
           return 0.f;
-        }
-        else {
+        } else {
           return -x / (y * y);
         }
       };
