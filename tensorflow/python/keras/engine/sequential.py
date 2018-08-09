@@ -233,6 +233,9 @@ class Sequential(Model):
     return outputs
 
   def _call_and_compute_mask(self, inputs, training=None, mask=None):
+    if not self.built:
+      self.build(inputs.shape)
+
     x = inputs
     for layer in self.layers:
       kwargs = {}
