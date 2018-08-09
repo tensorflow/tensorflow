@@ -383,7 +383,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 #undef HANDLE_TYPE
           default:
             return errors::InvalidArgument("Unsupported data type: ",
-                                           value.dtype());
+                                           DataTypeString(value.dtype()));
         }
         return Status::OK();
       }
