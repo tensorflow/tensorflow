@@ -39,7 +39,7 @@ class SequenceFileDatasetTest(test.TestCase):
     where XXX is replaced as the line number (starts with 001).
     """
     filename = os.path.join(
-        resource_loader.get_data_files_path(), 'testdata/string.seq')
+        resource_loader.get_data_files_path(), 'testdata', 'string.seq')
 
     filenames = constant_op.constant([filename], dtypes.string)
     num_repeats = 2
