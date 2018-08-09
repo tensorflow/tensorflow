@@ -1884,6 +1884,10 @@ class Model(Network):
     Raises:
         ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`fit_generator` is not supported for '
+                                'models compiled with DistributionStrategy.')
+
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
           '`fit_generator` is not yet enabled for unbuilt Model subclasses')
@@ -1951,6 +1955,10 @@ class Model(Network):
     Raises:
         ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`evaluate_generator` is not supported for '
+                                'models compiled with DistributionStrategy.')
+
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
           '`evaluate_generator` is not yet enabled for '
@@ -2005,6 +2013,10 @@ class Model(Network):
     Raises:
         ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`predict_generator` is not supported for '
+                                'models compiled with DistributionStrategy.')
+
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
           '`predict_generator` is not yet enabled for unbuilt Model subclasses')
