@@ -1052,10 +1052,10 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  Literal literal;
+  Literal literal(arg->shape_with_layout());
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), &literal));
+          executor, arg->shape_with_layout(), literal));
   *result->mutable_literal() = literal.ToProto();
   return Status::OK();
 }
