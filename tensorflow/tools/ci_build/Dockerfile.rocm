@@ -29,18 +29,6 @@ RUN cd $HOME/hcc && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release 
 RUN cd $HOME && git clone -b roc-1.8.x-pr457-altfix https://github.com/deven-amd/HIP.git
 RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && sudo make package -j$(nproc) && sudo dpkg -i *.deb
 
-# Workaround: build MIOpen from source using fork that folds the public 1.4.2 release with the fix for issue 1061 
-RUN cd $HOME && git clone -b pr1061-fix https://github.com/deven-amd/MIOpen.git miopen
-RUN cd $HOME/miopen && sudo cmake -P install_deps.cmake
-RUN cd $HOME/miopen && mkdir build && cd build && \
-    CXX=/opt/rocm/bin/hcc cmake \
-    -DMIOPEN_BACKEND=HIP \
-    -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" \
-    -DCMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" \
-    -DCMAKE_BUILD_TYPE=Release \
-    .. && \
-    sudo make package -j$(nproc)
-
 ###########################
 # Stage 2 : do the TF build
 ###########################
@@ -117,11 +105,6 @@ RUN cd $HOME/pkgs/hcc && dpkg -i *.deb
 RUN mkdir -p $HOME/pkgs/HIP
 COPY --from=tool_builder /home/rocm-user/HIP/build/*.deb $HOME/pkgs/HIP/
 RUN cd $HOME/pkgs/HIP && dpkg -i *.deb
-
-# COPY and install the MIOpen package built in the previous stage
-RUN mkdir -p $HOME/pkgs/miopen
-COPY --from=tool_builder /home/rocm-user/miopen/build/*.deb $HOME/pkgs/miopen/
-RUN cd $HOME/pkgs/miopen && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
