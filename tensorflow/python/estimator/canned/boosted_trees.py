@@ -21,6 +21,11 @@ import abc
 import collections
 import functools
 
+import numpy as np
+
+from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
+from tensorflow.python.client import session as tf_session
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
@@ -38,7 +43,9 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -53,6 +60,8 @@ _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
 _HOLD_FOR_MULTI_DIM_SUPPORT = object()
 _DUMMY_NUM_BUCKETS = -1
 _DUMMY_NODE_ID = -1
+
+_BOOSTED_TREES_SERIALIZED_PROTO = '_BOOSTED_TREES_SERIALIZED_PROTO'
 
 
 def _get_transformed_features(features, sorted_feature_columns):
@@ -736,6 +745,8 @@ def _bt_model_fn(
           bucketized_features=input_feature_list,
           logits_dimension=head.logits_dimension)
     else:
+      _, serialized_proto = tree_ensemble.serialize()
+      ops.add_to_collection(_BOOSTED_TREES_SERIALIZED_PROTO, serialized_proto)
       if is_single_machine:
         local_tree_ensemble = tree_ensemble
         ensemble_reload = control_flow_ops.no_op()
@@ -910,8 +921,92 @@ def _create_regression_head(label_dimension, weight_column=None):
   # pylint: enable=protected-access
 
 
+def _compute_feature_importance_for_tree(tree, num_features, normalize):
+  importances = np.zeros(num_features)
+
+  for node in tree.nodes:
+    node_type = node.WhichOneof('node')
+    if node_type == 'bucketized_split':
+      feature_id = node.bucketized_split.feature_id
+      importances[feature_id] += node.metadata.gain
+    elif node_type == 'leaf':
+      assert node.metadata.gain == 0
+    else:
+      raise ValueError('Unexpected split type %s', node_type)
+
+  if normalize:
+    normalizer = np.sum(importances)
+    if normalizer > 0.0:
+      # Avoid dividing by zero (e.g., when root is pure)
+      importances /= normalizer
+
+  return importances
+
+
+def compute_feature_importances(tree_ensemble, num_features, normalize=True):
+  tree_importances = [_compute_feature_importance_for_tree(tree,
+                                                           num_features,
+                                                           normalize)
+                      for tree in tree_ensemble.trees]
+  tree_importances = np.array(tree_importances)
+  tree_weights = np.array(tree_ensemble.tree_weights).reshape(-1, 1)
+  feature_importances = np.sum(tree_importances * tree_weights,
+                               axis=0) / np.sum(tree_weights)
+  if normalize:
+    normalizer = np.sum(feature_importances)
+    if normalizer > 0.0:
+      feature_importances /= normalizer
+
+  sorted_feature = np.argsort(feature_importances)[::-1]
+  return sorted_feature, feature_importances[sorted_feature]
+
+
+class _BoostedTrees(estimator.Estimator):
+
+  def __init__(self, model_fn, model_dir, config, feature_columns):
+    super(_BoostedTrees, self).__init__(
+        model_fn=model_fn, model_dir=model_dir, config=config)
+
+    sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
+    self._num_features = _calculate_num_features(sorted_feature_columns)
+
+  def compute_feature_importances(self, normalize=True):
+    tree_ensemble = self._read_tree_ensemble_from_checkpoint()
+    if tree_ensemble:
+      return compute_feature_importances(tree_ensemble,
+                                         self._num_features,
+                                         normalize)
+    else:
+      return [], []
+
+  def _read_tree_ensemble_from_checkpoint(self):
+    with context.graph_mode():
+      checkpoint_path = checkpoint_management.latest_checkpoint(
+          self._model_dir)
+      if not checkpoint_path:
+        raise ValueError("Couldn't find trained model at %s." % self._model_dir)
+
+      with ops.Graph().as_default() as g:
+        with tf_session.Session(config=self._session_config) as session:
+          meta_file = checkpoint_path + '.meta'
+          graph_saver = saver.import_meta_graph(meta_file)
+          graph_saver.restore(session, checkpoint_path)
+
+          serialized_proto = ops.get_collection(_BOOSTED_TREES_SERIALIZED_PROTO)
+          assert len(serialized_proto) == 1
+          serialized_proto_string = session.run(serialized_proto[0])
+
+          if serialized_proto_string:
+            tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+            tree_ensemble.ParseFromString(serialized_proto_string)
+            return tree_ensemble
+          else:
+            # serialized_proto_string is empty string before training.
+            return None
+
+
 @estimator_export('estimator.BoostedTreesClassifier')
-class BoostedTreesClassifier(estimator.Estimator):
+class BoostedTreesClassifier(_BoostedTrees):
   """A Classifier for Tensorflow Boosted Trees models.
 
   @compatibility(eager)
@@ -1046,11 +1141,12 @@ class BoostedTreesClassifier(estimator.Estimator):
           closed_form_grad_and_hess_fn=closed_form)
 
     super(BoostedTreesClassifier, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        feature_columns=feature_columns)
 
 
 @estimator_export('estimator.BoostedTreesRegressor')
-class BoostedTreesRegressor(estimator.Estimator):
+class BoostedTreesRegressor(_BoostedTrees):
   """A Regressor for Tensorflow Boosted Trees models.
 
   @compatibility(eager)
@@ -1169,4 +1265,5 @@ class BoostedTreesRegressor(estimator.Estimator):
           n_batches_per_layer, config)
 
     super(BoostedTreesRegressor, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        feature_columns=feature_columns)
