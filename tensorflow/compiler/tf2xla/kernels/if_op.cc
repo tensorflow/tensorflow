@@ -247,6 +247,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
 }
 
 REGISTER_XLA_OP(Name("If").AllowResourceTypes(), XlaIfOp);
+REGISTER_XLA_OP(Name("StatelessIf").AllowResourceTypes(), XlaIfOp);
 REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
 
 }  // namespace tensorflow
