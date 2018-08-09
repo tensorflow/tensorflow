@@ -83,13 +83,16 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
-HloTestBase::HloTestBase()
-    : HloTestBase(GetTestPlatform(), GetReferencePlatform()) {}
+HloTestBase::HloTestBase(bool allow_mixed_precision_in_hlo_verifier)
+    : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
+                  allow_mixed_precision_in_hlo_verifier) {}
 
 HloTestBase::HloTestBase(se::Platform* test_platform,
-                         se::Platform* reference_platform)
+                         se::Platform* reference_platform,
+                         bool allow_mixed_precision_in_hlo_verifier)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
-  hlo_verifier_ = MakeUnique<HloVerifier>(/*allow_mixed_precision=*/true);
+  hlo_verifier_ =
+      MakeUnique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
 }
 
 /* static */
