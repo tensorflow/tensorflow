@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -103,57 +102,57 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (!cfg_.disable_model_pruning()) {
-    optimizers->push_back(MakeUnique<ModelPruner>());
+    optimizers->emplace_back(new ModelPruner());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
+    optimizers->emplace_back(
+        new FunctionOptimizer(cfg_.function_optimization()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
-    optimizers->push_back(MakeUnique<DebugStripper>());
+    optimizers->emplace_back(new DebugStripper());
   }
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<ConstantFolding>(cfg_.constant_folding(), cpu_device_));
+    optimizers->emplace_back(
+        new ConstantFolding(cfg_.constant_folding(), cpu_device_));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<ShapeOptimizer>());
+    optimizers->emplace_back(new ShapeOptimizer());
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+    optimizers->emplace_back(new Remapper(cfg_.remapping()));
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
+    optimizers->emplace_back(
+        new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<LoopOptimizer>(cfg_.loop_optimization(), cpu_device_));
+    optimizers->emplace_back(
+        new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
   }
   if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
+    optimizers->emplace_back(
+        new DependencyOptimizer(cfg_.dependency_optimization()));
   }
   if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<LayoutOptimizer>());
+    optimizers->emplace_back(new LayoutOptimizer());
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
-      optimizers->push_back(
+      optimizers->emplace_back(
           // Use the default target node name prefix "gradients/"
-          MakeUnique<MemoryOptimizer>(cfg_.memory_optimization()));
+          new MemoryOptimizer(cfg_.memory_optimization()));
     } else {
-      optimizers->push_back(MakeUnique<MemoryOptimizer>(
-          cfg_.memory_optimization(),
-          cfg_.memory_optimizer_target_node_name_scope()));
+      optimizers->emplace_back(
+          new MemoryOptimizer(cfg_.memory_optimization(),
+                              cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
   if (cfg_.auto_parallel().enable()) {
-    optimizers->push_back(
-        MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
+    optimizers->emplace_back(
+        new AutoParallel(cfg_.auto_parallel().num_replicas()));
   }
   if (cfg_.scoped_allocator_optimization()) {
-    optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
+    optimizers->emplace_back(new ScopedAllocatorOptimizer(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
   return Status::OK();
