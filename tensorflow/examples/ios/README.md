@@ -190,6 +190,5 @@ increase you see in your own app is similar, and if it's larger, look at the
 "Other Linker Flags" used in the Simple Xcode project settings to strip the
 executable.
 
-For further optimization, please refer to the "Optimization" section at
-[tensorflow/contrib/makefile](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile)
-from earlier.
+For further optimization, please refer to the ["Optimization" section](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile#optimization)
+of the makefile instructions.
