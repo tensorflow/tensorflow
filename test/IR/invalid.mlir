@@ -102,12 +102,20 @@ bb42 (%0): // expected-error {{expected ':' and type for SSA operand}}
 // -----
 
 mlfunc @foo()
-mlfunc @bar() // expected-error {{expected '{' in ML function}}
+mlfunc @bar() // expected-error {{expected '{' before statement list}}
+
+// -----
+
+mlfunc @empty() {
+// expected-error@-1 {{ML function must end with return statement}}
+}
 
 // -----
 
 mlfunc @no_return() {
-}        // expected-error {{ML function must end with return statement}}
+// expected-error@-1 {{ML function must end with return statement}}
+  "foo"() : () -> ()
+}
 
 // -----
 
@@ -140,7 +148,17 @@ extfunc @illegaltype(i0) // expected-error {{invalid integer width}}
 
 // -----
 
-mlfunc @malformed_for() {
+mlfunc @malformed_for_percent() {
+  for i = 1 to 10 { // expected-error {{expected SSA identifier for the loop variable}}
+
+// -----
+
+mlfunc @malformed_for_equal() {
+  for %i 1 to 10 { // expected-error {{expected '='}}
+
+// -----
+
+mlfunc @malformed_for_to() {
   for %i = 1 too 10 { // expected-error {{expected 'to' between bounds}}
   }
 }
@@ -250,8 +268,8 @@ bb42:
 // -----
 
 mlfunc @missing_rbrace() {
-  return %a
-mlfunc @d {return} // expected-error {{expected '}' to end mlfunc}}
+  return
+mlfunc @d() {return} // expected-error {{expected '}' after statement list}}
 
 // -----
 
@@ -267,7 +285,13 @@ bb42:
 
 // -----
 
-cfgfunc @argError() {  
+mlfunc @mlfunc_resulterror() -> i32 {  // expected-error {{return has 0 operands, but enclosing function returns 1}}
+  return
+}
+
+// -----
+
+cfgfunc @argError() {
 bb1(%a: i64):  // expected-error {{previously defined here}}
   br bb2
 bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
@@ -354,4 +378,22 @@ mlfunc @duplicate_induction_var() {  // expected-error {{}}
   }
   "xxx"(%i) : (affineint)->()   // expected-error {{operand #0 does not dominate this use}}
   return
+}
+
+// -----
+
+mlfunc @return_type_mismatch() -> i32 {
+  // expected-error@-1 {{type of return operand 0 doesn't match function result type}}
+  %0 = "foo"() : ()->f32
+  return %0 : f32
+}
+
+// -----
+
+mlfunc @return_inside_loop() -> i8 {
+  for %i = 1 to 100 {
+    %a = "foo"() : ()->i8
+    return %a : i8
+    // expected-error@-1 {{'return' op must be the last statement in the ML function}}
+  }
 }

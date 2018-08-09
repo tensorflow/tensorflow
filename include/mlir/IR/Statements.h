@@ -48,6 +48,9 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
+  /// Check if this statement is a return statement.
+  bool isReturn() const { return getName().str() == "return"; }
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//

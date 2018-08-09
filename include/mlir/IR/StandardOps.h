@@ -299,6 +299,32 @@ private:
   explicit StoreOp(const Operation *state) : OpBase(state) {}
 };
 
+/// TODO: change comment.
+/// The "return" operation represents a return statement of an ML function.
+/// The operation takes variable number of operands and produces no results.
+/// The operand number and types must match the signature of the ML function
+/// that contains the operation. For example:
+///
+///   mlfunc @foo() : (i32, f8) {
+///   ...
+///   return %0, %1 : i32, f8
+///
+class ReturnOp
+    : public OpBase<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+public:
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static StringRef getOperationName() { return "return"; }
+
+  // Hooks to customize behavior of this op.
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  const char *verify() const;
+
+private:
+  friend class Operation;
+  explicit ReturnOp(const Operation *state) : OpBase(state) {}
+};
+
 /// Install the standard operations in the specified operation set.
 void registerStandardOperations(OperationSet &opSet);
 

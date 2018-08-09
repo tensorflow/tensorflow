@@ -112,20 +112,22 @@ mlfunc @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_one_arg(%arg0 : i1) {
-mlfunc @mlfunc_with_one_arg(%c : i1) {
+// CHECK-LABEL: mlfunc @mlfunc_with_one_arg(%arg0 : i1) -> i2 {
+mlfunc @mlfunc_with_one_arg(%c : i1) -> i2 {
   // CHECK: %0 = "foo"(%arg0) : (i1) -> i2
   %b = "foo"(%c) : (i1) -> (i2)
-  return     // CHECK: return
-}
+  return %b : i2   // CHECK: return %0 : i2
+} // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_args(%arg0 : f16, %arg1 : i8) {
-mlfunc @mlfunc_with_args(%a : f16, %b : i8) {
-  return  %a  // CHECK: return
-}
+// CHECK-LABEL: mlfunc @mlfunc_with_two_args(%arg0 : f16, %arg1 : i8) -> (i1, i32) {
+mlfunc @mlfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
+  // CHECK: %0 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
+  %c = "foo"(%a, %b) : (f16, i8)->(i1, i32)
+  return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
+} // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_ops() {
-mlfunc @mlfunc_with_ops() {
+// CHECK-LABEL: mlfunc @mlfunc_ops_in_loop() {
+mlfunc @mlfunc_ops_in_loop() {
   // CHECK: %0 = "foo"() : () -> i64
   %a = "foo"() : ()->i64
   // CHECK: for %i0 = 1 to 10 {

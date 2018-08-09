@@ -1207,7 +1207,6 @@ void MLFunctionPrinter::print() {
   printFunctionSignature();
   os << " {\n";
   print(function);
-  os << "  return\n";
   os << "}\n\n";
 }
 

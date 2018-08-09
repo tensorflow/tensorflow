@@ -22,7 +22,9 @@
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 
 static void printDimAndSymbolList(Operation::const_operand_iterator begin,
@@ -60,6 +62,10 @@ parseDimAndSymbolList(OpAsmParser *parser,
   return false;
 }
 
+//===----------------------------------------------------------------------===//
+// AddFOp
+//===----------------------------------------------------------------------===//
+
 bool AddFOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type *type;
@@ -85,6 +91,10 @@ const char *AddFOp::verify() const {
   // TODO: There should also be a OneResultWhoseTypeMatchesFirstOperand.
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// AffineApplyOp
+//===----------------------------------------------------------------------===//
 
 bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
@@ -135,6 +145,10 @@ const char *AffineApplyOp::verify() const {
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// AllocOp
+//===----------------------------------------------------------------------===//
+
 void AllocOp::print(OpAsmPrinter *p) const {
   MemRefType *type = cast<MemRefType>(getMemRef()->getType());
   *p << "alloc";
@@ -182,6 +196,10 @@ const char *AllocOp::verify() const {
   // TODO(andydavis): Verify alloc.
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// ConstantOp
+//===----------------------------------------------------------------------===//
 
 void ConstantOp::print(OpAsmPrinter *p) const {
   *p << "constant " << *getValue();
@@ -249,6 +267,10 @@ OperationState ConstantAffineIntOp::build(Builder *builder, int64_t value) {
   return result;
 }
 
+//===----------------------------------------------------------------------===//
+// DimOp
+//===----------------------------------------------------------------------===//
+
 void DimOp::print(OpAsmPrinter *p) const {
   *p << "dim " << *getOperand() << ", " << getIndex();
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"index");
@@ -293,6 +315,10 @@ const char *DimOp::verify() const {
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// LoadOp
+//===----------------------------------------------------------------------===//
+
 void LoadOp::print(OpAsmPrinter *p) const {
   *p << "load " << *getMemRef() << '[';
   p->printOperands(getIndices());
@@ -335,6 +361,52 @@ const char *LoadOp::verify() const {
   // result of an affine_apply.
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// ReturnOp
+//===----------------------------------------------------------------------===//
+
+bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> opInfo;
+  SmallVector<Type *, 2> types;
+  SmallVector<SSAValue *, 2> operands;
+
+  return parser->parseOperandList(opInfo, -1, OpAsmParser::Delimiter::None) ||
+         (!opInfo.empty() && parser->parseColonTypeList(types)) ||
+         parser->resolveOperands(opInfo, types, result->operands);
+}
+
+void ReturnOp::print(OpAsmPrinter *p) const {
+  *p << "return";
+  if (getNumOperands() > 0) {
+    *p << " ";
+    p->printOperands(operand_begin(), operand_end());
+    *p << " : ";
+    interleave(operand_begin(), operand_end(),
+               [&](auto *e) { p->printType(e->getType()); },
+               [&]() { *p << ", "; });
+  }
+}
+
+const char *ReturnOp::verify() const {
+  // ReturnOp must be part of an ML function.
+  if (auto *stmt = dyn_cast<OperationStmt>(getOperation())) {
+    StmtBlock *block = stmt->getBlock();
+
+    if (!block || !isa<MLFunction>(block) ||
+        &cast<MLFunction>(block)->back() != stmt)
+      return "must be the last statement in the ML function";
+
+    // Return success. Checking that operand types match those in the function
+    // signature is performed in the ML function verifier.
+    return nullptr;
+  }
+  return "cannot occur in a CFG function.";
+}
+
+//===----------------------------------------------------------------------===//
+// StoreOp
+//===----------------------------------------------------------------------===//
 
 void StoreOp::print(OpAsmPrinter *p) const {
   *p << "store " << *getValueToStore();
@@ -391,9 +463,13 @@ const char *StoreOp::verify() const {
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// Register operations.
+//===----------------------------------------------------------------------===//
+
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
   opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DimOp, LoadOp,
-                      StoreOp>(
+                      StoreOp, ReturnOp>(
       /*prefix=*/"");
 }

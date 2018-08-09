@@ -207,7 +207,7 @@ bool CFGFuncVerifier::verifyReturn(const ReturnInst &inst) {
   for (unsigned i = 0, e = results.size(); i != e; ++i)
     if (inst.getOperand(i)->getType() != results[i])
       return failure("type of return operand " + Twine(i) +
-                         " doesn't match result function result type",
+                         " doesn't match function result type",
                      inst);
 
   return false;
@@ -313,7 +313,11 @@ public:
     llvm::PrettyStackTraceFormat fmt("MLIR Verifier: mlfunc @%s",
                                      fn.getName().c_str());
 
-    // TODO: check basic structural properties.
+    // TODO: check basic structural properties
+    // TODO: check that operation is not a return statement unless it's
+    // the last one in the function.
+    if (verifyReturn())
+      return true;
 
     return verifyDominance();
   }
@@ -321,6 +325,9 @@ public:
   /// Walk all of the code in this MLFunc and verify that the operands of any
   /// operations are properly dominated by their definitions.
   bool verifyDominance();
+
+  /// Verify that function has a return statement that matches its signature.
+  bool verifyReturn();
 };
 } // end anonymous namespace
 
@@ -388,6 +395,37 @@ bool MLFuncVerifier::verifyDominance() {
 
   // Check the whole function out.
   return walkBlock(fn);
+}
+
+bool MLFuncVerifier::verifyReturn() {
+  // TODO: fold return verification in the pass that verifies all statements.
+  const char missingReturnMsg[] = "ML function must end with return statement";
+  if (fn.getStatements().empty())
+    return failure(missingReturnMsg, fn);
+
+  const auto &stmt = fn.getStatements().back();
+  if (const auto *op = dyn_cast<OperationStmt>(&stmt)) {
+    if (!op->isReturn())
+      return failure(missingReturnMsg, fn);
+
+    // The operand number and types must match the function signature.
+    // TODO: move this verification in ReturnOp::verify() if printing
+    // of the error messages below can be made to work there.
+    const auto &results = fn.getType()->getResults();
+    if (op->getNumOperands() != results.size())
+      return failure("return has " + Twine(op->getNumOperands()) +
+                         " operands, but enclosing function returns " +
+                         Twine(results.size()),
+                     *op);
+
+    for (unsigned i = 0, e = results.size(); i != e; ++i)
+      if (op->getOperand(i)->getType() != results[i])
+        return failure("type of return operand " + Twine(i) +
+                           " doesn't match function result type",
+                       *op);
+    return false;
+  }
+  return failure(missingReturnMsg, fn);
 }
 
 //===----------------------------------------------------------------------===//

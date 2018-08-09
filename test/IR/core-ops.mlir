@@ -86,3 +86,8 @@ bb0(%0: memref<4x4xi32>, %1: affineint):
   return
 }
 
+// CHECK-LABEL: mlfunc @return_op(%arg0 : i32) -> i32 {
+mlfunc @return_op(%a : i32) -> i32 {
+  // CHECK: return %arg0 : i32
+  "return" (%a) : (i32)->()
+}

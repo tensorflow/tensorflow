@@ -275,11 +275,25 @@ public:
 
   /// Resolve a list of operands to SSA values, emitting an error and returning
   /// true on failure, or appending the results to the list on success.
-  virtual bool resolveOperands(ArrayRef<OperandType> operand, Type *type,
+  /// This method should be used when all operands have the same type.
+  virtual bool resolveOperands(ArrayRef<OperandType> operands, Type *type,
                                SmallVectorImpl<SSAValue *> &result) {
-    for (auto elt : operand)
+    for (auto elt : operands)
       if (resolveOperand(elt, type, result))
         return true;
+    return false;
+  }
+
+  /// Resolve a list of operands and a list of operand types to SSA values,
+  /// emitting an error and returning true on failure, or appending the results
+  /// to the list on success.
+  virtual bool resolveOperands(ArrayRef<OperandType> operands,
+                               ArrayRef<Type *> types,
+                               SmallVectorImpl<SSAValue *> &result) {
+    for (unsigned i = 0, e = operands.size(); i != e; ++i) {
+      if (resolveOperand(operands[i], types[i], result))
+        return true;
+    }
     return false;
   }
 
