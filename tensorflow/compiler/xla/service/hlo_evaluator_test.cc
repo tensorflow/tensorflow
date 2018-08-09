@@ -2377,7 +2377,7 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
-  updates = s32[1,2] parameter(2)
+  updates = s32[1,1] parameter(2)
   ROOT scatter = s32[3,3] scatter(operand, indices, updates),
       to_apply=update_s32,
       update_window_dims={0,1},
