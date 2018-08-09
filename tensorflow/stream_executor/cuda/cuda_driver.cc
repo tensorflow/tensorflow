@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/human_readable.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/notification.h"
+#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -66,14 +67,17 @@ class CreatedContexts {
     return Live()->find(context) != Live()->end();
   }
 
-  // Adds context to the live set.
+  // Adds context to the live set, or returns it if it's already present.
   static CudaContext* Add(CUcontext context) {
     CHECK(context != nullptr);
     mutex_lock lock(mu_);
-    auto cuda_context = new CudaContext(context, next_id_++);
-    Live()->insert(
-        std::make_pair(context, std::unique_ptr<CudaContext>(cuda_context)));
-    return cuda_context;
+    auto insert_result = Live()->insert(std::make_pair(context, nullptr));
+    auto it = insert_result.first;
+    if (insert_result.second) {
+      // context was not present in the map.  Add it.
+      it->second = MakeUnique<CudaContext>(context, next_id_++);
+    }
+    return it->second.get();
   }
 
   // Removes context from the live set.
@@ -102,117 +106,16 @@ class CreatedContexts {
 /* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 // Formats CUresult to output prettified values into a log stream.
-// Error summaries taken from:
-// http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1gc6c391505e117393cc2558fff6bfc2e9
-//
-// TODO(leary) switch to cuGetErrorName when updated cuda.h is available.
 string ToString(CUresult result) {
-#define OSTREAM_CUDA_ERROR(__name) \
-  case CUDA_ERROR_##__name:        \
-    return "CUDA_ERROR_" #__name;
-
-///////////////
-// NOTE: here we specify return code values outside of the enum explicitly
-// because our in-tree cuda.h is from the CUDA 5.5 SDK, but CUDA 6.0+ driver
-// libraries are deployed in the fleet these error codes are backwards
-// compatible, but if we see a "new" one, we want to be able to identify it in
-// the logs.
-//
-// Once we get a cuda.h that has cuGetErrorName (TODO is above) we can
-// eliminate this function and just rely on the driver to provide us these
-// strings.
-//
-// NOTE: "Must reboot all context" below is shorthand for, "must
-// destroy/recreate the offending context and any allocation which come from
-// it if you are to continue using CUDA."
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch"
-  switch (result) {
-    OSTREAM_CUDA_ERROR(INVALID_VALUE)
-    OSTREAM_CUDA_ERROR(OUT_OF_MEMORY)
-    OSTREAM_CUDA_ERROR(NOT_INITIALIZED)
-    OSTREAM_CUDA_ERROR(DEINITIALIZED)
-    OSTREAM_CUDA_ERROR(NO_DEVICE)
-    OSTREAM_CUDA_ERROR(INVALID_DEVICE)
-    OSTREAM_CUDA_ERROR(INVALID_IMAGE)
-    OSTREAM_CUDA_ERROR(INVALID_CONTEXT)
-    OSTREAM_CUDA_ERROR(INVALID_HANDLE)
-    OSTREAM_CUDA_ERROR(NOT_FOUND)
-    OSTREAM_CUDA_ERROR(NOT_READY)
-    OSTREAM_CUDA_ERROR(NO_BINARY_FOR_GPU)
-
-    // Encountered an uncorrectable ECC error during execution.
-    OSTREAM_CUDA_ERROR(ECC_UNCORRECTABLE)
-
-    // Load/store on an invalid address. Must reboot all context.
-    case 700:
-      return "CUDA_ERROR_ILLEGAL_ADDRESS";
-    // Passed too many / wrong arguments, too many threads for register count.
-    case 701:
-      return "CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES";
-    // Kernel took too long to execute.
-    case 702:
-      return "CUDA_ERROR_LAUNCH_TIMEOUT";
-    // Kernel launch uses an incompatible texturing mode.
-    case 703:
-      return "CUDA_ERROR_LAUNCH_INCOMPATIBLE_TEXTURING";
-    // Trying to re-enable peer access that already has it enabled.
-    case 704:
-      return "CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED";
-    // Trying to disable peer access that has not yet been enabled.
-    case 705:
-      return "CUDA_ERROR_PEER_ACCESS_NOT_ENABLED";
-    // Primary context for the specified device has already been initialized.
-    case 708:
-      return "CUDA_ERROR_PRIMARY_CONTEXT_ACTIVE";
-    // Context current to calling thread has been destroyed or is a primary
-    // context that has not yet been initialized.
-    case 709:
-      return "CUDA_ERROR_CONTEXT_IS_DESTROYED";
-    // Device-side assert triggered during kernel execution. Must reboot all
-    // context.
-    case 710:
-      return "CUDA_ERROR_ASSERT";
-    // Hardware resources to enable peer access have been exhausted.
-    case 711:
-      return "CUDA_ERROR_TOO_MANY_PEERS";
-    // Memory range has already been registered.
-    case 712:
-      return "CUDA_ERROR_HOST_MEMORY_ALREADY_REGISTERED";
-    // Pointer does not correspond to any currently registered memory region.
-    case 713:
-      return "CUDA_ERROR_HOST_MEMORY_NOT_REGISTERED";
-    // Due to stack corruption or exceeding stack size limit. Must reboot all
-    // context.
-    case 714:
-      return "CUDA_ERROR_HARDWARE_STACK_ERROR";
-    case 715:
-      return "CUDA_ERROR_ILLEGAL_INSTRUCTION";
-    // Load/store on an unaligned memory address. Must reboot all context.
-    case 716:
-      return "CUDA_ERROR_MISALIGNED_ADDRESS";
-    // Device instruction with specific address space given address not
-    // belonging to allowed address space. Must reboot all context.
-    case 717:
-      return "CUDA_ERROR_INVALID_ADDRESS_SPACE";
-    // Device program counter wrapped its address space. Must reboot all
-    // context.
-    case 718:
-      return "CUDA_ERROR_INVALID_PC";
-    // Exception on device while executing a kernel; e.g. deref invalid device
-    // pointer, accessing OOB shared memory. Must reboot all context.
-    case 719:
-      return "CUDA_ERROR_LAUNCH_FAILED";
-
-      OSTREAM_CUDA_ERROR(CONTEXT_ALREADY_IN_USE)
-      OSTREAM_CUDA_ERROR(PEER_ACCESS_UNSUPPORTED)
-      OSTREAM_CUDA_ERROR(NOT_PERMITTED)
-      OSTREAM_CUDA_ERROR(NOT_SUPPORTED)
-      OSTREAM_CUDA_ERROR(UNKNOWN)  // Unknown internal error to CUDA.
-    default:
-      return port::StrCat("CUresult(", static_cast<int>(result), ")");
+  const char *error_name;
+  if (cuGetErrorName(result, &error_name)) {
+    return port::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
   }
-#pragma GCC diagnostic pop
+  const char *error_string;
+  if (cuGetErrorString(result, &error_string)) {
+    return error_name;
+  }
+  return port::StrCat(error_name, ": ", error_string);
 }
 
 // Returns the current context and checks that it is in the set of CUDA contexts
@@ -528,7 +431,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     *context = CreatedContexts::Add(new_context);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
-    VLOG(2) << "created context " << context << " for this thread";
+    VLOG(2) << "created or reused context " << context << " for this thread";
     return port::Status::OK();
   }
 

@@ -22,7 +22,7 @@ import math
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.contrib import stateless
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -30,7 +30,7 @@ from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import test
 
 
-class StatelessRandomOpsTest(XLATestCase):
+class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self):

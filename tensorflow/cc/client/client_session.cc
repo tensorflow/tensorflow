@@ -127,4 +127,22 @@ Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
                                target_node_names, outputs, run_metadata);
 }
 
+Status ClientSession::MakeCallable(const CallableOptions& callable_options,
+                                   CallableHandle* out_handle) {
+  TF_RETURN_IF_ERROR(impl()->MaybeExtendGraph());
+  return impl()->session_->MakeCallable(callable_options, out_handle);
+}
+
+Status ClientSession::RunCallable(CallableHandle handle,
+                                  const std::vector<Tensor>& feed_tensors,
+                                  std::vector<Tensor>* fetch_tensors,
+                                  RunMetadata* run_metadata) {
+  return impl()->session_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                       run_metadata);
+}
+
+Status ClientSession::ReleaseCallable(CallableHandle handle) {
+  return impl()->session_->ReleaseCallable(handle);
+}
+
 }  // end namespace tensorflow

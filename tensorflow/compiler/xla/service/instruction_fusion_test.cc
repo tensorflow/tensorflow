@@ -167,7 +167,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
       builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
-  builder.AddInstruction(HloInstruction::CreateSend(binary1, 0));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -258,7 +259,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
     add = f32[4,3]{1,0} add(p0, p0)
     abs1 = f32[4,3]{1,0} abs(add)
     log = f32[4,3]{1,0} log(abs1)
-    send = f32[4,3]{1,0} send(log), channel_id=0
+    token = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token), channel_id=0
     abs2 = f32[4,3]{1,0} abs(log)
     ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
@@ -288,7 +290,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
     p0 = f32[4,3]{1,0} parameter(0)
     add1 = f32[4,3]{1,0} add(p0, p0)
     log = f32[4,3]{1,0} log(p0)
-    send = f32[4,3]{1,0} send(log), channel_id=0
+    token = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token), channel_id=0
     add2 = f32[4,3]{1,0} add(log, add1)
     ROOT root = f32[4,3]{1,0} subtract(add1, add2)
   })")
@@ -321,7 +324,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
     add1 = f32[4,3]{1,0} add(p0, p0)
     add2 = f32[4,3]{1,0} add(add1, add1)
     log = f32[4,3]{1,0} log(add2)
-    send = f32[4,3]{1,0} send(log), channel_id=0
+    token = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token), channel_id=0
     sub1 = f32[4,3]{1,0} subtract(log, add2)
     sub2 = f32[4,3]{1,0} subtract(add2, add1)
     ROOT root = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub1, sub2)
@@ -352,7 +356,8 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "0"));
   HloInstruction* unary1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
-  builder.AddInstruction(HloInstruction::CreateSend(unary1, 0));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
@@ -375,7 +380,8 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
       builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
-  builder.AddInstruction(HloInstruction::CreateSend(binary1, 0));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 

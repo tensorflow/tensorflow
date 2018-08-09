@@ -636,10 +636,10 @@ def strided_slice(input_,
   `foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor.
 
   If the ith bit of `shrink_axis_mask` is set, it implies that the ith
-  specification shrinks the dimensionality by 1. `begin[i]`, `end[i]` and
-  `strides[i]` must imply a slice of size 1 in the dimension. For example in
-  Python one might do `foo[:, 3, :]` which would result in
-  `shrink_axis_mask` equal to 2.
+  specification shrinks the dimensionality by 1, taking on the value at index
+  `begin[i]`. `end[i]` and `strides[i]` are ignored in this case. For example in
+  Python one might do `foo[:, 3, :]` which would result in `shrink_axis_mask`
+  equal to 2.
 
 
   NOTE: `begin` and `end` are zero-indexed.

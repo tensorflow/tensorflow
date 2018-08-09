@@ -25,7 +25,7 @@ from tensorflow.python.util.tf_export import tf_export
 # everything will work as normal.
 
 try:
-  import tensorflow.python.estimator.keras as keras_lib  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
   model_to_estimator = tf_export('keras.estimator.model_to_estimator')(
       keras_lib.model_to_estimator)
 except Exception:  # pylint: disable=broad-except

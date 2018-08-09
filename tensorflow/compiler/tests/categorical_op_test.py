@@ -22,7 +22,7 @@ import collections
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
@@ -32,7 +32,7 @@ from tensorflow.python.platform import googletest
 
 # TODO(srvasude): Merge this with
 # third_party/tensorflow/python/kernel_tests/random/multinomial_op_test.py.
-class CategoricalTest(XLATestCase):
+class CategoricalTest(xla_test.XLATestCase):
   """Test cases for random-number generating operators."""
 
   def output_dtypes(self):

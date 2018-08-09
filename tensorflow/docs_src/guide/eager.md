@@ -193,8 +193,7 @@ class MNISTModel(tf.keras.Model):
   def call(self, input):
     """Run the model."""
     result = self.dense1(input)
-    result = self.dense2(result)
-    result = self.dense2(result)  # reuse variables from dense2 layer
+    result = self.dense2(result)  # reuse variables from dense1 layer
     return result
 
 model = MNISTModel()
@@ -225,7 +224,7 @@ the tape backwards and then discard. A particular `tf.GradientTape` can only
 compute one gradient; subsequent calls throw a runtime error.
 
 ```py
-w = tfe.Variable([[1.0]])
+w = tf.Variable([[1.0]])
 with tf.GradientTape() as tape:
   loss = w * w
 
@@ -260,8 +259,8 @@ def grad(weights, biases):
 train_steps = 200
 learning_rate = 0.01
 # Start with arbitrary values for W and B on the same batch of data
-W = tfe.Variable(5.)
-B = tfe.Variable(10.)
+W = tf.Variable(5.)
+B = tf.Variable(10.)
 
 print("Initial loss: {:.3f}".format(loss(W, B)))
 
@@ -316,9 +315,8 @@ for (batch, (images, labels)) in enumerate(dataset):
 
 
 The following example creates a multi-layer model that classifies the standard
-[MNIST handwritten digits](https://www.tensorflow.org/tutorials/layers). It
-demonstrates the optimizer and layer APIs to build trainable graphs in an eager
-execution environment.
+MNIST handwritten digits. It demonstrates the optimizer and layer APIs to build
+trainable graphs in an eager execution environment.
 
 ### Train a model
 
@@ -408,11 +406,11 @@ with tf.device("/gpu:0"):
 
 ### Variables and optimizers
 
-`tfe.Variable` objects store mutable `tf.Tensor` values accessed during
+`tf.Variable` objects store mutable `tf.Tensor` values accessed during
 training to make automatic differentiation easier. The parameters of a model can
 be encapsulated in classes as variables.
 
-Better encapsulate model parameters by using `tfe.Variable` with
+Better encapsulate model parameters by using `tf.Variable` with
 `tf.GradientTape`. For example, the automatic differentiation example above
 can be rewritten:
 
@@ -420,9 +418,9 @@ can be rewritten:
 class Model(tf.keras.Model):
   def __init__(self):
     super(Model, self).__init__()
-    self.W = tfe.Variable(5., name='weight')
-    self.B = tfe.Variable(10., name='bias')
-  def predict(self, inputs):
+    self.W = tf.Variable(5., name='weight')
+    self.B = tf.Variable(10., name='bias')
+  def call(self, inputs):
     return inputs * self.W + self.B
 
 # A toy dataset of points around 3 * x + 2
@@ -433,7 +431,7 @@ training_outputs = training_inputs * 3 + 2 + noise
 
 # The loss function to be optimized
 def loss(model, inputs, targets):
-  error = model.predict(inputs) - targets
+  error = model(inputs) - targets
   return tf.reduce_mean(tf.square(error))
 
 def grad(model, inputs, targets):
@@ -499,19 +497,19 @@ is removed, and is then deleted.
 
 ```py
 with tf.device("gpu:0"):
-  v = tfe.Variable(tf.random_normal([1000, 1000]))
+  v = tf.Variable(tf.random_normal([1000, 1000]))
   v = None  # v no longer takes up GPU memory
 ```
 
 ### Object-based saving
 
-`tfe.Checkpoint` can save and restore `tfe.Variable`s to and from
+`tf.train.Checkpoint` can save and restore `tf.Variable`s to and from
 checkpoints:
 
 ```py
-x = tfe.Variable(10.)
+x = tf.Variable(10.)
 
-checkpoint = tfe.Checkpoint(x=x)  # save as "x"
+checkpoint = tf.train.Checkpoint(x=x)  # save as "x"
 
 x.assign(2.)   # Assign a new value to the variables and save.
 save_path = checkpoint.save('./ckpt/')
@@ -524,18 +522,18 @@ checkpoint.restore(save_path)
 print(x)  # => 2.0
 ```
 
-To save and load models, `tfe.Checkpoint` stores the internal state of objects,
+To save and load models, `tf.train.Checkpoint` stores the internal state of objects,
 without requiring hidden variables. To record the state of a `model`,
-an `optimizer`, and a global step, pass them to a `tfe.Checkpoint`:
+an `optimizer`, and a global step, pass them to a `tf.train.Checkpoint`:
 
 ```py
 model = MyModel()
 optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
 checkpoint_dir = ‘/path/to/model_dir’
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-root = tfe.Checkpoint(optimizer=optimizer,
-                      model=model,
-                      optimizer_step=tf.train.get_or_create_global_step())
+root = tf.train.Checkpoint(optimizer=optimizer,
+                           model=model,
+                           optimizer_step=tf.train.get_or_create_global_step())
 
 root.save(file_prefix=checkpoint_prefix)
 # or
@@ -613,7 +611,7 @@ def line_search_step(fn, init_x, rate=1.0):
 `tf.GradientTape` is a powerful interface for computing gradients, but there
 is another [Autograd](https://github.com/HIPS/autograd)-style API available for
 automatic differentiation. These functions are useful if writing math code with
-only tensors and gradient functions, and without `tfe.Variables`:
+only tensors and gradient functions, and without `tf.Variables`:
 
 * `tfe.gradients_function` —Returns a function that computes the derivatives
   of its input function parameter with respect to its arguments. The input
@@ -728,7 +726,13 @@ def measure(x, steps):
   start = time.time()
   for i in range(steps):
     x = tf.matmul(x, x)
-    _ = x.numpy()  # Make sure to execute op and not just enqueue it
+  # tf.matmul can return before completing the matrix multiplication
+  # (e.g., can return after enqueing the operation on a CUDA stream).
+  # The x.numpy() call below will ensure that all enqueued operations
+  # have completed (and will also copy the result to host memory,
+  # so we're including a little more than just the matmul operation
+  # time).
+  _ = x.numpy()
   end = time.time()
   return end - start
 
@@ -752,8 +756,8 @@ Output (exact numbers depend on hardware):
 
 ```
 Time to multiply a (1000, 1000) matrix by itself 200 times:
-CPU: 4.614904403686523 secs
-GPU: 0.5581181049346924 secs
+CPU: 1.46628093719 secs
+GPU: 0.0593810081482 secs
 ```
 
 A `tf.Tensor` object can be copied to a different device to execute its
@@ -825,7 +829,7 @@ gives you eager's interactive experimentation and debuggability with the
 distributed performance benefits of graph execution.
 
 Write, debug, and iterate in eager execution, then import the model graph for
-production deployment. Use `tfe.Checkpoint` to save and restore model
+production deployment. Use `tf.train.Checkpoint` to save and restore model
 variables, this allows movement between eager and graph execution environments.
 See the examples in:
 [tensorflow/contrib/eager/python/examples](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples).

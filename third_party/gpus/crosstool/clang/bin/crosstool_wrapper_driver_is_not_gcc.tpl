@@ -175,6 +175,11 @@ def InvokeNvcc(argv, log=False):
   # any other reliable way to just get the list of source files to be compiled.
   src_files = GetOptionValue(argv, 'c')
 
+  # Pass -w through from host to nvcc, but don't do anything fancier with
+  # warnings-related flags, since they're not necessarily the same across
+  # compilers.
+  warning_options = ' -w' if '-w' in argv else ''
+
   if len(src_files) == 0:
     return 1
   if len(out_file) != 1:
@@ -205,6 +210,7 @@ def InvokeNvcc(argv, log=False):
   nvccopts += defines
   nvccopts += std_options
   nvccopts += m_options
+  nvccopts += warning_options
 
   if depfiles:
     # Generate the dependency file

@@ -225,7 +225,7 @@ def run_main(_):
   input_file_group.add_argument(
       "--graph_def_file",
       type=str,
-      help="Full filepath of file containing TensorFlow GraphDef.")
+      help="Full filepath of file containing frozen TensorFlow GraphDef.")
   input_file_group.add_argument(
       "--saved_model_dir",
       type=str,
@@ -257,7 +257,7 @@ def run_main(_):
   parser.add_argument(
       "--input_arrays",
       type=str,
-      help="Names of the output arrays, comma-separated.")
+      help="Names of the input arrays, comma-separated.")
   parser.add_argument(
       "--input_shapes",
       type=str,

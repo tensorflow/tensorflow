@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -72,20 +71,25 @@ class CopyInsertion : public HloPassInterface {
   // TODO(b/62548313): Remove this when buffer assignment is module-scoped.
   static StatusOr<bool> AddCopiesForBufferAssignment(HloModule* module);
 
+  // Try to remove as many copies from the module as possible without
+  // introducing live range interference. Only copy instructions that are
+  // eligible for copy elision are considered for removal.
+  Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
+                                 HloModule* module);
+
  private:
+  // Verifies that no HLO values have interfering live ranged assuming the
+  // ordering used by copy insertion.
+  Status VerifyNoLiveRangeInterference(HloModule* module);
+
+  Status AddCopiesToResolveInterference(HloModule* module);
+
+  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
+
   // Backend specific function that decides whether a fusion can share buffer
   // with its operand.
   HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer_;
 };
-
-// Try to remove as many copies from the module as possible without introducing
-// live range interference. Copy instructions (identified by their unique id) in
-// the set copies_to_exclude are not considered for removal.
-Status RemoveUnnecessaryCopies(
-    const HloOrdering& ordering,
-    const tensorflow::gtl::FlatSet<int>& copies_to_exclude, HloModule* module,
-    const HloDataflowAnalysis::FusionCanShareBufferFunction&
-        fusion_can_share_buffer = nullptr);
 
 }  // namespace xla
 

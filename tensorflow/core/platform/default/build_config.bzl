@@ -620,10 +620,10 @@ def tf_additional_core_deps():
       ],
       "//conditions:default": [],
   }) + select({
-      "//tensorflow:with_s3_support_windows_override": [],
-      "//tensorflow:with_s3_support_android_override": [],
-      "//tensorflow:with_s3_support_ios_override": [],
-      "//tensorflow:with_s3_support": [
+      "//tensorflow:with_aws_support_windows_override": [],
+      "//tensorflow:with_aws_support_android_override": [],
+      "//tensorflow:with_aws_support_ios_override": [],
+      "//tensorflow:with_aws_support": [
           "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],

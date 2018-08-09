@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -39,7 +39,7 @@ class ExhaustiveF32ElementwiseOpTest
     XlaBuilder builder(TestName());
 
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateFromDimensions(F32, {input_size});
+        LiteralUtil::CreateFromDimensions(F32, {input_size});
     for (int64 i = begin; i < end; i++) {
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {

@@ -298,9 +298,10 @@ class Template(checkpointable.CheckpointableBase):
 
   def _call_func(self, args, kwargs):
     try:
-      vars_at_start = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      vars_at_start = len(
+          ops.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES))
       trainable_at_start = len(
-          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+          ops.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES))
       if self._variables_created:
         result = self._func(*args, **kwargs)
       else:
@@ -313,7 +314,7 @@ class Template(checkpointable.CheckpointableBase):
         # Variables were previously created, implying this is not the first
         # time the template has been called. Check to make sure that no new
         # trainable variables were created this time around.
-        trainable_variables = ops.get_collection(
+        trainable_variables = ops.get_collection_ref(
             ops.GraphKeys.TRAINABLE_VARIABLES)
         # If a variable that we intend to train is created as a side effect
         # of creating a template, then that is almost certainly an error.
@@ -326,7 +327,7 @@ class Template(checkpointable.CheckpointableBase):
         # Non-trainable tracking variables are a legitimate reason why a new
         # variable would be created, but it is a relatively advanced use-case,
         # so log it.
-        variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+        variables = ops.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES)
         if vars_at_start != len(variables):
           logging.info("New variables created when calling a template after "
                        "the first time, perhaps you used tf.Variable when you "

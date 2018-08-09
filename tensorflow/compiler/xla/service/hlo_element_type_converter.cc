@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -144,6 +144,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
           opcode == HloOpcode::kCrossReplicaSum ||
           opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
           opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
           opcode == HloOpcode::kConditional) {
         continue;

@@ -28,12 +28,14 @@ namespace {
 
 using ops::Complex;
 using ops::Const;
+using ops::Div;
 using ops::MatMul;
 using ops::Placeholder;
 using ops::Real;
 using ops::Split;
 using ops::Square;
 using ops::Stack;
+using ops::Sub;
 using ops::Unstack;
 
 TEST(GradientCheckerTest, BasicFloat) {
@@ -102,6 +104,20 @@ TEST(GradientCheckerTest, Complex64ToFloat) {
   TF_ASSERT_OK((ComputeGradientError<complex64, float, float>(
       scope, {x}, {shape}, {y}, {shape}, &max_error)));
   EXPECT_LT(max_error, 1e-4);
+}
+
+// When calculating gradients that are undefined, test we get NaN
+// as the computed error rather than 0.
+TEST(GradientCheckerTest, BasicNan) {
+  Scope scope = Scope::NewRootScope();
+  TensorShape shape({2, 4, 3});
+  auto x = Placeholder(scope, DT_FLOAT, Placeholder::Shape(shape));
+  // y = x/(x-x) should always return NaN
+  auto y = Div(scope, x, Sub(scope, x, x));
+  float max_error;
+  TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+      scope, {x}, {shape}, {y}, {shape}, &max_error)));
+  EXPECT_TRUE(std::isnan(max_error));
 }
 
 TEST(GradientCheckerTest, MatMulGrad) {

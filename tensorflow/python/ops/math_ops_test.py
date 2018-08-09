@@ -237,8 +237,8 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
   def testApproximateEqualShape(self):
     for dtype in [np.float32, np.double]:
-      x = np.array([1, 2], dtype=np.float32)
-      y = np.array([[1, 2]], dtype=np.float32)
+      x = np.array([1, 2], dtype=dtype)
+      y = np.array([[1, 2]], dtype=dtype)
       # The inputs 'x' and 'y' must have the same shape.
       with self.assertRaisesRegexp(
           ValueError, "Shapes must be equal rank, but are 1 and 2"):

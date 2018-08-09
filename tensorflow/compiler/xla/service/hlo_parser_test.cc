@@ -277,12 +277,28 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 "SendRecv",
 R"(HloModule TwoSendRecvBothWayRecvFist_module
 
-ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15, sharding={maximal device=1}
-  ROOT %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15, sharding={maximal device=1}
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, sharding={maximal device=1}
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
   %constant = f32[] constant(2.1), sharding={maximal device=0}
-  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16, sharding={maximal device=0}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
+}
+
+)"
+},
+{
+"SendRecvWithHostTransfer",
+R"(HloModule HostTransferSendRecv_module
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, is_host_transfer=true
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
+  %constant = f32[] constant(2.1), sharding={maximal device=0}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, is_host_transfer=true
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
 }
 
 )"
@@ -744,6 +760,46 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], gather_indices: s64[10,9,8,7,5
 
 )"
 },
+{
+"scatter",
+R"(HloModule StringifyScatter
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7,5], updates: f32[10,9,8,7,30,29,28,27,26]) -> f32[50,49,48,47,46] {
+  %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
+  ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, to_apply=%add_F32.v3
+}
+
+)"
+},
+{
+  "ConstantUnsignedNoUnderflow",
+  R"(HloModule ConstantUnsignedNoUnderflow_module
+
+ENTRY %ConstantUnsignedNoUnderflow () -> u64[] {
+  ROOT %constant = u64[] constant(1)
+}
+
+)"
+},
+
+{
+  "ConstantUnsignedNoOverflow",
+  R"(HloModule ConstantUnsignedNoOverflow_module
+
+ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
+  ROOT %constant = u64[] constant(9223372036854775807)
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -789,6 +845,32 @@ ENTRY ReduceR3ToR2.v3 {
 
 )"
 },
+// tuple reduce
+{
+"TupleReduce",
+R"(HloModule TupleReduce
+
+max_argmax {
+  value = f32[] parameter(2)
+  prev_max = f32[] parameter(0)
+  is_next_larger = pred[] greater-than-or-equal-to(value, prev_max)
+  max = f32[] select(is_next_larger, value, prev_max)
+  index = s32[] parameter(3)
+  prev_argmax = s32[] parameter(1)
+  argmax = s32[] select(is_next_larger, index, prev_argmax)
+  ROOT pair = (f32[], s32[]) tuple(max, argmax)
+}
+
+ENTRY reduce_entry {
+  values = f32[1024]{0} parameter(0)
+  indices = f32[1024]{0} parameter(1)
+  init_value = f32[] constant(-inf)
+  init_index = s32[] constant(-1)
+  ROOT result = (f32[], s32[]) reduce(values, indices, init_value, init_index), dimensions={0}, to_apply=max_argmax
+}
+
+)"
+},
 // infeed/outfeed
 {
 "InfeedOutfeed",
@@ -828,6 +910,56 @@ R"(HloModule reduce_precision
 ENTRY ReducePrecision {
   constant = f32[1]{0} constant({3.14159})
   ROOT reduce-precision = f32[1]{0} reduce-precision(constant), exponent_bits=8, mantissa_bits=10
+}
+
+)"
+},
+// Sort (Key)
+{
+"SortKey",
+R"(HloModule sort
+
+ENTRY Sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
+}
+
+)"
+},
+// Sort (Key, Value)
+{
+"SortKeyValue",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024]{0} parameter(0)
+  values = s32[1024]{0} parameter(1)
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key)
+{
+"SortKeyR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  x = f32[1024,16]{0,1} parameter(0)
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key, Value)
+{
+"SortKeyValueR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024,16]{0,1} parameter(0)
+  values = s32[1024,16]{0,1} parameter(1)
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
 }
 
 )"
@@ -936,6 +1068,52 @@ add {
 ENTRY CrossReplicaSumWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
   ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+}
+
+)"
+},
+// all-to-all
+{
+"AllToAll",
+R"(HloModule AllToAll
+
+ENTRY AllToAll {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={}
+}
+
+)"
+},
+// all-to-all with subgroups
+{
+"AllToAllWithSubgroups",
+R"(HloModule AllToAllWithSubgroups
+
+ENTRY AllToAllWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}, barrier="abc"
+}
+
+)"
+},
+// Iota
+{
+"Iota",
+R"(HloModule iota
+
+ENTRY Iota {
+  ROOT iota = f32[100]{0} iota()
+}
+
+)"
+},
+// custom-call with window and dim_labels
+{
+"CustomCallWithWindowAndDimLabels",
+R"(HloModule CustomCallWithWindowAndDimLabels
+
+ENTRY Computation {
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, custom_call_target="target"
 }
 
 )"
@@ -1136,6 +1314,40 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
                   "is out of range for literal's primitive type F16");
 }
 
+TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedUnderflow_module
+      ENTRY %ConstantUnsignedUnderflow () -> u64[] {
+        ROOT %constant = u64[] constant(-1)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U64");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedOverflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u32[] {
+        ROOT %constant = u32[] constant(4294967296)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U32");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u64[] {
+        ROOT %constant = u64[] constant(9223372036854775808)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
 TEST_F(HloParserTest, ConstantWithExp) {
   const string original = R"(HloModule ConstantWithExp_module
 
@@ -1196,11 +1408,12 @@ TEST_F(HloParserTest, UnexpectedAttribute) {
   const string original = R"(HloModule unexpected_attr_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15
-  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(2.1)
-  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, calls=%recv
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, calls=%recv
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
 )";
@@ -1212,11 +1425,12 @@ TEST_F(HloParserTest, MissingAttribute) {
   const string original = R"(HloModule missing_attr_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15
-  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(-2.1)
-  %send = (f32[], u32[]) send(f32[] %constant)
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token)
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
 )";
@@ -1228,11 +1442,12 @@ TEST_F(HloParserTest, PredecessorUndefined) {
   const string original = R"(HloModule pre_not_found_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15
-  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(2.1)
-  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, control-predecessors={%done}
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, control-predecessors={%done}
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
 )";

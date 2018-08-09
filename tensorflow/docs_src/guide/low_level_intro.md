@@ -63,17 +63,17 @@ TensorFlow uses numpy arrays to represent tensor **values**.
 You might think of TensorFlow Core programs as consisting of two discrete
 sections:
 
-1.  Building the computational graph (a @{tf.Graph}).
-2.  Running the computational graph (using a @{tf.Session}).
+1.  Building the computational graph (a `tf.Graph`).
+2.  Running the computational graph (using a `tf.Session`).
 
 ### Graph
 
 A **computational graph** is a series of TensorFlow operations arranged into a
 graph. The graph is composed of two types of objects.
 
-  * @{tf.Operation$Operations} (or "ops"): The nodes of the graph.
+  * `tf.Operation` (or "ops"): The nodes of the graph.
     Operations describe calculations that consume and produce tensors.
-  * @{tf.Tensor$Tensors}: The edges in the graph. These represent the values
+  * `tf.Tensor`: The edges in the graph. These represent the values
     that will flow through the graph. Most TensorFlow functions return
     `tf.Tensors`.
 
@@ -149,7 +149,7 @@ For more about TensorBoard's graph visualization tools see @{$graph_viz}.
 
 ### Session
 
-To evaluate tensors, instantiate a @{tf.Session} object, informally known as a
+To evaluate tensors, instantiate a `tf.Session` object, informally known as a
 **session**. A session encapsulates the state of the TensorFlow runtime, and
 runs TensorFlow operations. If a `tf.Graph` is like a `.py` file, a `tf.Session`
 is like the `python` executable.
@@ -232,7 +232,7 @@ z = x + y
 The preceding three lines are a bit like a function in which we
 define two input parameters (`x` and `y`) and then an operation on them. We can
 evaluate this graph with multiple inputs by using the `feed_dict` argument of
-the @{tf.Session.run$run method} to feed concrete values to the placeholders:
+the `tf.Session.run` method to feed concrete values to the placeholders:
 
 ```python
 print(sess.run(z, feed_dict={x: 3, y: 4.5}))
@@ -251,15 +251,15 @@ that placeholders throw an error if no value is fed to them.
 
 ## Datasets
 
-Placeholders work for simple experiments, but @{tf.data$Datasets} are the
+Placeholders work for simple experiments, but `tf.data` are the
 preferred method of streaming data into a model.
 
 To get a runnable `tf.Tensor` from a Dataset you must first convert it to a
-@{tf.data.Iterator}, and then call the Iterator's
-@{tf.data.Iterator.get_next$`get_next`} method.
+`tf.data.Iterator`, and then call the Iterator's
+`tf.data.Iterator.get_next` method.
 
 The simplest way to create an Iterator is with the
-@{tf.data.Dataset.make_one_shot_iterator$`make_one_shot_iterator`} method.
+`tf.data.Dataset.make_one_shot_iterator` method.
 For example, in the following code the `next_item` tensor will return a row from
 the `my_data` array on each `run` call:
 
@@ -275,7 +275,7 @@ next_item = slices.make_one_shot_iterator().get_next()
 ```
 
 Reaching the end of the data stream causes `Dataset` to throw an
-@{tf.errors.OutOfRangeError$`OutOfRangeError`}. For example, the following code
+`tf.errors.OutOfRangeError`. For example, the following code
 reads the `next_item` until there is no more data to read:
 
 ``` python
@@ -308,7 +308,7 @@ For more details on Datasets and Iterators see: @{$guide/datasets}.
 ## Layers
 
 A trainable model must modify the values in the graph to get new outputs with
-the same input.  @{tf.layers$Layers} are the preferred way to add trainable
+the same input.  `tf.layers` are the preferred way to add trainable
 parameters to a graph.
 
 Layers package together both the variables and the operations that act
@@ -321,7 +321,7 @@ The connection weights and biases are managed by the layer object.
 
 ### Creating Layers
 
-The following code creates a @{tf.layers.Dense$`Dense`} layer that takes a
+The following code creates a `tf.layers.Dense` layer that takes a
 batch of input vectors, and produces a single output value for each. To apply a
 layer to an input, call the layer as if it were a function. For example:
 
@@ -375,8 +375,8 @@ will generate a two-element output vector such as the following:
 
 ### Layer Function shortcuts
 
-For each layer class (like @{tf.layers.Dense}) TensorFlow also supplies a
-shortcut function (like @{tf.layers.dense}). The only difference is that the
+For each layer class (like `tf.layers.Dense`) TensorFlow also supplies a
+shortcut function (like `tf.layers.dense`). The only difference is that the
 shortcut function versions create and run the layer in a single call. For
 example, the following code is equivalent to the earlier version:
 
@@ -390,17 +390,17 @@ sess.run(init)
 print(sess.run(y, {x: [[1, 2, 3], [4, 5, 6]]}))
 ```
 
-While convenient, this approach allows no access to the @{tf.layers.Layer}
+While convenient, this approach allows no access to the `tf.layers.Layer`
 object. This makes introspection and debugging more difficult,
 and layer reuse impossible.
 
 ## Feature columns
 
 The easiest way to experiment with feature columns is using the
-@{tf.feature_column.input_layer} function. This function only accepts
+`tf.feature_column.input_layer` function. This function only accepts
 @{$feature_columns$dense columns} as inputs, so to view the result
 of a categorical column you must wrap it in an
-@{tf.feature_column.indicator_column}. For example:
+`tf.feature_column.indicator_column`. For example:
 
 ``` python
 features = {
@@ -422,9 +422,9 @@ inputs = tf.feature_column.input_layer(features, columns)
 Running the `inputs` tensor will parse the `features` into a batch of vectors.
 
 Feature columns can have internal state, like layers, so they often need to be
-initialized. Categorical columns use @{tf.contrib.lookup$lookup tables}
+initialized. Categorical columns use `tf.contrib.lookup`
 internally and these require a separate initialization op,
-@{tf.tables_initializer}.
+`tf.tables_initializer`.
 
 ``` python
 var_init = tf.global_variables_initializer()
@@ -501,7 +501,7 @@ To optimize a model, you first need to define the loss. We'll use the mean
 square error, a standard loss for regression problems.
 
 While you could do this manually with lower level math operations,
-the @{tf.losses} module provides a set of common loss functions. You can use it
+the `tf.losses` module provides a set of common loss functions. You can use it
 to calculate the mean square error as follows:
 
 ``` python
@@ -520,10 +520,10 @@ This will produce a loss value, something like:
 TensorFlow provides
 [**optimizers**](https://developers.google.com/machine-learning/glossary/#optimizer)
 implementing standard optimization algorithms. These are implemented as
-sub-classes of @{tf.train.Optimizer}. They incrementally change each
+sub-classes of `tf.train.Optimizer`. They incrementally change each
 variable in order to minimize the loss. The simplest optimization algorithm is
 [**gradient descent**](https://developers.google.com/machine-learning/glossary/#gradient_descent),
-implemented by @{tf.train.GradientDescentOptimizer}. It modifies each
+implemented by `tf.train.GradientDescentOptimizer`. It modifies each
 variable according to the magnitude of the derivative of loss with respect to
 that variable. For example:
 

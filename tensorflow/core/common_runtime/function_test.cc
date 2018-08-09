@@ -1019,8 +1019,9 @@ TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
   DCHECK_EQ(x.dtype(), DT_INT32);
   Tensor y;
   HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
-           "The node 'add' has inputs from different frames. The input 'enter' "
-           "is in frame 'while'. The input 'i' is in frame ''.");
+           "{{node add}} has inputs from different frames. The input"
+           " {{node enter}} is in frame 'while'. The input {{node i}} is in"
+           " frame ''.");
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
