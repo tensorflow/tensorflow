@@ -70,6 +70,9 @@ class KernelAndDevice {
   Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
              NodeExecStats* stats);
 
+  Status Run(ScopedStepContainer* step_container, std::vector<Tensor>* inputs,
+             std::vector<Tensor>* outputs, NodeExecStats* stats);
+
   const OpKernel* kernel() const { return kernel_.get(); }
 
   Device* device() const { return device_; }

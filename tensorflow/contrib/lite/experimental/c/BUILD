@@ -5,6 +5,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow/contrib/lite:build_def.bzl",
     "tflite_cc_shared_object",
+    "tflite_copts",
     "tflite_jni_binary",
 )
 
@@ -30,16 +31,11 @@ tflite_cc_shared_object(
     ],
 )
 
-tflite_jni_binary(
-    name = "libtensorflowlite_c_jni.so",
-    linkscript = ":version_script.lds",
-    deps = [":c_api"],
-)
-
 cc_library(
     name = "c_api",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/contrib/lite:context",
         "//tensorflow/contrib/lite:framework",

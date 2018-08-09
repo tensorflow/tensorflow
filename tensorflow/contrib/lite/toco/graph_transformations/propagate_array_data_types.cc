@@ -65,6 +65,7 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kAny:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
+    case OperatorType::kLogicalOr:
       // These operators unconditionally produce bool outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
       break;
@@ -141,7 +142,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       CHECK_EQ(op->inputs.size(), 2);
       CHECK_EQ(op->outputs.size(), 2);
       CHECK(model->GetArray(op->inputs[1]).data_type == ArrayDataType::kInt32);
-      model->GetArray(op->outputs[0]).data_type = model->GetArray(op->inputs[0]).data_type;
+      model->GetArray(op->outputs[0]).data_type =
+          model->GetArray(op->inputs[0]).data_type;
       model->GetArray(op->outputs[1]).data_type = ArrayDataType ::kInt32;
       break;
     }
@@ -154,8 +156,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
         return false;
       }
       for (int i = 0; i < op->outputs.size(); ++i) {
-        auto output = op->outputs[i];
-        auto data_type = unsupported_op->output_data_types[i];
+        const string& output = op->outputs[i];
+        const ArrayDataType data_type = unsupported_op->output_data_types[i];
         model->GetArray(output).data_type = data_type;
       }
       break;
@@ -199,6 +201,30 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
         CHECK(data_type == model->GetArray(input).data_type);
       }
       SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
+    case OperatorType::kOneHot: {
+      CHECK_EQ(op->inputs.size(), 4);
+      CHECK_EQ(op->outputs.size(), 1);
+      const ArrayDataType on_value_type =
+          model->GetArray(op->inputs[OneHotOperator::ON_VALUE_INPUT]).data_type;
+      const ArrayDataType off_value_type =
+          model->GetArray(op->inputs[OneHotOperator::OFF_VALUE_INPUT])
+              .data_type;
+      CHECK(on_value_type == off_value_type);
+      model->GetArray(op->outputs[0]).data_type = on_value_type;
+      break;
+    }
+    case OperatorType::kCTCBeamSearchDecoder: {
+      CHECK_EQ(op->inputs.size(), 2);
+      // All outputs (sparse tensors) are int32s (although tf uses int64s)
+      // except the last one (log probabilities) is float.
+      const int output_size = op->outputs.size();
+      for (int i = 0; i < output_size - 1; ++i) {
+        model->GetArray(op->outputs[i]).data_type = ArrayDataType::kInt32;
+      }
+      model->GetArray(op->outputs[output_size - 1]).data_type =
+          ArrayDataType::kFloat;
       break;
     }
     default: {

@@ -89,7 +89,7 @@ control the execution and inspect the graph's internal state.
 the diagnosis of issues.
 
 In this example, we have already registered a tensor filter called
-@{tfdbg.has_inf_or_nan},
+`tfdbg.has_inf_or_nan`,
 which simply determines if there are any `nan` or `inf` values in any
 intermediate tensors (tensors that are neither inputs or outputs of the
 `Session.run()` call, but are in the path leading from the inputs to the
@@ -98,12 +98,10 @@ we ship it with the
 @{$python/tfdbg#Classes_for_debug_dump_data_and_directories$`debug_data`}
 module.
 
-Note: You can also write your own custom filters. See
-the @{tfdbg.DebugDumpDir.find$API documentation}
-of `DebugDumpDir.find()` for additional information.
+Note: You can also write your own custom filters. See `tfdbg.DebugDumpDir.find`
+for additional information.
 
 ## Debugging Model Training with tfdbg
-
 
 Let's try training the model again, but with the `--debug` flag added this time:
 
@@ -429,9 +427,9 @@ described in the preceding sections inapplicable. Fortunately, you can still
 debug them by using special `hook`s provided by `tfdbg`.
 
 `tfdbg` can debug the
-@{tf.estimator.Estimator.train$`train()`},
-@{tf.estimator.Estimator.evaluate$`evaluate()`} and
-@{tf.estimator.Estimator.predict$`predict()`}
+`tf.estimator.Estimator.train`,
+`tf.estimator.Estimator.evaluate` and
+`tf.estimator.Estimator.predict`
 methods of tf-learn `Estimator`s. To debug `Estimator.train()`,
 create a `LocalCLIDebugHook` and supply it in the `hooks` argument. For example:
 
@@ -473,7 +471,7 @@ python -m tensorflow.python.debug.examples.debug_tflearn_iris --debug
 The `LocalCLIDebugHook` also allows you to configure a `watch_fn` that can be
 used to flexibly specify what `Tensor`s to watch on different `Session.run()`
 calls, as a function of the `fetches` and `feed_dict` and other states. See
-@{tfdbg.DumpingDebugWrapperSession.__init__$this API doc}
+`tfdbg.DumpingDebugWrapperSession.__init__`
 for more details.
 
 ## Debugging Keras Models with TFDBG
@@ -556,7 +554,7 @@ and the higher-level `Estimator` API.
 
 If you interact directly with the `tf.Session` API in `python`, you can
 configure the `RunOptions` proto that you call your `Session.run()` method
-with, by using the method @{tfdbg.watch_graph}.
+with, by using the method `tfdbg.watch_graph`.
 This will cause the intermediate tensors and runtime graphs to be dumped to a
 shared storage location of your choice when the `Session.run()` call occurs
 (at the cost of slower performance). For example:
@@ -715,7 +713,7 @@ You might encounter this problem in any of the following situations:
 
 *   models with many intermediate tensors
 *   very large intermediate tensors
-*   many @{tf.while_loop} iterations
+*   many `tf.while_loop` iterations
 
 There are three possible workarounds or solutions:
 
@@ -775,7 +773,7 @@ sess.run(b)
        optimization folds the graph that contains `a` and `b` into a single
        node to speed up future runs of the graph, which is why `tfdbg` does
        not generate any intermediate tensor dumps. However, if `a` were a
-       @{tf.Variable}, as in the following example:
+       `tf.Variable`, as in the following example:
 
 ``` python
 import numpy as np

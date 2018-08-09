@@ -48,6 +48,7 @@ from tensorflow.contrib.autograph.pyct import inspect_utils
 from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
@@ -70,6 +71,8 @@ def is_whitelisted_for_graph(o):
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
       return True
+  if hasattr(o, 'autograph_info__'):
+    return True
   return False
 
 
@@ -115,12 +118,32 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
       node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+  # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
+  elif hasattr(o, '__class__'):
+    raise NotImplementedError(
+        'Object conversion is not yet supported. If you are '
+        'trying to convert code that uses an existing object, '
+        'try including the creation of that object in the '
+        'conversion. For example, instead of converting the method '
+        'of a class, try converting the entire class instead. '
+        'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+        'contrib/autograph/README.md#using-the-functional-api '
+        'for more information.')
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 
+  # TODO(mdan): This is temporary. it should be created using a converter.
+  # TODO(mdan): The attribute should be added with a helper, not directly.
+  # The helper can ensure there are no collisions.
+  template = '''
+      entity.autograph_info__ = {}
+  '''
+  node.extend(templates.replace(template, entity=name))
+
   program_ctx.add_to_cache(o, node)
+
   if program_ctx.recursive:
     while True:
       candidate = None
@@ -164,21 +187,21 @@ def class_to_graph(c, program_ctx):
       class_namespace = namespace
     else:
       class_namespace.update(namespace)
-    converted_members[m] = node
+    converted_members[m] = node[0]
   namer = program_ctx.new_namer(class_namespace)
   class_name = namer.compiled_class_name(c.__name__, c)
 
   # TODO(mdan): This needs to be explained more thoroughly.
-  # Process any base classes: if the sueprclass if of a whitelisted type, an
+  # Process any base classes: if the superclass if of a whitelisted type, an
   # absolute import line is generated. Otherwise, it is marked for conversion
   # (as a side effect of the call to namer.compiled_class_name() followed by
   # program_ctx.update_name_map(namer)).
   output_nodes = []
   renames = {}
-  bases = []
+  base_names = []
   for base in c.__bases__:
     if isinstance(object, base):
-      bases.append('object')
+      base_names.append('object')
       continue
     if is_whitelisted_for_graph(base):
       alias = namer.new_symbol(base.__name__, ())
@@ -190,28 +213,28 @@ def class_to_graph(c, program_ctx):
     else:
       # This will trigger a conversion into a class with this name.
       alias = namer.compiled_class_name(base.__name__, base)
-    bases.append(alias)
+    base_names.append(alias)
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
   program_ctx.update_name_map(namer)
 
   # Generate the definition of the converted class.
-  output_nodes.append(
-      gast.ClassDef(
-          class_name,
-          bases=bases,
-          keywords=[],
-          body=list(converted_members.values()),
-          decorator_list=[]))
-  node = gast.Module(output_nodes)
-
+  bases = [gast.Name(n, gast.Load(), None) for n in base_names]
+  class_def = gast.ClassDef(
+      class_name,
+      bases=bases,
+      keywords=[],
+      body=list(converted_members.values()),
+      decorator_list=[])
   # Make a final pass to replace references to the class or its base classes.
   # Most commonly, this occurs when making super().__init__() calls.
   # TODO(mdan): Making direct references to superclass' superclass will fail.
-  node = qual_names.resolve(node)
+  class_def = qual_names.resolve(class_def)
   renames[qual_names.QN(c.__name__)] = qual_names.QN(class_name)
-  node = ast_util.rename_symbols(node, renames)
+  class_def = ast_util.rename_symbols(class_def, renames)
 
-  return node, class_name, class_namespace
+  output_nodes.append(class_def)
+
+  return output_nodes, class_name, class_namespace
 
 
 def _add_reserved_symbol(namespace, name, entity):
@@ -268,18 +291,18 @@ def function_to_graph(f,
   context = converter.EntityContext(namer, entity_info, program_ctx)
   node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
 
-  # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
+  # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
   if not did_rename:
     new_name = f.__name__
     if node.name != f.__name__:
       raise NotImplementedError('Strange corner case. Send us offending code!')
-
   node.name = new_name
+
   program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.
 
-  return node, new_name, namespace
+  return [node], new_name, namespace
 
 
 def node_to_graph(node, context, rewrite_errors=True):

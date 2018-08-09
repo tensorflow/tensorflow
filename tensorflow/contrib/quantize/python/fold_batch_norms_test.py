@@ -128,6 +128,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+    if freeze_batch_norm_delay is not None:
+      self._AssertMovingAveragesAreFrozen(g, scope)
+
 
     for op in g.get_operations():
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
@@ -216,6 +219,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = [scope + '/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+    if freeze_batch_norm_delay is not None:
+      self._AssertMovingAveragesAreFrozen(g, scope)
 
     for op in g.get_operations():
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
@@ -284,6 +289,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+    if freeze_batch_norm_delay is not None:
+      self._AssertMovingAveragesAreFrozen(g, scope)
 
     for op in g.get_operations():
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
@@ -351,6 +358,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+    if freeze_batch_norm_delay is not None:
+      self._AssertMovingAveragesAreFrozen(g, scope)
 
     for op in g.get_operations():
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
@@ -431,6 +440,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+    if freeze_batch_norm_delay is not None:
+      self._AssertMovingAveragesAreFrozen(g, scope)
 
     for op in g.get_operations():
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
@@ -515,6 +526,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+    if freeze_batch_norm_delay is not None:
+      self._AssertMovingAveragesAreFrozen(g, scope)
 
     for op in g.get_operations():
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
@@ -643,6 +656,22 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     for out_op_name in out_op_names:
       out_op = graph.get_operation_by_name(out_op_name)
       self.assertIn(op.outputs[0].name, [str(t.name) for t in out_op.inputs])
+
+  def _AssertMovingAveragesAreFrozen(self, graph, scope):
+    """Asserts to check if moving mean and variance are frozen.
+
+    Args:
+      graph: Graph where the operations are located.
+      scope: Scope of batch norm op
+    """
+    moving_average_mult = graph.get_operation_by_name(
+        scope + '/BatchNorm/AssignMovingAvg/mul')
+    self.assertTrue(
+        moving_average_mult.inputs[1].name.find('freeze_moving_mean/Merge') > 0)
+    moving_var_mult = graph.get_operation_by_name(
+        scope + '/BatchNorm/AssignMovingAvg_1/mul')
+    self.assertTrue(
+        moving_var_mult.inputs[1].name.find('freeze_moving_var/Merge') > 0)
 
   def _CopyGraph(self, graph):
     """Return a copy of graph."""

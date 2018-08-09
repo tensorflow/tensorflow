@@ -211,6 +211,15 @@ struct PackOptionsT;
 struct LogicalOrOptions;
 struct LogicalOrOptionsT;
 
+struct OneHotOptions;
+struct OneHotOptionsT;
+
+struct LogicalAndOptions;
+struct LogicalAndOptionsT;
+
+struct LogicalNotOptions;
+struct LogicalNotOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -361,11 +370,14 @@ enum BuiltinOperator {
   BuiltinOperator_REDUCE_MAX = 82,
   BuiltinOperator_PACK = 83,
   BuiltinOperator_LOGICAL_OR = 84,
+  BuiltinOperator_ONE_HOT = 85,
+  BuiltinOperator_LOGICAL_AND = 86,
+  BuiltinOperator_LOGICAL_NOT = 87,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_LOGICAL_OR
+  BuiltinOperator_MAX = BuiltinOperator_LOGICAL_NOT
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[84] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[87] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -450,7 +462,10 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[84] {
     BuiltinOperator_REDUCE_PROD,
     BuiltinOperator_REDUCE_MAX,
     BuiltinOperator_PACK,
-    BuiltinOperator_LOGICAL_OR
+    BuiltinOperator_LOGICAL_OR,
+    BuiltinOperator_ONE_HOT,
+    BuiltinOperator_LOGICAL_AND,
+    BuiltinOperator_LOGICAL_NOT
   };
   return values;
 }
@@ -542,6 +557,9 @@ inline const char **EnumNamesBuiltinOperator() {
     "REDUCE_MAX",
     "PACK",
     "LOGICAL_OR",
+    "ONE_HOT",
+    "LOGICAL_AND",
+    "LOGICAL_NOT",
     nullptr
   };
   return names;
@@ -614,11 +632,14 @@ enum BuiltinOptions {
   BuiltinOptions_FakeQuantOptions = 58,
   BuiltinOptions_PackOptions = 59,
   BuiltinOptions_LogicalOrOptions = 60,
+  BuiltinOptions_OneHotOptions = 61,
+  BuiltinOptions_LogicalAndOptions = 62,
+  BuiltinOptions_LogicalNotOptions = 63,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_LogicalOrOptions
+  BuiltinOptions_MAX = BuiltinOptions_LogicalNotOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[61] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[64] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -680,7 +701,10 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[61] {
     BuiltinOptions_ArgMinOptions,
     BuiltinOptions_FakeQuantOptions,
     BuiltinOptions_PackOptions,
-    BuiltinOptions_LogicalOrOptions
+    BuiltinOptions_LogicalOrOptions,
+    BuiltinOptions_OneHotOptions,
+    BuiltinOptions_LogicalAndOptions,
+    BuiltinOptions_LogicalNotOptions
   };
   return values;
 }
@@ -748,6 +772,9 @@ inline const char **EnumNamesBuiltinOptions() {
     "FakeQuantOptions",
     "PackOptions",
     "LogicalOrOptions",
+    "OneHotOptions",
+    "LogicalAndOptions",
+    "LogicalNotOptions",
     nullptr
   };
   return names;
@@ -1000,6 +1027,18 @@ template<> struct BuiltinOptionsTraits<PackOptions> {
 
 template<> struct BuiltinOptionsTraits<LogicalOrOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_LogicalOrOptions;
+};
+
+template<> struct BuiltinOptionsTraits<OneHotOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_OneHotOptions;
+};
+
+template<> struct BuiltinOptionsTraits<LogicalAndOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LogicalAndOptions;
+};
+
+template<> struct BuiltinOptionsTraits<LogicalNotOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LogicalNotOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1512,6 +1551,30 @@ struct BuiltinOptionsUnion {
   const LogicalOrOptionsT *AsLogicalOrOptions() const {
     return type == BuiltinOptions_LogicalOrOptions ?
       reinterpret_cast<const LogicalOrOptionsT *>(value) : nullptr;
+  }
+  OneHotOptionsT *AsOneHotOptions() {
+    return type == BuiltinOptions_OneHotOptions ?
+      reinterpret_cast<OneHotOptionsT *>(value) : nullptr;
+  }
+  const OneHotOptionsT *AsOneHotOptions() const {
+    return type == BuiltinOptions_OneHotOptions ?
+      reinterpret_cast<const OneHotOptionsT *>(value) : nullptr;
+  }
+  LogicalAndOptionsT *AsLogicalAndOptions() {
+    return type == BuiltinOptions_LogicalAndOptions ?
+      reinterpret_cast<LogicalAndOptionsT *>(value) : nullptr;
+  }
+  const LogicalAndOptionsT *AsLogicalAndOptions() const {
+    return type == BuiltinOptions_LogicalAndOptions ?
+      reinterpret_cast<const LogicalAndOptionsT *>(value) : nullptr;
+  }
+  LogicalNotOptionsT *AsLogicalNotOptions() {
+    return type == BuiltinOptions_LogicalNotOptions ?
+      reinterpret_cast<LogicalNotOptionsT *>(value) : nullptr;
+  }
+  const LogicalNotOptionsT *AsLogicalNotOptions() const {
+    return type == BuiltinOptions_LogicalNotOptions ?
+      reinterpret_cast<const LogicalNotOptionsT *>(value) : nullptr;
   }
 };
 
@@ -5452,6 +5515,140 @@ inline flatbuffers::Offset<LogicalOrOptions> CreateLogicalOrOptions(
 
 flatbuffers::Offset<LogicalOrOptions> CreateLogicalOrOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalOrOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct OneHotOptionsT : public flatbuffers::NativeTable {
+  typedef OneHotOptions TableType;
+  int32_t axis;
+  OneHotOptionsT()
+      : axis(0) {
+  }
+};
+
+struct OneHotOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef OneHotOptionsT NativeTableType;
+  enum {
+    VT_AXIS = 4
+  };
+  int32_t axis() const {
+    return GetField<int32_t>(VT_AXIS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_AXIS) &&
+           verifier.EndTable();
+  }
+  OneHotOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(OneHotOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<OneHotOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const OneHotOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct OneHotOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_axis(int32_t axis) {
+    fbb_.AddElement<int32_t>(OneHotOptions::VT_AXIS, axis, 0);
+  }
+  explicit OneHotOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  OneHotOptionsBuilder &operator=(const OneHotOptionsBuilder &);
+  flatbuffers::Offset<OneHotOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<OneHotOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<OneHotOptions> CreateOneHotOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t axis = 0) {
+  OneHotOptionsBuilder builder_(_fbb);
+  builder_.add_axis(axis);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<OneHotOptions> CreateOneHotOptions(flatbuffers::FlatBufferBuilder &_fbb, const OneHotOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct LogicalAndOptionsT : public flatbuffers::NativeTable {
+  typedef LogicalAndOptions TableType;
+  LogicalAndOptionsT() {
+  }
+};
+
+struct LogicalAndOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef LogicalAndOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  LogicalAndOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(LogicalAndOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<LogicalAndOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogicalAndOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct LogicalAndOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit LogicalAndOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  LogicalAndOptionsBuilder &operator=(const LogicalAndOptionsBuilder &);
+  flatbuffers::Offset<LogicalAndOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<LogicalAndOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<LogicalAndOptions> CreateLogicalAndOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  LogicalAndOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<LogicalAndOptions> CreateLogicalAndOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalAndOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct LogicalNotOptionsT : public flatbuffers::NativeTable {
+  typedef LogicalNotOptions TableType;
+  LogicalNotOptionsT() {
+  }
+};
+
+struct LogicalNotOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef LogicalNotOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  LogicalNotOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(LogicalNotOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<LogicalNotOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogicalNotOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct LogicalNotOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit LogicalNotOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  LogicalNotOptionsBuilder &operator=(const LogicalNotOptionsBuilder &);
+  flatbuffers::Offset<LogicalNotOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<LogicalNotOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<LogicalNotOptions> CreateLogicalNotOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  LogicalNotOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<LogicalNotOptions> CreateLogicalNotOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalNotOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -5765,6 +5962,15 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const LogicalOrOptions *builtin_options_as_LogicalOrOptions() const {
     return builtin_options_type() == BuiltinOptions_LogicalOrOptions ? static_cast<const LogicalOrOptions *>(builtin_options()) : nullptr;
   }
+  const OneHotOptions *builtin_options_as_OneHotOptions() const {
+    return builtin_options_type() == BuiltinOptions_OneHotOptions ? static_cast<const OneHotOptions *>(builtin_options()) : nullptr;
+  }
+  const LogicalAndOptions *builtin_options_as_LogicalAndOptions() const {
+    return builtin_options_type() == BuiltinOptions_LogicalAndOptions ? static_cast<const LogicalAndOptions *>(builtin_options()) : nullptr;
+  }
+  const LogicalNotOptions *builtin_options_as_LogicalNotOptions() const {
+    return builtin_options_type() == BuiltinOptions_LogicalNotOptions ? static_cast<const LogicalNotOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -6034,6 +6240,18 @@ template<> inline const PackOptions *Operator::builtin_options_as<PackOptions>()
 
 template<> inline const LogicalOrOptions *Operator::builtin_options_as<LogicalOrOptions>() const {
   return builtin_options_as_LogicalOrOptions();
+}
+
+template<> inline const OneHotOptions *Operator::builtin_options_as<OneHotOptions>() const {
+  return builtin_options_as_OneHotOptions();
+}
+
+template<> inline const LogicalAndOptions *Operator::builtin_options_as<LogicalAndOptions>() const {
+  return builtin_options_as_LogicalAndOptions();
+}
+
+template<> inline const LogicalNotOptions *Operator::builtin_options_as<LogicalNotOptions>() const {
+  return builtin_options_as_LogicalNotOptions();
 }
 
 struct OperatorBuilder {
@@ -8151,6 +8369,78 @@ inline flatbuffers::Offset<LogicalOrOptions> CreateLogicalOrOptions(flatbuffers:
       _fbb);
 }
 
+inline OneHotOptionsT *OneHotOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new OneHotOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void OneHotOptions::UnPackTo(OneHotOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = axis(); _o->axis = _e; };
+}
+
+inline flatbuffers::Offset<OneHotOptions> OneHotOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const OneHotOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateOneHotOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<OneHotOptions> CreateOneHotOptions(flatbuffers::FlatBufferBuilder &_fbb, const OneHotOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const OneHotOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _axis = _o->axis;
+  return tflite::CreateOneHotOptions(
+      _fbb,
+      _axis);
+}
+
+inline LogicalAndOptionsT *LogicalAndOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new LogicalAndOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void LogicalAndOptions::UnPackTo(LogicalAndOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<LogicalAndOptions> LogicalAndOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogicalAndOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateLogicalAndOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<LogicalAndOptions> CreateLogicalAndOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalAndOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const LogicalAndOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateLogicalAndOptions(
+      _fbb);
+}
+
+inline LogicalNotOptionsT *LogicalNotOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new LogicalNotOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void LogicalNotOptions::UnPackTo(LogicalNotOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<LogicalNotOptions> LogicalNotOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogicalNotOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateLogicalNotOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<LogicalNotOptions> CreateLogicalNotOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalNotOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const LogicalNotOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateLogicalNotOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -8580,6 +8870,18 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const LogicalOrOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_OneHotOptions: {
+      auto ptr = reinterpret_cast<const OneHotOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_LogicalAndOptions: {
+      auto ptr = reinterpret_cast<const LogicalAndOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_LogicalNotOptions: {
+      auto ptr = reinterpret_cast<const LogicalNotOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -8838,6 +9140,18 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const LogicalOrOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_OneHotOptions: {
+      auto ptr = reinterpret_cast<const OneHotOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_LogicalAndOptions: {
+      auto ptr = reinterpret_cast<const LogicalAndOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_LogicalNotOptions: {
+      auto ptr = reinterpret_cast<const LogicalNotOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -9084,6 +9398,18 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const LogicalOrOptionsT *>(value);
       return CreateLogicalOrOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_OneHotOptions: {
+      auto ptr = reinterpret_cast<const OneHotOptionsT *>(value);
+      return CreateOneHotOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_LogicalAndOptions: {
+      auto ptr = reinterpret_cast<const LogicalAndOptionsT *>(value);
+      return CreateLogicalAndOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_LogicalNotOptions: {
+      auto ptr = reinterpret_cast<const LogicalNotOptionsT *>(value);
+      return CreateLogicalNotOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -9328,6 +9654,18 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_LogicalOrOptions: {
       value = new LogicalOrOptionsT(*reinterpret_cast<LogicalOrOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_OneHotOptions: {
+      value = new OneHotOptionsT(*reinterpret_cast<OneHotOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_LogicalAndOptions: {
+      value = new LogicalAndOptionsT(*reinterpret_cast<LogicalAndOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_LogicalNotOptions: {
+      value = new LogicalNotOptionsT(*reinterpret_cast<LogicalNotOptionsT *>(u.value));
       break;
     }
     default:
@@ -9634,6 +9972,21 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_LogicalOrOptions: {
       auto ptr = reinterpret_cast<LogicalOrOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_OneHotOptions: {
+      auto ptr = reinterpret_cast<OneHotOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_LogicalAndOptions: {
+      auto ptr = reinterpret_cast<LogicalAndOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_LogicalNotOptions: {
+      auto ptr = reinterpret_cast<LogicalNotOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -40,17 +40,27 @@ static Graph* Cast(int num) {
 
 class CastOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType src, DataType dst) {
-    TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
-                     .Input(FakeInput(src))
-                     .Attr("SrcT", src)
-                     .Attr("DstT", dst)
-                     .Finalize(node_def()));
+  void MakeOp(DataType src, DataType dst, bool trunc = false) {
+    if (trunc) {
+      TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
+                       .Input(FakeInput(src))
+                       .Attr("SrcT", src)
+                       .Attr("DstT", dst)
+                       .Attr("Truncate", true)
+                       .Finalize(node_def()));
+    } else {
+      TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
+                       .Input(FakeInput(src))
+                       .Attr("SrcT", src)
+                       .Attr("DstT", dst)
+                       .Finalize(node_def()));
+    }
+
     TF_EXPECT_OK(InitOp());
   }
 
   template <typename INPUT, typename OUTPUT>
-  void CheckCast() {
+  void CheckCast(bool trunc = false) {
     DataType in_type = DataTypeToEnum<INPUT>::v();
     DataType out_type = DataTypeToEnum<OUTPUT>::v();
     MakeOp(in_type, out_type);
@@ -64,8 +74,9 @@ class CastOpTest : public OpsTestBase {
   }
 };
 
-#define TEST_CAST(in, out) \
-  TEST_F(CastOpTest, TestCast##_##in##_##out) { CheckCast<in, out>(); }
+#define TEST_CAST(in, out)                                              \
+  TEST_F(CastOpTest, TestCast##_##in##_##out) { CheckCast<in, out>(); } \
+  TEST_F(CastOpTest, TestCast2##_##in##_##out) { CheckCast<in, out>(true); }
 
 #define TEST_ALL_CASTS_FROM(in) \
   TEST_CAST(in, uint8);         \

@@ -15,6 +15,7 @@ package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
 )
@@ -40,13 +41,13 @@ py_library(
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
-        "python/tpu/tpu_system_metadata.py",
         "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",
-        ":tpu_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -133,7 +134,7 @@ py_library(
 
 tf_custom_op_py_library(
     name = "tpu_py",
-    srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
+    srcs = glob(["python/ops/*.py"]),
     dso = [":python/ops/_tpu_ops.so"],
     kernels = [
         ":all_ops",
@@ -152,9 +153,13 @@ tf_custom_op_py_library(
 
 py_library(
     name = "tpu",
-    srcs = ["python/tpu/__init__.py"],
+    srcs = [
+        "__init__.py",
+        "python/tpu/__init__.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
+        ":keras_support",  # split out to avoid cycle with tpu_strategy
         ":tpu_estimator",
         ":tpu_lib",
     ],
@@ -169,19 +174,13 @@ py_library(
     visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
-        # TODO(b/111651964): Clean special visibility for keras_support.
-        #
-        # Note: If you are an end user, please do not add your project to this
-        # visibility. This feature is experimental, and will be made public
-        # when ready.
-        "//third_party/cloud_tpu/models/keras:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//third_party/cloud_tpu/models/keras:__subpackages__",
     ],
     deps = [
         ":tpu_lib",
-        ":tpu_py",
         "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
-        "//tensorflow/contrib/distribute/python:tpu_strategy",
+        "//tensorflow/contrib/distribute",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -217,6 +216,7 @@ py_library(
         "python/tpu/tpu_function.py",
         "python/tpu/tpu_optimizer.py",
         "python/tpu/tpu_sharding.py",
+        "python/tpu/tpu_system_metadata.py",
         "python/tpu/training_loop.py",
     ],
     srcs_version = "PY2AND3",

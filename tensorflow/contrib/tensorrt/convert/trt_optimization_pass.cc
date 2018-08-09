@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stacktrace.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -189,9 +190,6 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item, GraphDef* optimized_graph) {
   VLOG(1) << "Called TRTOptimization Pass " << name_;
-  if (VLOG_IS_ON(1)) {
-    PrintDebugInfo(cluster, item);
-  }
   // This is a hack to workaround optimizer issue. MetaOptimizer calls
   // optimization passes on function objects as well, we should not modify
   // generated funcdefs! This is fragile but we don't have any other option
@@ -202,6 +200,10 @@ tensorflow::Status TRTOptimizationPass::Optimize(
                     "be called on function objects.";
     *optimized_graph = item.graph;
     return tensorflow::Status::OK();
+  }
+  if (VLOG_IS_ON(1)) {
+    VLOG(2) << CurrentStackTrace();
+    PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;
   if (item.feed.size()) {

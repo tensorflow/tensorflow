@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -586,9 +586,9 @@ XLA_TEST_F(TupleHloTest,
           }));
   auto expected =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}));
-  auto literal = MakeUnique<Literal>();
+  auto literal = Literal::CreateFromShape(expected->shape());
   TF_EXPECT_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      backend().default_stream_executor(), expected->shape(), literal.get()));
+      backend().default_stream_executor(), expected->shape(), *literal));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *literal));
 }
 

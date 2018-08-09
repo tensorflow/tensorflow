@@ -189,4 +189,27 @@ TEST(RecordReaderWriterTest, TestZlib) {
   }
 }
 
+TEST(RecordReaderWriterTest, TestUseAfterClose) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/record_reader_writer_flush_close_test";
+
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_CHECK_OK(env->NewWritableFile(fname, &file));
+
+    io::RecordWriterOptions options;
+    options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
+    io::RecordWriter writer(file.get(), options);
+    TF_EXPECT_OK(writer.WriteRecord("abc"));
+    TF_CHECK_OK(writer.Flush());
+    TF_CHECK_OK(writer.Close());
+
+    CHECK_EQ(writer.WriteRecord("abc").code(), error::FAILED_PRECONDITION);
+    CHECK_EQ(writer.Flush().code(), error::FAILED_PRECONDITION);
+
+    // Second call to close is fine.
+    TF_CHECK_OK(writer.Close());
+  }
+}
+
 }  // namespace tensorflow

@@ -202,3 +202,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
     # always return ready.
     are_splits_ready = constant_op.constant(True)
     return (are_splits_ready, partition_ids, gains, split_infos)
+
+  def reset(self, stamp_token, next_stamp_token):
+    reset = self._stats_accumulator.flush(stamp_token, next_stamp_token)
+    return reset

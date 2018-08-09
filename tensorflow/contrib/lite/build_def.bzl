@@ -2,8 +2,8 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
     "tf_cc_shared_object",
+    "tf_cc_test",
 )
 
 def tflite_copts():
@@ -26,6 +26,9 @@ def tflite_copts():
         ],
         str(Label("//tensorflow:ios_x86_64")): [
             "-msse4.1",
+        ],
+        str(Label("//tensorflow:windows")): [
+            "/DTF_COMPILE_LIBRARY",
         ],
         "//conditions:default": [],
     }) + select({
@@ -53,6 +56,7 @@ def tflite_linkopts_unstripped():
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
+        "//tensorflow:darwin": [],
         "//tensorflow/contrib/lite:mips": [],
         "//tensorflow/contrib/lite:mips64": [],
         "//conditions:default": [
@@ -74,6 +78,7 @@ def tflite_jni_linkopts_unstripped():
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
+        "//tensorflow:darwin": [],
         "//tensorflow/contrib/lite:mips": [],
         "//tensorflow/contrib/lite:mips64": [],
         "//conditions:default": [
@@ -122,19 +127,21 @@ def tflite_jni_binary(
         linkopts = linkopts,
     )
 
-def tflite_cc_shared_object(name,
-                            copts=tflite_copts(),
-                            linkopts=[],
-                            linkstatic=1,
-                            deps=[]):
-  """Builds a shared object for TFLite."""
-  tf_cc_shared_object(
-      name=name,
-      copts=copts,
-      linkstatic=linkstatic,
-      linkopts=linkopts + tflite_jni_linkopts(),
-      framework_so=[],
-      deps=deps)
+def tflite_cc_shared_object(
+        name,
+        copts = tflite_copts(),
+        linkopts = [],
+        linkstatic = 1,
+        deps = []):
+    """Builds a shared object for TFLite."""
+    tf_cc_shared_object(
+        name = name,
+        copts = copts,
+        linkstatic = linkstatic,
+        linkopts = linkopts + tflite_jni_linkopts(),
+        framework_so = [],
+        deps = deps,
+    )
 
 def tf_to_tflite(name, src, options, out):
     """Convert a frozen tensorflow graphdef to TF Lite's flatbuffer.
@@ -240,6 +247,9 @@ def generated_test_models():
         "local_response_norm",
         "log_softmax",
         "log",
+        "logical_and",
+        "logical_or",
+        "logical_xor",
         "lstm",
         "max_pool",
         "maximum",
@@ -248,6 +258,7 @@ def generated_test_models():
         "mul",
         "neg",
         "not_equal",
+        "one_hot",
         "pack",
         "pad",
         "padv2",

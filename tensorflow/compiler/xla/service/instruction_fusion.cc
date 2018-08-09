@@ -120,6 +120,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
@@ -141,6 +142,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

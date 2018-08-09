@@ -568,9 +568,17 @@ TfLiteStatus AddOpsAndParams(
               "NNAPI does not support L2Normalization with fused activations");
         }
         break;
+      case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
+        if (interpreter->tensor(node.outputs->data[0])->type !=
+            kTfLiteFloat32) {
+          logError("NNAPI only support HASHTABLE_LOOKUP with float32 output",
+                   builtin);
+          return kTfLiteError;
+        }
+        nn_op_type = ANEURALNETWORKS_HASHTABLE_LOOKUP;
+        break;
       case tflite::BuiltinOperator_CONCAT_EMBEDDINGS:
       case tflite::BuiltinOperator_LSH_PROJECTION:
-      case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
       case tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE:
@@ -623,6 +631,9 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_FAKE_QUANT:
       case tflite::BuiltinOperator_PACK:
       case tflite::BuiltinOperator_LOGICAL_OR:
+      case tflite::BuiltinOperator_ONE_HOT:
+      case tflite::BuiltinOperator_LOGICAL_AND:
+      case tflite::BuiltinOperator_LOGICAL_NOT:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;
@@ -787,5 +798,7 @@ TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
 
   return kTfLiteOk;
 }
+
+bool NNAPIDelegate::IsSupported() { return NNAPIExists(); }
 
 }  // namespace tflite

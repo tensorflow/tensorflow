@@ -1082,27 +1082,23 @@ void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
   }
 
   // Yield until input dims have been resolved.
-  if (!input_values.has_shape()) {
+  if (!input_values.has_shape() || !input_k.has_shape()) {
     return;
   }
 
-  const auto& input_values_shape = input_values.shape();
-  auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
-  auto output_values_dims = output_values.mutable_shape()->mutable_dims();
-  for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
-    output_indexes_dims->push_back(input_values_shape.dims(dim));
-    output_values_dims->push_back(input_values_shape.dims(dim));
-  }
   // If the value is initialized, we can specify the last dimension, otherwise
   // unknown.
   if (input_k.buffer) {
+    const auto& input_values_shape = input_values.shape();
+    auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
+    auto output_values_dims = output_values.mutable_shape()->mutable_dims();
+    for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
+      output_indexes_dims->push_back(input_values_shape.dims(dim));
+      output_values_dims->push_back(input_values_shape.dims(dim));
+    }
     const int32_t k_value = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
     output_indexes_dims->push_back(k_value);
     output_values_dims->push_back(k_value);
-
-  } else {
-    output_indexes_dims->push_back(0);
-    output_values_dims->push_back(0);
   }
 }
 
@@ -1578,6 +1574,61 @@ void ProcessAnyOperator(Model* model, AnyOperator* op) {
   }
 }
 
+void ProcessOneHotOperator(Model* model, OneHotOperator* op) {
+  CHECK_EQ(op->inputs.size(), 4);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  // Yield until indices dims have been resolved.
+  const auto& indices_array =
+      model->GetArray(op->inputs[OneHotOperator::INDICES_INPUT]);
+  if (!indices_array.has_shape()) {
+    return;
+  }
+
+  // Yield until depth is constant and dims have been resolved.
+  if (!IsConstantParameterArray(*model,
+                                op->inputs[OneHotOperator::DEPTH_INPUT])) {
+    return;
+  }
+  const auto& depth_array =
+      model->GetArray(op->inputs[OneHotOperator::DEPTH_INPUT]);
+  if (!depth_array.has_shape()) {
+    return;
+  }
+
+  CHECK(depth_array.data_type == ArrayDataType::kInt32)
+      << "Depth array must be int32.";
+  CHECK_EQ(RequiredBufferSizeForShape(depth_array.shape()), 1)
+      << "Depth array must be scalar.";
+
+  const int depth = depth_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  CHECK_GE(depth, 0) << "Depth must be non-negative.";
+
+  const int indices_dims = indices_array.shape().dimensions_count();
+  const int output_dims = indices_dims + 1;
+  const int axis = op->axis == -1 ? indices_dims : op->axis;
+  CHECK_GE(axis, 0) << "Resolved axis must be non-negative.";
+
+  auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+  mutable_dims->resize(output_dims);
+  for (int i = 0; i < output_dims; ++i) {
+    int dim = 0;
+    if (i < axis) {
+      dim = indices_array.shape().dims(i);
+    } else if (i == axis) {
+      dim = depth;
+    } else {
+      dim = indices_array.shape().dims(i - 1);
+    }
+    (*mutable_dims)[i] = dim;
+  }
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -1618,6 +1669,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSin:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
+    case OperatorType::kLogicalOr:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
@@ -1786,8 +1838,19 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessArgMinMaxOperator<ArgMinOperator>(
           model, static_cast<ArgMinOperator*>(op));
       break;
-    case OperatorType::kUnsupported:
+    case OperatorType::kUnsupported: {
+      const auto* unsupported_op =
+          static_cast<TensorFlowUnsupportedOperator*>(op);
+      // Attribute can be not specified, ignore it.
+      if (unsupported_op->output_shapes.size() < op->outputs.size()) {
+        return false;
+      }
+      for (int i = 0; i < op->outputs.size(); ++i) {
+        const string& output = op->outputs[i];
+        model->GetArray(output).copy_shape(unsupported_op->output_shapes.at(i));
+      }
       break;
+    }
     case OperatorType::kSvdf:
       ProcessSvdfOperator(model, static_cast<SvdfOperator*>(op));
       break;
@@ -1813,6 +1876,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kAny:
       ProcessAnyOperator(model, static_cast<AnyOperator*>(op));
+      break;
+    case OperatorType::kOneHot:
+      ProcessOneHotOperator(model, static_cast<OneHotOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

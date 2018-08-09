@@ -381,6 +381,14 @@ config_setting(
     },
 )
 
+# Setting to use when loading kernels dynamically
+config_setting(
+    name = "dynamic_loaded_kernels",
+    define_values = {
+        "dynamic_loaded_kernels": "true",
+    },
+)
+
 config_setting(
     name = "using_cuda_nvcc",
     define_values = {
@@ -408,14 +416,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(laigd): consider removing this option and make TensorRT enabled
-# automatically when CUDA is enabled.
-config_setting(
-    name = "with_tensorrt_support",
-    values = {"define": "with_tensorrt_support=true"},
-    visibility = ["//visibility:public"],
-)
-
 package_group(
     name = "internal",
     packages = [
@@ -439,11 +439,6 @@ filegroup(
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
-)
-
-filegroup(
-    name = "docs_src",
-    data = glob(["docs_src/**/*.md"]),
 )
 
 cc_library(
@@ -589,6 +584,7 @@ exports_files(
 gen_api_init_files(
     name = "tensorflow_python_api_gen",
     srcs = ["api_template.__init__.py"],
+    api_version = 1,
     root_init_template = "api_template.__init__.py",
 )
 

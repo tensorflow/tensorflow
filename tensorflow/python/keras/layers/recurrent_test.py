@@ -24,8 +24,10 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_util
@@ -572,6 +574,122 @@ class RNNTest(test.TestCase):
       checkpointed_objects = set(checkpointable_util.list_objects(model))
       for v in model.variables:
         self.assertIn(v, checkpointed_objects)
+
+  def test_high_dimension_RNN(self):
+    with self.test_session():
+      # Basic test case.
+      unit_a = 10
+      unit_b = 20
+      input_a = 5
+      input_b = 10
+      batch = 32
+      time_step = 4
+
+      cell = Minimal2DRNNCell(unit_a, unit_b)
+      x = keras.Input((None, input_a, input_b))
+      layer = keras.layers.RNN(cell)
+      y = layer(x)
+
+      self.assertEqual(cell.state_size.as_list(), [unit_a, unit_b])
+      init_state = layer.get_initial_state(x)
+      self.assertEqual(len(init_state), 1)
+      self.assertEqual(init_state[0].get_shape().as_list(),
+                       [None, unit_a, unit_b])
+
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, input_a, input_b)),
+          np.zeros((batch, unit_a, unit_b)))
+      self.assertEqual(model.output_shape, (None, unit_a, unit_b))
+
+      # Test stacking.
+      cells = [
+          Minimal2DRNNCell(unit_a, unit_b),
+          Minimal2DRNNCell(unit_a * 2, unit_b * 2),
+          Minimal2DRNNCell(unit_a * 4, unit_b * 4)
+      ]
+      layer = keras.layers.RNN(cells)
+      y = layer(x)
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, input_a, input_b)),
+          np.zeros((batch, unit_a * 4, unit_b * 4)))
+      self.assertEqual(model.output_shape, (None, unit_a * 4, unit_b * 4))
+
+  def test_high_dimension_RNN_with_init_state(self):
+    unit_a = 10
+    unit_b = 20
+    input_a = 5
+    input_b = 10
+    batch = 32
+    time_step = 4
+
+    with self.test_session():
+      # Basic test case.
+      cell = Minimal2DRNNCell(unit_a, unit_b)
+      x = keras.Input((None, input_a, input_b))
+      s = keras.Input((unit_a, unit_b))
+      layer = keras.layers.RNN(cell)
+      y = layer(x, initial_state=s)
+
+      model = keras.models.Model([x, s], y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch([
+          np.zeros((batch, time_step, input_a, input_b)),
+          np.zeros((batch, unit_a, unit_b))
+      ], np.zeros((batch, unit_a, unit_b)))
+      self.assertEqual(model.output_shape, (None, unit_a, unit_b))
+
+    with self.test_session():
+      # Bad init state shape.
+      bad_shape_a = unit_a * 2
+      bad_shape_b = unit_b * 2
+      cell = Minimal2DRNNCell(unit_a, unit_b)
+      x = keras.Input((None, input_a, input_b))
+      s = keras.Input((bad_shape_a, bad_shape_b))
+      layer = keras.layers.RNN(cell)
+      with self.assertRaisesWithPredicateMatch(ValueError,
+                                               'however `cell.state_size` is'):
+        layer(x, initial_state=s)
+
+
+class Minimal2DRNNCell(keras.layers.Layer):
+  """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
+
+  Both internal state and output have 2 dimensions and are orthogonal
+  between each other.
+  """
+
+  def __init__(self, unit_a, unit_b, **kwargs):
+    self.unit_a = unit_a
+    self.unit_b = unit_b
+    self.state_size = tensor_shape.as_shape([unit_a, unit_b])
+    super(Minimal2DRNNCell, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    input_a = input_shape[-2]
+    input_b = input_shape[-1]
+    self.kernel = self.add_weight(
+        shape=(input_a, input_b, self.unit_a, self.unit_b),
+        initializer='uniform',
+        name='kernel')
+    self.recurring_kernel = self.add_weight(
+        shape=(self.unit_a, self.unit_b, self.unit_a, self.unit_b),
+        initializer='uniform',
+        name='recurring_kernel')
+    self.bias = self.add_weight(
+        shape=(self.unit_a, self.unit_b), initializer='uniform', name='bias')
+    self.built = True
+
+  def call(self, inputs, states):
+    prev_output = states[0]
+    h = special_math_ops.einsum('bij,ijkl->bkl', inputs, self.kernel)
+    h += array_ops.expand_dims(self.bias, axis=0)
+    output = h + special_math_ops.einsum('bij,ijkl->bkl', prev_output,
+                                         self.recurring_kernel)
+    return output, [output]
 
 
 if __name__ == '__main__':

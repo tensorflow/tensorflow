@@ -3,4 +3,4 @@
 
 This library contains utilities for adding pipelining to a model.
 
-*   @{tf.contrib.staging.StagingArea}
+*   `tf.contrib.staging.StagingArea`

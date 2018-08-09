@@ -37,7 +37,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
   def visit_Continue(self, node):
     self.set_local(CONTINUE_USED, True)
     template = """
-      var_name = True
+      var_name = tf.constant(True)
     """
     return templates.replace(
         template, var_name=self.get_local(CONTROL_VAR_NAME))
@@ -92,7 +92,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
     if self.get_local(CONTINUE_USED, False):
       template = """
-        var_name = False
+        var_name = tf.constant(False)
       """
       control_var_init = templates.replace(template, var_name=continue_var)
       nodes = control_var_init + nodes

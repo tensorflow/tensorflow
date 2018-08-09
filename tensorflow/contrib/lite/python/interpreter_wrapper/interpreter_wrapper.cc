@@ -108,7 +108,9 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
   ImportNumpy();
 
   std::unique_ptr<tflite::Interpreter> interpreter;
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
+  if (tflite::InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
+    return nullptr;
+  }
   return interpreter;
 }
 
@@ -182,13 +184,37 @@ PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
 
 }  // namespace
 
+InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
+    std::unique_ptr<tflite::FlatBufferModel> model,
+    std::unique_ptr<PythonErrorReporter> error_reporter,
+    std::string* error_msg) {
+  if (!model) {
+    *error_msg = error_reporter->message();
+    return nullptr;
+  }
+
+  auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+  auto interpreter = CreateInterpreter(model.get(), *resolver);
+  if (!interpreter) {
+    *error_msg = error_reporter->message();
+    return nullptr;
+  }
+
+  InterpreterWrapper* wrapper =
+      new InterpreterWrapper(std::move(model), std::move(error_reporter),
+                             std::move(resolver), std::move(interpreter));
+  return wrapper;
+}
+
 InterpreterWrapper::InterpreterWrapper(
     std::unique_ptr<tflite::FlatBufferModel> model,
-    std::unique_ptr<PythonErrorReporter> error_reporter)
+    std::unique_ptr<PythonErrorReporter> error_reporter,
+    std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
+    std::unique_ptr<tflite::Interpreter> interpreter)
     : model_(std::move(model)),
       error_reporter_(std::move(error_reporter)),
-      resolver_(absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>()),
-      interpreter_(CreateInterpreter(model_.get(), *resolver_)) {}
+      resolver_(std::move(resolver)),
+      interpreter_(std::move(interpreter)) {}
 
 InterpreterWrapper::~InterpreterWrapper() {}
 
@@ -421,11 +447,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(model_path, error_reporter.get());
-  if (!model) {
-    *error_msg = error_reporter->message();
-    return nullptr;
-  }
-  return new InterpreterWrapper(std::move(model), std::move(error_reporter));
+  return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
+                                  error_msg);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -439,11 +462,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromBuffer(buf, length,
                                                error_reporter.get());
-  if (!model) {
-    *error_msg = error_reporter->message();
-    return nullptr;
-  }
-  return new InterpreterWrapper(std::move(model), std::move(error_reporter));
+  return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
+                                  error_msg);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensorsToZero() {

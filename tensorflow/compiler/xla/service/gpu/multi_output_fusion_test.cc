@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -255,6 +256,26 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
               op::Tuple(op::Multiply(), op::Divide()));
 }
 
+TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    ENTRY reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      exp = f32[2,2,2]{2,1,0} exponential(p0)
+      reduce = f32[2,2]{1,0} reduce(exp, c0), dimensions={2}, to_apply=scalar_add_computation
+      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce, exp)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
+  const HloInstruction* fusion = root->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Exp()));
+}
+
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_add {
@@ -417,6 +438,59 @@ TEST_F(MultiOutputFusionTest,
     })"))
                     .ValueOrDie();
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
+// Check that we limit the number of operands to fusions we create.
+TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
+  constexpr int64 kNumParams = 200;
+  ASSERT_GT(kNumParams, GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion);
+
+  // Compute
+  //   p0 * p1,
+  //   p0 * p1 + p1 * p2
+  //   p0 * p1 + p1 * p2 + p2 * p3
+  //   ...
+  // where each of the (pi * pj)'s is represented as a fusion node so that
+  // multi-output fusion will pay attention to it.
+  auto module = CreateNewModule();
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+
+  std::vector<HloInstruction*> params;
+  for (int64 i = 0; i < kNumParams; ++i) {
+    params.push_back(
+        b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p")));
+  }
+
+  // Creates a fusion node that calculates x*y.
+  auto make_fusion = [&](HloInstruction* x, HloInstruction* y) {
+    HloComputation::Builder sub_builder("subcomp");
+    auto* p0 = sub_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "p"));
+    auto* p1 = sub_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, shape, "p"));
+    sub_builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, p0, p1));
+    HloComputation* subcomp =
+        module->AddEmbeddedComputation(sub_builder.Build());
+    return HloInstruction::CreateFusion(
+        shape, HloInstruction::FusionKind::kLoop, {x, y}, subcomp);
+  };
+
+  auto* sum = b.AddInstruction(make_fusion(params[0], params[1]));
+  for (int64 i = 2; i < kNumParams; ++i) {
+    sum = b.AddInstruction(HloInstruction::CreateBinary(
+        shape, HloOpcode::kAdd, sum,
+        b.AddInstruction(make_fusion(params[i - 1], params[i]))));
+  }
+  auto computation = module->AddEntryComputation(b.Build());
+  EXPECT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  for (const HloInstruction* instr : computation->instructions()) {
+    EXPECT_LE(instr->operand_count() + ShapeUtil::SubshapeCount(instr->shape()),
+              GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion)
+        << instr->ToString();
+  }
 }
 
 }  // namespace gpu

@@ -30,10 +30,10 @@ from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
+from tensorflow.contrib.opt.python.training.shampoo import *
 from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *
 from tensorflow.contrib.opt.python.training.powersign import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
-from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -62,6 +62,7 @@ _allowed_symbols = [
     'ModelAverageOptimizer',
     'ModelAverageCustomGetter',
     'GGTOptimizer',
+    'ShampooOptimizer',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

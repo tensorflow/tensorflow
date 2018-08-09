@@ -114,8 +114,16 @@ class PartitionedCallOp : public AsyncOpKernel {
 
         // The FunctionLibraryRuntime's library cannot be mutated from within
         // an OpKernel, so functions are instantiated in an overlay library.
-        overlay_lib_.reset(new FunctionLibraryDefinition(
-            *lib->GetFunctionLibraryDefinition()));
+        OP_REQUIRES_ASYNC(
+            ctx, overlay_libs_.find(lib) == overlay_libs_.end(),
+            errors::Internal("Found an overlay library but did not "
+                             "find cached function partitions; "
+                             "this indicates a bug."),
+            done);
+        FunctionLibraryDefinition* overlay_lib =
+            new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
+        overlay_libs_.emplace(lib, overlay_lib);
+
         auto handles = tensorflow::MakeUnique<gtl::FlatMap<string, FHandle>>();
         for (const auto& pair : subgraphs) {
           // TODO(akshayka): Fail gracefully if the set of devices corresponds
@@ -125,13 +133,13 @@ class PartitionedCallOp : public AsyncOpKernel {
           OP_REQUIRES_OK_ASYNC(
               ctx, UpdateArgAndRetMetadata(target, subgraph.get()), done);
           FunctionDef shard;
-          string unique_name = UniquifyFunctionName(func_.name());
+          string unique_name = UniquifyFunctionName(overlay_lib, func_.name());
           OP_REQUIRES_OK_ASYNC(
               ctx, GraphToFunctionDef(*subgraph, unique_name, &shard), done);
-          OP_REQUIRES_OK_ASYNC(ctx, overlay_lib_->AddFunctionDef(shard), done);
+          OP_REQUIRES_OK_ASYNC(ctx, overlay_lib->AddFunctionDef(shard), done);
           FunctionLibraryRuntime::InstantiateOptions opts;
           opts.target = target;
-          opts.overlay_lib = overlay_lib_.get();
+          opts.overlay_lib = overlay_lib;
           FHandle handle;
           OP_REQUIRES_OK_ASYNC(
               ctx,
@@ -399,10 +407,11 @@ class PartitionedCallOp : public AsyncOpKernel {
     }
   }
 
-  string UniquifyFunctionName(const string& name) {
+  string UniquifyFunctionName(const FunctionLibraryDefinition* function_library,
+                              const string& name) {
     for (;; ++suffix_) {
       const string candidate = strings::StrCat(name, "_", suffix_);
-      if (overlay_lib_->Find(candidate) == nullptr) {
+      if (function_library->Find(candidate) == nullptr) {
         return candidate;
       }
     }
@@ -410,14 +419,16 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   NameAttrList func_;
   string local_device_name_;
-  // Function shards are added to `overlay_lib_`.
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib_;
-  // Contains maps from device names to handles of function shards, keyed by
+  // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
   // for a stateful op, different invocations of it may use different FLRs.)
   gtl::FlatMap<FunctionLibraryRuntime*,
                std::unique_ptr<gtl::FlatMap<string, FHandle>>>
       function_handles_ GUARDED_BY(mu_);
+  // Function partitions are added to overlay libraries.
+  gtl::FlatMap<FunctionLibraryRuntime*,
+               std::unique_ptr<FunctionLibraryDefinition>>
+      overlay_libs_ GUARDED_BY(mu_);
   // Map from device name to the indices of the arguments and return values
   // placed on that device. Read-only after the first invocation.
   gtl::FlatMap<string, ArgAndRetIndices> arg_and_ret_indices_;
@@ -427,7 +438,7 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   mutex mu_;
 
-  // Used to uniquify function names in `overlay_lib_`.
+  // Used to uniquify function names in `overlay_libs_`.
   uint32 suffix_ = 0;
 };
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_CPU),

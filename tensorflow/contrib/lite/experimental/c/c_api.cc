@@ -27,6 +27,8 @@ struct _TFL_Interpreter {
   std::unique_ptr<tflite::Interpreter> impl;
 };
 
+// LINT.IfChange
+
 TFL_Interpreter* TFL_NewInterpreter(const void* model_data,
                                     int32_t model_size) {
   auto model = tflite::FlatBufferModel::BuildFromBuffer(
@@ -112,6 +114,8 @@ TFL_Status TFL_TensorCopyToBuffer(const TFL_Tensor* tensor, void* output_data,
   memcpy(output_data, tensor->data.raw, output_data_size);
   return kTfLiteOk;
 }
+
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
 #ifdef __cplusplus
 }  // extern "C"

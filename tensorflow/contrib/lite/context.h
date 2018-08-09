@@ -29,6 +29,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 #define TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 
+#if defined(_MSC_VER)
+#include <complex.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -180,7 +183,11 @@ typedef union {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
+#if defined(_MSC_VER)
+  _Fcomplex* c64;
+#else
   _Complex float* c64;
+#endif
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped

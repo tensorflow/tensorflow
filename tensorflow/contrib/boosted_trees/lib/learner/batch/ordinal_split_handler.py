@@ -79,6 +79,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
+
 _BIAS_FEATURE_ID = -1
 # Pattern to remove all non alpha numeric from a string.
 _PATTERN = re.compile(r"[\W_]+")
@@ -146,6 +147,11 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
           epsilon=epsilon,
           num_quantiles=num_quantiles,
           name="QuantileAccumulator/{}".format(self._name))
+
+  def reset(self, stamp_token, next_stamp_token):
+    reset_1 = self._stats_accumulator.flush(stamp_token, next_stamp_token)
+    reset_2 = self._quantile_accumulator.flush(stamp_token, next_stamp_token)
+    return control_flow_ops.group([reset_1, reset_2])
 
 
 class DenseSplitHandler(InequalitySplitHandler):
@@ -264,6 +270,7 @@ class DenseSplitHandler(InequalitySplitHandler):
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,
                 self._min_node_weight, self._loss_uses_sum_reduction))
+
     return are_splits_ready, partition_ids, gains, split_infos
 
 
@@ -579,8 +586,10 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
 
   example_partition_ids, feature_ids, gradients, hessians = (
       control_flow_ops.cond(
-          math_ops.logical_and(are_buckets_ready, is_active[0]),
-          ready_inputs_fn, not_ready_inputs_fn))
+          math_ops.logical_and(
+              math_ops.logical_and(are_buckets_ready,
+                                   array_ops.size(quantile_buckets) > 0),
+              is_active[0]), ready_inputs_fn, not_ready_inputs_fn))
   return (quantile_values, quantile_weights, example_partition_ids, feature_ids,
           gradients, hessians)
 
@@ -674,8 +683,10 @@ def sparse_make_stats_update(
                             lambda: handler_not_active))
 
   example_partition_ids, feature_ids, gradients, hessians = (
-      control_flow_ops.cond(are_buckets_ready, quantiles_ready,
-                            quantiles_not_ready))
+      control_flow_ops.cond(
+          math_ops.logical_and(are_buckets_ready,
+                               array_ops.size(quantile_buckets) > 0),
+          quantiles_ready, quantiles_not_ready))
 
   return (quantile_indices, quantile_values, quantile_shape, quantile_weights,
           example_partition_ids, feature_ids, gradients, hessians)

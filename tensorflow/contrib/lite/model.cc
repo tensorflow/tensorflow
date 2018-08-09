@@ -16,7 +16,6 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -24,7 +23,9 @@ limitations under the License.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/model.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 #include "tensorflow/contrib/lite/version.h"
 
 namespace tflite {
@@ -73,6 +74,7 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
   return kTfLiteOk;
 }
 
+#ifndef TFLITE_MCU
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
 std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
@@ -80,8 +82,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
                                                   ErrorReporter* error_reporter,
                                                   bool use_nnapi) {
   std::unique_ptr<Allocation> allocation;
-  if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
+  if (mmap_file && MMAPAllocation::IsSupported()) {
+    if (use_nnapi && NNAPIDelegate::IsSupported())
       allocation.reset(new NNAPIAllocation(filename, error_reporter));
     else
       allocation.reset(new MMAPAllocation(filename, error_reporter));
@@ -120,6 +122,7 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
   if (!model->initialized()) model.reset();
   return model;
 }
+#endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
@@ -730,6 +733,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = static_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_ONE_HOT: {
+      auto* params = MallocPOD<TfLiteOneHotParams>();
+      if (auto* schema_params = op->builtin_options_as_OneHotOptions()) {
+        params->axis = schema_params->axis();
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -773,6 +784,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TRANSPOSE:
     case BuiltinOperator_POW:
     case BuiltinOperator_LOGICAL_OR:
+    case BuiltinOperator_LOGICAL_AND:
+    case BuiltinOperator_LOGICAL_NOT:
       break;
   }
   return kTfLiteOk;
