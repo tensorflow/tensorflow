@@ -586,9 +586,9 @@ XLA_TEST_F(TupleHloTest,
           }));
   auto expected =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}));
-  auto literal = MakeUnique<Literal>();
+  auto literal = MakeUnique<Literal>(expected->shape());
   TF_EXPECT_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      backend().default_stream_executor(), expected->shape(), literal.get()));
+      backend().default_stream_executor(), expected->shape(), *literal));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *literal));
 }
 
