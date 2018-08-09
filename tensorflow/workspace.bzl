@@ -157,11 +157,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_googlesource_code_re2",
         urls = [
-            "https://mirror.bazel.build/github.com/google/re2/archive/2018-04-01.tar.gz",
-            "https://github.com/google/re2/archive/2018-04-01.tar.gz",
+            "https://mirror.bazel.build/github.com/google/re2/archive/2018-07-01.tar.gz",
+            "https://github.com/google/re2/archive/2018-07-01.tar.gz",
         ],
-        sha256 = "2f945446b71336e7f5a2bcace1abcf0b23fbba368266c6a1be33de3de3b3c912",
-        strip_prefix = "re2-2018-04-01",
+        sha256 = "803c7811146edeef8f91064de37c6f19136ff01a2a8cdb3230e940b2fd9f07fe",
+        strip_prefix = "re2-2018-07-01",
         system_build_file = clean_dep("//third_party/systemlibs:re2.BUILD"),
     )
 
