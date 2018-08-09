@@ -636,7 +636,8 @@ REGISTER_OP("SplitV")
         for (const auto size : data) {
           if (size == -1) {
             if (has_neg_one) {
-              return errors::InvalidArgument("size_splits can only have one -1");
+              return errors::InvalidArgument(
+                  "size_splits can only have one -1");
             }
             has_neg_one = true;
           } else {
@@ -653,8 +654,8 @@ REGISTER_OP("SplitV")
           if (data[i] == -1 && c->ValueKnown(split_dim_size)) {
             size = split_dim_size - total_size;
           }
-          TF_RETURN_IF_ERROR(c->ReplaceDim(input, split_dim,
-                                           c->MakeDim(size), &output_shape));
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(input, split_dim, c->MakeDim(size), &output_shape));
           c->set_output(i, output_shape);
         }
         if (c->ValueKnown(split_dim_size)) {
