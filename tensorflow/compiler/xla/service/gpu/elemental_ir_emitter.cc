@@ -436,6 +436,8 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         return b_->CreateLoad(accum_ptr);
       };
     case HloOpcode::kReduce:
+      // TODO(b/112040122): This should be supported.
+      CHECK_EQ(hlo->operand_count(), 2) << "Did not expect variadic reduce";
       return [=, &operand_to_generator](
                  const IrArray::Index& output_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);

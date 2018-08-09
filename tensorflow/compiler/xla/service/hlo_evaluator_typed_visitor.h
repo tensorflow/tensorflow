@@ -1473,6 +1473,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleReduce(HloInstruction* reduce) override {
+    // TODO(b/112040122): Support variadic reduce.
+    if (!ShapeUtil::IsArray(reduce->shape())) {
+      return Unimplemented("Variadic reduce is not supported in the Evaluator");
+    }
     auto arg = reduce->operand(0);
     auto init_value = reduce->operand(1);
     tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
