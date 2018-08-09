@@ -7,6 +7,8 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "buffer_map",
     srcs = ["buffer_map.cc"],
@@ -21,12 +23,11 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "buffer_map_test",
     size = "small",
     srcs = ["buffer_map_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -58,12 +59,11 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -86,12 +86,11 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "delegate_data_test",
     size = "small",
     srcs = ["delegate_data_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -112,6 +111,7 @@ cc_library(
         ":util",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
@@ -121,12 +121,11 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "kernel_test",
     size = "small",
     srcs = ["kernel_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -144,6 +143,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
@@ -164,18 +164,17 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
         ":util",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/contrib/lite/testing:util",
-        "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],
 )
