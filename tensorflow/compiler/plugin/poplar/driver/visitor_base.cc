@@ -75,10 +75,8 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"bias_apply", ConvBiasApply},
     {"zero_pad", CreateZeroPadOp},
     {"depthwise_filter", CreateDepthwiseBackpropFilter},
-    {"reduction_no_convert", CreateReductionNoConvert},
     {"max_pool", CreatePoplibsWindowReduction},
     {"max_pool_grad", CreateBwdMaxPool},
-    {"convert_no_use", ConvertWithoutUse},
     {"scaled_inplace", CreateScaledInplace},
 };
 

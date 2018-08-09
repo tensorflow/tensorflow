@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/casts_elimination.h"
 #include "tensorflow/compiler/plugin/poplar/driver/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
@@ -411,6 +412,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     // pipeline.AddPass<WhileLoopSimplifier>();
     // pass.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<HloPassFix<CastsElimination>>(resources.annotations);
     pipeline.AddPass<HloCSE>(true);
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<CommutativeInstructionReorderOperands>();

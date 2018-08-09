@@ -438,7 +438,7 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 1));
 
   // Find the learning rate constant
-  const auto& literal = root->operand(1)->operand(0)->operand(0)->literal();
+  const auto& literal = root->operand(1)->operand(1)->operand(0)->literal();
 
   std::unique_ptr<Literal> float_lit;
   TF_ASSIGN_OR_RETURN(float_lit, literal.Convert(F32));
