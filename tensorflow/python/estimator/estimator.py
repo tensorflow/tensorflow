@@ -50,7 +50,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_management
@@ -2019,14 +2019,11 @@ class WarmStartSettings(
 def _get_saved_model_ckpt(saved_model_dir):
   """Return path to variables checkpoint in a SavedModel directory."""
   if not gfile.Exists(
-      os.path.join(compat.as_bytes(saved_model_dir),
-                   compat.as_bytes('variables/variables.index'))):
+      os.path.join(saved_model_utils.get_variables_dir(saved_model_dir),
+                   compat.as_text('variables.index'))):
     raise ValueError('Directory provided has an invalid SavedModel format: %s'
                      % saved_model_dir)
-  return os.path.join(
-      compat.as_bytes(saved_model_dir),
-      compat.as_bytes('{}/{}'.format(constants.VARIABLES_DIRECTORY,
-                                     constants.VARIABLES_FILENAME)))
+  return saved_model_utils.get_variables_path(saved_model_dir)
 
 
 def _get_default_warm_start_settings(warm_start_from):
@@ -2048,12 +2045,15 @@ def _get_default_warm_start_settings(warm_start_from):
   if isinstance(warm_start_from, (six.string_types, six.binary_type)):
     # Infer that this is a SavedModel if export_path +
     # 'variables/variables.index' exists, and if so, construct the
-    # WarmStartSettings pointing to export_path + 'variables/variables'.
-    if gfile.Exists(os.path.join(compat.as_bytes(warm_start_from),
-                                 compat.as_bytes('variables/variables.index'))):
+    # WarmStartSettings pointing to the variables path
+    # (export_path + 'variables/variables').
+    if gfile.Exists(os.path.join(
+        saved_model_utils.get_variables_dir(warm_start_from),
+        compat.as_text('variables.index'))):
       logging.info('Warm-starting from a SavedModel')
       return WarmStartSettings(
-          ckpt_to_initialize_from=_get_saved_model_ckpt(warm_start_from))
+          ckpt_to_initialize_from=saved_model_utils.get_variables_path(
+              warm_start_from))
     return WarmStartSettings(ckpt_to_initialize_from=warm_start_from)
   elif isinstance(warm_start_from, WarmStartSettings):
     return warm_start_from
