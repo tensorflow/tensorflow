@@ -217,7 +217,8 @@ TEST_F(SingleMachineTest, GraphOptimizations) {
   EXPECT_EQ(expected_cost_nodes, cost_nodes);
 }
 
-TEST_F(SingleMachineTest, TimeOuts) {
+// TODO(b/112427205): re-enable the test once fixed.
+TEST_F(SingleMachineTest, DISABLED_TimeOuts) {
   // Create a graph that will block forever: Just try to dequeue data from a
   // queue that is never fed.
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
