@@ -265,7 +265,7 @@ class Context(object):
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
+        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
                                                   server_def_str)
 
       self._initialize_devices()
@@ -275,7 +275,7 @@ class Context(object):
     self.ones_rank_cache().flush()
     self.zeros_cache().flush()
 
-  def set_server_def(self, server_def):
+  def set_server_def(self, server_def, keep_alive_secs=600):
     """Allow setting a server_def on the context.
 
     When a server def is replaced, it effectively clears a bunch of caches
@@ -285,6 +285,11 @@ class Context(object):
     Args:
       server_def: A tensorflow::ServerDef proto.
         Enables execution on remote devices.
+      keep_alive_secs: Num. seconds after which the remote end will hang up.
+        As long as the client is still alive, the server state for the context
+        will be kept alive. If the client is killed (or there is some failure),
+        the server will clean up its context keep_alive_secs after the final RPC
+        it receives.
 
     Raises:
       ValueError: if server_def is None.
@@ -296,7 +301,7 @@ class Context(object):
     else:
       server_def_str = server_def.SerializeToString()
       pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
-                                                server_def_str)
+                                                keep_alive_secs, server_def_str)
 
       # Clear all the caches in case there are remote tensors in them.
       self._clear_caches()

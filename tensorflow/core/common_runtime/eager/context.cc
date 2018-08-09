@@ -163,6 +163,13 @@ EagerContext::~EagerContext() {
     server_.release();
   }
 
+  {
+    mutex_lock l(keep_alive_thread_shutdown_mu_);
+    shutting_down_ = true;
+    keep_alive_thread_cv_.notify_all();
+  }
+  keep_alive_thread_.reset();
+
   CloseRemoteContexts();
 #endif
 
@@ -334,7 +341,9 @@ void EagerContext::InitializeRemote(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-    DeviceMgr* local_device_mgr) {
+    DeviceMgr* local_device_mgr, int keep_alive_secs) {
+  mutex_lock l(remote_state_mu_);
+
   if (!remote_contexts_.empty()) {
     CloseRemoteContexts();
   }
@@ -376,6 +385,54 @@ void EagerContext::InitializeRemote(
   InitDeviceMapAndAsync();
 
   ClearCaches();
+
+  keep_alive_secs_ = keep_alive_secs;
+
+  sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
+
+  // Only schedule a single closure.
+  if (keep_alive_thread_ == nullptr) {
+    keep_alive_thread_.reset(
+        env_->StartThread({}, "EagerKeepAliveThread", [this]() {
+          while (true) {
+            {
+              {
+                mutex_lock l(keep_alive_thread_shutdown_mu_);
+                keep_alive_thread_cv_.wait_for(
+                    l, std::chrono::seconds(sleep_for_secs_));
+
+                if (shutting_down_) {
+                  return;
+                }
+              }
+              {
+                mutex_lock l(remote_state_mu_);
+                if (keep_alive_secs_ > 0) {
+                  {
+                    for (const auto& worker_and_context_id : remote_contexts_) {
+                      auto* client = remote_eager_workers_->GetClient(
+                          worker_and_context_id.first);
+
+                      eager::KeepAliveRequest* request =
+                          new eager::KeepAliveRequest;
+                      eager::KeepAliveResponse* response =
+                          new eager::KeepAliveResponse;
+
+                      request->set_context_id(worker_and_context_id.second);
+                      client->KeepAliveAsync(
+                          request, response,
+                          [request, response](const Status& s) {
+                            delete request;
+                            delete response;
+                          });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }));
+  }
 }
 #endif
 
