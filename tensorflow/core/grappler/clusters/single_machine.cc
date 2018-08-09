@@ -48,6 +48,7 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
   (*options_.config.mutable_device_count())["CPU"] = 1;
   if (num_gpus > 0) {
     (*options_.config.mutable_device_count())["GPU"] = num_gpus;
+    options_.config.mutable_gpu_options()->set_allow_growth(true);
   }
   CHECK_GE(num_cpu_cores, 1);
   options_.config.set_intra_op_parallelism_threads(num_cpu_cores);
