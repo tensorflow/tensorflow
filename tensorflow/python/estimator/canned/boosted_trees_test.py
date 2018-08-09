@@ -91,6 +91,17 @@ def _make_train_input_fn_dataset(is_classification, batch=None, repeat=None):
   return _input_fn
 
 
+def _compute_feature_importances_np(feature_gains, normalize):
+  if normalize:
+    feature_gains /= np.sum(feature_gains, axis=1, keepdims=True)
+    feature_gains = np.nan_to_num(feature_gains)
+    feature_importances = np.sum(feature_gains, axis=0) / len(feature_gains)
+    feature_importances /= np.sum(feature_importances)
+    return np.nan_to_num(feature_importances)
+  else:
+    return np.sum(feature_gains, axis=0) / len(feature_gains)
+
+
 class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -154,6 +165,10 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     predictions = list(est.predict(input_fn=predict_input_fn))
     self.assertAllClose([[0], [0], [0], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
+    self.assertEqual(3, est._num_features)  # pylint:disable=protected-access
+    sorted_features, importances = est.compute_feature_importances()
+    self.assertAllEqual([], sorted_features)
+    self.assertAllEqual([], importances)
 
   def testTrainAndEvaluateBinaryClassifier(self):
     input_fn = _make_train_input_fn(is_classification=True)
@@ -543,6 +558,85 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     # feature with index 1 (0 - 'bad', 2 - 'ok')
     self.assertEqual(1, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
     self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
+
+  def testCalculateFeatureImportances(self):
+    input_fn = _make_train_input_fn(is_classification=True)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    self.assertEqual(3, est._num_features)  # pylint:disable=protected-access
+    # It will stop after 5 steps because of the max depth and num trees.
+    num_steps = 100
+    # Train for a few steps, and validate final checkpoint.
+    est.train(input_fn, steps=num_steps)
+
+    # TreeEnsemble Proto:
+    # tree_ensemble: trees {
+    #   nodes {
+    #     bucketized_split {
+    #       feature_id: 2
+    #       threshold: 2
+    #       left_id: 1
+    #       right_id: 2
+    #     }
+    #     metadata {
+    #       gain: 0.426666676998
+    #     }
+    #   }
+    #   ......
+    #   nodes {
+    #     bucketized_split {
+    #       threshold: 1
+    #       left_id: 5
+    #       right_id: 6
+    #     }
+    #     metadata {
+    #       gain: 0.133481562138
+    #       original_leaf {
+    #         scalar: 0.066666662693
+    #       }
+    #     }
+    #   }
+    #   ......
+    #   nodes {
+    #     bucketized_split {
+    #       left_id: 11
+    #       right_id: 12
+    #     }
+    #     metadata {
+    #       gain: 0.400360047817
+    #       original_leaf {
+    #         scalar: 0.0599950700998
+    #       }
+    #     }
+    #   }
+    # }
+    # trees {
+    #   nodes {
+    #     leaf {
+    #     }
+    #   }
+    # }
+    # tree_weights: 1.0
+    # tree_weights: 1.0
+    # ......
+    sorted_features_expected = [0, 2, 1]
+    feature_gains = [[0.133481562138 + 0.400360047817, 0.426666676998, 0.0],  # 1st tree.
+                     [0.0, 0.0, 0.0]]                                         # 2nd tree.
+
+    sorted_features, importances = est.compute_feature_importances(normalize=False)
+    self.assertAllEqual(sorted_features_expected, sorted_features)
+    self.assertAllClose(_compute_feature_importances_np(feature_gains, False),
+                        importances)
+
+    sorted_features1, importances1 = est.compute_feature_importances(normalize=True)
+    self.assertAllEqual(sorted_features_expected, sorted_features1)
+    self.assertAllClose(_compute_feature_importances_np(feature_gains, True),
+                        importances1)
 
 
 class ModelFnTests(test_util.TensorFlowTestCase):
