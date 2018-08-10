@@ -106,6 +106,13 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
+  // Return true if the shapes of the two operands have the same element type,
+  // and the result shape either has the same element type as the operand
+  // shapes or mixed precision is allowed and the result shape and the operand
+  // shapes have floating point element types.
+  bool HasCompatibleElementTypes(const Shape& shape_0, const Shape& shape_1,
+                                 const Shape& result_shape);
+
   // Whether the inputs and output of an instruction can contain both F32s and
   // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
   // this flag.
