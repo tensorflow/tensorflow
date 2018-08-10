@@ -289,7 +289,7 @@ pseudocode:
 
 ```python
 # pseudocode
-feature_id = hash(raw_feature) % hash_buckets_size
+feature_id = hash(raw_feature) % hash_bucket_size
 ```
 
 The code to create the `feature_column` might look something like this:
@@ -298,7 +298,7 @@ The code to create the `feature_column` might look something like this:
 hashed_feature_column =
     tf.feature_column.categorical_column_with_hash_bucket(
         key = "some_feature",
-        hash_buckets_size = 100) # The number of categories
+        hash_bucket_size = 100) # The number of categories
 ```
 At this point, you might rightfully think: "This is crazy!" After all, we are
 forcing the different input values to a smaller set of categories. This means
