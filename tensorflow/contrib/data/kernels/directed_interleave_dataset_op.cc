@@ -110,7 +110,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* selector_input_node;
       TF_RETURN_IF_ERROR(

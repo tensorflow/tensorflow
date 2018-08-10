@@ -99,7 +99,8 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* input_graph = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
