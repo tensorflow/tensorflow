@@ -98,7 +98,7 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
   if len(inputs) == 1:
     inputs = inputs[0]
 
-  if model._is_graph_network:
+  if model._compute_output_and_mask_jointly:
     outs, masks = model._call_and_compute_mask(inputs, **kwargs)
     masks = generic_utils.to_list(masks)
   else:

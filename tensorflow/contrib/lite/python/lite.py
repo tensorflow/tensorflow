@@ -54,7 +54,6 @@ from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as _tf_graph_util
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 
@@ -195,8 +194,6 @@ class TocoConverter(object):
         input_arrays or output_arrays contains an invalid tensor name.
     """
     with _session.Session() as sess:
-      sess.run(_global_variables_initializer())
-
       # Read GraphDef from file.
       graph_def = _graph_pb2.GraphDef()
       with open(graph_def_file, "rb") as f:
@@ -427,7 +424,6 @@ def _freeze_graph(sess, output_tensors):
     Frozen GraphDef.
   """
   if not _is_frozen_graph(sess):
-    sess.run(_global_variables_initializer())
     output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
     return _tf_graph_util.convert_variables_to_constants(
         sess, sess.graph_def, output_arrays)

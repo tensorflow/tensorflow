@@ -232,8 +232,6 @@ class FunctionTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testGraphLoopGradient(self):
-    if context.executing_eagerly():
-      self.skipTest('TODO(apassos): support loops in defuns in eager')
 
     @function.defun
     def f(x):

@@ -13,6 +13,9 @@ You may either use the pre-made Estimators we provide or write your
 own custom Estimators.  All Estimators--whether pre-made or custom--are
 classes based on the `tf.estimator.Estimator` class.
 
+For a quick example try [Estimator tutorials]](../tutorials/estimators/linear).
+To see each sub-topic in depth, see the [Estimator guides](premade_estimators).
+
 Note: TensorFlow also includes a deprecated `Estimator` class at
 `tf.contrib.learn.Estimator`, which you should not use.
 
@@ -29,14 +32,14 @@ Estimators provide the following benefits:
 *   You can develop a state of the art model with high-level intuitive code.
     In short, it is generally much easier to create models with Estimators
     than with the low-level TensorFlow APIs.
-*   Estimators are themselves built on `tf.layers`, which
+*   Estimators are themselves built on `tf.keras.layers`, which
     simplifies customization.
 *   Estimators build the graph for you.
 *   Estimators provide a safe distributed training loop that controls how and
     when to:
     *   build the graph
     *   initialize variables
-    *   start queues
+    *   load data
     *   handle exceptions
     *   create checkpoint files and recover from failures
     *   save summaries for TensorBoard

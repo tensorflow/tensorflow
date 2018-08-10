@@ -75,8 +75,11 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
         y=data,
         batch_size=batch_size // len(distribution.worker_devices),
         shuffle=True)
-    eval_input_fn = numpy_io.numpy_input_fn(
-        x={'x': data}, y=data, batch_size=batch_size, shuffle=False)
+    eval_input_fn = self.dataset_input_fn(
+        x={'x': data},
+        y=data,
+        batch_size=batch_size // len(distribution.worker_devices),
+        shuffle=False)
     predict_input_fn = numpy_io.numpy_input_fn(
         x={'x': data}, batch_size=batch_size, shuffle=False)
 

@@ -46,6 +46,7 @@ class Predicate {
 
   virtual string ToString() const = 0;
   int64 hash() const { return hash_; }
+  virtual gtl::ArraySlice<Predicate*> GetOperands() const = 0;
 
   virtual Kind kind() const = 0;
   virtual ~Predicate() {}
@@ -90,7 +91,8 @@ class AndPredicate : public Predicate {
 
   Kind kind() const override { return Kind::kAnd; }
 
-  const gtl::ArraySlice<Predicate*> operands() const { return operands_; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
+  gtl::ArraySlice<Predicate*> operands() const { return operands_; }
 
  private:
   std::vector<Predicate*> operands_;
@@ -117,7 +119,8 @@ class OrPredicate : public Predicate {
   }
 
   Kind kind() const override { return Kind::kOr; }
-  const gtl::ArraySlice<Predicate*> operands() const { return operands_; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
+  gtl::ArraySlice<Predicate*> operands() const { return operands_; }
 
  private:
   std::vector<Predicate*> operands_;
@@ -128,17 +131,18 @@ class NotPredicate : public Predicate {
  public:
   explicit NotPredicate(Predicate* operand)
       : Predicate(HashPredicateSequence(Kind::kNot, {operand})),
-        operand_(operand) {}
+        operands_({operand}) {}
 
   string ToString() const override {
     return strings::StrCat("~", operand()->ToString());
   }
 
   Kind kind() const override { return Kind::kNot; }
-  Predicate* operand() const { return operand_; }
+  Predicate* operand() const { return operands_[0]; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
 
  private:
-  Predicate* operand_;
+  std::array<Predicate*, 1> operands_;
 };
 
 // Represents an uninterpreted symbol in a logical predicate.
@@ -158,6 +162,7 @@ class SymbolPredicate : public Predicate {
   }
 
   Kind kind() const override { return Kind::kSymbol; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return {}; }
 
   // If `must_be_true()` is true this SymbolPredicate represents the proposition
   // "tensor_id() is live and evaluates to true".
@@ -288,10 +293,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(gtl::ArraySlice<Predicate*> operands,
 
     if (op->kind() == pred_kind) {
       // "Inline" the operands of an inner And/Or into the parent And/Or.
-      gtl::ArraySlice<Predicate*> operands =
-          is_and ? dynamic_cast<AndPredicate*>(op)->operands()
-                 : dynamic_cast<OrPredicate*>(op)->operands();
-      for (Predicate* subop : operands) {
+      for (Predicate* subop : op->GetOperands()) {
         if (simplified_ops_set.insert(subop).second) {
           simplified_ops.push_back(subop);
         }

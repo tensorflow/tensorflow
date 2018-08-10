@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -75,7 +76,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             parent_generator_(seed, seed2),
             generator_(&parent_generator_) {
         buffer_.reset(new std::vector<Tensor>[params.dataset->buffer_size_]);
-        slices_.emplace_back(new Slice{0, 0});
+        slices_.push_back(MakeUnique<Slice>(0, 0));
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -118,7 +119,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             }
             epoch_++;
             int64 n = slices_.back()->end;
-            slices_.emplace_back(new Slice{n, n});
+            slices_.push_back(MakeUnique<Slice>(n, n));
             TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
                 ctx, this->prefix(), &input_impl_));
           }
@@ -251,7 +252,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           int64 end;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               this->full_name(strings::StrCat("slices_end_", i)), &end));
-          slices_.emplace_back(new Slice{start, end});
+          slices_.push_back(MakeUnique<Slice>(start, end));
           for (size_t j = start; j < end; ++j) {
             size_t index = j % this->dataset()->buffer_size_;
             int64 list_size;

@@ -48,22 +48,10 @@ class HloSharding {
   // the input shape (one tile) assigned to a single device.
   static HloSharding AssignDevice(int64 device_id);
 
-  // Creates a new sharding which splits a shape into tiles each with shape
-  // `tile_shape`. Each tile is assigned to one device, which is specified by
-  // `tile_assignment`. Any tensor not a multiple of the tile size in any
-  // dimension is implicitly padded to the tile size.
-  //
-  // e.g. Tile({2, 2}, {0, 1}) on a tensor of shape {3, 2} would look like:
-  //      2     1 padding
-  //   <------><->
-  //   +----+----+
-  //   | 0  |  1 |
-  //   +----+----+
-  //
-  // Split into two tiles, one of which is implicitly padded by one.
-  static HloSharding Tile(const Shape& tile_shape,
-                          const Array<int64>& tile_assignment) {
-    return HloSharding(tile_shape, tile_assignment);
+  // Creates a new sharding which splits a shape into tiles amongst the devices
+  // specified by `tile_assignment`.
+  static HloSharding Tile(const Array<int64>& tile_assignment) {
+    return HloSharding(tile_assignment);
   }
 
   // Creates a new sharding which splits a one-dimensional input shape into
@@ -146,17 +134,18 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   int64 DeviceForTileIndex(tensorflow::gtl::ArraySlice<int64> index) const;
 
-  // Given a device ID, returns the offset within the input space of the
+  // Given a device ID, returns the offset within the specified shape of the
   // tile that should be executed on the given core. This returns the lower
   // extent of the tile in the input space.
   // REQUIRES: !IsTuple()
-  std::vector<int64> TileOffsetForDevice(int64 device) const;
+  std::vector<int64> TileOffsetForDevice(const Shape& shape,
+                                         int64 device) const;
 
-  // Given a device ID, returns the limit within the input space of the
+  // Given a device ID, returns the limit within the specified shape of the
   // tile that should be executed on the given core. This returns the upper
   // extent of the tile in the input space.
   // REQUIRES: !IsTuple()
-  std::vector<int64> TileLimitForDevice(int64 device) const;
+  std::vector<int64> TileLimitForDevice(const Shape& shape, int64 device) const;
 
   // Returns the single device this op operates on. If the sharding does not
   // span a single device, the return value will be empty.
@@ -197,7 +186,6 @@ class HloSharding {
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
-           ShapeUtil::Compatible(tile_shape_, other.tile_shape_) &&
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_;
   }
@@ -211,9 +199,6 @@ class HloSharding {
     }
   };
 
-  // Gets the tile shape.
-  // REQUIRES: !IsTileMaximal() && !IsTuple()
-  const Shape& tile_shape() const { return tile_shape_; }
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64>& tile_assignment() const { return tile_assignment_; }
@@ -225,25 +210,15 @@ class HloSharding {
     return tuple_elements_;
   }
 
-  // Return a new sharding that can apply to the given new shape.
-  // If this sharding is tile-maximal, the returned sharding will be the same as
-  // this sharding. If this sharding is not tile-maximal, the returned
-  // sharding's tile size will differ:
-  //   - Non-sharded dimensions will be adapted to be the same as `new_shape`;
-  //     tile_dimension(i) = new_shape.dimensions(i);
-  //   - Sharded dimensions will be kept the same unless `transform` is supplied
-  //     in which case tile_dimension(i) = transform(i, tile_dimension(i));
-  // REQUIRES: !IsTuple().
-  HloSharding TransformShardedTileShape(
-      const Shape& new_shape,
-      const std::function<int64(int64, int64)>& transform = nullptr) const;
+  // Gets the tile shape.
+  // REQUIRES: !IsTuple()
+  Shape TileShape(const Shape& shape) const;
 
  private:
   HloSharding()
       : replicated_(true),
         maximal_(true),
         tuple_(false),
-        tile_shape_(),
         tile_assignment_({0}) {}
   // device_id values:
   // -2: magic number to mean unassigned device, used by spatial partitioning
@@ -255,15 +230,13 @@ class HloSharding {
       : replicated_(false),
         maximal_(true),
         tuple_(false),
-        tile_shape_(),
         tile_assignment_({1}, device_id) {}
-  HloSharding(const Shape& tile_shape, const Array<int64>& tile_assignment)
+  explicit HloSharding(const Array<int64>& tile_assignment)
       : replicated_(false),
         maximal_(false),
         tuple_(false),
-        tile_shape_(tile_shape),
         tile_assignment_(tile_assignment) {}
-  HloSharding(const std::vector<HloSharding>& tuple_shardings)
+  explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
       : replicated_(false),
         maximal_(false),
         tuple_(true),
@@ -286,7 +259,6 @@ class HloSharding {
   bool replicated_;
   bool maximal_;
   bool tuple_;
-  Shape tile_shape_;
   Array<int64> tile_assignment_;
   // Only non-empty when tuple_ is true, but because empty tuples are allowed
   // may also be empty even then. This is a flattened list of all the leaf

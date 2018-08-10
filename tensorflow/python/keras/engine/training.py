@@ -153,9 +153,9 @@ class Model(Network):
 
     Arguments:
         optimizer: String (name of optimizer) or optimizer instance.
-            See [optimizers](/optimizers).
+            See [optimizers](/api_docs/python/tf/keras/optimizers).
         loss: String (name of objective function) or objective function.
-            See [losses](/losses).
+            See [losses](/api_docs/python/tf/losses).
             If the model has multiple outputs, you can use a different loss
             on each output by passing a dictionary or a list of losses.
             The loss value that will be minimized by the model
@@ -1069,22 +1069,13 @@ class Model(Network):
           'in their call() signatures do not yet support shape inference. File '
           'a feature request if this limitation bothers you.')
     if self.__class__.__name__ == 'Sequential':
-      # Note: we can't test whether the model is `Sequential` via `isinstance`
-      # since `Sequential` depends on `Model`.
-      if isinstance(inputs, list):
-        assert len(inputs) == 1
-        inputs = inputs[0]
-
       if tensor_util.is_tensor(inputs):
-        if context.executing_eagerly():
-          input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
-          self.build(input_shape=input_shape)
-        else:
-          self.symbolic_set_inputs(inputs)
+        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+        self.build(input_shape=input_shape)
       else:
         input_shape = (None,) + inputs.shape[1:]
         self.build(input_shape=input_shape)
-    elif context.executing_eagerly():
+    if context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
       self._symbolic_set_inputs(inputs, training=training)
@@ -1275,7 +1266,7 @@ class Model(Network):
             0 = silent, 1 = progress bar, 2 = one line per epoch.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during training.
-            See [callbacks](/callbacks).
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
         validation_split: Float between 0 and 1.
             Fraction of the training data to be used as validation data.
             The model will set apart this fraction of the training data,
@@ -1893,6 +1884,10 @@ class Model(Network):
     Raises:
         ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`fit_generator` is not supported for '
+                                'models compiled with DistributionStrategy.')
+
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
           '`fit_generator` is not yet enabled for unbuilt Model subclasses')
@@ -1960,6 +1955,10 @@ class Model(Network):
     Raises:
         ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`evaluate_generator` is not supported for '
+                                'models compiled with DistributionStrategy.')
+
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
           '`evaluate_generator` is not yet enabled for '
@@ -2014,6 +2013,10 @@ class Model(Network):
     Raises:
         ValueError: In case the generator yields data in an invalid format.
     """
+    if self._distribution_strategy:
+      raise NotImplementedError('`predict_generator` is not supported for '
+                                'models compiled with DistributionStrategy.')
+
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
           '`predict_generator` is not yet enabled for unbuilt Model subclasses')

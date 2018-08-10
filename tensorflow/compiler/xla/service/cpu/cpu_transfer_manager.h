@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -41,7 +42,7 @@ class CpuTransferManager : public GenericTransferManager {
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
-                                    Literal* literal) override;
+                                    MutableBorrowingLiteral literal) override;
 
  private:
   Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,

@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
-
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace toco {
 
@@ -1235,162 +1235,175 @@ namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   std::vector<std::unique_ptr<BaseOperator>> ops;
-
+  using tensorflow::MakeUnique;
   // Builtin Operators.
-  ops.emplace_back(new Add(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
-  ops.emplace_back(new Div(::tflite::BuiltinOperator_DIV, OperatorType::kDiv));
-  ops.emplace_back(new Sub(::tflite::BuiltinOperator_SUB, OperatorType::kSub));
-  ops.emplace_back(new AveragePool(::tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                                   OperatorType::kAveragePool));
-  ops.emplace_back(
-      new SpaceToBatchND(::tflite::BuiltinOperator_SPACE_TO_BATCH_ND,
-                         OperatorType::kSpaceToBatchND));
-  ops.emplace_back(
-      new BatchToSpaceND(::tflite::BuiltinOperator_BATCH_TO_SPACE_ND,
-                         OperatorType::kBatchToSpaceND));
-  ops.emplace_back(new Concatenation(::tflite::BuiltinOperator_CONCATENATION,
-                                     OperatorType::kConcatenation));
-  ops.emplace_back(
-      new Convolution(::tflite::BuiltinOperator_CONV_2D, OperatorType::kConv));
-  ops.emplace_back(
-      new DepthwiseConvolution(::tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-                               OperatorType::kDepthwiseConv));
-  ops.emplace_back(new FullyConnected(::tflite::BuiltinOperator_FULLY_CONNECTED,
-                                      OperatorType::kFullyConnected));
-  ops.emplace_back(
-      new Gather(::tflite::BuiltinOperator_GATHER, OperatorType::kGather));
-  ops.emplace_back(
-      new L2Normalization(::tflite::BuiltinOperator_L2_NORMALIZATION,
-                          OperatorType::kL2Normalization));
-  ops.emplace_back(
-      new L2Pool(::tflite::BuiltinOperator_L2_POOL_2D, OperatorType::kL2Pool));
-  ops.emplace_back(new LocalResponseNormalization(
+  ops.push_back(
+      MakeUnique<Add>(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
+  ops.push_back(
+      MakeUnique<Div>(::tflite::BuiltinOperator_DIV, OperatorType::kDiv));
+  ops.push_back(
+      MakeUnique<Sub>(::tflite::BuiltinOperator_SUB, OperatorType::kSub));
+  ops.push_back(MakeUnique<AveragePool>(
+      ::tflite::BuiltinOperator_AVERAGE_POOL_2D, OperatorType::kAveragePool));
+  ops.push_back(
+      MakeUnique<SpaceToBatchND>(::tflite::BuiltinOperator_SPACE_TO_BATCH_ND,
+                                 OperatorType::kSpaceToBatchND));
+  ops.push_back(
+      MakeUnique<BatchToSpaceND>(::tflite::BuiltinOperator_BATCH_TO_SPACE_ND,
+                                 OperatorType::kBatchToSpaceND));
+  ops.push_back(MakeUnique<Concatenation>(
+      ::tflite::BuiltinOperator_CONCATENATION, OperatorType::kConcatenation));
+  ops.push_back(MakeUnique<Convolution>(::tflite::BuiltinOperator_CONV_2D,
+                                        OperatorType::kConv));
+  ops.push_back(MakeUnique<DepthwiseConvolution>(
+      ::tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      OperatorType::kDepthwiseConv));
+  ops.push_back(
+      MakeUnique<FullyConnected>(::tflite::BuiltinOperator_FULLY_CONNECTED,
+                                 OperatorType::kFullyConnected));
+  ops.push_back(MakeUnique<Gather>(::tflite::BuiltinOperator_GATHER,
+                                   OperatorType::kGather));
+  ops.push_back(
+      MakeUnique<L2Normalization>(::tflite::BuiltinOperator_L2_NORMALIZATION,
+                                  OperatorType::kL2Normalization));
+  ops.push_back(MakeUnique<L2Pool>(::tflite::BuiltinOperator_L2_POOL_2D,
+                                   OperatorType::kL2Pool));
+  ops.push_back(MakeUnique<LocalResponseNormalization>(
       ::tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
       OperatorType::kLocalResponseNormalization));
-  ops.emplace_back(new MaxPool(::tflite::BuiltinOperator_MAX_POOL_2D,
-                               OperatorType::kMaxPool));
-  ops.emplace_back(new Mul(::tflite::BuiltinOperator_MUL, OperatorType::kMul));
-  ops.emplace_back(new Pad(::tflite::BuiltinOperator_PAD, OperatorType::kPad));
-  ops.emplace_back(
-      new PadV2(::tflite::BuiltinOperator_PADV2, OperatorType::kPadV2));
-  ops.emplace_back(
-      new Reshape(::tflite::BuiltinOperator_RESHAPE, OperatorType::kReshape));
-  ops.emplace_back(
-      new Softmax(::tflite::BuiltinOperator_SOFTMAX, OperatorType::kSoftmax));
-  ops.emplace_back(new SpaceToDepth(::tflite::BuiltinOperator_SPACE_TO_DEPTH,
-                                    OperatorType::kSpaceToDepth));
-  ops.emplace_back(
-      new Svdf(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
-  ops.emplace_back(new Transpose(::tflite::BuiltinOperator_TRANSPOSE,
-                                 OperatorType::kTranspose));
-  ops.emplace_back(
-      new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
-  ops.emplace_back(new Sum(::tflite::BuiltinOperator_SUM, OperatorType::kSum));
-  ops.emplace_back(new ReduceProd(::tflite::BuiltinOperator_REDUCE_PROD,
-                                  OperatorType::kReduceProd));
-  ops.emplace_back(new ReduceMax(::tflite::BuiltinOperator_REDUCE_MAX,
-                                 OperatorType::kReduceMax));
-  ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
-                                      OperatorType::kResizeBilinear));
-  ops.emplace_back(
-      new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
-  ops.emplace_back(
-      new Split(::tflite::BuiltinOperator_SPLIT, OperatorType::kSplit));
-  ops.emplace_back(new StridedSlice(::tflite::BuiltinOperator_STRIDED_SLICE,
-                                    OperatorType::kStridedSlice));
-  ops.emplace_back(
-      new TopK_V2(::tflite::BuiltinOperator_TOPK_V2, OperatorType::kTopK_V2));
-  ops.emplace_back(
-      new Lstm(::tflite::BuiltinOperator_LSTM, OperatorType::kLstmCell));
-  ops.emplace_back(
-      new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
-  ops.emplace_back(
-      new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
-  ops.emplace_back(
-      new ArgMin(::tflite::BuiltinOperator_ARG_MIN, OperatorType::kArgMin));
-  ops.emplace_back(
-      new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTile));
-  ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,
-                                  OperatorType::kExpandDims));
-  ops.emplace_back(new TransposeConv(::tflite::BuiltinOperator_TRANSPOSE_CONV,
-                                     OperatorType::kTransposeConv));
-  ops.emplace_back(new SparseToDense(::tflite::BuiltinOperator_SPARSE_TO_DENSE,
-                                     OperatorType::kSparseToDense));
-  ops.emplace_back(
-      new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
-  ops.emplace_back(new FakeQuant(::tflite::BuiltinOperator_FAKE_QUANT,
-                                 OperatorType::kFakeQuant));
-  ops.emplace_back(
-      new Pack(::tflite::BuiltinOperator_PACK, OperatorType::kPack));
-  ops.emplace_back(
-      new OneHot(::tflite::BuiltinOperator_ONE_HOT, OperatorType::kOneHot));
+  ops.push_back(MakeUnique<MaxPool>(::tflite::BuiltinOperator_MAX_POOL_2D,
+                                    OperatorType::kMaxPool));
+  ops.push_back(
+      MakeUnique<Mul>(::tflite::BuiltinOperator_MUL, OperatorType::kMul));
+  ops.push_back(
+      MakeUnique<Pad>(::tflite::BuiltinOperator_PAD, OperatorType::kPad));
+  ops.push_back(
+      MakeUnique<PadV2>(::tflite::BuiltinOperator_PADV2, OperatorType::kPadV2));
+  ops.push_back(MakeUnique<Reshape>(::tflite::BuiltinOperator_RESHAPE,
+                                    OperatorType::kReshape));
+  ops.push_back(MakeUnique<Softmax>(::tflite::BuiltinOperator_SOFTMAX,
+                                    OperatorType::kSoftmax));
+  ops.push_back(MakeUnique<SpaceToDepth>(
+      ::tflite::BuiltinOperator_SPACE_TO_DEPTH, OperatorType::kSpaceToDepth));
+  ops.push_back(
+      MakeUnique<Svdf>(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
+  ops.push_back(MakeUnique<Transpose>(::tflite::BuiltinOperator_TRANSPOSE,
+                                      OperatorType::kTranspose));
+  ops.push_back(
+      MakeUnique<Mean>(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
+  ops.push_back(
+      MakeUnique<Sum>(::tflite::BuiltinOperator_SUM, OperatorType::kSum));
+  ops.push_back(MakeUnique<ReduceProd>(::tflite::BuiltinOperator_REDUCE_PROD,
+                                       OperatorType::kReduceProd));
+  ops.push_back(MakeUnique<ReduceMax>(::tflite::BuiltinOperator_REDUCE_MAX,
+                                      OperatorType::kReduceMax));
+  ops.push_back(
+      MakeUnique<ResizeBilinear>(::tflite::BuiltinOperator_RESIZE_BILINEAR,
+                                 OperatorType::kResizeBilinear));
+  ops.push_back(MakeUnique<Squeeze>(::tflite::BuiltinOperator_SQUEEZE,
+                                    OperatorType::kSqueeze));
+  ops.push_back(
+      MakeUnique<Split>(::tflite::BuiltinOperator_SPLIT, OperatorType::kSplit));
+  ops.push_back(MakeUnique<StridedSlice>(
+      ::tflite::BuiltinOperator_STRIDED_SLICE, OperatorType::kStridedSlice));
+  ops.push_back(MakeUnique<TopK_V2>(::tflite::BuiltinOperator_TOPK_V2,
+                                    OperatorType::kTopK_V2));
+  ops.push_back(MakeUnique<Lstm>(::tflite::BuiltinOperator_LSTM,
+                                 OperatorType::kLstmCell));
+  ops.push_back(
+      MakeUnique<Cast>(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
+  ops.push_back(MakeUnique<ArgMax>(::tflite::BuiltinOperator_ARG_MAX,
+                                   OperatorType::kArgMax));
+  ops.push_back(MakeUnique<ArgMin>(::tflite::BuiltinOperator_ARG_MIN,
+                                   OperatorType::kArgMin));
+  ops.push_back(
+      MakeUnique<Tile>(::tflite::BuiltinOperator_TILE, OperatorType::kTile));
+  ops.push_back(MakeUnique<ExpandDims>(::tflite::BuiltinOperator_EXPAND_DIMS,
+                                       OperatorType::kExpandDims));
+  ops.push_back(MakeUnique<TransposeConv>(
+      ::tflite::BuiltinOperator_TRANSPOSE_CONV, OperatorType::kTransposeConv));
+  ops.push_back(MakeUnique<SparseToDense>(
+      ::tflite::BuiltinOperator_SPARSE_TO_DENSE, OperatorType::kSparseToDense));
+  ops.push_back(
+      MakeUnique<Shape>(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
+  ops.push_back(MakeUnique<FakeQuant>(::tflite::BuiltinOperator_FAKE_QUANT,
+                                      OperatorType::kFakeQuant));
+  ops.push_back(
+      MakeUnique<Pack>(::tflite::BuiltinOperator_PACK, OperatorType::kPack));
+  ops.push_back(MakeUnique<OneHot>(::tflite::BuiltinOperator_ONE_HOT,
+                                   OperatorType::kOneHot));
 
   // Custom Operators.
-  ops.emplace_back(
-      new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
-  ops.emplace_back(new CTCBeamSearchDecoder(
+  ops.push_back(
+      MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
+  ops.push_back(MakeUnique<CTCBeamSearchDecoder>(
       "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
-  ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
-                                             OperatorType::kUnsupported));
+  ops.push_back(MakeUnique<TensorFlowUnsupported>("TENSORFLOW_UNSUPPORTED",
+                                                  OperatorType::kUnsupported));
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
-  ops.emplace_back(
-      new SimpleOperator<AddNOperator>("ADDN", OperatorType::kAddN));
+  ops.push_back(
+      MakeUnique<SimpleOperator<AddNOperator>>("ADDN", OperatorType::kAddN));
   // Simple Operators.
-  ops.emplace_back(new SimpleOperator<DequantizeOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<DequantizeOperator>>(
       "DEQUANTIZE", OperatorType::kDequantize));
-  ops.emplace_back(
-      new SimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor));
-  ops.emplace_back(
-      new SimpleOperator<ReluOperator>("RELU", OperatorType::kRelu));
-  ops.emplace_back(
-      new SimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1));
-  ops.emplace_back(
-      new SimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6));
-  ops.emplace_back(
-      new SimpleOperator<PReluOperator>("PRELU", OperatorType::kPRelu));
-  ops.emplace_back(new SimpleOperator<LogisticOperator>(
+  ops.push_back(
+      MakeUnique<SimpleOperator<FloorOperator>>("FLOOR", OperatorType::kFloor));
+  ops.push_back(
+      MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
+  ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
+      "RELU_N1_TO_1", OperatorType::kRelu1));
+  ops.push_back(
+      MakeUnique<SimpleOperator<Relu6Operator>>("RELU6", OperatorType::kRelu6));
+  ops.push_back(
+      MakeUnique<SimpleOperator<PReluOperator>>("PRELU", OperatorType::kPRelu));
+  ops.push_back(MakeUnique<SimpleOperator<LogisticOperator>>(
       "LOGISTIC", OperatorType::kLogistic));
-  ops.emplace_back(
-      new SimpleOperator<TanhOperator>("TANH", OperatorType::kTanh));
-  ops.emplace_back(new SimpleOperator<ExpOperator>("EXP", OperatorType::kExp));
-  ops.emplace_back(new SimpleOperator<LogSoftmaxOperator>(
+  ops.push_back(
+      MakeUnique<SimpleOperator<TanhOperator>>("TANH", OperatorType::kTanh));
+  ops.push_back(
+      MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
+  ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
-  ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowMaximumOperator>>(
       "MAXIMUM", OperatorType::kMaximum));  //  Element-wise Maximum
-  ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowMinimumOperator>>(
       "MINIMUM", OperatorType::kMinimum));  //  Element-wise Minimum
-  ops.emplace_back(new SimpleOperator<TensorFlowGreaterOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowGreaterOperator>>(
       "GREATER", OperatorType::kGreater));
-  ops.emplace_back(new SimpleOperator<TensorFlowGreaterEqualOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowGreaterEqualOperator>>(
       "GREATER_EQUAL", OperatorType::kGreaterEqual));
-  ops.emplace_back(
-      new SimpleOperator<TensorFlowLessOperator>("LESS", OperatorType::kLess));
-  ops.emplace_back(new SimpleOperator<TensorFlowLessEqualOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowLessOperator>>(
+      "LESS", OperatorType::kLess));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowLessEqualOperator>>(
       "LESS_EQUAL", OperatorType::kLessEqual));
-  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowEqualOperator>>(
       "EQUAL", OperatorType::kEqual));
-  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowNotEqualOperator>>(
       "NOT_EQUAL", OperatorType::kNotEqual));
-  ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
-  ops.emplace_back(
-      new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
-  ops.emplace_back(
-      new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
-  ops.emplace_back(new SimpleOperator<PowOperator>("POW", OperatorType::kPow));
-  ops.emplace_back(new SimpleOperator<LogicalOrOperator>(
+  ops.push_back(
+      MakeUnique<SimpleOperator<NegOperator>>("NEG", OperatorType::kNeg));
+  ops.push_back(MakeUnique<SimpleOperator<SelectOperator>>(
+      "SELECT", OperatorType::kSelect));
+  ops.push_back(
+      MakeUnique<SimpleOperator<SliceOperator>>("SLICE", OperatorType::kSlice));
+  ops.push_back(
+      MakeUnique<SimpleOperator<PowOperator>>("POW", OperatorType::kPow));
+  ops.push_back(MakeUnique<SimpleOperator<LogicalOrOperator>>(
       "LOGICAL_OR", OperatorType::kLogicalOr));
   ops.emplace_back(new SimpleOperator<LogicalAndOperator>(
       "LOGICAL_AND", OperatorType::kLogicalAnd));
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
   // Element-wise operator
-  ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
-  ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
-  ops.emplace_back(
-      new SimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt));
-  ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
+  ops.push_back(
+      MakeUnique<SimpleOperator<SinOperator>>("SIN", OperatorType::kSin));
+  ops.push_back(
+      MakeUnique<SimpleOperator<LogOperator>>("LOG", OperatorType::kLog));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowSqrtOperator>>(
+      "SQRT", OperatorType::kSqrt));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowRsqrtOperator>>(
       "RSQRT", OperatorType::kRsqrt));
 
   return ops;

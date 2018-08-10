@@ -431,6 +431,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
       return EmitSin(op->shape().element_type(), operand_value);
+    case HloOpcode::kTanh:
+      return EmitTanh(op->shape().element_type(), operand_value);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor,
                                           {operand_value},
@@ -1058,6 +1060,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
                                                      llvm::Value* lhs,
                                                      llvm::Value* rhs) const {
   return Unimplemented("atan2");
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
+                                                    llvm::Value* value) const {
+  return Unimplemented("tanh");
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(

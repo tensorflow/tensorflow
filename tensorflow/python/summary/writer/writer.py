@@ -104,8 +104,8 @@ class SummaryToEventTransformer(object):
     and adds it to the event file.
 
     You can pass the result of evaluating any summary op, using
-    @{tf.Session.run} or
-    @{tf.Tensor.eval}, to this
+    `tf.Session.run` or
+    `tf.Tensor.eval`, to this
     function. Alternatively, you can pass a `tf.Summary` protocol
     buffer that you populate with your own data. The latter is
     commonly done to report evaluation results in event files.

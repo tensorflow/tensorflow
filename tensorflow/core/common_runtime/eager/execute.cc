@@ -148,6 +148,9 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
       node_stats->set_op_end_rel_micros((now_nanos - pre_time_nanos) /
                                         EnvTime::kMicrosToNanos);
       node_stats->set_op_end_rel_nanos(now_nanos - pre_time_nanos);
+      node_stats->set_all_end_rel_micros((now_nanos - pre_time_nanos) /
+                                         EnvTime::kMicrosToNanos);
+      node_stats->set_all_end_rel_nanos(now_nanos - pre_time_nanos);
     }
     if (!status.ok()) {
       if (result_handle != nullptr) result_handle->Unref();
@@ -653,12 +656,20 @@ Status EagerExecute(EagerContext* ctx, Device* device,
   // FunctionLibraryDefinition?).  TODO(apassos) figure out how to record stats
   // for ops which are a part of functions.
   // TODO(agarwal): change Run to take vector of handles ?
-  TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+  ScopedStepContainer* container = ctx->StepContainer();
+  if (container == nullptr) {
+    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+  } else {
+    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats));
+  }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();
     maybe_stats->set_op_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
                                        maybe_stats->all_start_micros());
     maybe_stats->set_op_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
+    maybe_stats->set_all_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
+                                        maybe_stats->all_start_micros());
+    maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
     mutex_lock ml(*ctx->MetadataMu());
     if (ctx->ShouldStoreMetadata()) {
       auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();

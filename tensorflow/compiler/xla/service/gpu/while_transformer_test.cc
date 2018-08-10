@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/while_transformer.h"
-
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -110,12 +109,12 @@ class WhileTransformerTest : public HloTestBase {
 
   void RunFusionPasses() {
     // Run standard fusion passes.
-    EXPECT_TRUE(gpu::GpuInstructionFusion(/*may_duplicate=*/false)
-                    .Run(module_.get())
-                    .ValueOrDie());
-    EXPECT_TRUE(gpu::GpuInstructionFusion(/*may_duplicate=*/true)
-                    .Run(module_.get())
-                    .ValueOrDie());
+    TF_ASSERT_OK(gpu::GpuInstructionFusion(/*may_duplicate=*/false)
+                     .Run(module_.get())
+                     .status());
+    TF_ASSERT_OK(gpu::GpuInstructionFusion(/*may_duplicate=*/true)
+                     .Run(module_.get())
+                     .status());
   }
 
   void RunCopyInsertionPass() {
@@ -141,10 +140,7 @@ class WhileTransformerTest : public HloTestBase {
   Shape condition_result_shape_;
 };
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement0) {
+TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
   // Build computation with induction variable at tuple element 0.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
@@ -153,18 +149,13 @@ TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement0) {
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
-  // Run WhileTransformer.
-  auto result = gpu::CanTransformWhileToFor(while_hlo);
-  TF_ASSERT_OK(result.status());
-  // Check results.
-  EXPECT_THAT(result.ConsumeValueOrDie(),
-              Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
+
+  auto result = ComputeWhileLoopTripCount(while_hlo);
+  ASSERT_TRUE(result);
+  EXPECT_EQ(10, *result);
 }
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement1) {
+TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
   // Build computation with induction variable at tuple element 1.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(1, 10));
@@ -173,19 +164,14 @@ TEST_F(WhileTransformerTest, DISABLED_InductionVariableAtTupleElement1) {
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
-  // Run WhileTransformer.
-  auto result = gpu::CanTransformWhileToFor(while_hlo);
-  TF_ASSERT_OK(result.status());
-  // Check results.
-  EXPECT_THAT(result.ConsumeValueOrDie(),
-              Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
+
+  auto result = ComputeWhileLoopTripCount(while_hlo);
+  ASSERT_TRUE(result);
+  EXPECT_EQ(10, *result);
 }
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InvalidLoopLimit) {
-  // Build computation with invalid loop limit.
+TEST_F(WhileTransformerTest, ImpossibleLoopLimit) {
+  // Build computation with an impossible loop limit.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 5));
   auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
@@ -193,17 +179,13 @@ TEST_F(WhileTransformerTest, DISABLED_InvalidLoopLimit) {
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
-  // Run WhileTransformer.
-  auto result = gpu::CanTransformWhileToFor(while_hlo);
-  ASSERT_FALSE(result.ok());
-  EXPECT_THAT(result.status().error_message(),
-              HasSubstr("Loop start must be less than loop limit."));
+
+  auto result = ComputeWhileLoopTripCount(while_hlo);
+  ASSERT_TRUE(result);
+  EXPECT_EQ(0, *result);
 }
 
-// TODO(b/68830972): The while transformer is far too fragile. It patterns
-// matches the exact expressions of opcodes. Re-enable when transformation is
-// more general
-TEST_F(WhileTransformerTest, DISABLED_InvalidLoopIncrement) {
+TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
   // Build computation with invalid loop increment.
   auto condition =
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
@@ -212,11 +194,9 @@ TEST_F(WhileTransformerTest, DISABLED_InvalidLoopIncrement) {
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
-  // Run WhileTransformer.
-  auto result = gpu::CanTransformWhileToFor(while_hlo);
-  ASSERT_FALSE(result.ok());
-  EXPECT_THAT(result.status().error_message(),
-              HasSubstr("Loop increment must greater than zero."));
+
+  auto result = ComputeWhileLoopTripCount(while_hlo);
+  ASSERT_FALSE(result);
 }
 
 }  // namespace

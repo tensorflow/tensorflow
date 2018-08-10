@@ -27,6 +27,7 @@ cc_library(
         "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],

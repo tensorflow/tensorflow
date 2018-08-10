@@ -370,11 +370,11 @@ class BasicRNNCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
         shape=[input_depth + self._num_units, self._num_units])
@@ -442,11 +442,11 @@ class GRUCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     self._gate_kernel = self.add_variable(
         "gates/%s" % _WEIGHTS_VARIABLE_NAME,
         shape=[input_depth + self._num_units, 2 * self._num_units],
@@ -531,7 +531,7 @@ class BasicLSTMCell(LayerRNNCell):
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
 
-  For advanced models, please use the full @{tf.nn.rnn_cell.LSTMCell}
+  For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
   that follows.
   """
 
@@ -593,11 +593,11 @@ class BasicLSTMCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     h_depth = self._num_units
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
@@ -768,11 +768,11 @@ class LSTMCell(LayerRNNCell):
     return self._output_size
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     h_depth = self._num_units if self._num_proj is None else self._num_proj
     maybe_partitioner = (
         partitioned_variables.fixed_size_partitioner(self._num_unit_shards)
