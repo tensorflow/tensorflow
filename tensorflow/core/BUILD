@@ -2037,6 +2037,7 @@ cc_library(
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
+        "//tensorflow:android": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",
