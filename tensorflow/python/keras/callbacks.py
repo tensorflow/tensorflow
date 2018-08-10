@@ -94,9 +94,14 @@ def configure_callbacks(callbacks,
 
   # Add additional callbacks
   model.history = History()
-  callbacks = [BaseLogger()] + (callbacks or []) + [model.history]
+  stateful_metric_names = None
+  if hasattr(model, 'stateful_metric_names'):
+    stateful_metric_names = model.stateful_metric_names
+  callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
+              ] + (callbacks or []) + [model.history]
   if verbose:
-    callbacks.append(ProgbarLogger(count_mode))
+    callbacks.append(
+        ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names))
   callback_list = CallbackList(callbacks)
 
   # Set callback model
@@ -110,6 +115,8 @@ def configure_callbacks(callbacks,
 
   # Set callback parameters
   callback_metrics = []
+  # When we have deferred build scenario with iterator input, we will compile
+  # when we standardize first batch of data.
   if model._is_compiled:  # pylint: disable=protected-access
     callback_metrics = copy.copy(model.metrics_names)
     if do_validation:

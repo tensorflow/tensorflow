@@ -30,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
@@ -62,8 +63,11 @@ class TrainingTest(test.TestCase):
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       loss_weights = [1., 0.5]
-      metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=[metrics_module.CategoricalAccuracy(), 'mae'],
+          loss_weights=loss_weights)
 
       input_a_np = np.random.random((10, 3))
       input_b_np = np.random.random((10, 3))
@@ -178,8 +182,10 @@ class TrainingTest(test.TestCase):
 
       # Test with lists for loss, metrics
       loss = ['mae', 'mse']
-      metrics = ['acc', 'mae']
-      model.compile(optimizer, loss, metrics=metrics)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=[metrics_module.CategoricalAccuracy(), 'mae'])
       model.fit(
           [input_a_np, input_b_np], [output_d_np, output_e_np],
           epochs=1,
@@ -189,7 +195,10 @@ class TrainingTest(test.TestCase):
       # Test with dictionaries for loss, metrics, loss weights
       loss = {'dense': 'mse', 'dropout': 'mae'}
       loss_weights = {'dense': 1., 'dropout': 0.5}
-      metrics = {'dense': 'mse', 'dropout': 'mae'}
+      metrics = {
+          'dense': 'mse',
+          'dropout': metrics_module.CategoricalAccuracy()
+      }
       model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights)
       model.fit(
           [input_a_np, input_b_np], [output_d_np, output_e_np],
@@ -258,11 +267,10 @@ class TrainingTest(test.TestCase):
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       loss_weights = [1., 0.5]
-      metrics = ['mae']
       model.compile(
           optimizer,
           loss,
-          metrics=metrics,
+          metrics=['mae', metrics_module.CategoricalAccuracy()],
           loss_weights=loss_weights,
           sample_weight_mode=None)
 
@@ -277,20 +285,20 @@ class TrainingTest(test.TestCase):
           [input_a_np, input_b_np], [output_d_np, output_e_np],
           batch_size=5,
           verbose=0)
-      self.assertEqual(len(out), 5)
+      self.assertEqual(len(out), 7)
       out = model.evaluate(
           [input_a_np, input_b_np], [output_d_np, output_e_np],
           batch_size=5,
           verbose=1)
-      self.assertEqual(len(out), 5)
+      self.assertEqual(len(out), 7)
       out = model.evaluate(
           [input_a_np, input_b_np], [output_d_np, output_e_np],
           batch_size=5,
           verbose=2)
-      self.assertEqual(len(out), 5)
+      self.assertEqual(len(out), 7)
       out = model.test_on_batch([input_a_np, input_b_np],
                                 [output_d_np, output_e_np])
-      self.assertEqual(len(out), 5)
+      self.assertEqual(len(out), 7)
 
       # Test evaluate with dictionary inputs
       model.evaluate(
@@ -326,7 +334,7 @@ class TrainingTest(test.TestCase):
       self.assertEqual(len(out), 2)
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_invalid_loss_or_metrics(self):
+  def test_invalid_loss(self):
     num_classes = 5
     train_samples = 1000
     test_samples = 1000
@@ -349,10 +357,6 @@ class TrainingTest(test.TestCase):
 
       with self.assertRaises(ValueError):
         model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
-
-      with self.assertRaises(TypeError):
-        model.compile(
-            optimizer, loss='categorical_crossentropy', metrics=set(0))
 
       if not context.executing_eagerly():
         # TODO(psv): Investigate these use cases in eager mode.
@@ -379,7 +383,11 @@ class TrainingTest(test.TestCase):
       out2 = keras.layers.Dense(4, name='dense_1')(in2)
       model = keras.Model([in1, in2], [out1, out2])
       model.predict(test_inputs, batch_size=2)
-      model.compile('rmsprop', 'mse')
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      model.compile(
+          optimizer,
+          'mse',
+          metrics=['mae', metrics_module.CategoricalAccuracy()])
       model.fit(test_inputs, test_outputs,
                 epochs=1, batch_size=2, validation_split=0.5)
       model.evaluate(test_inputs, test_outputs, batch_size=2)
@@ -422,22 +430,24 @@ class TrainingTest(test.TestCase):
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_compile_warning_for_loss_missing_output(self):
     with self.test_session():
       inp = keras.layers.Input(shape=(16,), name='input_a')
       out_1 = keras.layers.Dense(8, name='dense_1')(inp)
       out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
       model = keras.models.Model(inputs=[inp], outputs=[out_1, out_2])
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
 
       with test.mock.patch.object(logging, 'warning') as mock_log:
         model.compile(
+            optimizer,
             loss={
                 'dense_2': 'categorical_crossentropy',
             },
-            optimizer='rmsprop',
             metrics={
                 'dense_2': 'categorical_accuracy',
-                'dense_1': 'categorical_accuracy',
+                'dense_1': metrics_module.CategoricalAccuracy(),
             })
         msg = ('Output "dense_1" missing from loss dictionary. We assume this '
                'was done on purpose. The fit and evaluate APIs will not be '
@@ -466,6 +476,8 @@ class LossWeightingTest(test.TestCase):
       model.add(keras.layers.Activation('softmax'))
       model.compile(
           loss='categorical_crossentropy',
+          metrics=['acc'],
+          weighted_metrics=['mae'],
           optimizer=RMSPropOptimizer(learning_rate=learning_rate))
 
       np.random.seed(1337)
@@ -516,7 +528,7 @@ class LossWeightingTest(test.TestCase):
       ref_score = model.evaluate(x_test, y_test, verbose=0)
       score = model.evaluate(
           x_test[test_ids, :], y_test[test_ids, :], verbose=0)
-      self.assertLess(score, ref_score)
+      self.assertLess(score[0], ref_score[0])
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sample_weights(self):
@@ -537,6 +549,8 @@ class LossWeightingTest(test.TestCase):
       model.add(keras.layers.Activation('softmax'))
       model.compile(
           RMSPropOptimizer(learning_rate=learning_rate),
+          metrics=['acc'],
+          weighted_metrics=['mae'],
           loss='categorical_crossentropy')
 
       np.random.seed(43)
@@ -583,7 +597,7 @@ class LossWeightingTest(test.TestCase):
       if not context.executing_eagerly():
         score = model.evaluate(
             x_test[test_ids, :], y_test[test_ids, :], verbose=0)
-        self.assertLess(score, ref_score)
+        self.assertLess(score[0], ref_score[0])
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_temporal_sample_weights(self):
@@ -641,6 +655,8 @@ class LossWeightingTest(test.TestCase):
       model.compile(
           RMSPropOptimizer(learning_rate=learning_rate),
           loss='binary_crossentropy',
+          metrics=['acc'],
+          weighted_metrics=['mae'],
           sample_weight_mode='temporal')
 
       model.fit(
@@ -671,7 +687,7 @@ class LossWeightingTest(test.TestCase):
       if not context.executing_eagerly():
         score = model.evaluate(
             temporal_x_test[test_ids], temporal_y_test[test_ids], verbose=0)
-        self.assertLess(score, ref_score)
+        self.assertLess(score[0], ref_score[0])
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_class_weight_invalid_use_case(self):
@@ -1066,7 +1082,10 @@ class TestGeneratorMethods(test.TestCase):
       x = keras.Input((2,))
       y = keras.layers.Dense(1)(x)
       fn_model = keras.models.Model(x, y)
-      fn_model.compile(loss='mse', optimizer='sgd')
+      fn_model.compile(
+          loss='mse',
+          optimizer='sgd',
+          metrics=['mae', metrics_module.CategoricalAccuracy()])
 
       seq_model = keras.models.Sequential()
       seq_model.add(keras.layers.Dense(1, input_shape=(2,)))
@@ -1148,7 +1167,10 @@ class TestGeneratorMethods(test.TestCase):
     with self.test_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(1, input_shape=(2,)))
-      model.compile(loss='mse', optimizer='sgd')
+      model.compile(
+          loss='mse',
+          optimizer='sgd',
+          metrics=['mae', metrics_module.CategoricalAccuracy()])
 
       model.fit_generator(custom_generator(),
                           steps_per_epoch=5,
@@ -1300,10 +1322,12 @@ class TestTrainingWithDataTensors(test.TestCase):
       y = keras.layers.Dense(4, name='dense')(x)
       model = keras.Model(x, y)
 
-      optimizer = 'rmsprop'
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=['mae', metrics_module.CategoricalAccuracy()])
 
       inputs = keras.backend.zeros(shape=(10, 3))
       targets = keras.backend.zeros(shape=(10, 4))
@@ -1347,8 +1371,11 @@ class TestTrainingWithDataTensors(test.TestCase):
       optimizer = 'rmsprop'
       loss = 'mse'
       loss_weights = [1., 0.5]
-      metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=['mae', metrics_module.CategoricalAccuracy()],
+          loss_weights=loss_weights)
 
       input_a_tf = keras.backend.zeros(shape=(10, 3))
       input_b_tf = keras.backend.zeros(shape=(10, 3))
@@ -1786,8 +1813,11 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.train_on_batch(input_val, None)
 
       # test with sample weights
-      model.compile(optimizer='rmsprop', loss='mse',
-                    target_tensors=[target_a, target_b])
+      model.compile(
+          optimizer='rmsprop',
+          loss='mse',
+          metrics=['mae', metrics_module.CategoricalAccuracy()],
+          target_tensors=[target_a, target_b])
       model.train_on_batch(input_val, None,
                            sample_weight={'dense_a': np.random.random((10,))})
 
@@ -1851,30 +1881,6 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.train_on_batch([input_a_np, input_b_np],
                            [output_a_np, output_b_np])
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_metric_names_are_identical_in_graph_and_eager(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
-
-    dense = keras.layers.Dense(4, name='dense')
-    c = dense(a)
-    d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
-
-    model = keras.models.Model([a, b], [d, e])
-
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
-    loss = 'mse'
-    loss_weights = [1., 0.5]
-    metrics = ['mae', 'acc']
-    model.compile(optimizer, loss, metrics=metrics, loss_weights=loss_weights)
-    reference_metric_names = ['loss', 'dense_loss', 'dropout_loss',
-                              'dense_mean_absolute_error',
-                              'dense_acc',
-                              'dropout_mean_absolute_error',
-                              'dropout_acc']
-    self.assertEqual(reference_metric_names, model.metrics_names)
-
 
 class TestTrainingWithDatasetIterators(test.TestCase):
 
@@ -1887,7 +1893,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
 
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', metrics_module.CategoricalAccuracy()]
       model.compile(optimizer, loss, metrics=metrics)
 
       inputs = np.zeros((10, 3))
@@ -1944,6 +1950,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
                                    'you should specify the `steps` argument'):
         model.predict(iterator, verbose=0)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_get_next_op_created_once(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1996,6 +2003,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
 
 class TestTrainingWithDataset(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_calling_model_on_same_dataset(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -2031,7 +2039,7 @@ class TestTrainingWithDataset(test.TestCase):
 
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', metrics_module.CategoricalAccuracy()]
       model.compile(optimizer, loss, metrics=metrics)
 
       inputs = np.zeros((10, 3))
@@ -2122,6 +2130,28 @@ class TestTrainingWithMetrics(test.TestCase):
   """Training tests related to metrics."""
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_metrics_names(self):
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+    model = keras.models.Model([a, b], [d, e])
+
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    metrics = ['mse', metrics_module.BinaryAccuracy()]
+    model.compile(optimizer, loss='mae', metrics=metrics)
+    reference_metric_names = [
+        'loss', 'dense_loss', 'dropout_loss', 'dense_mean_squared_error',
+        'dense_binary_accuracy', 'dropout_mean_squared_error',
+        'dropout_binary_accuracy'
+    ]
+    self.assertEqual(reference_metric_names, model.metrics_names)
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness(self):
     with self.test_session():
       model = keras.Sequential()
@@ -2133,7 +2163,7 @@ class TestTrainingWithMetrics(test.TestCase):
               1, activation='sigmoid', kernel_initializer='ones'))
       model.compile(
           loss='mae',
-          metrics=['accuracy'],
+          metrics=['accuracy', metrics_module.BinaryAccuracy()],
           optimizer=RMSPropOptimizer(learning_rate=0.001))
 
       # verify correctness of stateful and stateless metrics.
@@ -2141,41 +2171,48 @@ class TestTrainingWithMetrics(test.TestCase):
       y = np.ones((100, 1))
       outs = model.evaluate(x, y)
       self.assertEqual(outs[1], 1.)
+      self.assertEqual(outs[2], 1.)
 
       y = np.zeros((100, 1))
       outs = model.evaluate(x, y)
       self.assertEqual(outs[1], 0.)
+      self.assertEqual(outs[2], 0.)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness_with_iterator(self):
-    model = keras.Sequential()
-    model.add(
-        keras.layers.Dense(
-            8, activation='relu', input_dim=4, kernel_initializer='ones'))
-    model.add(
-        keras.layers.Dense(1, activation='sigmoid', kernel_initializer='ones'))
-    model.compile(
-        loss='binary_crossentropy',
-        metrics=['accuracy'],
-        optimizer=RMSPropOptimizer(learning_rate=0.001))
+    with self.test_session():
+      model = keras.Sequential()
+      model.add(
+          keras.layers.Dense(
+              8, activation='relu', input_dim=4, kernel_initializer='ones'))
+      model.add(
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones'))
+      model.compile(
+          loss='binary_crossentropy',
+          metrics=['accuracy', metrics_module.BinaryAccuracy()],
+          optimizer=RMSPropOptimizer(learning_rate=0.001))
 
-    np.random.seed(123)
-    x = np.random.randint(10, size=(100, 4)).astype(np.float32)
-    y = np.random.randint(2, size=(100, 1)).astype(np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
-    outs = model.evaluate(iterator, steps=10)
-    self.assertEqual(np.around(outs[1], decimals=1), 0.5)
+      np.random.seed(123)
+      x = np.random.randint(10, size=(100, 4)).astype(np.float32)
+      y = np.random.randint(2, size=(100, 1)).astype(np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+      dataset = dataset.batch(10)
+      iterator = dataset.make_one_shot_iterator()
+      outs = model.evaluate(iterator, steps=10)
+      self.assertEqual(np.around(outs[1], decimals=1), 0.5)
+      self.assertEqual(np.around(outs[2], decimals=1), 0.5)
 
-    y = np.zeros((100, 1), dtype=np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.repeat(100)
-    dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
-    outs = model.evaluate(iterator, steps=10)
-    self.assertEqual(outs[1], 0.)
+      y = np.zeros((100, 1), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+      iterator = dataset.make_one_shot_iterator()
+      outs = model.evaluate(iterator, steps=10)
+      self.assertEqual(outs[1], 0.)
+      self.assertEqual(outs[2], 0.)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness_with_weighted_metrics(self):
     with self.test_session():
       np.random.seed(1337)
@@ -2189,19 +2226,87 @@ class TestTrainingWithMetrics(test.TestCase):
           RMSPropOptimizer(learning_rate=0.001),
           loss='mse',
           sample_weight_mode='temporal',
-          weighted_metrics=['accuracy'])
+          weighted_metrics=['accuracy',
+                            metrics_module.BinaryAccuracy()])
       y = np.array([[[1.], [1.]], [[1.], [1.]]])
 
       outs = model.evaluate(x, y)
-      self.assertEqual(outs, [0.5, 0.5])
+      self.assertEqual(outs, [0.5, 0.5, 0.5])
 
       w = np.array([[0., 0.], [0., 0.]])
       outs = model.evaluate(x, y, sample_weight=w)
-      self.assertEqual(outs, [0., 0.])
+      self.assertEqual(outs, [0., 0., 0.])
 
       w = np.array([[3., 4.], [1., 2.]])
       outs = model.evaluate(x, y, sample_weight=w)
-      self.assertArrayNear(outs, [0.3, 0.7], .001)
+      self.assertArrayNear(outs, [0.3, 0.7, 0.7], .001)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_metric_state_reset_between_fit_and_evaluate(self):
+    with self.test_session():
+      model = keras.Sequential()
+      model.add(keras.layers.Dense(3, activation='relu', input_dim=4))
+      model.add(keras.layers.Dense(1, activation='sigmoid'))
+      acc_obj = metrics_module.BinaryAccuracy()
+      model.compile(
+          loss='mae',
+          metrics=[acc_obj],
+          optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+      x_train = np.random.random((100, 4))
+      y_train = np.random.random((100, 1))
+      model.fit(x_train, y_train, batch_size=5, epochs=2)
+      self.assertEqual(self.evaluate(acc_obj.count), 100)
+
+      x_test = np.random.random((10, 4))
+      y_test = np.random.random((10, 1))
+      model.evaluate(x_test, y_test, batch_size=5)
+      self.assertEqual(self.evaluate(acc_obj.count), 10)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_invalid_metrics(self):
+    num_classes = 5
+    input_dim = 5
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(10, activation='relu', input_shape=(input_dim,)))
+      model.add(keras.layers.Dense(num_classes, activation='softmax'))
+
+      with self.assertRaisesRegexp(
+          TypeError, 'Type of `metrics` argument not understood. '
+          'Expected a list or dictionary, found: '):
+        model.compile(
+            RMSPropOptimizer(learning_rate=0.001),
+            loss='categorical_crossentropy',
+            metrics=metrics_module.CategoricalAccuracy())
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_metrics_masking(self):
+    with self.test_session():
+      np.random.seed(1337)
+      model = keras.models.Sequential()
+      model.add(keras.layers.Masking(mask_value=0, input_shape=(2, 1)))
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(1, kernel_initializer='ones')))
+      model.compile(
+          RMSPropOptimizer(learning_rate=0.001),
+          loss='mse',
+          weighted_metrics=['accuracy',
+                            metrics_module.BinaryAccuracy()])
+
+      # verify that masking is applied for stateless and stateful metrics.
+      x = np.array([[[1], [1]], [[1], [1]], [[0], [0]]])
+      y = np.array([[[1], [1]], [[0], [1]], [[1], [1]]])
+      scores = model.train_on_batch(x, y)
+      self.assertArrayNear(scores, [0.25, 0.75, 0.75], 0.1)
+
+      # verify that masking is combined with sample weights.
+      w = np.array([3, 2, 4])
+      scores = model.train_on_batch(x, y, sample_weight=w)
+      self.assertArrayNear(scores, [0.2, 0.8, 0.8], 0.1)
 
 
 if __name__ == '__main__':

@@ -233,7 +233,6 @@ def evaluate_generator(model,
                        use_multiprocessing=False,
                        verbose=0):
   """See docstring for `Model.evaluate_generator`."""
-  stateful_metric_indices = []
   if hasattr(model, 'metrics'):
     for m in model.stateful_metric_functions:
       m.reset_states()
@@ -331,7 +330,7 @@ def evaluate_generator(model,
         averages.append(
             np.average([out[i] for out in all_outs], weights=batch_sizes))
       else:
-        averages.append(float(all_outs[-1][i]))
+        averages.append(np.float64(all_outs[-1][i]))
     return averages
 
 

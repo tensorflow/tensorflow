@@ -41,39 +41,25 @@ def _eager_loss_fn(outputs, targets, loss_fn, output_name):
   return loss
 
 
-def _eager_metrics_fn(model, outputs, targets):
+def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """Calculates the metrics for each output of the given model.
 
   Arguments:
       model: The model on which metrics are being calculated.
       outputs: The outputs of the given model.
       targets: The predictions or targets of the given model.
+      sample_weights: Optional list of sample weights for each output.
+      masks: Optional list of masks for each output.
 
   Returns:
       Returns the metric results for each output of the model.
   """
-  metric_results = []
-  if not isinstance(outputs, list):
-    outputs = [outputs]
-
-  if not isinstance(targets, list):
-    targets = [targets]
-
-  for i in range(len(model.outputs)):
-    output_metrics = model.nested_metrics[i]
-    for nested_output_metric in output_metrics:
-      metric_fn = training_utils.get_metric_function(
-          nested_output_metric, backend.int_shape(model.outputs[i]),
-          model.loss_functions[i])
-      # weighted metrics are not supported in eager mode
-      metric_name = training_utils.get_metric_name(
-          nested_output_metric, weighted=False)
-
-      with backend.name_scope(metric_name):
-        metric_result = metric_fn(targets[i], outputs[i])
-        metric_results.append(backend.mean(metric_result))
-
-  return metric_results
+  outputs = generic_utils.to_list(outputs)
+  targets = generic_utils.to_list(targets)
+  # TODO(psv): Consider supporting skip target indices in eager mode?
+  metric_results = model._handle_metrics(
+      outputs, targets=targets, sample_weights=sample_weights, masks=masks)
+  return [backend.mean(t) for t in metric_results]
 
 
 def _model_loss(model, inputs, targets, sample_weights=None, training=False):
@@ -87,9 +73,10 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       training: Whether the model should be run in inference or training mode.
 
   Returns:
-     Returns the model output, total loss and loss value calculated using the
-     specified loss function. The total loss includes regularization losses and
-     applies masking and sample weighting to the loss value.
+     Returns the model output, total loss, loss value calculated using the
+     specified loss function and masks for each output. The total loss includes
+     regularization losses and applies masking and sample weighting
+     to the loss value.
   """
   total_loss = 0
   kwargs = {}
@@ -146,7 +133,7 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
     if custom_losses:
       total_loss += sum(custom_losses)
 
-  return outs, total_loss, loss_metrics
+  return outs, total_loss, loss_metrics, masks
 
 
 def iterator_fit_loop(model,
@@ -235,6 +222,15 @@ def iterator_fit_loop(model,
           if val is not None else None for val in sample_weights
       ]
 
+    # Set stateful_metrics in callbacks. We do not do this before the
+    # `steps_per_epoch` loop because model will be compiled only in the first
+    # iteration of this loop in the deferred build scenario.
+    if step_index == 0:
+      for cbk in callbacks:
+        if (isinstance(cbk, cbks.BaseLogger) or
+            isinstance(cbk, cbks.ProgbarLogger)):
+          cbk.stateful_metrics = model.stateful_metric_names
+
     if step_index == 0 and not callbacks.params['metrics']:
       callback_metrics = copy.copy(model.metrics_names)
       if do_validation:
@@ -250,16 +246,16 @@ def iterator_fit_loop(model,
       })
 
     # Train model.
-    outs, loss, loss_metrics = _process_single_batch(
+    outs, loss, loss_metrics, masks = _process_single_batch(
         model, x, y, sample_weights=sample_weights, training=True)
-    if not isinstance(outs, list):
-      outs = [outs]
+    outs = generic_utils.to_list(outs)
 
     # Calculate metrics.
     for l, o in zip(model.metrics_names, outs):
       batch_logs[l] = o
     # Required for eager execution
-    metrics_results = _eager_metrics_fn(model, outs, y)
+    metrics_results = _eager_metrics_fn(
+        model, outs, y, sample_weights=sample_weights, masks=masks)
     batch_logs['loss'] = tensor_util.constant_value(backend.mean(loss))
 
     for k, v in zip(model.metrics_names,
@@ -346,10 +342,25 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
           if val is not None else None for val in sample_weights
       ]
 
+    if step_index == 0:
+      # Get stateful metrics indices. We do not do this before the `steps` loop
+      # because model will be compiled only in the first iteration of this loop
+      # in the deferred build scenario.
+      if hasattr(model, 'metrics'):
+        for m in model.stateful_metric_functions:
+          m.reset_states()
+        stateful_metric_indices = [
+            i for i, name in enumerate(model.metrics_names)
+            if str(name) in model.stateful_metric_names
+        ]
+      else:
+        stateful_metric_indices = []
+
     # Calculate model output, loss values.
-    loss_outs, loss, loss_metrics = _model_loss(
+    loss_outs, loss, loss_metrics, masks = _model_loss(
         model, x, y, sample_weights=sample_weights, training=False)
-    metrics_results = _eager_metrics_fn(model, loss_outs, y)
+    metrics_results = _eager_metrics_fn(
+        model, loss_outs, y, sample_weights=sample_weights, masks=masks)
     batch_outs = []
     for _, v in zip(model.metrics_names,
                     [backend.mean(loss)] + loss_metrics + metrics_results):
@@ -368,7 +379,10 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       for _ in enumerate(batch_outs):
         outs.append(0.)
     for i, batch_out in enumerate(batch_outs):
-      outs[i] += batch_out * step_size
+      if i in stateful_metric_indices:
+        outs[i] = batch_out
+      else:
+        outs[i] += batch_out * step_size
 
     # Calculate sample size.
     num_samples += step_size
@@ -376,7 +390,8 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       progbar.update(step_index + 1)
 
   for i in range(len(outs)):
-    outs[i] /= num_samples
+    if i not in stateful_metric_indices:
+      outs[i] /= num_samples
   if len(outs) == 1:
     return outs[0]
   return outs
@@ -473,16 +488,20 @@ def _process_single_batch(model,
               set this to False.
 
   Returns:
-      output of the model, total loss and the loss associated with each output.
+      output of the model, total loss, the loss and the mask
+      associated with each output.
 
   Raises:
       ValueError: If the model has no loss to optimize.
   """
   with backend.learning_phase_scope(1 if training else 0):
     with GradientTape() as tape:
-      outs, loss, loss_metrics = _model_loss(model, inputs, targets,
-                                             sample_weights=sample_weights,
-                                             training=training)
+      outs, loss, loss_metrics, masks = _model_loss(
+          model,
+          inputs,
+          targets,
+          sample_weights=sample_weights,
+          training=training)
       if loss is None:
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
@@ -495,7 +514,7 @@ def _process_single_batch(model,
         grads = tape.gradient(loss, model._collected_trainable_weights)
         model.optimizer.apply_gradients(zip(grads,
                                             model._collected_trainable_weights))
-    return outs, loss, loss_metrics
+    return outs, loss, loss_metrics, masks
 
 
 def train_on_batch(model, inputs, targets, sample_weights=None):
@@ -526,14 +545,18 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
         if val is not None else None for val in sample_weights
     ]
 
-  outs, loss, _ = _process_single_batch(
+  outs, loss, loss_metrics, masks = _process_single_batch(
       model, inputs, targets, sample_weights=sample_weights, training=True)
   if not isinstance(outs, list):
     outs = [outs]
-  metrics_results = _eager_metrics_fn(model, outs, targets)
-  if not isinstance(loss, list):
-    loss = [loss]
-  return loss + metrics_results
+  metrics_results = _eager_metrics_fn(
+      model, outs, targets, sample_weights=sample_weights, masks=masks)
+  loss = generic_utils.to_list(loss)
+
+  return [
+      tensor_util.constant_value(v)
+      for v in loss + loss_metrics + metrics_results
+  ]
 
 
 def test_on_batch(model, inputs, targets, sample_weights=None):
@@ -563,14 +586,18 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
         ops.convert_to_tensor(val, dtype=backend.floatx())
         if val is not None else None for val in sample_weights
     ]
-  outs, loss, loss_metrics = _model_loss(
+  outs, loss, loss_metrics, masks = _model_loss(
       model, inputs, targets, sample_weights=sample_weights, training=False)
   if not isinstance(outs, list):
     outs = [outs]
-  metrics_results = _eager_metrics_fn(model, outs, targets)
-  if not isinstance(loss, list):
-    loss = [loss]
-  return loss + loss_metrics + metrics_results
+  metrics_results = _eager_metrics_fn(
+      model, outs, targets, sample_weights=sample_weights, masks=masks)
+  loss = generic_utils.to_list(loss)
+
+  return [
+      tensor_util.constant_value(v)
+      for v in loss + loss_metrics + metrics_results
+  ]
 
 
 def fit_loop(model,
@@ -648,6 +675,10 @@ def fit_loop(model,
 
     callbacks.on_train_begin()
     for epoch in range(initial_epoch, epochs):
+      if model._is_compiled:  # Model may not be compiled the first time.
+        # Reset stateful metrics
+        for m in model.stateful_metric_functions:
+          m.reset_states()
       callbacks.on_epoch_begin(epoch)
       epoch_logs = {}
       iterator_fit_loop(
@@ -706,10 +737,7 @@ def test_loop(model, inputs, targets,
     return iterator_test_loop(model, inputs, steps, verbose=verbose)
 
 
-def predict_loop(model, inputs,
-                 batch_size=32,
-                 verbose=0,
-                 steps=None):
+def predict_loop(model, inputs, batch_size=32, verbose=0, steps=None):
   """Predict function for eager execution.
 
   Arguments:
