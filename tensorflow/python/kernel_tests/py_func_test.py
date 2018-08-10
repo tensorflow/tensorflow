@@ -148,30 +148,6 @@ class PyFuncTest(test.TestCase):
           script_ops.py_func(list_func, [x], [dtypes.float64] * 2))
       self.assertAllClose(y, [0.0, 1.0])
 
-  def testConvertEmptyList(self):
-    with self.test_session():
-
-      def empty_list_func(args):
-        del args
-        return [],
-
-      x = constant_op.constant(0, dtypes.int64)
-      y = self.evaluate(
-          script_ops.py_func(empty_list_func, [x], dtypes.int64))
-      self.assertAllClose(y, [])
-
-  def testConvertScalarType(self):
-    with self.test_session():
-
-      def one_func(args):
-        del args
-        return 1
-
-      x = constant_op.constant(0, dtypes.int64)
-      y = self.evaluate(
-          script_ops.py_func(one_func, [x], dtypes.int64))
-      self.assertAllClose(y, 1)
-
   def testTuple(self):
     # returns a tuple
     with self.test_session():
@@ -285,6 +261,19 @@ class PyFuncTest(test.TestCase):
       z, = script_ops.py_func(unicode_string, [], [dtypes.string])
       self.assertEqual(z.eval(), correct.encode("utf8"))
 
+  def testBadNumpyReturnType(self):
+    with self.test_session():
+
+      def bad():
+        # Structured numpy arrays aren't supported.
+        return np.array([], dtype=[("foo", np.float32)])
+
+      y, = script_ops.py_func(bad, [], [dtypes.float32])
+
+      with self.assertRaisesRegexp(errors.UnimplementedError,
+                                   "Unsupported numpy type"):
+        y.eval()
+
   def testBadReturnType(self):
     with self.test_session():
 
@@ -294,8 +283,8 @@ class PyFuncTest(test.TestCase):
 
       z, = script_ops.py_func(bad, [], [dtypes.int64])
 
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError, "argument must.*not 'dict'"):
+      with self.assertRaisesRegexp(errors.UnimplementedError,
+                                   "Unsupported object type"):
         z.eval()
 
   def testReturnInput(self):
@@ -463,7 +452,7 @@ class PyFuncTest(test.TestCase):
           # (see #18292)
           _ = script_ops.py_func(lambda x: x + c.shape[0], [c], [dtypes.float32])
           _ = script_ops.eager_py_func(lambda x: x + c.shape[0], [c], [dtypes.float32])
-
+ 
     # Call garbage collector to enforce deletion.
     make_graphs()
     ops.reset_default_graph()
