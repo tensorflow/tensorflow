@@ -59,6 +59,12 @@ FunctionType *Builder::getFunctionType(ArrayRef<Type *> inputs,
   return FunctionType::get(inputs, results, context);
 }
 
+MemRefType *Builder::getMemRefType(ArrayRef<int> shape, Type *elementType,
+                                   ArrayRef<AffineMap *> affineMapComposition,
+                                   unsigned memorySpace) {
+  return MemRefType::get(shape, elementType, affineMapComposition, memorySpace);
+}
+
 VectorType *Builder::getVectorType(ArrayRef<unsigned> shape,
                                    Type *elementType) {
   return VectorType::get(shape, elementType);

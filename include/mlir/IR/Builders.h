@@ -70,6 +70,9 @@ public:
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);
+  MemRefType *getMemRefType(ArrayRef<int> shape, Type *elementType,
+                            ArrayRef<AffineMap *> affineMapComposition = {},
+                            unsigned memorySpace = 0);
   VectorType *getVectorType(ArrayRef<unsigned> shape, Type *elementType);
   RankedTensorType *getTensorType(ArrayRef<int> shape, Type *elementType);
   UnrankedTensorType *getTensorType(Type *elementType);
