@@ -55,7 +55,6 @@ import time
 import numpy as np
 
 from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -82,7 +81,11 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
-TPUDistributionStrategy = tpu_strategy.TPUStrategy  # pylint: disable=invalid-name
+
+# Work-around dependency cycle between DistributionStrategy and TPU lib.
+def TPUDistributionStrategy(*args, **kw):  # pylint: disable=invalid-name
+  from tensorflow.contrib.distribute.python import tpu_strategy  # pylint: disable=g-import-not-at-top
+  return tpu_strategy.TPUStrategy(*args, **kw)
 
 
 class TPUEmbedding(embeddings.Embedding):
@@ -441,21 +444,23 @@ class TPUNumpyInfeedManager(TPUInfeedManager):
     shard_infeed_tensors = []
 
     for shard_id in range(self._strategy.num_towers):
-      with ops.device('/device:TPU:%d' % shard_id):
+      with ops.device('/device:CPU:0'):
         infeed_tensors = []
-        for spec in input_specs:
-          # Construct placeholders for each of the inputs.
-          infeed_tensors.append(
-              array_ops.placeholder(
-                  dtype=spec.dtype,
-                  shape=spec.shape,
-                  name='infeed-enqueue-%s-%d' % (spec.name, shard_id)))
+        with ops.device('/device:TPU:%d' % shard_id):
+          for spec in input_specs:
+            # Construct placeholders for each of the inputs.
+            infeed_tensors.append(
+                array_ops.placeholder(
+                    dtype=spec.dtype,
+                    shape=spec.shape,
+                    name='infeed-enqueue-%s-%d' % (spec.name, shard_id)))
         shard_infeed_tensors.append(infeed_tensors)
 
         infeed_op.append(
             tpu_ops.infeed_enqueue_tuple(
                 infeed_tensors, [spec.shape for spec in input_specs],
-                name='infeed-enqueue-%s-%d' % (execution_mode, shard_id)))
+                name='infeed-enqueue-%s-%d' % (execution_mode, shard_id),
+                device_ordinal=shard_id))
     return SizedInfeed(infeed_ops=infeed_op,
                        sharded_infeed_tensors=shard_infeed_tensors)
 
@@ -584,12 +589,13 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
     assert len(shard_infeed_tensors) == self._strategy.num_towers
     infeed_ops = []
     for shard_id in range(self._strategy.num_towers):
-      with ops.device('/device:TPU:%d' % shard_id):
+      with ops.device('/device:CPU:0'):
         infeed_ops.append(
             tpu_ops.infeed_enqueue_tuple(
                 shard_infeed_tensors[shard_id],
                 [spec.shape for spec in input_specs],
-                name='infeed-enqueue-%s-%d' % (execution_mode, shard_id)))
+                name='infeed-enqueue-%s-%d' % (execution_mode, shard_id),
+                device_ordinal=shard_id))
     return SizedInfeed(infeed_ops=infeed_ops,
                        sharded_infeed_tensors=shard_infeed_tensors)
 
@@ -740,12 +746,13 @@ class TPUFunction(object):
     # Build output ops.
     outfeed_op = []
     for shard_id in range(self._strategy.num_towers):
-      with ops.device('/device:TPU:%d' % shard_id):
+      with ops.device('/device:CPU:0'):
         outfeed_op.extend(
             tpu_ops.outfeed_dequeue_tuple(
                 dtypes=[spec.dtype for spec in self._outfeed_spec],
                 shapes=[spec.shape for spec in self._outfeed_spec],
-                name='outfeed-dequeue-%s-%d' % (self.execution_mode, shard_id)))
+                name='outfeed-dequeue-%s-%d' % (self.execution_mode, shard_id),
+                device_ordinal=shard_id))
 
     return TPUModelOp(
         compile_op,

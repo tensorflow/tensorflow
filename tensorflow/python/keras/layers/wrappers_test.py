@@ -87,6 +87,8 @@ class TimeDistributedTest(test.TestCase):
     # test config
     model.get_config()
 
+    # check whether the model variables are present in the
+    # checkpointable list of objects
     checkpointed_objects = set(checkpointable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
@@ -277,6 +279,12 @@ class BidirectionalTest(test.TestCase):
                 rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
         model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
+
+        # check whether the model variables are present in the
+        # checkpointable list of objects
+        checkpointed_objects = set(checkpointable_util.list_objects(model))
+        for v in model.variables:
+          self.assertIn(v, checkpointed_objects)
 
         # test compute output shape
         ref_shape = model.layers[-1].output.get_shape()

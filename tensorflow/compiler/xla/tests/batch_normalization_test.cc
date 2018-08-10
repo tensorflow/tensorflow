@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -733,7 +733,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       var4D, [epsilon](float a) { return a + epsilon; });
 
   auto rsqrt_var_add_epsilon = *ReferenceUtil::MapArray4D(
-      var_add_epsilon, [epsilon](float a) { return 1 / std::sqrt(a); });
+      var_add_epsilon, [](float a) { return 1 / std::sqrt(a); });
 
   auto grad_output_times_var =
       *ReferenceUtil::MapArray4D(grad_output_array, var_add_epsilon,

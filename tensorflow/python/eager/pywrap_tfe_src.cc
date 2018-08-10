@@ -845,11 +845,9 @@ int64_t get_uid() {
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
 void TFE_DeleteContextCapsule(PyObject* context) {
-  TF_Status* status = TF_NewStatus();
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  TFE_DeleteContext(ctx, status);
-  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
 }
 
 static tensorflow::int64 MakeInt(PyObject* integer) {
@@ -1173,14 +1171,14 @@ static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = EagerTensor_id(tensor);
-    const tensorflow::Tensor* tensor = nullptr;
-    const tensorflow::Status status = t->handle->Tensor(&tensor);
+    tensorflow::TensorShape tensor_shape;
+    const tensorflow::Status status = t->handle->Shape(&tensor_shape);
+
     if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
       return tensorflow::eager::TapeTensor{id, t->handle->dtype,
                                            tensorflow::TensorShape({})};
     } else {
-      return tensorflow::eager::TapeTensor{id, t->handle->dtype,
-                                           tensor->shape()};
+      return tensorflow::eager::TapeTensor{id, t->handle->dtype, tensor_shape};
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);
@@ -1728,7 +1726,6 @@ bool OpDoesntRequireOutput(const string& op_name) {
           "BiasAdd",
           "BiasAddV1",
           "BiasAddGrad",
-          "Relu6",
           "Softplus",
           "SoftplusGrad",
           "Softsign",
@@ -1801,6 +1798,7 @@ bool OpDoesntRequireInput(const string& op_name) {
           "LogSoftmax",
           "BiasAdd",
           "Relu",
+          "Relu6",
           "Elu",
           "Selu",
           "SparseSoftmaxCrossEntropyWithLogits",

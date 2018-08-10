@@ -4,9 +4,9 @@ index.md
 keras.md
 eager.md
 datasets.md
+estimators.md: Introduction to Estimators
 
 ### Estimators
-estimators.md: Introduction to Estimators
 premade_estimators.md
 checkpoints.md
 feature_columns.md
@@ -23,6 +23,7 @@ tensors.md
 variables.md
 graphs.md
 saved_model.md
+autograph.md : Control flow
 
 ### ML Concepts
 embedding.md

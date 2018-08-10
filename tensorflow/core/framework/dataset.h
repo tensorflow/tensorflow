@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
+#include <deque>
 #include <memory>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -498,28 +499,24 @@ class GraphDatasetBase : public DatasetBase {
 };
 
 // Represents an iterator that is associated with a particular parent dataset.
-template <class DatasetType>
-class DatasetIterator : public IteratorBase {
+class DatasetBaseIterator : public IteratorBase {
  public:
-  struct Params {
-    // Owns one reference on the shared dataset resource.
-    const DatasetType* dataset;
+  struct BaseParams {
+    // Owns one reference on the shared dataset object.
+    const DatasetBase* dataset;
 
     // Identifies the sequence of iterators leading up to this iterator.
     const string prefix;
   };
 
-  explicit DatasetIterator(const Params& params) : params_(params) {
+  explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
   }
 
-  ~DatasetIterator() override { params_.dataset->Unref(); }
-
-  // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return params_.dataset; }
+  ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
   // The sequence of iterators leading up to this iterator.
-  const string prefix() const { return params_.prefix; }
+  const string& prefix() const { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -545,7 +542,7 @@ class DatasetIterator : public IteratorBase {
   }
 
   Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(dataset()->Save(ctx, writer));
+    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
     return IteratorBase::Save(ctx, writer);
   }
 
@@ -556,11 +553,40 @@ class DatasetIterator : public IteratorBase {
                                  bool* end_of_sequence) = 0;
 
   string full_name(const string& name) const {
-    return strings::StrCat(prefix(), ":", name);
+    return strings::StrCat(params_.prefix, ":", name);
   }
 
  private:
-  Params params_;
+  BaseParams params_;
+};
+
+// Represents an iterator that is associated with a particular parent dataset
+// with a particular type.
+template <class DatasetType>
+class DatasetIterator : public DatasetBaseIterator {
+ public:
+  struct Params {
+    // Borrowed pointer to the parent dataset.
+    const DatasetType* dataset;
+
+    // Identifies the sequence of iterators leading up to this iterator.
+    const string prefix;
+  };
+
+  explicit DatasetIterator(const Params& params)
+      : DatasetBaseIterator({params.dataset, params.prefix}),
+        typed_dataset_(params.dataset) {}
+
+  // The dataset from which this iterator was created.
+  const DatasetType* dataset() const { return typed_dataset_; }
+
+ protected:
+  virtual Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) = 0;
+
+ private:
+  const DatasetType* const typed_dataset_;  // Not owned.
 };
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
@@ -645,6 +671,37 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 //
 // The ownership of `dataset` is transferred to `tensor`.
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+
+// A simple background worker that executes closures asynchronously and without
+// blocking.
+//
+// A `BackgroundWorker` is used to offload blocking work from an `AsyncOpKernel`
+// to avoid blocking an executor thread that may be required by the blocking
+// work.
+//
+// NOTE(mrry): We do not use a regular `tensorflow::thread::ThreadPool` for this
+// purpose because its current implementation (in Eigen) uses a finite-length
+// queue and will block the caller when full. This can lead to deadlock under
+// heavy load. Since the number of concurrent work items in each user of a
+// `BackgroundWorker` is at most one per op invocation, the dynamic allocation
+// overhead is tolerable.
+class BackgroundWorker {
+ public:
+  BackgroundWorker(Env* env, const string& name);
+
+  ~BackgroundWorker();
+
+  void Schedule(std::function<void()> work_item);
+
+ private:
+  void WorkerLoop();
+
+  std::unique_ptr<Thread> thread_;
+  mutex mu_;
+  condition_variable cond_var_;
+  bool cancelled_ GUARDED_BY(mu_) = false;
+  std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
+};
 
 namespace dataset {
 

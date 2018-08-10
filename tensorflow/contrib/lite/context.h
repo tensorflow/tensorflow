@@ -29,6 +29,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 #define TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 
+#if defined(_MSC_VER)
+#include <complex.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -180,7 +183,11 @@ typedef union {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
+#if defined(_MSC_VER)
+  _Fcomplex* c64;
+#else
   _Complex float* c64;
+#endif
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -464,6 +471,12 @@ typedef struct _TfLiteDelegate {
 } TfLiteDelegate;
 
 // WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateDelegateParams` function in `interpreter.cc` details.
 typedef struct {
   TfLiteDelegate* delegate;
   TfLiteIntArray* nodes_to_replace;

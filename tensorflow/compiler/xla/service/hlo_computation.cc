@@ -898,4 +898,13 @@ void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
+HloInstruction* HloComputation::GetInstructionWithName(
+    tensorflow::StringPiece name) {
+  auto instructions_in_computation = instructions();
+  auto it = c_find_if(instructions_in_computation, [&](HloInstruction* instr) {
+    return instr->name() == name;
+  });
+  return it == instructions_in_computation.end() ? nullptr : *it;
+}
+
 }  // namespace xla

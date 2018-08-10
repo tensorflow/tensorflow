@@ -265,9 +265,8 @@ class MklConv2DBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(
-      const MklConvBwdInputParams& convBwdInputDims) {
-    std::string prefix = "conv2d_bwd_input";
+  static string CreateKey(const MklConvBwdInputParams& convBwdInputDims) {
+    string prefix = "conv2d_bwd_input";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convBwdInputDims.diff_src_dims);
@@ -282,13 +281,13 @@ class MklConv2DBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
 
   MklPrimitive* GetConv2dBwdInput(
       const MklConvBwdInputParams& convBwdInputDims) {
-    std::string key = CreateKey(convBwdInputDims);
+    string key = CreateKey(convBwdInputDims);
     return this->GetOp(key);
   }
 
   void SetConv2dBwdInput(
       const MklConvBwdInputParams& convBwdInputDims, MklPrimitive *op) {
-    std::string key = CreateKey(convBwdInputDims);
+    string key = CreateKey(convBwdInputDims);
     this->SetOp(key, op);
   }
 };
@@ -722,14 +721,11 @@ class MklConv2DCustomBackpropInputOp
           diff_src_tensor->flat<T>().data()));
 
       // check if filter and diff_dst need reorder
-      std::vector<primitive> net;
       T* filter_data = nullptr;
       if (fwd_filter_md.data.format !=
           conv2d_bwd_input->GetFilterMemoryFormat()) {
         filter.SetUsrMem(fwd_filter_md, &filter_tensor);
-        filter.CheckReorderToOpMem(
-           bwd_input_pd->weights_primitive_desc(),
-           &net);
+        filter.CheckReorderToOpMem(bwd_input_pd->weights_primitive_desc());
         filter_data = static_cast<T*>(filter.GetOpMem().get_data_handle());
       } else {
         filter_data = static_cast<T*>(const_cast<T*>(
@@ -740,15 +736,13 @@ class MklConv2DCustomBackpropInputOp
       if (diff_dst_md.data.format !=
           conv2d_bwd_input->GetDiffDstMemoryFormat()) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
-        diff_dst.CheckReorderToOpMem(
-           bwd_input_pd->diff_dst_primitive_desc(), &net);
+        diff_dst.CheckReorderToOpMem(bwd_input_pd->diff_dst_primitive_desc());
         diff_dst_data = static_cast<T*>(
                          diff_dst.GetOpMem().get_data_handle());
       } else {
         diff_dst_data = static_cast<T*>(const_cast<T*>(
                          diff_dst_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       // execute convolution input bwd
       conv2d_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data);

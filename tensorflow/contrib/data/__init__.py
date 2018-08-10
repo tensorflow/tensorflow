@@ -15,7 +15,7 @@
 """Experimental API for building input pipelines.
 
 This module contains experimental `Dataset` sources and transformations that can
-be used in conjunction with the @{tf.data.Dataset} API. Note that the
+be used in conjunction with the `tf.data.Dataset` API. Note that the
 `tf.contrib.data` API is not subject to the same backwards compatibility
 guarantees as `tf.data`, but we will provide deprecation advice in advance of
 removing existing functionality.
@@ -52,6 +52,7 @@ See @{$guide/datasets$Importing Data} for an overview.
 @@prefetch_to_device
 @@read_batch_features
 @@rejection_resample
+@@reduce_dataset
 @@sample_from_datasets
 @@scan
 @@shuffle_and_repeat
@@ -77,6 +78,7 @@ from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.get_single_element import get_single_element
+from tensorflow.contrib.data.python.ops.get_single_element import reduce_dataset
 from tensorflow.contrib.data.python.ops.grouping import bucket_by_sequence_length
 from tensorflow.contrib.data.python.ops.grouping import group_by_reducer
 from tensorflow.contrib.data.python.ops.grouping import group_by_window

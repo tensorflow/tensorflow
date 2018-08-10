@@ -55,9 +55,9 @@ from tensorflow.python.training import moving_averages
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = [
-    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
-    'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
-    'convolution1d', 'convolution2d', 'convolution2d_in_plane',
+    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv1d', 'conv2d',
+    'conv3d', 'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose',
+    'convolution', 'convolution1d', 'convolution2d', 'convolution2d_in_plane',
     'convolution2d_transpose', 'convolution3d', 'convolution3d_transpose',
     'dense_to_sparse', 'dropout', 'elu', 'flatten', 'fully_connected', 'GDN',
     'gdn', 'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
@@ -1584,7 +1584,7 @@ def dropout(inputs,
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1702,19 +1702,22 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
-def _model_variable_getter(getter,
-                           name,
-                           shape=None,
-                           dtype=None,
-                           initializer=None,
-                           regularizer=None,
-                           trainable=True,
-                           collections=None,
-                           caching_device=None,
-                           partitioner=None,
-                           rename=None,
-                           use_resource=None,
-                           **_):
+def _model_variable_getter(
+    getter,
+    name,
+    shape=None,
+    dtype=None,
+    initializer=None,
+    regularizer=None,
+    trainable=True,
+    collections=None,
+    caching_device=None,
+    partitioner=None,
+    rename=None,
+    use_resource=None,
+    synchronization=tf_variables.VariableSynchronization.AUTO,
+    aggregation=tf_variables.VariableAggregation.NONE,
+    **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1732,7 +1735,9 @@ def _model_variable_getter(getter,
       caching_device=caching_device,
       partitioner=partitioner,
       custom_getter=getter,
-      use_resource=use_resource)
+      use_resource=use_resource,
+      synchronization=synchronization,
+      aggregation=aggregation)
 
 
 def _build_variable_getter(rename=None):
@@ -2655,7 +2660,7 @@ def separable_convolution2d(
     inputs,
     num_outputs,
     kernel_size,
-    depth_multiplier,
+    depth_multiplier=1,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,
@@ -3315,6 +3320,7 @@ relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
 linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
+conv1d = convolution1d
 conv2d = convolution2d
 conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose

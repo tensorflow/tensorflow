@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -52,10 +53,10 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrCat;
-using ::xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
@@ -169,7 +170,8 @@ Service::Service(const ServiceOptions& options,
 
 Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
                                     CreateChannelHandleResponse* result) {
-  *result->mutable_channel() = channel_tracker_.NewChannel();
+  TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
+                      channel_tracker_.NewChannel(arg->channel_type()));
   return Status::OK();
 }
 
@@ -375,7 +377,7 @@ Service::ExecuteParallelAndRegisterResult(
     ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
-  std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<StreamPool::Ptr> streams;
   std::vector<std::unique_ptr<se::Timer>> timers;
 
   // Global data handles for the computation results, one for each computation.
@@ -402,12 +404,12 @@ Service::ExecuteParallelAndRegisterResult(
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
     for (int64 replica = 0; replica < replicas.size(); ++replica) {
-      TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+      TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
 
       if (replica == 0 && profile != nullptr) {
-        timers.emplace_back(new se::Timer(streams.back()->parent()));
+        timers.push_back(MakeUnique<se::Timer>(streams.back()->parent()));
         streams.back()
             ->InitTimer(timers.back().get())
             .ThenStartTimer(timers.back().get());
@@ -439,7 +441,7 @@ Service::ExecuteParallelAndRegisterResult(
         streams.back()->ThenStopTimer(timers.back().get());
       }
 
-      result_buffers.emplace_back(std::move(result));
+      result_buffers.push_back(std::move(result));
     }
     TF_ASSIGN_OR_RETURN(GlobalDataHandle handle,
                         allocation_tracker_.RegisterReplicatedBuffers(
@@ -514,13 +516,13 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         arguments,
     Backend* backend, const string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
-  std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<StreamPool::Ptr> streams;
 
   TF_ASSIGN_OR_RETURN(auto replicas,
                       Replicas(*backend, SingleComputationDeviceHandle()));
   TF_RET_CHECK(!replicas.empty());
   for (se::StreamExecutor* executor : replicas) {
-    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+    TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                         backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
@@ -532,7 +534,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
-  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
+  for (const StreamPool::Ptr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());
@@ -557,7 +559,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   std::vector<tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
       replicated_arguments;
   for (const auto& arg : arguments) {
-    replicated_arguments.emplace_back(arg);
+    replicated_arguments.push_back(arg);
   }
 
   TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
@@ -1051,11 +1053,12 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  Literal literal;
+  auto literal = Literal::CreateFromShape(arg->shape_with_layout());
+
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), &literal));
-  *result->mutable_literal() = literal.ToProto();
+          executor, arg->shape_with_layout(), *literal));
+  *result->mutable_literal() = literal->ToProto();
   return Status::OK();
 }
 

@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -117,38 +117,37 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
   return std::move(buffer);
 }
 
-static std::unique_ptr<Literal> ShapeTreeToLiteral(
+static void ShapeTreeToLiteral(
     ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree) {
   // This is a struct instead of a lambda for std::function-free recursion.
   struct Helper {
-    static std::unique_ptr<Literal> helper(
+    static void helper(
         ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
         ShapeIndex* index) {
       const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
       if (ShapeUtil::IsArray(shape)) {
-        return (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
+        (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
+        return;
       }
 
       CHECK(ShapeUtil::IsTuple(shape))
           << ShapeUtil::HumanStringWithLayout(shape);
       const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
       index->push_back(0);
-      std::vector<std::unique_ptr<Literal>> tuple_operands;
       for (int64 i = 0; i < tuple_element_count; ++i) {
         index->back() = i;
-        tuple_operands.push_back(helper(shape_tree, index));
+        helper(shape_tree, index);
       }
       index->pop_back();
-      return LiteralUtil::MakeTupleOwned(std::move(tuple_operands));
     }
   };
   ShapeIndex index;
-  return Helper::helper(shape_tree, &index);
+  Helper::helper(shape_tree, &index);
 }
 
 Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* /*executor*/, const Shape& literal_shape,
-    Literal* literal) {
+    MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal_shape);
 
@@ -162,6 +161,8 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
           return;
         }
         *buffer = MakeUnique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+        (*buffer)->set_destination(
+            MakeUnique<MutableBorrowingLiteral>(literal, index));
       });
 
   // Give the tree of buffers to the outfeed mananger. The device will fill it
@@ -169,8 +170,8 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
-  // Now turn the tree of buffers back into a literal.
-  *literal = std::move(*ShapeTreeToLiteral(&outfeed_buffers));
+  // Now wait for the tree of buffers are written.
+  ShapeTreeToLiteral(&outfeed_buffers);
   return Status::OK();
 }
 
@@ -180,7 +181,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return xla::MakeUnique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::GpuCompiler::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 

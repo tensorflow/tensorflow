@@ -50,7 +50,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""

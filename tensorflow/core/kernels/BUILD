@@ -22,6 +22,7 @@ package_group(
         "//learning/brain/research/sparse_matrix/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
+        "//third_party/car/...",
     ],
 )
 
@@ -124,6 +125,7 @@ tf_kernel_library(
         ":bounds_check",
         ":dense_update_functor",
         ":ops_util",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -781,7 +783,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
     prefix = "quantize_and_dequantize_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":cwise_op"],
 )
 
 tf_kernel_library(
@@ -1087,6 +1089,29 @@ tf_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "depthwise_conv_ops_test",
+    size = "small",
+    srcs = ["depthwise_conv_ops_test.cc"],
+    tags = ["requires-gpu-sm35"],
     deps = [
         ":conv_ops",
         ":image",
@@ -2323,6 +2348,22 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "crop_and_resize_op_benchmark_test",
+    srcs = ["crop_and_resize_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "resize_benchmark_test",
     srcs = ["resize_op_benchmark_test.cc"],
     deps = [
@@ -2813,6 +2854,8 @@ tf_kernel_library(
     srcs = [] + if_mkl([
         "mkl_batch_matmul_op.cc",
     ]),
+    # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
+    hdrs = ["batch_matmul_op_impl.h"],
     # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
     # to avoid long compiling time. See https://github.com/tensorflow/tensorflow/issues/10521
     copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
@@ -3749,7 +3792,7 @@ tf_kernel_library(
         "spacetodepth_op.h",
         "spacetodepth_op_gpu.cu.cc",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4826,6 +4869,8 @@ filegroup(
         "cast_op_impl_int64.cc",
         "cast_op_impl_int8.cc",
         "cast_op_impl_uint16.cc",
+        "cast_op_impl_uint32.cc",
+        "cast_op_impl_uint64.cc",
         "cast_op_impl_uint8.cc",
         "concat_lib.h",
         "concat_lib_cpu.cc",
@@ -4844,6 +4889,7 @@ filegroup(
         "fill_functor.cc",
         "fill_functor.h",
         "function_ops.cc",
+        "function_ops.h",
         "gather_functor.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
@@ -5200,6 +5246,16 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+ANDROID_TEXTUAL_HDRS = [
+    "gather_nd_op_cpu_impl.h",
+    "gemm_functors.h",
+    "mirror_pad_op_cpu_impl.h",
+    "scatter_nd_op_cpu_impl.h",
+    "slice_op_cpu_impl.h",
+    "strided_slice_op_impl.h",
+    "tile_ops_cpu_impl.h",
+]
+
 # A file group which contains nearly all available operators which
 # may work on Android. This is intended to be used with selective
 # registration.
@@ -5261,8 +5317,18 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
-        ],
+            # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
+            "mkl_*",
+            "xsmm_*",
+            "cwise_ops_sycl_common.h",
+        ] + ANDROID_TEXTUAL_HDRS,
     ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_all_ops_textual_hdrs",
+    srcs = ANDROID_TEXTUAL_HDRS,
     visibility = ["//visibility:public"],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
@@ -5305,10 +5371,6 @@ cc_library(
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
     linkopts = ["-ldl"],
-    tags = [
-        "manual",
-        "notap",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_gif_internal",
@@ -6288,6 +6350,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:decode",
         "//tensorflow/core/util/proto:descriptors",
+        "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
     ],
 )
@@ -6300,6 +6363,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:descriptors",
+        "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
     ],
 )

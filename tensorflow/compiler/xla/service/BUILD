@@ -256,7 +256,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo_element_type_converter",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -564,7 +564,7 @@ cc_library(
         ":computation_placer",
         ":device_memory_allocator",
         ":platform_util",
-        ":pool",
+        ":stream_pool",
         ":transfer_manager",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -598,6 +598,7 @@ cc_library(
         ":hlo_proto_util",
         ":platform_util",
         ":source_map_util",
+        ":stream_pool",
         ":transfer_manager",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -612,6 +613,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = 1,
@@ -642,7 +644,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -751,8 +753,8 @@ cc_library(
         ":hlo_execution_profile",
         ":hlo_graph_dumper",
         ":hlo_proto",
-        ":pool",
         ":shaped_buffer",
+        ":stream_pool",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -838,7 +840,7 @@ cc_library(
     hdrs = ["execution_tracker.h"],
     deps = [
         ":backend",
-        ":pool",
+        ":stream_pool",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -946,7 +948,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
@@ -1057,6 +1058,7 @@ cc_library(
     hdrs = ["hlo_module_group_metadata.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -1384,14 +1386,26 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "while_loop_analysis",
+    srcs = ["while_loop_analysis.cc"],
+    hdrs = ["while_loop_analysis.h"],
+    deps = [
+        ":hlo",
+        ":hlo_evaluator",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "while_loop_simplifier",
     srcs = ["while_loop_simplifier.cc"],
     hdrs = ["while_loop_simplifier.h"],
     deps = [
         ":call_inliner",
         ":hlo",
-        ":hlo_evaluator",
         ":hlo_pass",
+        ":while_loop_analysis",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
@@ -1662,8 +1676,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:padding",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -2010,6 +2024,7 @@ cc_library(
     deps = [
         ":computation_layout",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_pass",
@@ -2668,7 +2683,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -2705,7 +2720,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -2713,21 +2728,25 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "pool",
-    hdrs = ["pool.h"],
+    name = "stream_pool",
+    srcs = ["stream_pool.cc"],
+    hdrs = ["stream_pool.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
 
 tf_cc_test(
-    name = "pool_test",
-    srcs = ["pool_test.cc"],
+    name = "stream_pool_test",
+    srcs = ["stream_pool_test.cc"],
     deps = [
-        ":pool",
+        ":stream_pool",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
 

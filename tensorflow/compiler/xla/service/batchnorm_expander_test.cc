@@ -137,9 +137,9 @@ ENTRY entry {
     if (instruction->opcode() == HloOpcode::kParameter) {
       continue;
     }
-    ASSERT_TRUE(instruction->has_sharding());
-    TF_ASSERT_OK_AND_ASSIGN(int device, instruction->sharding().UniqueDevice());
-    EXPECT_EQ(device, 1);
+    auto device = instruction->sharding_unique_device();
+    ASSERT_TRUE(device);
+    EXPECT_EQ(*device, 1);
   }
 }
 

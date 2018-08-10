@@ -78,6 +78,48 @@ class SymbolAlreadyExposedError(Exception):
   pass
 
 
+def get_canonical_name_for_symbol(symbol, api_name=TENSORFLOW_API_NAME):
+  """Get canonical name for the API symbol.
+
+  Canonical name is the first non-deprecated endpoint name.
+
+  Args:
+    symbol: API function or class.
+    api_name: API name (tensorflow or estimator).
+
+  Returns:
+    Canonical name for the API symbol (for e.g. initializers.zeros) if
+    canonical name could be determined. Otherwise, returns None.
+  """
+  if not hasattr(symbol, '__dict__'):
+    return None
+  api_names_attr = API_ATTRS[api_name].names
+  _, undecorated_symbol = tf_decorator.unwrap(symbol)
+  if api_names_attr not in undecorated_symbol.__dict__:
+    return None
+  api_names = getattr(undecorated_symbol, api_names_attr)
+  # TODO(annarev): may be add a separate deprecated attribute
+  # for estimator names.
+  deprecated_api_names = undecorated_symbol.__dict__.get(
+      '_tf_deprecated_api_names', [])
+  return get_canonical_name(api_names, deprecated_api_names)
+
+
+def get_canonical_name(api_names, deprecated_api_names):
+  """Get first non-deprecated endpoint name.
+
+  Args:
+    api_names: API names iterable.
+    deprecated_api_names: Deprecated API names iterable.
+  Returns:
+    Canonical name if there is at least one non-deprecated endpoint.
+    Otherwise returns None.
+  """
+  return next(
+      (name for name in api_names if name not in deprecated_api_names),
+      None)
+
+
 class api_export(object):  # pylint: disable=invalid-name
   """Provides ways to export symbols to the TensorFlow API."""
 

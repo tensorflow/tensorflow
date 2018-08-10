@@ -107,7 +107,7 @@ class ServingInputReceiverTest(test_util.TensorFlowTestCase):
           receiver_tensors=None)
 
     with self.assertRaisesRegexp(
-        ValueError, "receiver_tensors keys must be strings"):
+        ValueError, "receiver_tensor keys must be strings"):
       export.ServingInputReceiver(
           features=features,
           receiver_tensors={
@@ -271,7 +271,7 @@ class SupervisedInputReceiverTest(test_util.TensorFlowTestCase):
           receiver_tensors=None)
 
     with self.assertRaisesRegexp(
-        ValueError, "receiver_tensors keys must be strings"):
+        ValueError, "receiver_tensor keys must be strings"):
       export.SupervisedInputReceiver(
           features=features,
           labels=labels,
@@ -740,7 +740,7 @@ class TensorServingReceiverTest(test_util.TensorFlowTestCase):
           receiver_tensors=None)
 
     with self.assertRaisesRegexp(
-        ValueError, "receiver_tensors keys must be strings"):
+        ValueError, "receiver_tensor keys must be strings"):
       export.TensorServingInputReceiver(
           features=features,
           receiver_tensors={

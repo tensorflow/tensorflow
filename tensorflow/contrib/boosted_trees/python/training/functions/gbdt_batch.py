@@ -51,6 +51,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import device_setter
 
+
 # Key names for prediction dict.
 ENSEMBLE_STAMP = "ensemble_stamp"
 PREDICTIONS = "predictions"
@@ -287,7 +288,8 @@ class GradientBoostedDecisionTreeModel(object):
                loss_reduction=losses.Reduction.SUM_OVER_NONZERO_WEIGHTS,
                feature_columns=None,
                use_core_columns=False,
-               output_leaf_index=False):
+               output_leaf_index=False,
+               output_leaf_index_modes=None):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -307,6 +309,9 @@ class GradientBoostedDecisionTreeModel(object):
         used.
       output_leaf_index: A boolean variable indicating whether to output leaf
         index into predictions dictionary.
+      output_leaf_index_modes: A list of modes from (TRAIN, EVAL, INFER) which
+        dictates when leaf indices will be outputted. By default, leaf indices
+        are only outputted in INFER mode.
 
     Raises:
       ValueError: if inputs are not valid.
@@ -349,6 +354,9 @@ class GradientBoostedDecisionTreeModel(object):
       self._gradient_shape = tensor_shape.scalar()
       self._hessian_shape = tensor_shape.scalar()
     else:
+      if center_bias:
+        raise ValueError("Center bias should be False for multiclass.")
+
       self._gradient_shape = tensor_shape.TensorShape([logits_dimension])
       if (learner_config.multi_class_strategy ==
           learner_pb2.LearnerConfig.FULL_HESSIAN):
@@ -376,6 +384,8 @@ class GradientBoostedDecisionTreeModel(object):
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
+    self._max_tree_depth = variables.Variable(
+        initial_value=self._learner_config.constraints.max_tree_depth)
     self._attempted_trees = variables.Variable(
         initial_value=array_ops.zeros([], dtypes.int64),
         trainable=False,
@@ -404,7 +414,16 @@ class GradientBoostedDecisionTreeModel(object):
         self._learner_config.multi_class_strategy ==
         learner_pb2.LearnerConfig.TREE_PER_CLASS and
         learner_config.num_classes == 2)
+
+    if output_leaf_index_modes is None:
+      output_leaf_index_modes = [learn.ModeKeys.INFER]
+    elif not all(
+        mode in (learn.ModeKeys.TRAIN, learn.ModeKeys.EVAL,
+                 learn.ModeKeys.INFER) for mode in output_leaf_index_modes):
+      raise ValueError("output_leaf_index_modes should only contain ModeKeys.")
+
     self._output_leaf_index = output_leaf_index
+    self._output_leaf_index_modes = output_leaf_index_modes
 
   def _predict_and_return_dict(self, ensemble_handle, ensemble_stamp, mode):
     """Runs prediction and returns a dictionary of the prediction results.
@@ -435,8 +454,7 @@ class GradientBoostedDecisionTreeModel(object):
     # the right stamp.
     with ops.control_dependencies(ensemble_stats):
       leaf_index = None
-      # Only used in infer (predict), not used in train and eval.
-      if self._output_leaf_index and mode == learn.ModeKeys.INFER:
+      if self._output_leaf_index and mode in self._output_leaf_index_modes:
         predictions, _, leaf_index = (
             prediction_ops).gradient_trees_prediction_verbose(
                 ensemble_handle,
@@ -507,9 +525,6 @@ class GradientBoostedDecisionTreeModel(object):
         self._sparse_int_indices)
     if not input_deps:
       raise ValueError("No input tensors for prediction.")
-
-    if any(i.device != input_deps[0].device for i in input_deps):
-      raise ValueError("All input tensors should be on the same device.")
 
     # Get most current model stamp.
     ensemble_stamp = model_ops.tree_ensemble_stamp_token(self._ensemble_handle)
@@ -884,7 +899,7 @@ class GradientBoostedDecisionTreeModel(object):
 
       reset_ops = []
       for handler in handlers:
-        reset_ops.append(handler.make_splits(stamp_token, next_stamp_token, 0))
+        reset_ops.append(handler.reset(stamp_token, next_stamp_token))
       if self._center_bias:
         reset_ops.append(
             bias_stats_accumulator.flush(stamp_token, next_stamp_token))
@@ -1042,7 +1057,8 @@ class GradientBoostedDecisionTreeModel(object):
             splits=split_info_list,
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
-            center_bias=self._center_bias)
+            center_bias=self._center_bias,
+            max_tree_depth=self._max_tree_depth)
 
       def _grow_ensemble_not_ready_fn():
         # Don't grow the ensemble, just update the stamp.
@@ -1056,7 +1072,8 @@ class GradientBoostedDecisionTreeModel(object):
             splits=[],
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
-            center_bias=self._center_bias)
+            center_bias=self._center_bias,
+            max_tree_depth=self._max_tree_depth)
 
       def _grow_ensemble_fn():
         # Conditionally grow an ensemble depending on whether the splits
@@ -1095,6 +1112,9 @@ class GradientBoostedDecisionTreeModel(object):
 
   def get_number_of_trees_tensor(self):
     return self._finalized_trees, self._attempted_trees
+
+  def get_max_tree_depth(self):
+    return self._max_tree_depth
 
   def train(self, loss, predictions_dict, labels):
     """Updates the accumalator stats and grows the ensemble.

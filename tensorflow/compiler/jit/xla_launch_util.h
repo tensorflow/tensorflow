@@ -93,9 +93,9 @@ class XlaComputationLaunchContext {
                       const std::map<int, OptionalTensor>& variables);
 
   // Given the XLA output in `output`, populate all outputs of `ctx`.
-  void PopulateOutputs(OpKernelContext* ctx,
-                       const XlaCompiler::CompilationResult* kernel,
-                       xla::ScopedShapedBuffer output);
+  Status PopulateOutputs(OpKernelContext* ctx,
+                         const XlaCompiler::CompilationResult* kernel,
+                         xla::ScopedShapedBuffer output);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
@@ -122,7 +122,11 @@ class XlaTensorBuffer : public TensorBuffer {
     data_ = const_cast<void*>(ptr);
   }
 
-  ~XlaTensorBuffer() override { allocator_->DeallocateRaw(data_); }
+  ~XlaTensorBuffer() override {
+    if (data_) {
+      allocator_->DeallocateRaw(data_);
+    }
+  }
 
   void* data() const override { return data_; }
   size_t size() const override { return expected_size_; }

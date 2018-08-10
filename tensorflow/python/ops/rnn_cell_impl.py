@@ -48,6 +48,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -369,11 +370,11 @@ class BasicRNNCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
         shape=[input_depth + self._num_units, self._num_units])
@@ -441,11 +442,11 @@ class GRUCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     self._gate_kernel = self.add_variable(
         "gates/%s" % _WEIGHTS_VARIABLE_NAME,
         shape=[input_depth + self._num_units, 2 * self._num_units],
@@ -515,9 +516,12 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
+# TODO(scottzhu): Stop exporting this class in TF 2.0.
 @tf_export("nn.rnn_cell.BasicLSTMCell")
 class BasicLSTMCell(LayerRNNCell):
-  """Basic LSTM recurrent network cell.
+  """DEPRECATED: Please use @{tf.nn.rnn_cell.LSTMCell} instead.
+
+  Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
 
@@ -527,10 +531,14 @@ class BasicLSTMCell(LayerRNNCell):
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
 
-  For advanced models, please use the full @{tf.nn.rnn_cell.LSTMCell}
+  For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
   that follows.
   """
 
+  @deprecated(None, "This class is deprecated, please use "
+                    "tf.nn.rnn_cell.LSTMCell, which supports all the feature "
+                    "this cell currently has. Please replace the existing code "
+                    "with tf.nn.rnn_cell.LSTMCell(name='basic_lstm_cell').")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -585,11 +593,11 @@ class BasicLSTMCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     h_depth = self._num_units
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
@@ -760,11 +768,11 @@ class LSTMCell(LayerRNNCell):
     return self._output_size
 
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[-1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[-1].value
     h_depth = self._num_units if self._num_proj is None else self._num_proj
     maybe_partitioner = (
         partitioned_variables.fixed_size_partitioner(self._num_unit_shards)
@@ -1260,6 +1268,11 @@ class MultiRNNCell(RNNCell):
     if not nest.is_sequence(cells):
       raise TypeError(
           "cells must be a list or tuple, but saw: %s." % cells)
+
+    if len(set([id(cell) for cell in cells])) < len(cells):
+      logging.log_first_n(logging.WARN,
+                          "At least two cells provided to MultiRNNCell "
+                          "are the same object and will share weights.", 1)
 
     self._cells = cells
     for cell_number, cell in enumerate(self._cells):

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
-#include "src-cpp/rdkafkacpp.h"
+#include "rdkafkacpp.h"
 
 namespace tensorflow {
 

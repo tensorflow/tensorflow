@@ -16,16 +16,16 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/model.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 #include "tensorflow/contrib/lite/version.h"
 
 namespace tflite {
@@ -74,6 +74,7 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
   return kTfLiteOk;
 }
 
+#ifndef TFLITE_MCU
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
 std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
@@ -81,8 +82,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
                                                   ErrorReporter* error_reporter,
                                                   bool use_nnapi) {
   std::unique_ptr<Allocation> allocation;
-  if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
+  if (mmap_file && MMAPAllocation::IsSupported()) {
+    if (use_nnapi && NNAPIDelegate::IsSupported())
       allocation.reset(new NNAPIAllocation(filename, error_reporter));
     else
       allocation.reset(new MMAPAllocation(filename, error_reporter));
@@ -121,6 +122,7 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
   if (!model->initialized()) model.reset();
   return model;
 }
+#endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
@@ -616,6 +618,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_MEAN:
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_PROD:
     case BuiltinOperator_SUM: {
       auto* params = MallocPOD<TfLiteReducerParams>();
       if (auto* schema_params = op->builtin_options_as_ReducerOptions()) {
@@ -704,6 +708,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = static_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_PACK: {
+      TfLitePackParams* params = MallocPOD<TfLitePackParams>();
+      if (auto* pack_params = op->builtin_options_as_PackOptions()) {
+        params->values_count = pack_params->values_count();
+        params->axis = pack_params->axis();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
@@ -716,6 +729,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->max = schema_params->max();
         params->num_bits = schema_params->num_bits();
         params->narrow_range = schema_params->narrow_range();
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_ONE_HOT: {
+      auto* params = MallocPOD<TfLiteOneHotParams>();
+      if (auto* schema_params = op->builtin_options_as_OneHotOptions()) {
+        params->axis = schema_params->axis();
       }
       *builtin_data = static_cast<void*>(params);
       break;
@@ -762,6 +783,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
     case BuiltinOperator_POW:
+    case BuiltinOperator_LOGICAL_OR:
+    case BuiltinOperator_LOGICAL_AND:
+    case BuiltinOperator_LOGICAL_NOT:
       break;
   }
   return kTfLiteOk;

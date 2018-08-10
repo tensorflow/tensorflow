@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# TODO(shivaniagrawal): Merge with core nest
 """## Functions for working with arbitrarily nested sequences of elements.
 
 NOTE(mrry): This fork of the `tensorflow.python.util.nest` module
