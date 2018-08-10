@@ -179,7 +179,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               this->full_name("end_of_input_sequence"), ""));
         } else {
-          TF_RETURN_IF_ERROR(this->SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(this->SaveInput(writer, input_impl_));
         }
 
         // Save the epoch counter, buffer, and buffer slices.
@@ -227,7 +227,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
         if (!reader->Contains(this->full_name("end_of_input_sequence"))) {
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
               ctx, this->prefix(), &input_impl_));
-          TF_RETURN_IF_ERROR(this->RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -433,7 +433,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                               Node** output) const override {
       mutex_lock l(mu_);
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
       Node* seed = nullptr;
       Node* seed2 = nullptr;
@@ -502,7 +502,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
       Node* seed = nullptr;
       Node* seed2 = nullptr;
@@ -587,7 +587,7 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
       Node* seed = nullptr;
       Node* seed2 = nullptr;
