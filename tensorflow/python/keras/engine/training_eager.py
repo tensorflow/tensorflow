@@ -153,8 +153,6 @@ def iterator_fit_loop(model,
                       inputs,
                       class_weight,
                       steps_per_epoch,
-                      callback_model,
-                      out_labels,
                       epoch_logs,
                       val_inputs=None,
                       val_targets=None,
@@ -162,7 +160,6 @@ def iterator_fit_loop(model,
                       epochs=1,
                       verbose=1,
                       callbacks=None,
-                      callback_metrics=None,
                       validation_steps=None,
                       do_validation=False,
                       batch_size=None):
@@ -179,19 +176,13 @@ def iterator_fit_loop(model,
       steps_per_epoch: Total number of steps (batches of samples)
           before declaring one epoch finished and starting the
           next epoch.
-      callback_model: Instance of `Model` to callback.
-      out_labels: Output labels generated from model metric names.
       epoch_logs: Dictionary of logs from every epoch.
       val_inputs: Input data for validation.
       val_targets: Target data for validation.
       val_sample_weights: Sample weight data for validation.
       epochs: Number of times to iterate over the data
       verbose: Verbosity mode, 0, 1 or 2
-      callbacks: List of callbacks to be called during training
-      callback_metrics: List of strings, the display names of the metrics
-          passed to the callbacks. They should be the
-          concatenation of list the display names of the outputs of
-           `f` and the list of display names of the outputs of `f_val`.
+      callbacks: CallbackList instance. Controls callbacks during training.
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with default value of `None`.
       do_validation: Boolean value indicating whether we should do validation.
@@ -244,20 +235,18 @@ def iterator_fit_loop(model,
           if val is not None else None for val in sample_weights
       ]
 
-    if step_index == 0 and not callback_metrics:
-      out_labels = model.metrics_names
+    if step_index == 0 and not callbacks.params['metrics']:
+      callback_metrics = copy.copy(model.metrics_names)
       if do_validation:
-        callback_metrics = copy.copy(out_labels) + [
-            'val_' + n for n in out_labels
-        ]
-      else:
-        callback_metrics = copy.copy(out_labels)
+        callback_metrics += ['val_' + n for n in model.metrics_names]
       callbacks.set_params({
+          'batch_size': batch_size,
           'epochs': epochs,
           'steps': steps_per_epoch,
           'verbose': verbose,
           'do_validation': do_validation,
           'metrics': callback_metrics or [],
+          'validation_steps': validation_steps
       })
 
     # Train model.
@@ -267,7 +256,7 @@ def iterator_fit_loop(model,
       outs = [outs]
 
     # Calculate metrics.
-    for l, o in zip(out_labels, outs):
+    for l, o in zip(model.metrics_names, outs):
       batch_logs[l] = o
     # Required for eager execution
     metrics_results = _eager_metrics_fn(model, outs, y)
@@ -277,7 +266,7 @@ def iterator_fit_loop(model,
                     [backend.mean(loss)] + loss_metrics + metrics_results):
       batch_logs[k] = tensor_util.constant_value(v)
     callbacks.on_batch_end(step_index, batch_logs)
-    if callback_model.stop_training:
+    if callbacks.model.stop_training:
       break
 
     if step_index == steps_per_epoch - 1:
@@ -293,7 +282,7 @@ def iterator_fit_loop(model,
         if not isinstance(val_outs, list):
           val_outs = [val_outs]
         # Same labels assumed.
-        for l, o in zip(out_labels, val_outs):
+        for l, o in zip(model.metrics_names, val_outs):
           epoch_logs['val_' + l] = o
 
 
@@ -643,64 +632,21 @@ def fit_loop(model,
       shuffle=shuffle)
   # Required for eager execution
   with backend.learning_phase_scope(1):
-    do_validation = False
-    if val_inputs:
-      do_validation = True
+    do_validation = val_inputs is not None
+    callbacks = cbks.configure_callbacks(
+        callbacks,
+        model,
+        do_validation=do_validation,
+        batch_size=batch_size,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
+        val_inputs=val_inputs,
+        val_targets=val_targets,
+        val_sample_weights=val_sample_weights,
+        validation_steps=validation_steps,
+        verbose=verbose)
 
-    num_train_samples = None
-    out_labels = None
-    callback_metrics = None
-    if model._is_compiled:
-      out_labels = model.metrics_names
-      if do_validation:
-        callback_metrics = copy.copy(out_labels) + [
-            'val_' + n for n in out_labels
-        ]
-      else:
-        callback_metrics = copy.copy(out_labels)
-
-    model.history = cbks.History()
-    callbacks = [cbks.BaseLogger()] + (callbacks or []) + [model.history]
-    if verbose:
-      callbacks += [cbks.ProgbarLogger('steps')]
-    callbacks = cbks.CallbackList(callbacks)
-
-    # it's possible to callback a different model than self
-    # (used by Sequential models)
-    if hasattr(model, 'callback_model') and model.callback_model:
-      callback_model = model.callback_model
-    else:
-      callback_model = model
-
-    callbacks.set_model(callback_model)
-
-    callback_params = {
-        'batch_size': batch_size,
-        'epochs': epochs,
-        'steps': steps_per_epoch,
-        'samples': num_train_samples,
-        'verbose': verbose,
-        'do_validation': do_validation,
-        'metrics': callback_metrics or [],
-    }
-    if validation_steps:
-      callback_params.update({'validation_steps': validation_steps})
-    callbacks.set_params(callback_params)
-
-    for cbk in callbacks:
-      if not val_inputs:
-        cbk.validation_data = []
-      elif isinstance(val_inputs, iterator_ops.EagerIterator):
-        cbk.validation_data = val_inputs
-      elif val_sample_weights:
-        cbk.validation_data = val_inputs + val_targets + val_sample_weights
-      else:
-        cbk.validation_data = val_inputs + val_targets
-    # validation_data must be set before on_train_begin() is called
-    # so that TensorboardCallback can validate its input
     callbacks.on_train_begin()
-    callback_model.stop_training = False
-
     for epoch in range(initial_epoch, epochs):
       callbacks.on_epoch_begin(epoch)
       epoch_logs = {}
@@ -709,8 +655,6 @@ def fit_loop(model,
           inputs,
           class_weight,
           steps_per_epoch=steps_per_epoch,
-          callback_model=callback_model,
-          out_labels=out_labels,
           epoch_logs=epoch_logs,
           val_inputs=val_inputs,
           val_targets=val_targets,
@@ -718,12 +662,11 @@ def fit_loop(model,
           epochs=epochs,
           verbose=verbose,
           callbacks=callbacks,
-          callback_metrics=callback_metrics,
           validation_steps=validation_steps,
           do_validation=do_validation,
           batch_size=batch_size)
       callbacks.on_epoch_end(epoch, epoch_logs)
-      if callback_model.stop_training:
+      if callbacks.model.stop_training:
         break
   callbacks.on_train_end()
   return model.history
