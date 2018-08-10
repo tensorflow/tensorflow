@@ -37,7 +37,6 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-
 REGISTER_OP("CudnnRNNParamsSize")
     .Input("num_layers: int32")
     .Input("num_units: int32")
@@ -61,7 +60,6 @@ REGISTER_OP("CudnnRNNParamsSize")
       c->set_output(0, c->Vector(1));
       return Status::OK();
     });
-
 
 REGISTER_OP("CudnnRNN")
     .Input("input: T")
@@ -253,7 +251,6 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       }
       return Status::OK();
     });
-
 
 REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("num_layers: int32")
