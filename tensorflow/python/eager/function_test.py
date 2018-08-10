@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import functools
+from multiprocessing.pool import ThreadPool
 import sys
 
 from tensorflow.core.protobuf import config_pb2
@@ -142,6 +143,61 @@ class FunctionTest(test.TestCase):
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def testExecutingStatelessDefunConcurrently(self):
+
+    @function.defun
+    def stateless(x):
+      return math_ops.multiply(2.0, x)
+
+    pool = ThreadPool()
+    inputs = [constant_op.constant(1.0 * x) for x in range(100)]
+    outputs = [float(out) for out in pool.map(stateless, inputs)]
+    expected = [float(2.0 * x) for x in inputs]
+    self.assertSequenceEqual(outputs, expected)
+
+  def testExecutingManyStatelessDefunsConcurrently(self):
+
+    @function.defun
+    def stateless(x):
+      del x
+      return math_ops.multiply(2.0, 2.0)
+
+    pool = ThreadPool()
+    # `pool.map` below instantiates 100 functions, one for each object.
+    outputs = [
+        float(out)
+        for out in pool.map(stateless, [object() for _ in range(100)])
+    ]
+    expected = [4.0] * 100
+    self.assertSequenceEqual(outputs, expected)
+
+  def testExecutingStatefulDefunConcurrently(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def stateful(x):
+      v.assign(x)
+
+    pool = ThreadPool()
+    inputs = [constant_op.constant(0.0)] * 100
+    pool.map(stateful, inputs)
+    self.assertEqual(float(v.read_value()), 0.0)
+
+  def testExecutingManyStatefulDefunsConcurrently(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def stateful(x):
+      del x
+      return v.assign(0.0)
+
+    pool = ThreadPool()
+    # `pool.map` below instantiates 100 functions, one for each object.
+    pool.map(stateful, [object() for _ in range(100)])
+    self.assertEqual(float(v.read_value()), 0.0)
 
   def disabled_testRandomSeed(self):
 

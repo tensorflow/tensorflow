@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -288,8 +289,11 @@ class FunctionCallFrame : public CallFrameInterface {
 
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
+//
+// This class is thread-safe.
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
+  // Note: This constructor grabs `lib_def`'s lock in shared mode.
   explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const FunctionDefLibrary& lib_def);
@@ -298,9 +302,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
 
+  // Returns True if the library contains `func`, False otherwise.
+  bool Contains(const string& func) const;
+
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
-  const FunctionDef* Find(const string& func) const;
+  //
+  // NB: This function returns a borrowed pointer, which can be invalidated by a
+  // subsequent call to `ReplaceFunction()` with the given name.
+  const FunctionDef* Find(const string& func) const LOCKS_EXCLUDED(mu_);
 
   // Adds function definition 'fdef' to this function library.
   // Returns status 'ok' on success, or error otherwise. This is a no-op if
@@ -308,45 +318,45 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddFunctionDef(const FunctionDef& fdef);
+  Status AddFunctionDef(const FunctionDef& fdef) LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddGradientDef(const GradientDef& grad);
+  Status AddGradientDef(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
 
-  // Remove function `func` from the library. Returns non-OK Status unless
-  // `func` is in the library.
-  Status RemoveFunction(const string& func);
-
-  // Remove gradient of function `func` from the library. Returns non-OK Status
-  // unless `func` has a gradient.
-  Status RemoveGradient(const string& func);
+  // Replaces the function corresponding to `func` with `fdef`. Returns
+  // a non-OK status if "func" was not found in the library, OK otherwise.
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionLibraryDefinition& other);
+  Status AddLibrary(const FunctionLibraryDefinition& other) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def);
+  Status AddLibrary(const FunctionDefLibrary& lib_def) LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
   // returns an empty string.
-  string FindGradient(const string& func) const;
+  string FindGradient(const string& func) const LOCKS_EXCLUDED(mu_);
 
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
   // If "op" is defined in the library, returns its signature.
   // Otherwise, assume "op" is a primitive op and returns its op
   // signature and shape inference function.
+  //
+  // NB: This function outputs a borrowed pointer, which can be invalidated by a
+  // subsequent call to `ReplaceFunction()` with the given name.
   Status LookUp(const string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override;
+                const OpRegistrationData** op_reg_data) const override
+      LOCKS_EXCLUDED(mu_);
 
   // Ops created for function arguments bear the name given by `kArgOp`; those
   // created for return values bear the name given by `kRetOp`.
@@ -370,9 +380,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status GetAttr(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
-  FunctionDefLibrary ToProto() const;
+  FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
 
-  size_t num_functions() const { return function_defs_.size(); }
+  size_t num_functions() const {
+    tf_shared_lock l(mu_);
+    return function_defs_.size();
+  }
 
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
@@ -388,24 +401,42 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     OpRegistrationData op_registration_data;
   };
 
+  const FunctionDef* FindHelper(const string& func) const
+      SHARED_LOCKS_REQUIRED(mu_);
+  string FindGradientHelper(const string& func) const
+      SHARED_LOCKS_REQUIRED(mu_);
+
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added);
-  Status AddGradientDefHelper(const GradientDef& grad, bool* added);
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddGradientDefHelper(const GradientDef& grad, bool* added)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  mutable mutex mu_;
   const OpRegistryInterface* const default_registry_;
   gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
-      function_defs_;
-  gtl::FlatMap<string, string> func_grad_;
+      function_defs_ GUARDED_BY(mu_);
+  gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
-  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
+  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const LOCKS_EXCLUDED(mu_);
 
-  // Remove all functions in `funcs` and all gradients of
-  // functions in `funcs_with_grads` from this library.
+  // Remove all functions in `funcs` and all gradients of functions in
+  // `funcs_with_grads` from this library.
   void Remove(const std::vector<string>& funcs,
-              const std::vector<string>& funcs_with_grads);
+              const std::vector<string>& funcs_with_grads)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Remove `func` from the library. Returns non-OK Status unless `func` is in
+  // the library. This should only be called when there is a guarantee that the
+  // function being removed hasn't been retrieved with `Find`.
+  Status RemoveFunction(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Remove gradient of function `func` from the library. Returns non-OK Status
+  // unless `func` has a gradient.
+  Status RemoveGradient(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };
 
 // Forward declare. Defined in common_runtime/function.h
