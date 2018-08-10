@@ -223,3 +223,17 @@ py_test(
         "//tensorflow/python/eager:test",
     ],
 )
+
+py_test(
+    name = "remote_test",
+    srcs = ["remote_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/eager/python:tfe",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:function",
+    ],
+)
