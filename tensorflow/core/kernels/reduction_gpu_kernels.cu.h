@@ -241,6 +241,8 @@ __global__ void RowReduceKernel(
 
   sum = WarpReduce(temp_storage).Reduce(sum, op, min(num_cols, 32));
 
+  __syncthreads();
+    
   if (row < num_rows && lane == 0) out[row] = sum;
 }
 
