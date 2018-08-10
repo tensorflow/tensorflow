@@ -95,7 +95,10 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     num_classes = 2
 
     model = _get_small_mlp(num_hidden, num_classes)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertEqual(len(model.layers), 2)
     self.assertEqual(len(model.weights), 0)
     self.assertFalse(model.built)
@@ -116,7 +119,10 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     steps_per_epoch = 10
 
     model = _get_small_mlp(num_hidden, num_classes)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertEqual(len(model.layers), 2)
     self.assertEqual(len(model.weights), 0)
     self.assertFalse(model.built)
@@ -257,7 +263,10 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     num_classes = 2
 
     model = _get_small_mlp(num_hidden, num_classes)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
