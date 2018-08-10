@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import math
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -440,8 +442,12 @@ def depthwise_conv2d(input,
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
+
     if rate is None:
       rate = [1, 1]
+
+    if np.any(strides > 1) and np.any(rate > 1):
+      raise ValueError("strides > 1 not supported in conjunction with rate > 1")
 
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(
@@ -533,6 +539,9 @@ def separable_conv2d(input,
 
     if rate is None:
       rate = [1, 1]
+
+    if np.any(strides > 1) and np.any(rate > 1):
+      raise ValueError("strides > 1 not supported in conjunction with rate > 1")
 
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
