@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
 #ifdef __ANDROID__
+#include <sys/mman.h>
 #include <sys/system_properties.h>
+#include <unistd.h>
 #endif
 
 namespace tflite {
@@ -79,6 +81,44 @@ struct NNFreeCompilation {
     ANeuralNetworksCompilation_free(model);
   }
 };
+
+// Manage NNAPI shared memory handle
+class NNMemory {
+ public:
+  NNMemory(const char* name, size_t size) {
+#ifdef __ANDROID__
+    byte_size_ = size;
+    fd_ = ASharedMemory_create(name, size);
+    data_ptr_ = reinterpret_cast<uint8_t*>(
+        mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+    ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE, fd_, 0,
+                                       &nn_memory_handle_);
+#endif
+  }
+
+  ~NNMemory() {
+#ifdef __ANDROID__
+    if (data_ptr_) {
+      munmap(data_ptr_, byte_size_);
+    }
+    if (nn_memory_handle_) {
+      ANeuralNetworksMemory_free(nn_memory_handle_);
+    }
+    if (fd_ > 0) close(fd_);
+#endif
+  }
+
+  ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
+  uint8_t* get_data_ptr() { return data_ptr_; }
+
+ private:
+#ifdef __ANDROID__
+  int fd_ = 0;
+  size_t byte_size_ = 0;
+#endif
+  uint8_t* data_ptr_ = nullptr;
+  ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+};  // namespace
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {
@@ -911,6 +951,8 @@ class NNAPIDelegateKernel {
     // absolute indices but NN api indices inputs by relative indices.
     int relative_input_index = 0;
     int num_optional_tensors = 0;
+
+    size_t input_offset = 0;
     for (auto absolute_input_index : TfLiteIntArrayView(node->inputs)) {
       if (absolute_input_index == kOptionalTensor) {
         num_optional_tensors++;
@@ -920,20 +962,28 @@ class NNAPIDelegateKernel {
       // TODO(miaowang): make sure the delegation works with dequantized weights
       // as intermediate tensors.
       if (tensor->allocation_type != kTfLiteMmapRo) {
-        CHECK_NN(context, ANeuralNetworksExecution_setInput(
+        // copy data to pre-allocated shared memory.
+        memcpy(nn_input_memory_->get_data_ptr() + input_offset,
+               tensor->data.raw, tensor->bytes);
+        CHECK_NN(context, ANeuralNetworksExecution_setInputFromMemory(
                               execution, relative_input_index, nullptr,
-                              tensor->data.raw, tensor->bytes));
+                              nn_input_memory_->get_handle(), input_offset,
+                              tensor->bytes));
+        input_offset += tensor->bytes;
         relative_input_index++;
       }
     }
 
     // Set the output tensor buffers.
     int relative_output_index = 0;
+    size_t output_offset = 0;
     for (auto output_index : TfLiteIntArrayView(node->outputs)) {
       TfLiteTensor* tensor = &context->tensors[output_index];
-      CHECK_NN(context, ANeuralNetworksExecution_setOutput(
+      CHECK_NN(context, ANeuralNetworksExecution_setOutputFromMemory(
                             execution, relative_output_index, nullptr,
-                            tensor->data.raw, tensor->bytes));
+                            nn_output_memory_->get_handle(), output_offset,
+                            tensor->bytes));
+      output_offset += tensor->bytes;
       relative_output_index++;
     }
 
@@ -957,6 +1007,15 @@ class NNAPIDelegateKernel {
     ANeuralNetworksEvent_free(event);
     ANeuralNetworksExecution_free(execution);
 
+    // copy results from shared memory to the destination.
+    output_offset = 0;
+    for (auto output_index : TfLiteIntArrayView(node->outputs)) {
+      TfLiteTensor* tensor = &context->tensors[output_index];
+      memcpy(tensor->data.raw,
+             nn_output_memory_->get_data_ptr() + output_offset, tensor->bytes);
+      output_offset += tensor->bytes;
+    }
+
     return kTfLiteOk;
   }
 
@@ -973,6 +1032,9 @@ class NNAPIDelegateKernel {
 
   std::vector<int> model_state_inputs_;
   std::vector<int> model_state_tfl_outputs_;
+
+  std::unique_ptr<NNMemory> nn_input_memory_;
+  std::unique_ptr<NNMemory> nn_output_memory_;
 
   TfLiteStatus AddOpsAndTensors(TfLiteContext* context) {
     // The operand builder allows creating a single op. We create it at this
@@ -1024,21 +1086,27 @@ class NNAPIDelegateKernel {
     inputs.reserve(input_tensors->size);
     std::vector<uint32_t> outputs;
     outputs.reserve(output_tensors->size);
+
+    size_t total_input_byte_size = 0;
     // Make the TensorFlow lite inputs and outputs to ann_indices.
     for (int i : TfLiteIntArrayView(input_tensors)) {
       // Constant tensors are not NNAPI inputs.
       if (i != kOptionalTensor &&
           context->tensors[i].allocation_type != kTfLiteMmapRo) {
         inputs.push_back(operand_mapping_.lite_index_to_ann(i));
+        total_input_byte_size += context->tensors[i].bytes;
       }
     }
+
     // Add state input tensors as model inputs
     for (int i : model_state_inputs_) {
       inputs.push_back(i);
     }
 
+    size_t total_output_byte_size = 0;
     for (int i : TfLiteIntArrayView(output_tensors)) {
       outputs.push_back(operand_mapping_.lite_index_to_ann(i));
+      total_output_byte_size += context->tensors[i].bytes;
     }
 
     // Tell ANN to declare inputs/outputs
@@ -1047,6 +1115,11 @@ class NNAPIDelegateKernel {
                           outputs.size(), outputs.data()));
     // Finalize the model
     CHECK_NN(context, ANeuralNetworksModel_finish(nn_model_.get()));
+
+    // Create shared memory pool for inputs and outputs.
+    nn_input_memory_.reset(new NNMemory("input_pool", total_input_byte_size));
+    nn_output_memory_.reset(
+        new NNMemory("output_pool", total_output_byte_size));
 
     return kTfLiteOk;
   }
