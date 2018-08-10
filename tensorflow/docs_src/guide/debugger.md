@@ -627,7 +627,7 @@ hooks = [tf_debug.DumpingDebugHook("/shared/storage/location/tfdbg_dumps_1")]
 
 Then this `hook` can be used in the same way as the `LocalCLIDebugHook` examples
 described earlier in this document.
-As the training, evalution or prediction happens with `Estimator`,
+As the training, evaluation or prediction happens with `Estimator`,
 tfdbg creates directories having the following name pattern:
 `/shared/storage/location/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>`.
 Each directory corresponds to a `Session.run()` call that underlies
@@ -768,7 +768,7 @@ sess.run(b)
 
 **A**: The reason why you see no data dumped is because every node in the
        executed TensorFlow graph is constant-folded by the TensorFlow runtime.
-       In this exapmle, `a` is a constant tensor; therefore, the fetched
+       In this example, `a` is a constant tensor; therefore, the fetched
        tensor `b` is effectively also a constant tensor. TensorFlow's graph
        optimization folds the graph that contains `a` and `b` into a single
        node to speed up future runs of the graph, which is why `tfdbg` does
