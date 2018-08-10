@@ -676,13 +676,22 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       ArgsHandleMap arg_map;
       CreateArgsHandleMap(arg_map, args, executable);
 
+      // Check that all args are allocated by this executor, and check if
+      // the argument list is the same as previous execution
+      bool arguments_changed = engine_changed;
       for (const auto& arg : arg_map) {
-        if (std::find(allocations_.begin(), allocations_.end(),
-                      arg.second.tc) == allocations_.end()) {
+        auto it = std::find(allocations_.begin(), allocations_.end(),
+                            arg.second.tc);
+        if (it == allocations_.end()) {
           return tensorflow::errors::InvalidArgument(
               "Argument isn't allocated on device: ", (void*)arg.second.tc);
         }
+
+        if (arg.second.tc->input_handle != arg.first) {
+          arguments_changed = true;
+        }
       }
+
 
       // Pull previous execution output back from device if:
       // a) it is on the device _and_
@@ -696,6 +705,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
                 arg_map.count(tc->input_handle) == 0 ||
                 tc != arg_map.at(tc->input_handle).tc) {
               TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+              if (!arguments_changed) {
+                LOG(INFO) << "**** MISSED ARG CHANGED FOR DEVICE->HOST ****";
+              }
             }
           } else {
             if (arg_map.count(tc->input_handle) > 0 &&
@@ -745,6 +757,10 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
               }
 
               current_engine_->writeTensor(arg.first, buf);
+
+              if (!arguments_changed) {
+                LOG(INFO) << "**** MISSED ARG CHANGED FOR HOST->DEVICE ****";
+              }
 
               tc->on_device = true;
               tc->input_handle = arg.first;
