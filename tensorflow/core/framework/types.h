@@ -346,68 +346,397 @@ inline DataTypeSet RealAndQuantizedTypes() { return kRealAndQuantizedTypes; }
 #endif  // defined(IS_MOBILE_PLATFORM)
 
 // Validates type T for whether it is a supported DataType.
+template <class T, typename T2 = void>
+struct IsValidDataType {
+  static constexpr bool value = false;
+};
+
+template <>
+struct IsValidDataType<string> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<complex64> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<complex128> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<bool> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<Eigen::half> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<bfloat16> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<ResourceHandle> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<Variant> {
+  static constexpr bool value = true;
+};
+
 template <class T>
-struct IsValidDataType;
+struct IsValidDataType<
+    T, typename std::enable_if<std::is_floating_point<T>::value &&
+                               (sizeof(T) == 4)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<
+    T, typename std::enable_if<std::is_floating_point<T>::value &&
+                               (sizeof(T) == 8)>::type> {
+  static constexpr bool value = true;
+};
+
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  std::is_signed<T>::value &&
+                                                  (sizeof(T) == 1)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  std::is_signed<T>::value &&
+                                                  (sizeof(T) == 2)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  std::is_signed<T>::value &&
+                                                  (sizeof(T) == 4)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  std::is_signed<T>::value &&
+                                                  (sizeof(T) == 8)>::type> {
+  static constexpr bool value = true;
+};
+
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  !std::is_signed<T>::value &&
+                                                  (sizeof(T) == 1)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  !std::is_signed<T>::value &&
+                                                  (sizeof(T) == 2)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  !std::is_signed<T>::value &&
+                                                  (sizeof(T) == 4)>::type> {
+  static constexpr bool value = true;
+};
+template <class T>
+struct IsValidDataType<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                  !std::is_signed<T>::value &&
+                                                  (sizeof(T) == 8)>::type> {
+  static constexpr bool value = true;
+};
+
+template <>
+struct IsValidDataType<qint8> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<qint16> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<qint32> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<quint8> {
+  static constexpr bool value = true;
+};
+template <>
+struct IsValidDataType<quint16> {
+  static constexpr bool value = true;
+};
 
 // DataTypeToEnum<T>::v() and DataTypeToEnum<T>::value are the DataType
 // constants for T, e.g. DataTypeToEnum<float>::v() is DT_FLOAT.
-template <class T>
+template <class T, typename T2 = void>
 struct DataTypeToEnum {
   static_assert(IsValidDataType<T>::value, "Specified Data Type not supported");
 };  // Specializations below
 
+template <>
+struct DataTypeToEnum<string> {
+  static DataType v() { return DT_STRING; }
+  static DataType ref() { return MakeRefType(DT_STRING); }
+  static constexpr DataType value = DT_STRING;
+};
+template <>
+struct DataTypeToEnum<complex64> {
+  static DataType v() { return DT_COMPLEX64; }
+  static DataType ref() { return MakeRefType(DT_COMPLEX64); }
+  static constexpr DataType value = DT_COMPLEX64;
+};
+template <>
+struct DataTypeToEnum<complex128> {
+  static DataType v() { return DT_COMPLEX128; }
+  static DataType ref() { return MakeRefType(DT_COMPLEX128); }
+  static constexpr DataType value = DT_COMPLEX128;
+};
+template <>
+struct DataTypeToEnum<bool> {
+  static DataType v() { return DT_BOOL; }
+  static DataType ref() { return MakeRefType(DT_BOOL); }
+  static constexpr DataType value = DT_BOOL;
+};
+template <>
+struct DataTypeToEnum<Eigen::half> {
+  static DataType v() { return DT_HALF; }
+  static DataType ref() { return MakeRefType(DT_HALF); }
+  static constexpr DataType value = DT_HALF;
+};
+template <>
+struct DataTypeToEnum<bfloat16> {
+  static DataType v() { return DT_BFLOAT16; }
+  static DataType ref() { return MakeRefType(DT_BFLOAT16); }
+  static constexpr DataType value = DT_BFLOAT16;
+};
+template <>
+struct DataTypeToEnum<ResourceHandle> {
+  static DataType v() { return DT_RESOURCE; }
+  static DataType ref() { return MakeRefType(DT_RESOURCE); }
+  static constexpr DataType value = DT_RESOURCE;
+};
+template <>
+struct DataTypeToEnum<Variant> {
+  static DataType v() { return DT_VARIANT; }
+  static DataType ref() { return MakeRefType(DT_VARIANT); }
+  static constexpr DataType value = DT_VARIANT;
+};
+
+template <class T>
+struct DataTypeToEnum<
+    T, typename std::enable_if<std::is_floating_point<T>::value &&
+                               (sizeof(T) == 4)>::type> {
+  static DataType v() { return DT_FLOAT; }
+  static DataType ref() { return MakeRefType(DT_FLOAT); }
+  static constexpr DataType value = DT_FLOAT;
+};
+template <class T>
+struct DataTypeToEnum<
+    T, typename std::enable_if<std::is_floating_point<T>::value &&
+                               (sizeof(T) == 8)>::type> {
+  static DataType v() { return DT_DOUBLE; }
+  static DataType ref() { return MakeRefType(DT_DOUBLE); }
+  static constexpr DataType value = DT_DOUBLE;
+};
+
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 std::is_signed<T>::value &&
+                                                 (sizeof(T) == 1)>::type> {
+  static DataType v() { return DT_INT8; }
+  static DataType ref() { return MakeRefType(DT_INT8); }
+  static constexpr DataType value = DT_INT8;
+};
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 std::is_signed<T>::value &&
+                                                 (sizeof(T) == 2)>::type> {
+  static DataType v() { return DT_INT16; }
+  static DataType ref() { return MakeRefType(DT_INT16); }
+  static constexpr DataType value = DT_INT16;
+};
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 std::is_signed<T>::value &&
+                                                 (sizeof(T) == 4)>::type> {
+  static DataType v() { return DT_INT32; }
+  static DataType ref() { return MakeRefType(DT_INT32); }
+  static constexpr DataType value = DT_INT32;
+};
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 std::is_signed<T>::value &&
+                                                 (sizeof(T) == 8)>::type> {
+  static DataType v() { return DT_INT64; }
+  static DataType ref() { return MakeRefType(DT_INT64); }
+  static constexpr DataType value = DT_INT64;
+};
+
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 !std::is_signed<T>::value &&
+                                                 (sizeof(T) == 1)>::type> {
+  static DataType v() { return DT_UINT8; }
+  static DataType ref() { return MakeRefType(DT_UINT8); }
+  static constexpr DataType value = DT_UINT8;
+};
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 !std::is_signed<T>::value &&
+                                                 (sizeof(T) == 2)>::type> {
+  static DataType v() { return DT_UINT16; }
+  static DataType ref() { return MakeRefType(DT_UINT16); }
+  static constexpr DataType value = DT_UINT16;
+};
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 !std::is_signed<T>::value &&
+                                                 (sizeof(T) == 4)>::type> {
+  static DataType v() { return DT_UINT32; }
+  static DataType ref() { return MakeRefType(DT_UINT32); }
+  static constexpr DataType value = DT_UINT32;
+};
+template <class T>
+struct DataTypeToEnum<T, typename std::enable_if<std::is_integral<T>::value &&
+                                                 !std::is_signed<T>::value &&
+                                                 (sizeof(T) == 8)>::type> {
+  static DataType v() { return DT_UINT64; }
+  static DataType ref() { return MakeRefType(DT_UINT64); }
+  static constexpr DataType value = DT_UINT64;
+};
+
+template <>
+struct DataTypeToEnum<qint8> {
+  static DataType v() { return DT_QINT8; }
+  static DataType ref() { return MakeRefType(DT_QINT8); }
+  static constexpr DataType value = DT_QINT8;
+};
+template <>
+struct DataTypeToEnum<qint16> {
+  static DataType v() { return DT_QINT16; }
+  static DataType ref() { return MakeRefType(DT_QINT16); }
+  static constexpr DataType value = DT_QINT16;
+};
+template <>
+struct DataTypeToEnum<qint32> {
+  static DataType v() { return DT_QINT32; }
+  static DataType ref() { return MakeRefType(DT_QINT32); }
+  static constexpr DataType value = DT_QINT32;
+};
+template <>
+struct DataTypeToEnum<quint8> {
+  static DataType v() { return DT_QUINT8; }
+  static DataType ref() { return MakeRefType(DT_QUINT8); }
+  static constexpr DataType value = DT_QUINT8;
+};
+template <>
+struct DataTypeToEnum<quint16> {
+  static DataType v() { return DT_QUINT16; }
+  static DataType ref() { return MakeRefType(DT_QUINT16); }
+  static constexpr DataType value = DT_QUINT16;
+};
+
 // EnumToDataType<VALUE>::Type is the type for DataType constant VALUE, e.g.
 // EnumToDataType<DT_FLOAT>::Type is float.
 template <DataType VALUE>
-struct EnumToDataType {};  // Specializations below
+struct EnumToDataType;  // Specializations below
 
-// Template specialization for both DataTypeToEnum and EnumToDataType.
-#define MATCH_TYPE_AND_ENUM(TYPE, ENUM)                 \
-  template <>                                           \
-  struct DataTypeToEnum<TYPE> {                         \
-    static DataType v() { return ENUM; }                \
-    static DataType ref() { return MakeRefType(ENUM); } \
-    static constexpr DataType value = ENUM;             \
-  };                                                    \
-  template <>                                           \
-  struct IsValidDataType<TYPE> {                        \
-    static constexpr bool value = true;                 \
-  };                                                    \
-  template <>                                           \
-  struct EnumToDataType<ENUM> {                         \
-    typedef TYPE Type;                                  \
-  }
+template <>
+struct EnumToDataType<DT_STRING> {
+  typedef string Type;
+};
+template <>
+struct EnumToDataType<DT_COMPLEX64> {
+  typedef complex64 Type;
+};
+template <>
+struct EnumToDataType<DT_COMPLEX128> {
+  typedef complex128 Type;
+};
+template <>
+struct EnumToDataType<DT_BOOL> {
+  typedef bool Type;
+};
+template <>
+struct EnumToDataType<DT_HALF> {
+  typedef Eigen::half Type;
+};
+template <>
+struct EnumToDataType<DT_BFLOAT16> {
+  typedef bfloat16 Type;
+};
+template <>
+struct EnumToDataType<DT_RESOURCE> {
+  typedef ResourceHandle Type;
+};
+template <>
+struct EnumToDataType<DT_VARIANT> {
+  typedef Variant Type;
+};
 
-MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
-MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
-MATCH_TYPE_AND_ENUM(int32, DT_INT32);
-MATCH_TYPE_AND_ENUM(uint32, DT_UINT32);
-MATCH_TYPE_AND_ENUM(uint16, DT_UINT16);
-MATCH_TYPE_AND_ENUM(uint8, DT_UINT8);
-MATCH_TYPE_AND_ENUM(int16, DT_INT16);
-MATCH_TYPE_AND_ENUM(int8, DT_INT8);
-MATCH_TYPE_AND_ENUM(string, DT_STRING);
-MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
-MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
-MATCH_TYPE_AND_ENUM(int64, DT_INT64);
-MATCH_TYPE_AND_ENUM(uint64, DT_UINT64);
-MATCH_TYPE_AND_ENUM(bool, DT_BOOL);
-MATCH_TYPE_AND_ENUM(qint8, DT_QINT8);
-MATCH_TYPE_AND_ENUM(quint8, DT_QUINT8);
-MATCH_TYPE_AND_ENUM(qint16, DT_QINT16);
-MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
-MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
-MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
-MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
-MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
-MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
+template <>
+struct EnumToDataType<DT_FLOAT> {
+  typedef float Type;
+};
+template <>
+struct EnumToDataType<DT_DOUBLE> {
+  typedef double Type;
+};
 
-#undef MATCH_TYPE_AND_ENUM
+template <>
+struct EnumToDataType<DT_INT8> {
+  typedef int8 Type;
+};
+template <>
+struct EnumToDataType<DT_INT16> {
+  typedef int16 Type;
+};
+template <>
+struct EnumToDataType<DT_INT32> {
+  typedef int32 Type;
+};
+template <>
+struct EnumToDataType<DT_INT64> {
+  typedef int64 Type;
+};
+template <>
+struct EnumToDataType<DT_UINT8> {
+  typedef uint8 Type;
+};
+template <>
+struct EnumToDataType<DT_UINT16> {
+  typedef uint16 Type;
+};
+template <>
+struct EnumToDataType<DT_UINT32> {
+  typedef uint32 Type;
+};
+template <>
+struct EnumToDataType<DT_UINT64> {
+  typedef uint64 Type;
+};
 
-// All types not specialized are marked invalid.
-template <class T>
-struct IsValidDataType {
-  static constexpr bool value = false;
+template <>
+struct EnumToDataType<DT_QINT8> {
+  typedef qint8 Type;
+};
+template <>
+struct EnumToDataType<DT_QINT16> {
+  typedef qint16 Type;
+};
+template <>
+struct EnumToDataType<DT_QINT32> {
+  typedef qint32 Type;
+};
+template <>
+struct EnumToDataType<DT_QUINT8> {
+  typedef quint8 Type;
+};
+template <>
+struct EnumToDataType<DT_QUINT16> {
+  typedef quint16 Type;
 };
 
 // Extra validity checking; not part of public API.
