@@ -118,12 +118,11 @@ class MklToTfOp : public OpKernel {
         CHECK(output_tensor->CopyFrom(input_tensor, output_shape));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + std::string(e.message) + ", in file " +
-                         std::string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
-          errors::Aborted("Operation received an exception:", error_msg));
+          errors::Aborted("Operation received an exception: Status: ", e.status,
+                          ", message: ", StringPiece(e.message), ", in file ",
+                          __FILE__, ":", __LINE__));
     }
   }
 #else
