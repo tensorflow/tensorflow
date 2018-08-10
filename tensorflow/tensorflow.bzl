@@ -27,7 +27,7 @@ load(
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkl_open_source_only",
+    "if_mkl_open_source_only"
 )
 def register_extension_info(**kwargs):
     pass
