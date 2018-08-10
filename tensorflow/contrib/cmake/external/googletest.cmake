@@ -14,7 +14,8 @@
 # ==============================================================================
 if (systemlib_GTEST)
   set(googletest_INCLUDE_DIRS "/usr/include")
-  set(googletest_STATIC_LIBRARIES "/usr/lib/x86_64-linux-gnu/libgtest.a")
+  execute_process(COMMAND dpkg-architecture -qDEB_HOST_MULTIARCH OUTPUT_VARIABLE CMAKE_MULTIARCH_TRIPLET OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(googletest_STATIC_LIBRARIES "/usr/lib/${CMAKE_MULTIARCH_TRIPLET}/libgtest.a")
   add_custom_target(googletest)
 
 else (systemlib_GTEST)
