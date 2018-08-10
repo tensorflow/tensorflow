@@ -35,10 +35,10 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """Test for rank 2 input in TF-TRT."""
     input_names = ["input", "input2"]
+    # Two paths: first with rank 2 input, second with rank 4 input.
     input_dims = [[12, 5], [12, 5, 2, 2]]
     g = ops.Graph()
     with g.as_default():
-      # Path 1 with rank 2 input
       outputs = []
       for i in range(2):
         x = array_ops.placeholder(
@@ -56,26 +56,33 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
             q = array_ops.expand_dims(q, -1, name="expand%d_%d" % (i, j))
         q = gen_math_ops.reciprocal(q, name="reciprocal%d" % i)
         outputs.append(q)
-      # Combine path 1 & 2
+      # Combine both paths
       q = math_ops.add(outputs[0], outputs[1], name="add")
       array_ops.squeeze(q, name=self.output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=input_names,
         input_dims=input_dims,
-        expected_engines={
-            "my_trt_op_0": [
-                "add0_1", "add0_2", "add0_3", "c0_1", "c0_2", "c0_3", "abs0_1",
-                "abs0_2"
-            ],
-            "my_trt_op_1": [
-                "add", "add1_1", "add1_2", "add1_3", "c1_1", "c1_2", "c1_3",
-                "abs1_1", "abs1_2", "reciprocal0", "reciprocal1"
-            ],
-        },
-        expected_output_dims=tuple(input_dims[1]),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        expected_output_dims=tuple(input_dims[1]))
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {
+        "my_trt_op_0": [
+            "add0_1", "add0_2", "add0_3", "c0_1", "c0_2", "c0_3", "abs0_1",
+            "abs0_2"
+        ],
+        "my_trt_op_1": [
+            "add", "add1_1", "add1_2", "add1_3", "c1_1", "c1_2", "c1_3",
+            "abs1_1", "abs1_2", "reciprocal0", "reciprocal1"
+        ],
+    }
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
+    # mode, which is a bug. Re-enable this when trt library is fixed.
+    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == "__main__":
