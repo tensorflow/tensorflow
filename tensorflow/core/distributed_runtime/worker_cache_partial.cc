@@ -67,7 +67,7 @@ Status WorkerCachePartial::RefreshDeviceStatus(const string& device_name) {
   };
   std::unique_ptr<WorkerInterface, decltype(deleter)> rwi(CreateWorker(task),
                                                           deleter);
-  if (s.ok() && !rwi.get()) {
+  if (s.ok() && !rwi) {
     s = errors::Internal("RefreshDeviceStatus, unknown worker task: ", task);
   }
 

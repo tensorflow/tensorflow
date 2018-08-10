@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -37,36 +38,36 @@ class CpuTransferManager : public GenericTransferManager {
   CpuTransferManager();
   ~CpuTransferManager() override {}
 
-  Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal) override;
-  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
-                                int64 size, const void* source) override;
-  Status TransferLiteralFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
-      Literal* literal) override;
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal) override;
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    const Shape& literal_shape,
+                                    MutableBorrowingLiteral literal) override;
 
  private:
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source);
+
   // Transfers infeed data to device. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
   StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
-      perftools::gputools::StreamExecutor* executor, int64 size,
-      const void* source);
+      se::StreamExecutor* executor, int64 size, const void* source);
 
   // Helper that transfers a tuple of element buffers from the device's outfeed.
   StatusOr<Shape> TransferTupleBuffersFromOutfeed(
-      perftools::gputools::StreamExecutor* executor,
+      se::StreamExecutor* executor,
       tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data);
 
   // Helper that transfers an array buffer from the device's outfeed.
-  StatusOr<Shape> TransferArrayBufferFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, void* destination,
-      int64 size_bytes);
+  StatusOr<Shape> TransferArrayBufferFromOutfeed(se::StreamExecutor* executor,
+                                                 void* destination,
+                                                 int64 size_bytes);
 
   // On success, returns the shape that was transferred from the outfeed -- if
   // is_tuple is true, the returned shape will be a tuple of the returned shapes
   // for the given buffers.
   StatusOr<Shape> TransferBuffersFromOutfeedInternal(
-      perftools::gputools::StreamExecutor* executor,
+      se::StreamExecutor* executor,
       tensorflow::gtl::ArraySlice<std::pair<void*, int64>> buffer_data,
       bool is_tuple);
 

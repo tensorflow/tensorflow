@@ -19,8 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
 host::HostStream *AsExecutorStream(Stream *stream) {
@@ -54,6 +53,7 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
+  AsExecutorStream(stream)->BlockUntilDone();
   return true;
 }
 
@@ -62,6 +62,7 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
   AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
     port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
   });
+  AsExecutorStream(stream)->BlockUntilDone();
   return true;
 }
 
@@ -119,5 +120,4 @@ DeviceDescription *XlaInterpreterExecutor::PopulateDeviceDescription() const {
 }
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

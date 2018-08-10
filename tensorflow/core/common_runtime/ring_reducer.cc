@@ -92,6 +92,8 @@ RingReducer::RingReducer(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
   CHECK_GT(num_subdivs_, 0);
 }
 
+RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
+
 string RingReducer::TensorDebugString(Tensor tensor) {
   const DeviceBase::GpuDeviceInfo* gpu_device_info =
       ctx_->device()->tensorflow_gpu_device_info();
@@ -155,21 +157,28 @@ void RingReducer::Run(StatusCallback done) {
   // we're not computing in-place on the input tensor.
   if ((input_ != output_) &&
       (DMAHelper::base(input_) != DMAHelper::base(output_))) {
+    // We are running in a blockable thread and the callback can't block so
+    // just wait here on the copy.
+    Notification note;
     CollectiveRemoteAccessLocal::MemCpyAsync(
         ctx_->input_device_context(0), ctx_->op_device_context(), device_,
         device_, ctx_->input_alloc_attr(0), ctx_->output_alloc_attr(0), input_,
-        output_, [this](const Status& s) {
-          if (!s.ok()) {
-            done_(s);
-          } else {
-            ContinueAfterInputCopy();
-          }
+        output_, 0 /*dev_to_dev_stream_index*/,
+        [this, &note, &status](const Status& s) {
+          status.Update(s);
+          note.Notify();
         });
-  } else {
-    ContinueAfterInputCopy();
+    note.WaitForNotification();
+    if (!status.ok()) {
+      done_(status);
+      return;
+    }
   }
+  ContinueAfterInputCopy();
 }
 
+// Note that this function is blocking and must not run in any thread
+// which cannot be blocked.
 void RingReducer::ContinueAfterInputCopy() {
   AllocatorAttributes attr = ctx_->output_alloc_attr(0);
   ca_.reset(MakeCollectiveAdapter(output_, group_size_ * num_subdivs_,
@@ -197,6 +206,9 @@ void RingReducer::ContinueAfterInputCopy() {
       group_size_tensor_ = group_size_val;
       group_size_tensor_ready_.Notify();
     }
+  } else {
+    // Value won't be used, so no need to initialize.
+    group_size_tensor_ready_.Notify();
   }
   Finish(RunAsyncParts());
 }
@@ -233,6 +245,7 @@ void RingReducer::Finish(bool ok) {
     mutex_lock l(status_mu_);
     s = status_;
   }
+  rfv_.clear();  // Give up Refs on output tensor.
   done_(s);
 }
 
@@ -250,6 +263,7 @@ RingReducer::SubContext::SubContext(OpKernelContext* ctx,
   sub_params_.input_device_contexts = &sub_input_dc_;
   sub_params_.eigen_gpu_device = nullptr;
   sub_params_.ensure_eigen_gpu_device();
+  sub_params_.forward_from_array = &forward_from_;
   sub_ctx_ = new OpKernelContext(&sub_params_, 1);
 }
 
@@ -273,7 +287,7 @@ void RingReducer::InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
   // Note on field indexing: There are group_size_ devices in the
   // instance, implying the same number of chunks per tensor, where a
   // chunk is the unit of data transferred in a time step.  However, if
-  // a device can simultaenously send data by 2 or more independent
+  // a device can simultaneously send data by 2 or more independent
   // channels we can speed up the transfer by subdividing chunks and
   // processing multiple subdivisions at once.  So the actual number
   // of RingFields is group_size_ * num_subdivs_.
@@ -377,7 +391,7 @@ void RingReducer::DispatchRecv(RingField* rf, const StatusCallback& done) {
                           col_params_.task.is_local[rf->recv_dev_idx],
                           recv_buf_key, device_, ctx_->op_device_context(),
                           ctx_->output_alloc_attr(0), dst_tensor,
-                          device_locality_, done);
+                          device_locality_, rf->subdiv_idx, done);
 }
 
 string RingReducer::FieldState() {
@@ -426,7 +440,11 @@ bool RingReducer::RunAsyncParts() {
     // is done.
     bool dispatched = false;  // true if async action was initiated
     do {
-      if (aborted) break;
+      if (aborted) {
+        // Requeue this RingField to be counted off below.
+        ready_queue.Enqueue(rf);
+        break;
+      }
       switch (rf->action) {
         case RF_INIT:
           if (rf->do_recv) {

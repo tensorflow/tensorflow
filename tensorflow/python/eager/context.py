@@ -91,6 +91,7 @@ class _EagerContext(threading.local):
     self.summary_writer_resource = None
     self.scalar_cache = {}
     self.ones_rank_cache = _TensorCache()
+    self.zeros_cache = _TensorCache()
     self.execution_mode = None
 
 
@@ -143,7 +144,11 @@ class Context(object):
 
   # TODO(agarwal): create and link in some documentation for `execution_mode`.
   # pylint: disable=redefined-outer-name
-  def __init__(self, config=None, device_policy=None, execution_mode=None):
+  def __init__(self,
+               config=None,
+               device_policy=None,
+               execution_mode=None,
+               server_def=None):
     """Creates a new Context.
 
     Args:
@@ -173,6 +178,11 @@ class Context(object):
         - tf.contrib.eager.SYNC: executes each operation synchronously.
         - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
           operations may return "non-ready" handles.
+      server_def: (Optional.) A tensorflow::ServerDef proto.
+        Enables execution on remote devices. GrpcServers need to be started by
+        creating an identical server_def to this, and setting the appropriate
+        task_indexes, so that the servers can communicate. It will then be
+        possible to execute operations on remote devices.
 
     Raises:
      ValueError: If execution_mode is not valid.
@@ -192,6 +202,7 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._execution_mode = execution_mode
+    self._server_def = server_def
 
   # pylint: enable=redefined-outer-name
 
@@ -215,6 +226,24 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
+  def _initialize_devices(self):
+    """Helper to initialize devices."""
+    # Store list of devices
+    self._context_devices = []
+    device_list = pywrap_tensorflow.TFE_ContextListDevices(
+        self._context_handle)
+    try:
+      self._num_gpus = 0
+      for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
+        dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
+        self._context_devices.append(pydev.canonical_name(dev_name))
+        dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
+        if dev_type == "GPU":
+          self._num_gpus += 1
+
+    finally:
+      pywrap_tensorflow.TF_DeleteDeviceList(device_list)
+
   def _initialize_handle_and_devices(self):
     """Initialize handle and devices."""
     with self._initialize_lock:
@@ -234,21 +263,50 @@ class Context(object):
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
-      # Store list of devices
-      self._context_devices = []
-      device_list = pywrap_tensorflow.TFE_ContextListDevices(
-          self._context_handle)
-      try:
-        self._num_gpus = 0
-        for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
-          dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
-          self._context_devices.append(pydev.canonical_name(dev_name))
-          dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
-          if dev_type == "GPU":
-            self._num_gpus += 1
+      if self._server_def is not None:
+        server_def_str = self._server_def.SerializeToString()
+        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+                                                  server_def_str)
 
-      finally:
-        pywrap_tensorflow.TF_DeleteDeviceList(device_list)
+      self._initialize_devices()
+
+  def _clear_caches(self):
+    self.scalar_cache().clear()
+    self.ones_rank_cache().flush()
+    self.zeros_cache().flush()
+
+  def set_server_def(self, server_def, keep_alive_secs=600):
+    """Allow setting a server_def on the context.
+
+    When a server def is replaced, it effectively clears a bunch of caches
+    within the context. If you attempt to use a tensor object that was pointing
+    to a tensor on the remote device, it will raise an error.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto.
+        Enables execution on remote devices.
+      keep_alive_secs: Num. seconds after which the remote end will hang up.
+        As long as the client is still alive, the server state for the context
+        will be kept alive. If the client is killed (or there is some failure),
+        the server will clean up its context keep_alive_secs after the final RPC
+        it receives.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+    if not self._context_handle:
+      self._server_def = server_def
+    else:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
+                                                keep_alive_secs, server_def_str)
+
+      # Clear all the caches in case there are remote tensors in them.
+      self._clear_caches()
+
+      self._initialize_devices()
 
   @property
   def _handle(self):
@@ -310,6 +368,10 @@ class Context(object):
   def ones_rank_cache(self):
     """Per-device cache for scalars."""
     return self._eager_context.ones_rank_cache
+
+  def zeros_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.zeros_cache
 
   @property
   def scope_name(self):
@@ -546,6 +608,12 @@ class Context(object):
     """Returns a stack of context switches."""
     return self._context_switches
 
+  def start_step(self):
+    pywrap_tensorflow.TFE_ContextStartStep(self._handle)
+
+  def end_step(self):
+    pywrap_tensorflow.TFE_ContextEndStep(self._handle)
+
 _context = None
 _context_lock = threading.Lock()
 
@@ -595,7 +663,7 @@ def internal_operation_seed():
 def executing_eagerly():
   """Returns True if the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via @{tf.enable_eager_execution},
+  Eager execution is typically enabled via `tf.enable_eager_execution`,
   but may also be enabled within the context of a Python function via
   tf.contrib.eager.py_func.
   """
@@ -720,6 +788,10 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+def set_server_def(server_def):
+  context().set_server_def(server_def)
 
 
 # Not every user creates a Context via context.context()

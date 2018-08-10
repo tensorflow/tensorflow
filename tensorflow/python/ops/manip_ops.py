@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operators for manipulating tensors.
-
-@@roll
-"""
+"""Operators for manipulating tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops import gen_manip_ops as _gen_manip_ops
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -34,7 +30,3 @@ def roll(input, shift, axis):  # pylint: disable=redefined-builtin
 
 roll.__doc__ = _gen_manip_ops.roll.__doc__
 # pylint: enable=protected-access
-
-_allowed_symbols = ['roll']
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

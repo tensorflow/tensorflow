@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -35,10 +36,10 @@ class ExhaustiveF32ElementwiseOpTest
     int64 input_size = end - begin;
     LOG(INFO) << "Checking range [" << begin << ", " << end << ")";
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
 
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateFromDimensions(F32, {input_size});
+        LiteralUtil::CreateFromDimensions(F32, {input_size});
     for (int64 i = begin; i < end; i++) {
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {
@@ -53,7 +54,7 @@ class ExhaustiveF32ElementwiseOpTest
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
                             client_->TransferToServer(*input_literal));
 
-    auto input = builder.Parameter(0, input_literal->shape(), "input");
+    auto input = Parameter(&builder, 0, input_literal->shape(), "input");
     enqueue_op(&builder, input);
 
     std::vector<float> expected_result;
@@ -78,10 +79,8 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
 #endif
 
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Log(input);
-      },
-      std::log, known_incorrect_range);
+      [](XlaBuilder* builder, const XlaOp& input) { Log(input); }, std::log,
+      known_incorrect_range);
 }
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
@@ -96,18 +95,14 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
 #endif
 
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Exp(input);
-      },
-      std::exp, known_incorrect_range);
+      [](XlaBuilder* builder, const XlaOp& input) { Exp(input); }, std::exp,
+      known_incorrect_range);
 }
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, TanhF32) {
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Tanh(input);
-      },
-      std::tanh, /*known_incorrect_range=*/{0, 0});
+      [](XlaBuilder* builder, const XlaOp& input) { Tanh(input); }, std::tanh,
+      /*known_incorrect_range=*/{0, 0});
 }
 
 std::vector<std::pair<int64, int64>> CreateExhaustiveParameters() {

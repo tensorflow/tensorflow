@@ -13,26 +13,33 @@
 # limitations under the License.
 # ==============================================================================
 """Keras Applications are canned architectures with pre-trained weights."""
-
+# pylint: disable=g-import-not-at-top
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.applications import densenet
-from tensorflow.python.keras.applications import inception_resnet_v2
-from tensorflow.python.keras.applications import inception_v3
-from tensorflow.python.keras.applications import mobilenet
-from tensorflow.python.keras.applications import nasnet
-from tensorflow.python.keras.applications import resnet50
-from tensorflow.python.keras.applications import vgg16
-from tensorflow.python.keras.applications import vgg19
-from tensorflow.python.keras.applications import xception
+import keras_applications
+
+from tensorflow.python.keras import backend
+from tensorflow.python.keras import engine
+from tensorflow.python.keras import layers
+from tensorflow.python.keras import models
+from tensorflow.python.keras import utils
+
+keras_applications.set_keras_submodules(
+    backend=backend,
+    engine=engine,
+    layers=layers,
+    models=models,
+    utils=utils)
+
 from tensorflow.python.keras.applications.densenet import DenseNet121
 from tensorflow.python.keras.applications.densenet import DenseNet169
 from tensorflow.python.keras.applications.densenet import DenseNet201
 from tensorflow.python.keras.applications.inception_resnet_v2 import InceptionResNetV2
 from tensorflow.python.keras.applications.inception_v3 import InceptionV3
 from tensorflow.python.keras.applications.mobilenet import MobileNet
+from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.python.keras.applications.nasnet import NASNetLarge
 from tensorflow.python.keras.applications.nasnet import NASNetMobile
 from tensorflow.python.keras.applications.resnet50 import ResNet50

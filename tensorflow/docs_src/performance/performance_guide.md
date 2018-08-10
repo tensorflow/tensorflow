@@ -78,7 +78,7 @@ training CIFAR-10 illustrates the use of the `tf.data` API along with
 The `tf.data` API utilizes C++ multi-threading and has a much lower overhead
 than the Python-based `queue_runner` that is limited by Python's multi-threading
 performance. A detailed performance guide for the `tf.data` API can be found
-[here](@{$datasets_performance}).
+@{$datasets_performance$here}.
 
 While feeding data using a `feed_dict` offers a high level of flexibility, in
 general `feed_dict` does not provide a scalable solution. If only a single GPU
@@ -94,7 +94,7 @@ sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 #### Fused decode and crop
 
 If inputs are JPEG images that also require cropping, use fused
-@{tf.image.decode_and_crop_jpeg} to speed up preprocessing.
+`tf.image.decode_and_crop_jpeg` to speed up preprocessing.
 `tf.image.decode_and_crop_jpeg` only decodes the part of
 the image within the crop window. This significantly speeds up the process if
 the crop window is much smaller than the full image. For imagenet data, this
@@ -187,14 +187,14 @@ some models makes up a large percentage of the operation time. Using fused batch
 norm can result in a 12%-30% speedup.
 
 There are two commonly used batch norms and both support fusing. The core
-@{tf.layers.batch_normalization} added fused starting in TensorFlow 1.3.
+`tf.layers.batch_normalization` added fused starting in TensorFlow 1.3.
 
 ```python
 bn = tf.layers.batch_normalization(
     input_layer, fused=True, data_format='NCHW')
 ```
 
-The contrib @{tf.contrib.layers.batch_norm} method has had fused as an option
+The contrib `tf.contrib.layers.batch_norm` method has had fused as an option
 since before TensorFlow 1.0.
 
 ```python
@@ -205,43 +205,43 @@ bn = tf.contrib.layers.batch_norm(input_layer, fused=True, data_format='NCHW')
 
 There are many ways to specify an RNN computation in TensorFlow and they have
 trade-offs with respect to model flexibility and performance. The
-@{tf.nn.rnn_cell.BasicLSTMCell} should be considered a reference implementation
+`tf.nn.rnn_cell.BasicLSTMCell` should be considered a reference implementation
 and used only as a last resort when no other options will work.
 
 When using one of the cells, rather than the fully fused RNN layers, you have a
-choice of whether to use @{tf.nn.static_rnn} or @{tf.nn.dynamic_rnn}.  There
+choice of whether to use `tf.nn.static_rnn` or `tf.nn.dynamic_rnn`.  There
 shouldn't generally be a performance difference at runtime, but large unroll
-amounts can increase the graph size of the @{tf.nn.static_rnn} and cause long
-compile times.  An additional advantage of @{tf.nn.dynamic_rnn} is that it can
+amounts can increase the graph size of the `tf.nn.static_rnn` and cause long
+compile times.  An additional advantage of `tf.nn.dynamic_rnn` is that it can
 optionally swap memory from the GPU to the CPU to enable training of very long
 sequences.  Depending on the model and hardware configuration, this can come at
 a performance cost.  It is also possible to run multiple iterations of
-@{tf.nn.dynamic_rnn} and the underlying @{tf.while_loop} construct in parallel,
+`tf.nn.dynamic_rnn` and the underlying `tf.while_loop` construct in parallel,
 although this is rarely useful with RNN models as they are inherently
 sequential.
 
-On NVIDIA GPUs, the use of @{tf.contrib.cudnn_rnn} should always be preferred
+On NVIDIA GPUs, the use of `tf.contrib.cudnn_rnn` should always be preferred
 unless you want layer normalization, which it doesn't support.  It is often at
-least an order of magnitude faster than @{tf.contrib.rnn.BasicLSTMCell} and
-@{tf.contrib.rnn.LSTMBlockCell} and uses 3-4x less memory than
-@{tf.contrib.rnn.BasicLSTMCell}.
+least an order of magnitude faster than `tf.contrib.rnn.BasicLSTMCell` and
+`tf.contrib.rnn.LSTMBlockCell` and uses 3-4x less memory than
+`tf.contrib.rnn.BasicLSTMCell`.
 
 If you need to run one step of the RNN at a time, as might be the case in
 reinforcement learning with a recurrent policy, then you should use the
-@{tf.contrib.rnn.LSTMBlockCell} with your own environment interaction loop
-inside a @{tf.while_loop} construct. Running one step of the RNN at a time and
+`tf.contrib.rnn.LSTMBlockCell` with your own environment interaction loop
+inside a `tf.while_loop` construct. Running one step of the RNN at a time and
 returning to Python is possible, but it will be slower.
 
-On CPUs, mobile devices, and if @{tf.contrib.cudnn_rnn} is not available on
+On CPUs, mobile devices, and if `tf.contrib.cudnn_rnn` is not available on
 your GPU, the fastest and most memory efficient option is
-@{tf.contrib.rnn.LSTMBlockFusedCell}.
+`tf.contrib.rnn.LSTMBlockFusedCell`.
 
-For all of the less common cell types like @{tf.contrib.rnn.NASCell},
-@{tf.contrib.rnn.PhasedLSTMCell}, @{tf.contrib.rnn.UGRNNCell},
-@{tf.contrib.rnn.GLSTMCell}, @{tf.contrib.rnn.Conv1DLSTMCell},
-@{tf.contrib.rnn.Conv2DLSTMCell}, @{tf.contrib.rnn.LayerNormBasicLSTMCell},
+For all of the less common cell types like `tf.contrib.rnn.NASCell`,
+`tf.contrib.rnn.PhasedLSTMCell`, `tf.contrib.rnn.UGRNNCell`,
+`tf.contrib.rnn.GLSTMCell`, `tf.contrib.rnn.Conv1DLSTMCell`,
+`tf.contrib.rnn.Conv2DLSTMCell`, `tf.contrib.rnn.LayerNormBasicLSTMCell`,
 etc., one should be aware that they are implemented in the graph like
-@{tf.contrib.rnn.BasicLSTMCell} and as such will suffer from the same poor
+`tf.contrib.rnn.BasicLSTMCell` and as such will suffer from the same poor
 performance and high memory usage.  One should consider whether or not those
 trade-offs are worth it before using these cells. For example, while layer
 normalization can speed up convergence, because cuDNN is 20x faster the fastest
@@ -464,7 +464,7 @@ equal to the number of physical cores rather than logical cores.
   config = tf.ConfigProto()
   config.intra_op_parallelism_threads = 44
   config.inter_op_parallelism_threads = 44
-  tf.session(config=config)
+  tf.Session(config=config)
 
 ```
 

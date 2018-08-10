@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import optimizer
@@ -106,13 +107,14 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.fetch(v)
+          fetched = d.read_var(v)
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
-            g = d.reduce("sum", g, destinations=v)
+            g = d.reduce(
+                variable_scope.VariableAggregation.SUM, g, destinations=v)
             with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
-              after_list.append(d.fetch(v))
+              after_list.append(d.read_var(v))
         return before_list, after_list
 
       for i in range(10):
@@ -159,12 +161,13 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.fetch(v)
+          fetched = d.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
-            g = d.reduce("sum", g, destinations=v)
+            g = d.reduce(
+                variable_scope.VariableAggregation.SUM, g, destinations=v)
             with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
-              after_list.append(d.fetch(v))
+              after_list.append(d.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
@@ -184,7 +187,7 @@ class DistributionTestBase(test.TestCase):
     with d.scope():
       map_in = [constant_op.constant(i) for i in range(10)]
       map_out = d.map(map_in, lambda x, y: x * y, 2)
-      observed = d.fetch(d.reduce("sum", map_out))
+      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out)
       expected = 90  # 2 * (0 + 1 + ... + 9)
       self.assertEqual(expected, observed.numpy())
 

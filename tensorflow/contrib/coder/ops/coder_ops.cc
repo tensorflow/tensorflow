@@ -77,7 +77,7 @@ are incorrect. For this reason, the range coder uses integer arithmetics and
 avoids using any floating point operations internally, and `cdf` should contain
 integers representing quantized probability mass rather than floating points. 
 
-data: An int32 tensor.
+data: An int16 tensor.
 cdf: An int32 tensor representing the CDF's of `data`. Each integer is divided
   by `2^precision` to represent a fraction.
 encoded: A range-coded scalar string.
@@ -112,7 +112,7 @@ potential performance issues, the decoder does not return error status.
 encoded: A scalar string tensor from RangeEncode.
 shape: An int32 1-D tensor representing the shape of the data encoded by
   RangeEncode.
-decoded: An int32 tensor with shape equal to `shape`.
+decoded: An int16 tensor with shape equal to `shape`.
 precision: The number of bits for probability quantization. Must be <= 16, and
   must match the precision used by RangeEncode that produced `encoded`.
 )doc");
@@ -138,14 +138,12 @@ platforms. For entropy encoders and decoders to have the same quantized CDF on
 different platforms, the quantized CDF should be produced once and saved, then
 the saved quantized CDF should be used everywhere.
 
-After quantization, if PMF sums to less than or equal to 2^precision, then this
-is equivalent to cumsum over the last dimension. This op makes no effort to make
-the sum close to 2^precision when the sum is already <= 2^precision.
+After quantization, if PMF does not sum to 2^precision, then some values of PMF
+are increased or decreased to adjust the sum to equal to 2^precision.
 
-After quantization, if PMF sums to greater than 2^precision, then some values of
-PMF is decreased to keep the sum no more than 2^precision.
-
-Note that the input PMF is pre-quantization.
+Note that the input PMF is pre-quantization. The input PMF is not normalized
+by this op prior to quantization. Therefore the user is responsible for
+normalizing PMF if necessary.
 )doc");
 // clang-format on
 }  // namespace tensorflow

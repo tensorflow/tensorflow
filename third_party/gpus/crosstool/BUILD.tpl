@@ -7,6 +7,7 @@ cc_toolchain_suite(
     toolchains = {
         "local|compiler": ":cc-compiler-local",
         "darwin|compiler": ":cc-compiler-darwin",
+        "x64_windows|msvc-cl": ":cc-compiler-windows",
     },
 )
 
@@ -42,6 +43,20 @@ cc_toolchain(
     supports_param_files = 0,
 )
 
+cc_toolchain(
+    name = "cc-compiler-windows",
+    all_files = "%{win_linker_files}",
+    compiler_files = ":empty",
+    cpu = "x64_windows",
+    dwp_files = ":empty",
+    dynamic_runtime_libs = [":empty"],
+    linker_files = "%{win_linker_files}",
+    objcopy_files = ":empty",
+    static_runtime_libs = [":empty"],
+    strip_files = ":empty",
+    supports_param_files = 1,
+)
+
 filegroup(
     name = "empty",
     srcs = [],
@@ -50,4 +65,9 @@ filegroup(
 filegroup(
     name = "crosstool_wrapper_driver_is_not_gcc",
     srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"],
+)
+
+filegroup(
+    name = "windows_msvc_wrapper_files",
+    srcs = glob(["windows/msvc_*"]),
 )

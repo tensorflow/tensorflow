@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "tensorflow/contrib/lite/profiling/time.h"
+
 namespace tflite {
 namespace profiling {
 
@@ -37,9 +39,9 @@ struct ProfileEvent {
   // Label of the event. This usually describes the event.
   const char* tag;
   // Timestamp in microseconds when the event began.
-  int64_t begin_timestamp_ms;
+  uint64_t begin_timestamp_us;
   // Timestamp in microseconds when the event ended.
-  int64_t end_timestamp_ms;
+  uint64_t end_timestamp_us;
   // The field containing the type of event. This must be one of the event types
   // in EventType.
   EventType event_type;
@@ -74,13 +76,13 @@ class ProfileBuffer {
     if (!enabled_) {
       return kInvalidEventHandle;
     }
-    int64_t timestamp = NowMicros();
+    uint64_t timestamp = time::NowMicros();
     int index = current_index_ % event_buffer_.size();
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
     event_buffer_[index].event_metadata = event_metadata;
-    event_buffer_[index].begin_timestamp_ms = timestamp;
-    event_buffer_[index].end_timestamp_ms = 0;
+    event_buffer_[index].begin_timestamp_us = timestamp;
+    event_buffer_[index].end_timestamp_us = 0;
     current_index_++;
     return index;
   }
@@ -103,7 +105,7 @@ class ProfileBuffer {
     }
 
     int event_index = event_handle % max_size;
-    event_buffer_[event_index].end_timestamp_ms = NowMicros();
+    event_buffer_[event_index].end_timestamp_us = time::NowMicros();
   }
 
   // Returns the size of the buffer.
@@ -134,12 +136,6 @@ class ProfileBuffer {
   }
 
  private:
-  static int64_t NowMicros() {
-    // TODO(shashishekhar): Refactor this to a separate file.
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
-  }
   bool enabled_;
   uint32_t current_index_;
   std::vector<ProfileEvent> event_buffer_;

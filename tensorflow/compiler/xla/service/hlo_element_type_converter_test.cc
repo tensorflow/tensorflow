@@ -22,6 +22,12 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
+using ::testing::Contains;
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Not;
+using ::testing::ResultOf;
+
 class HloElementTypeConverterTest : public HloTestBase {
  public:
   std::unique_ptr<HloModule> CreateModuleFromHloString(
@@ -51,8 +57,10 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
   const string& hlo_string = R"(
     HloModule InfeedOutfeed
     ENTRY RoundTrip16MiBR1.v2 {
-      ROOT infeed = bf16[4]{0} infeed()
-      outfeed = () outfeed(infeed)
+      token = token[] after-all()
+      infeed = (bf16[4]{0}, token[]) infeed(token)
+      ROOT infeed.data = bf16[4]{0} get-tuple-element(infeed), index=0
+      outfeed = token[] outfeed(infeed.data, token)
     }
   )";
   auto module = CreateModuleFromHloString(hlo_string);
@@ -115,6 +123,66 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
               op::Tuple(op::Convert(op::GetTupleElement(batch_norm, 0)),
                         op::Convert(op::GetTupleElement(batch_norm, 1)),
                         op::Convert(op::GetTupleElement(batch_norm, 2))));
+}
+
+TEST_F(HloElementTypeConverterTest, RngIsRemoved) {
+  const string& hlo_string = R"(
+HloModule RngIsRemoved
+
+ENTRY main {
+  constant.3 = bf16[] constant(0)
+  constant.4 = bf16[] constant(1)
+  ROOT rng = bf16[1,1000,20]{2,1,0} rng(constant.3, constant.4), distribution=rng_uniform
+}
+  )";
+  auto module = CreateModuleFromHloString(hlo_string);
+  HloElementTypeConverter type_converter(BF16, F32);
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  EXPECT_TRUE(converted);
+
+  std::function<bool(const HloInstruction*)> is_bf16_rng =
+      [](const HloInstruction* inst) {
+        return inst->shape().element_type() == BF16 &&
+               inst->opcode() == HloOpcode::kRng;
+      };
+
+  EXPECT_THAT(module->entry_computation()->instructions(),
+              Not(Contains(ResultOf(is_bf16_rng, Eq(true)))));
+}
+
+TEST_F(HloElementTypeConverterTest, RngCtrlDep) {
+  const string& hlo_string = R"(
+HloModule RngIsRemoved
+
+ENTRY main {
+  constant.3 = bf16[] constant(0)
+  constant.4 = bf16[] constant(1)
+  rng0 = bf16[1,2000,20]{2,1,0} rng(constant.3, constant.4), distribution=rng_uniform
+  ROOT rng1 = bf16[1,1000,20]{2,1,0} rng(constant.3, constant.4), control-predecessors={%rng0}, distribution=rng_uniform
+}
+  )";
+  auto module = CreateModuleFromHloString(hlo_string);
+
+  HloElementTypeConverter type_converter(BF16, F32);
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  EXPECT_TRUE(converted);
+
+  HloInstruction *rng0, *rng1;
+  for (auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kRng) {
+      const Shape& shape = inst->shape();
+      ASSERT_EQ(shape.dimensions_size(), 3);
+      ASSERT_TRUE(shape.dimensions(1) == 2000 || shape.dimensions(1) == 1000);
+      if (shape.dimensions(1) == 2000) {
+        rng0 = inst;
+      } else {
+        rng1 = inst;
+      }
+    }
+  }
+
+  EXPECT_THAT(rng0->control_successors(), ElementsAre(rng1));
+  EXPECT_THAT(rng1->control_predecessors(), ElementsAre(rng0));
 }
 
 }  // namespace

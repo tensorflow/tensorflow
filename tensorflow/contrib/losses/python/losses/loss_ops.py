@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 __all__ = [
     "absolute_difference", "add_loss", "cosine_distance",
@@ -481,9 +482,12 @@ def hinge_loss(logits, labels=None, scope=None):
   """Method that returns the loss tensor for hinge loss.
 
   Args:
-    logits: The logits, a float tensor.
+    logits: The logits, a float tensor. Note that logits are assumed to be
+      unbounded and 0-centered. A value > 0 (resp. < 0) is considered a positive
+      (resp. negative) binary prediction.
     labels: The ground truth output tensor. Its shape should match the shape of
-      logits. The values of the tensor are expected to be 0.0 or 1.0.
+      logits. The values of the tensor are expected to be 0.0 or 1.0. Internally
+      the {0,1} labels are converted to {-1,1} when calculating the hinge loss.
     scope: The scope for the operations performed in computing the loss.
 
   Returns:
@@ -651,11 +655,9 @@ def cosine_distance(predictions,
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `weights` is `None`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
+  axis = deprecated_argument_lookup(
+      "axis", axis, "dim", dim)
+  if axis is None:
     raise ValueError("You must specify 'axis'.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       [predictions, labels, weights]) as scope:

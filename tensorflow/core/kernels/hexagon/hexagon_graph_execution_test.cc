@@ -30,6 +30,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include <memory>
 
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"

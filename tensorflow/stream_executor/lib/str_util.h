@@ -19,8 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::str_util::Join;
@@ -32,13 +31,12 @@ inline string StripSuffixString(port::StringPiece str, port::StringPiece suffix)
   if (tensorflow::str_util::EndsWith(str, suffix)) {
     str.remove_suffix(suffix.size());
   }
-  return str.ToString();
+  return std::string(str);
 }
 
 using tensorflow::str_util::Lowercase;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STR_UTIL_H_

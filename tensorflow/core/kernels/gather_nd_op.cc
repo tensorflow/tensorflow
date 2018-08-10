@@ -188,12 +188,13 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
 
     // bad_i will only return >= 0 on CPUs right now.
     if (bad_i >= 0) {
+      auto shape = indices.shape();
+      shape.RemoveLastDims(1);
       return errors::InvalidArgument(
-          "flat indices[", bad_i, ", :] = [",
+          "indices", SliceDebugString(shape, bad_i), " = [",
           str_util::Join(
               gtl::ArraySlice<Index>(&indices_mat(bad_i, 0), indices_nd), ", "),
-          "] does not index into param (shape: ", params.shape().DebugString(),
-          ").");
+          "] does not index into param shape ", params.shape().DebugString());
     }
   }
   return Status::OK();
@@ -228,6 +229,8 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
+TF_CALL_int32(DECLARE_GPU_SPECS);
+TF_CALL_int64(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_complex64(DECLARE_GPU_SPECS);
 TF_CALL_complex128(DECLARE_GPU_SPECS);
@@ -239,6 +242,8 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
 // Registration of the GPU implementations.
 #define REGISTER_GATHER_ND_GPU(type) REGISTER_GATHER_ND_ALL_INDICES(GPU, type)
 
+TF_CALL_int32(REGISTER_GATHER_ND_GPU);
+TF_CALL_int64(REGISTER_GATHER_ND_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
 TF_CALL_complex64(REGISTER_GATHER_ND_GPU);
 TF_CALL_complex128(REGISTER_GATHER_ND_GPU);

@@ -38,6 +38,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import re
 import sys
 
 from google.protobuf import text_format
@@ -54,6 +55,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -77,7 +79,7 @@ def freeze_graph_with_def_protos(input_graph_def,
 
   # 'input_checkpoint' may be a prefix if we're using Saver V2 format
   if (not input_saved_model_dir and
-      not saver_lib.checkpoint_exists(input_checkpoint)):
+      not checkpoint_management.checkpoint_exists(input_checkpoint)):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -116,16 +118,43 @@ def freeze_graph_with_def_protos(input_graph_def,
       var_list = {}
       reader = pywrap_tensorflow.NewCheckpointReader(input_checkpoint)
       var_to_shape_map = reader.get_variable_to_shape_map()
+
+      # List of all partition variables. Because the condition is heuristic
+      # based, the list could include false positives.
+      all_parition_variable_names = [
+          tensor.name.split(":")[0]
+          for op in sess.graph.get_operations()
+          for tensor in op.values()
+          if re.search(r"/part_\d+/", tensor.name)
+      ]
+      has_partition_var = False
+
       for key in var_to_shape_map:
         try:
           tensor = sess.graph.get_tensor_by_name(key + ":0")
+          if any(key in name for name in all_parition_variable_names):
+            has_partition_var = True
         except KeyError:
           # This tensor doesn't exist in the graph (for example it's
           # 'global_step' or a similar housekeeping element) so skip it.
           continue
         var_list[key] = tensor
-      saver = saver_lib.Saver(
-          var_list=var_list, write_version=checkpoint_version)
+
+      try:
+        saver = saver_lib.Saver(
+            var_list=var_list, write_version=checkpoint_version)
+      except TypeError as e:
+        # `var_list` is required to be a map of variable names to Variable
+        # tensors. Partition variables are Identity tensors that cannot be
+        # handled by Saver.
+        if has_partition_var:
+          print("Models containing partition variables cannot be converted "
+                "from checkpoint files. Please pass in a SavedModel using "
+                "the flag --input_saved_model_dir.")
+          return -1
+        else:
+          raise e
+
       saver.restore(sess, input_checkpoint)
       if initializer_nodes:
         sess.run(initializer_nodes.replace(" ", "").split(","))

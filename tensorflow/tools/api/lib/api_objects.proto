@@ -1,5 +1,7 @@
 syntax = "proto2";
 
+import "google/protobuf/descriptor.proto";
+
 package third_party.tensorflow.tools.api;
 
 message TFAPIMember {
@@ -24,8 +26,17 @@ message TFAPIClass {
   repeated TFAPIMethod member_method = 3;
 };
 
+message TFAPIProto {
+  // Suppress generation of the proto API's descriptor() method lest it
+  // conflict with the standard accessor for the field having the same name.
+  option no_standard_descriptor_accessor = true;
+
+  optional google.protobuf.DescriptorProto descriptor = 1;
+};
+
 message TFAPIObject {
   optional string path = 1;
   optional TFAPIModule tf_module = 2;
   optional TFAPIClass tf_class = 3;
+  optional TFAPIProto tf_proto = 4;
 };

@@ -97,17 +97,32 @@ StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
 StatusOr<HloInstruction*> MakeConcatHlo(
     tensorflow::gtl::ArraySlice<HloInstruction*> operands, int64 dimension);
 
+// Creates a Dot HLO instruction and adds it to the computation containing `lhs`
+// and `rhs` (both must be in the same computation).
+StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
+                                     const DotDimensionNumbers& dim_numbers);
+
 // -----------------------------------------------------------------------------
 // Some other miscellaneous helpers to generate common HLO patterns.  All of
 // these add all the instructions they generate into the computation containing
 // their operand(s).
 
 // Collapses (via reshape) the first N (logical) dimensions of `operand` into a
-// single leading dimension.  `operand` must have rank > n.
+// single leading dimension.  `operand` must have rank > `n` and `n` must not be
+// 0.
 //
 // For instance if `operand` has shape f32[7,8,9] and n is 2 then the output is
 // the `operand` reshaped to [56,9].
 StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
+
+// Prepends `n` degenerate dimensions (dimensions with bound = 1) to `operand`
+// using a reshape.
+//
+// For instance if operand has shape f32[3,4,5] then this returns the operand
+// reshaped to f32[1,3,4,5].  If the operand is a f32 scalar (i.e. has shape
+// f32[]) then this returns the operand reshaped to f32[1].
+StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
+                                                int64 n);
 
 // Expands (via reshape) the first (logical) dimension of `operand` into a
 // sequence of `expanded_dims` dimensions.  `operand` must at least be of rank 1

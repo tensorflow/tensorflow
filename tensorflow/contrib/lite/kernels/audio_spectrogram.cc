@@ -72,7 +72,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
@@ -102,7 +102,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteAudioSpectrogramParams*>(node->user_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE(context, params->spectrogram->Initialize(params->window_size,

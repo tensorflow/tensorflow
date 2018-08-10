@@ -23,10 +23,10 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
 # TODO(mdan): Properly extrack boolean ops according to lazy eval rules.
@@ -39,11 +39,11 @@ from tensorflow.contrib.autograph.pyct import transformer
 SAFE_BOOLEAN_OPERAND = 'SAFE_BOOLEAN_OPERAND'
 
 
-class LogicalExpressionTransformer(transformer.Base):
+class LogicalExpressionTransformer(converter.Base):
   """Converts logical expressions to corresponding TF calls."""
 
-  def __init__(self, context):
-    super(LogicalExpressionTransformer, self).__init__(context)
+  def __init__(self, ctx):
+    super(LogicalExpressionTransformer, self).__init__(ctx)
     # TODO(mdan): Look into replacing with bitwise operators instead.
     # TODO(mdan): Skip replacing if the function is trivial.
     self.op_mapping = {
@@ -128,5 +128,5 @@ class LogicalExpressionTransformer(transformer.Base):
     return right
 
 
-def transform(node, context):
-  return LogicalExpressionTransformer(context).visit(node)
+def transform(node, ctx):
+  return LogicalExpressionTransformer(ctx).visit(node)

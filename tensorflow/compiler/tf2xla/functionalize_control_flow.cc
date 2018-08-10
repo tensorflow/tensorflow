@@ -21,13 +21,13 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
@@ -166,6 +166,27 @@ StatusOr<Node*> AddNode(const NodeDef& node_def, Graph* graph) {
   return inserted_node;
 }
 
+// Check that the graph has no cycle containing the given node.
+Status CheckNoCycleContains(const Node* node, const int num_nodes) {
+  std::vector<const Node*> ready;
+  ready.push_back(node);
+  std::vector<bool> visited(num_nodes);
+  while (!ready.empty()) {
+    const Node* current_node = ready.back();
+    ready.pop_back();
+    visited[current_node->id()] = true;
+    for (const Edge* out : current_node->out_edges()) {
+      if (out->dst() == node) {
+        return errors::Internal("Detected a cycle: ", FormatNodeForError(*node),
+                                "(", node->def().op(), ") feeds into itself.");
+      } else if (!visited[out->dst()->id()]) {
+        ready.push_back(out->dst());
+      }
+    }
+  }
+  return Status::OK();
+}
+
 StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   NodeDef arg_def;
   NodeDefBuilder builder(strings::StrCat(kArgOp, index), kArgOp);
@@ -282,7 +303,58 @@ Status BuildLoopBody(const Graph& graph, Frame* frame,
   return Status::OK();
 }
 
-Status FunctionalizeLoop(Graph* graph, Frame* frame,
+// Copy the FunctionDef of given function from lookup_library to library, if
+// it can be found in lookup_library but is missing from library.
+Status AddMissingFunctionByName(const string& function_name,
+                                const FunctionLibraryDefinition* lookup_library,
+                                FunctionLibraryDefinition* library) {
+  if (!library->Find(function_name) && lookup_library->Find(function_name)) {
+    return library->AddFunctionDef(*lookup_library->Find(function_name));
+  }
+  return Status::OK();
+}
+
+// Iterate over all functions that the given fdef refers to. Copy the missing
+// FunctionDefs from lookup_library to library.
+Status AddMissingFunctionDef(const FunctionDef& fdef,
+                             const FunctionLibraryDefinition* lookup_library,
+                             FunctionLibraryDefinition* library) {
+  TF_RET_CHECK(lookup_library);
+  for (const NodeDef& node : fdef.node_def()) {
+    if (library->Find(node.op())) {
+      continue;
+    }
+    // The function referred by 'SymbolicGradient' node is specified in its
+    // attribute 'f'.
+    if (node.op() == FunctionLibraryDefinition::kGradientOp) {
+      const AttrValue* attr =
+          AttrSlice(&node.attr()).Find(FunctionLibraryDefinition::kFuncAttr);
+      if (!attr) {
+        return errors::InvalidArgument("SymbolicGradient is missing attr: f");
+      }
+      const string& func_name = attr->func().name();
+      TF_RETURN_IF_ERROR(
+          AddMissingFunctionByName(func_name, lookup_library, library));
+      // Copy the user-defined gradient function if it exists.
+      const string grad_name = lookup_library->FindGradient(func_name);
+      if (!grad_name.empty() && library->FindGradient(func_name).empty()) {
+        TF_RETURN_IF_ERROR(
+            AddMissingFunctionByName(grad_name, lookup_library, library));
+        GradientDef grad_def;
+        grad_def.set_function_name(func_name);
+        grad_def.set_gradient_func(grad_name);
+        TF_RETURN_IF_ERROR(library->AddGradientDef(grad_def));
+      }
+    } else if (lookup_library->Find(node.op())) {
+      TF_RETURN_IF_ERROR(
+          library->AddFunctionDef(*lookup_library->Find(node.op())));
+    }
+  }
+  return Status::OK();
+}
+
+Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
+                         Graph* graph, Frame* frame,
                          FunctionLibraryDefinition* library) {
   VLOG(2) << "Frame " << frame->name << " before: "
           << dump_graph::DumpGraphToFile("functionalize_before", *graph,
@@ -365,22 +437,24 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
           continue;
         }
         if (enter_merge != nullptr) {
-          return errors::Internal(
-              "Enter node for loop-varying argument ", arg.enter->name(),
-              " has multiple successors: ", enter_merge->dst()->name(), " and ",
-              e->dst()->name());
+          return errors::Internal("Enter node for loop-varying argument ",
+                                  FormatNodeForError(*arg.enter),
+                                  " has multiple successors: ",
+                                  FormatNodeForError(*enter_merge->dst()),
+                                  " and ", FormatNodeForError(*e->dst()));
         }
         enter_merge = e;
       }
       if (enter_merge == nullptr) {
         return errors::Internal("Enter node for loop-varying argument ",
-                                arg.enter->name(), " has zero successors");
+                                FormatNodeForError(*arg.enter),
+                                " has zero successors");
       }
       arg.merge = enter_merge->dst();
       if (!IsMerge(arg.merge)) {
         return errors::InvalidArgument(
             "Successor of Enter node for loop-varying argument ",
-            arg.merge->name(),
+            FormatNodeForError(*arg.merge),
             " is not a Merge node; got: ", arg.merge->type_string());
       }
 
@@ -390,7 +464,7 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
         return errors::InvalidArgument(
             "Unexpected number of inputs to Merge node for loop-varying "
             "argument ",
-            arg.merge->name(), "; expected 2, got ",
+            FormatNodeForError(*arg.merge), "; expected 2, got ",
             arg.merge->input_types().size());
       }
       TF_RETURN_IF_ERROR(arg.merge->input_node(1 - enter_merge->dst_input(),
@@ -398,7 +472,7 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
       if (!IsNextIteration(arg.next_iteration)) {
         return errors::InvalidArgument(
             "Expected NextIteration node as input to Merge node; got node ",
-            arg.next_iteration->name(), " with kind ",
+            FormatNodeForError(*arg.next_iteration), " with kind ",
             arg.next_iteration->type_string());
       }
 
@@ -409,14 +483,14 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
             switches.find(edge->dst()) != switches.end()) {
           if (arg.switch_node != nullptr) {
             return errors::InvalidArgument("Duplicate Switch successors to ",
-                                           arg.merge->name());
+                                           FormatNodeForError(*arg.merge));
           }
           arg.switch_node = edge->dst();
         }
       }
       if (arg.switch_node == nullptr) {
         return errors::InvalidArgument("Missing Switch successor to ",
-                                       arg.merge->name());
+                                       FormatNodeForError(*arg.merge));
       }
 
       // Update the device on the Identity outputs of the switch to match their
@@ -444,14 +518,15 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
         possible_exit.pop_front();
         if (IsExit(edge->dst())) {
           if (arg.exit != nullptr) {
-            return errors::InvalidArgument("Duplicate Exit successors to ",
-                                           arg.switch_node->name());
+            return errors::InvalidArgument(
+                "Duplicate Exit successors to ",
+                FormatNodeForError(*arg.switch_node));
           }
           arg.exit = edge->dst();
         } else {
           if (!IsIdentity(edge->dst())) {
             return errors::Unimplemented("General graph between switch (",
-                                         arg.switch_node->name(),
+                                         FormatNodeForError(*arg.switch_node),
                                          ") and exit node of frame ",
                                          frame->name, " not supported yet.");
           }
@@ -489,6 +564,14 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
 
   TF_RETURN_IF_ERROR(library->AddFunctionDef(cond_fdef));
   TF_RETURN_IF_ERROR(library->AddFunctionDef(body_fdef));
+  if (lookup_library) {
+    // Copy missing FunctionDefs from lookup_library to library to make library
+    // self-contained.
+    TF_RETURN_IF_ERROR(
+        AddMissingFunctionDef(cond_fdef, lookup_library, library));
+    TF_RETURN_IF_ERROR(
+        AddMissingFunctionDef(body_fdef, lookup_library, library));
+  }
 
   // Builds a While operator.
   NodeDef while_def;
@@ -870,6 +953,9 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
       // Merge the inputs of the switch node with one another. This results in
       // predicates and control input residing in the same cluster.
       for (const Edge* e : n->in_edges()) {
+        // Only consider the data inputs to the Switch node.
+        if (e->IsControlEdge()) continue;
+
         Node* src = e->src();
         UnionFind<Cluster>* src_cluster = find_output_cluster(src);
         int src_cluster_depth = switch_depth[src_cluster->Get().representative];
@@ -1345,6 +1431,10 @@ StatusOr<Node*> FunctionalizeCond::ConvertToXlaIf(
   TF_RETURN_IF_ERROR(
       AddInputEdges(cond_arg_nodes, switch_cluster.predicate_edge, if_node));
   TF_RETURN_IF_ERROR(AddOutputEdges(merge_nodes, if_node));
+  // Check that the if_node doesn't feed into itself.
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      CheckNoCycleContains(if_node, graph_->num_node_ids()),
+      "ConvertToXlaIf failed.");
 
   return if_node;
 }
@@ -1362,6 +1452,12 @@ Status FunctionalizeCond::Functionalize(Graph* graph,
 // functional equivalents.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library) {
+  return FunctionalizeControlFlow(/*lookup_library=*/nullptr, graph, library);
+}
+
+Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
+                                Graph* graph,
+                                FunctionLibraryDefinition* library) {
   VLOG(2) << "FunctionalizeControlFlow (initial): "
           << dump_graph::DumpGraphToFile("functionalize_initial", *graph,
                                          library);
@@ -1370,7 +1466,15 @@ Status FunctionalizeControlFlow(Graph* graph,
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
   std::vector<ControlFlowInfo> cf_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info));
+  std::vector<string> unreachable_nodes;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes),
+      "FunctionalizeControlFlow failed");
+  if (!unreachable_nodes.empty()) {
+    return errors::InvalidArgument(
+        "The following nodes are unreachable from the source in the graph: ",
+        errors::FormatNodeNamesForError(unreachable_nodes));
+  }
 
   // Builds Frames, indexed by name.
   std::unordered_map<string, Frame> frames;
@@ -1390,10 +1494,6 @@ Status FunctionalizeControlFlow(Graph* graph,
       frame.parent = parent;
       frame.name = cf.frame_name;
       ++parent->num_children;
-    } else if (frame.parent != parent) {
-      return errors::InvalidArgument("Mismatched parent frames for ",
-                                     cf.frame->id(), ": ", parent->name, " vs ",
-                                     frame.parent->name);
     }
 
     if (IsEnter(node)) {
@@ -1403,12 +1503,6 @@ Status FunctionalizeControlFlow(Graph* graph,
                                      &arg.is_loop_invariant));
       frame.args.push_back(arg);
     } else if (IsLoopCond(node)) {
-      if (frame.loop_cond) {
-        return errors::InvalidArgument(
-            "Loop ", cf.frame_name,
-            " has more than one LoopCond node: ", node->name(), " and ",
-            frame.loop_cond->name());
-      }
       frame.loop_cond = node;
     }
     frame.nodes.insert(node);
@@ -1431,12 +1525,23 @@ Status FunctionalizeControlFlow(Graph* graph,
       continue;
     }
 
-    TF_RETURN_IF_ERROR(FunctionalizeLoop(graph, frame, library));
+    TF_RETURN_IF_ERROR(
+        FunctionalizeLoop(lookup_library, graph, frame, library));
 
     // If the parent has no remaining children, add it to the worklist.
     --frame->parent->num_children;
     if (frame->parent->num_children == 0) {
       worklist.push_back(frame->parent);
+    }
+  }
+  // There should be no cycle at this point, since while loops have been removed
+  // from graph.
+  // Check that the newly added XlaWhile nodes don't feed into themselves.
+  for (const Node* node : graph->op_nodes()) {
+    if (node->def().op() == "XlaWhile") {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          CheckNoCycleContains(node, graph->num_node_ids()),
+          "FunctionalizeLoop failed.");
     }
   }
 

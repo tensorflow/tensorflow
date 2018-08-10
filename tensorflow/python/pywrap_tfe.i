@@ -29,12 +29,14 @@ limitations under the License.
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
+%rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
-%rename("%s") TFE_Py_RegisterBackwardFunctionGetter;
+%rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
 %rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
@@ -42,6 +44,7 @@ limitations under the License.
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
 %rename("%s") TFE_Py_TapeSetNew;
+%rename("%s") TFE_Py_TapeSetAdd;
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
@@ -59,6 +62,9 @@ limitations under the License.
 %rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
+%rename("%s") TFE_Py_TensorShapeOnDevice;
+%rename("%s") TFE_ContextStartStep;
+%rename("%s") TFE_ContextEndStep;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -152,9 +158,12 @@ limitations under the License.
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
       } else {
-        SWIG_exception_fail(SWIG_TypeError,
-                            "provided list of inputs contains objects other "
-                            "than 'EagerTensor'");
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "provided list of inputs contains objects other "
+                "than 'EagerTensor'. Item ",
+                i, " is ", elem->ob_type->tp_name).c_str());
       }
     }
   }

@@ -36,8 +36,10 @@ constexpr int kInputTensor = 0;
 constexpr int kSizeTensor = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context, TfLiteTensor* input,
-                                TfLiteTensor* size, TfLiteTensor* output) {
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
+                                const TfLiteTensor* input,
+                                const TfLiteTensor* size,
+                                TfLiteTensor* output) {
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = input->dims->data[0];
   const int32* size_data = GetTensorData<int32>(size);
@@ -51,20 +53,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // TODO(ahentz): Our current implementations rely on the inputs being 4D.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
 
-  // TODO(ahentz): Our current implementations only support float32.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
   // ResizeBilinear creates a float tensor even when the input is made of
   // integers.
-  output->type = kTfLiteFloat32;
+  output->type = input->type;
 
   if (!IsConstantTensor(size)) {
     SetTensorToDynamic(output);
@@ -78,9 +78,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
@@ -88,21 +88,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_RESIZE_BILINEAR(type)                                       \
-  type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input),   \
-                       GetTensorData<int32>(size), GetTensorDims(size),     \
-                       GetTensorData<float>(output), GetTensorDims(output), \
+#define TF_LITE_RESIZE_BILINEAR(type, datatype)                                \
+  type::ResizeBilinear(GetTensorData<datatype>(input), GetTensorDims(input),   \
+                       GetTensorData<int32>(size), GetTensorDims(size),        \
+                       GetTensorData<datatype>(output), GetTensorDims(output), \
                        params->align_corners)
 
     if (kernel_type == kReference) {
-      TF_LITE_RESIZE_BILINEAR(reference_ops);
+      TF_LITE_RESIZE_BILINEAR(reference_ops, float);
     }
     if (kernel_type == kGenericOptimized || kernel_type == kNeonOptimized) {
-      TF_LITE_RESIZE_BILINEAR(optimized_ops);
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, float);
+    }
+  } else if (output->type == kTfLiteUInt8) {
+    if (kernel_type == kReference) {
+      TF_LITE_RESIZE_BILINEAR(reference_ops, uint8_t);
+    }
+    if (kernel_type == kGenericOptimized || kernel_type == kNeonOptimized) {
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, uint8_t);
     }
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
-    context->ReportError(context, "Inputs and outputs not all float types.");
+    context->ReportError(context, "Output type is %d, requires float.",
+                         output->type);
     return kTfLiteError;
   }
 

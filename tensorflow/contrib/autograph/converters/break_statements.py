@@ -12,84 +12,135 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Canonicalizes break statements by de-sugaring into a control boolean."""
+"""Lowers break statements to conditionals."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
-class BreakCanonicalizationTransformer(transformer.Base):
+class _Break(object):
+
+  def __init__(self):
+    self.used = False
+    self.control_var_name = None
+
+  def __repr__(self):
+    return 'used: %s, var: %s' % (self.used, self.control_var_name)
+
+
+class BreakTransformer(converter.Base):
   """Canonicalizes break statements into additional conditionals."""
 
-  def __init__(self, context):
-    super(BreakCanonicalizationTransformer, self).__init__(context)
-    # This is a stack structure, to correctly process nested loops.
-    # Each item is a list [break_used, break_variable_name]
-    self.break_uses = []
-
   def visit_Break(self, node):
-    self.break_uses[-1][0] = True
+    self.state[_Break].used = True
+    var_name = self.state[_Break].control_var_name
+    # TODO(mdan): This will fail when expanded inside a top-level else block.
     template = """
-      var_name = True
+      var_name = tf.constant(True)
       continue
     """
-    return templates.replace(template, var_name=self.break_uses[-1][1])
+    return templates.replace(template, var_name=var_name)
+
+  def _guard_if_present(self, block, var_name):
+    """Prevents the block from executing if var_name is set."""
+    if not block:
+      return block
+
+    template = """
+        if not var_name:
+          block
+      """
+    node = templates.replace(
+        template,
+        var_name=var_name,
+        block=block)
+    return node
+
+  def _process_body(self, nodes, break_var):
+    self.state[_Break].enter()
+    self.state[_Break].control_var_name = break_var
+    nodes = self.visit_block(nodes)
+    break_used = self.state[_Break].used
+    self.state[_Break].exit()
+    return nodes, break_used
 
   def visit_While(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    break_var = self.context.namer.new_symbol('break_requested',
-                                              scope.referenced)
+    break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
-    self.break_uses.append([False, break_var])
-    node = self.generic_visit(node)
-    if self.break_uses[-1][0]:
+    node.test = self.visit(node.test)
+    node.body, break_used = self._process_body(node.body, break_var)
+    # A break in the else clause applies to the containing scope.
+    node.orelse = self.visit_block(node.orelse)
+
+    if break_used:
+      # Python's else clause only triggers if the loop exited cleanly (e.g.
+      # break did not trigger).
+      guarded_orelse = self._guard_if_present(node.orelse, break_var)
+
       template = """
-        var_name = False
-        while original_test and not var_name:
-          original_body
+        var_name = tf.constant(False)
+        while test and not var_name:
+          body
         else:
-          original_orelse
+          orelse
       """
       node = templates.replace(
           template,
           var_name=break_var,
-          original_test=node.test,
-          original_body=node.body,
-          original_orelse=node.orelse)
-    self.break_uses.pop()
+          test=node.test,
+          body=node.body,
+          orelse=guarded_orelse)
 
     return node
 
   def visit_For(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    break_var = self.context.namer.new_symbol('break_requested',
-                                              scope.referenced)
+    break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
-    self.break_uses.append([False, break_var])
-    node = self.generic_visit(node)
-    if self.break_uses[-1][0]:
+    node.target = self.visit(node.target)
+    node.iter = self.visit(node.iter)
+    node.body, break_used = self._process_body(node.body, break_var)
+    # A break in the else clause applies to the containing scope.
+    node.orelse = self.visit_block(node.orelse)
+
+    if break_used:
+      # Python's else clause only triggers if the loop exited cleanly (e.g.
+      # break did not trigger).
+      guarded_orelse = self._guard_if_present(node.orelse, break_var)
+      extra_test = templates.replace_as_expression(
+          'not var_name', var_name=break_var)
+
+      # The extra test is hidden in the AST, which will confuse the static
+      # analysis. To mitigate that, we insert a no-op statement that ensures
+      # the control variable is marked as used.
+      # TODO(mdan): Use a marker instead, e.g. ag__.condition_loop_on(var_name)
       template = """
-        var_name = False
-        original_for
+        var_name = tf.constant(False)
+        for target in iter_:
+          (var_name,)
+          body
+        else:
+          orelse
       """
       node = templates.replace(
           template,
           var_name=break_var,
-          original_for=node)
-      extra_cond = templates.replace_as_expression(
-          'not var_name', var_name=break_var)
-      new_for_node = node[1]
-      anno.setanno(new_for_node, 'extra_cond', extra_cond)
-    self.break_uses.pop()
+          iter_=node.iter,
+          target=node.target,
+          body=node.body,
+          orelse=guarded_orelse)
+
+      anno.setanno(node[1], 'extra_test', extra_test)
 
     return node
 
 
-def transform(node, context):
-  return BreakCanonicalizationTransformer(context).visit(node)
+def transform(node, ctx):
+  return BreakTransformer(ctx).visit(node)

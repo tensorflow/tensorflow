@@ -35,8 +35,8 @@ from tensorflow.python.training import training_util
 class PruningHParamsTest(test.TestCase):
   PARAM_LIST = [
       "name=test", "threshold_decay=0.9", "pruning_frequency=10",
-      "do_not_prune=[conv1,conv2]", "sparsity_function_end_step=100",
-      "target_sparsity=0.9"
+      "sparsity_function_end_step=100", "target_sparsity=0.9",
+      "weight_sparsity_map=[conv1:0.8,conv2/kernel:0.8]"
   ]
   TEST_HPARAMS = ",".join(PARAM_LIST)
 
@@ -55,9 +55,10 @@ class PruningHParamsTest(test.TestCase):
     self.assertEqual(p._spec.name, "test")
     self.assertAlmostEqual(p._spec.threshold_decay, 0.9)
     self.assertEqual(p._spec.pruning_frequency, 10)
-    self.assertAllEqual(p._spec.do_not_prune, ["conv1", "conv2"])
     self.assertEqual(p._spec.sparsity_function_end_step, 100)
     self.assertAlmostEqual(p._spec.target_sparsity, 0.9)
+    self.assertEqual(p._weight_sparsity_map["conv1"], 0.8)
+    self.assertEqual(p._weight_sparsity_map["conv2/kernel"], 0.8)
 
   def testInitWithExternalSparsity(self):
     with self.test_session():
@@ -210,6 +211,37 @@ class PruningTest(test.TestCase):
     # Weights pruned at steps 0,2,4,and,6
     expected_non_zero_count = [100, 100, 80, 80, 60, 60, 40, 40, 40, 40]
     self.assertAllEqual(expected_non_zero_count, non_zero_count)
+
+  def testWeightSpecificSparsity(self):
+    param_list = [
+        "begin_pruning_step=1", "pruning_frequency=1", "end_pruning_step=100",
+        "target_sparsity=0.5", "weight_sparsity_map=[layer2/weights:0.75]",
+        "threshold_decay=0.0"
+    ]
+    test_spec = ",".join(param_list)
+    pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
+
+    with variable_scope.variable_scope("layer1"):
+      w1 = variables.Variable(
+          math_ops.linspace(1.0, 100.0, 100), name="weights")
+      _ = pruning.apply_mask(w1)
+    with variable_scope.variable_scope("layer2"):
+      w2 = variables.Variable(
+          math_ops.linspace(1.0, 100.0, 100), name="weights")
+      _ = pruning.apply_mask(w2)
+
+    p = pruning.Pruning(pruning_hparams)
+    mask_update_op = p.conditional_mask_update_op()
+    increment_global_step = state_ops.assign_add(self.global_step, 1)
+
+    with self.test_session() as session:
+      variables.global_variables_initializer().run()
+      for _ in range(110):
+        session.run(mask_update_op)
+        session.run(increment_global_step)
+
+      self.assertAllEqual(
+          session.run(pruning.get_weight_sparsity()), [0.5, 0.75])
 
 
 if __name__ == "__main__":

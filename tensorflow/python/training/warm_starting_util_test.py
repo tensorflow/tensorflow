@@ -36,6 +36,7 @@ from tensorflow.python.training import warm_starting_util as ws_util
 ones = init_ops.ones_initializer
 norms = init_ops.truncated_normal_initializer
 rand = init_ops.random_uniform_initializer
+zeros = init_ops.zeros_initializer
 
 
 class WarmStartingUtilTest(test.TestCase):
@@ -304,6 +305,46 @@ class WarmStartingUtilTest(test.TestCase):
                             fruit_weights_vars[0].eval(sess))
         self.assertAllEqual([[0.5], [0.], [0.]],
                             fruit_weights_vars[1].eval(sess))
+
+  def testWarmStart_ListOfVariables(self):
+    # Save checkpoint from which to warm-start.
+    _, prev_int_val = self._create_prev_run_var("v1", shape=[10, 1],
+                                                initializer=ones())
+    # Verify we initialized the values correctly.
+    self.assertAllEqual(np.ones([10, 1]), prev_int_val)
+
+    # New graph, new session with warm-starting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Initialize with zeros.
+        var = variable_scope.get_variable(
+            "v1",
+            shape=[10, 1],
+            initializer=zeros())
+        ws_util.warm_start(self.get_temp_dir(), vars_to_warm_start=[var])
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warm-started (init overridden to ones).
+        self.assertAllEqual(var.eval(), prev_int_val)
+
+  def testWarmStart_ListOfStrings(self):
+    # Save checkpoint from which to warm-start.
+    _, prev_int_val = self._create_prev_run_var("v1", shape=[10, 1],
+                                                initializer=ones())
+    # Verify we initialized the values correctly.
+    self.assertAllEqual(np.ones([10, 1]), prev_int_val)
+
+    # New graph, new session with warm-starting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Initialize with zeros.
+        var = variable_scope.get_variable(
+            "v1",
+            shape=[10, 1],
+            initializer=zeros())
+        ws_util.warm_start(self.get_temp_dir(), vars_to_warm_start=["v1"])
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warm-started (init overridden to ones).
+        self.assertAllEqual(var.eval(), prev_int_val)
 
   def testWarmStart_SparseColumnIntegerized(self):
     # Create feature column.
@@ -946,18 +987,20 @@ class WarmStartingUtilTest(test.TestCase):
         # emb_vocab should be correctly warm-started after vocab remapping.
         # Missing values are filled in with the EmbeddingColumn's initializer.
         self._assert_cols_to_vars(
-            cols_to_vars, {
+            cols_to_vars,
+            {
                 emb_vocab: [
-                    # embedding_weights part 0.
-                    np.array([[3., 3.3], [2., 2.2], [1., 1.1]]),
-                    # embedding_weights part 1.
-                    np.array([[0.5, 0.4], [0.42, 0.42], [0.42, 0.42]]),
                     # linear weights part 0.
                     np.array([[0.69]]),
                     # linear weights part 1.
-                    np.array([[0.71]])
+                    np.array([[0.71]]),
+                    # embedding_weights part 0.
+                    np.array([[3., 3.3], [2., 2.2], [1., 1.1]]),
+                    # embedding_weights part 1.
+                    np.array([[0.5, 0.4], [0.42, 0.42], [0.42, 0.42]])
                 ]
-            }, sess)
+            },
+            sess)
 
   def testErrorConditions(self):
     x = variable_scope.get_variable(

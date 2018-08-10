@@ -116,8 +116,6 @@ in the input function gives a solid boost in performance. When using
 ## Caveats
 This feature is in early stages and there are a lot of improvements forthcoming:
 
-* Metrics are not yet supported during distributed training. They are still
-supported during the evaluation.
 * Summaries are only computed in the first tower in `MirroredStrategy`.
 * Evaluation is not yet distributed.
 * Eager support is in the works; performance can be more challenging with eager
@@ -131,8 +129,6 @@ adjusting your learning rate or batch size according to the number of GPUs.
 We are working on addressing this limitation by splitting each batch across GPUs
 instead.
 * PartitionedVariables are not supported yet.
-* Input pipelines with Datasets that capture stateful objects and rely on
-`make_initializable_iterator` are not supported yet.
 
 ## What's next?
 

@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -81,6 +82,29 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file.
+   *
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   */
+  public Interpreter(@NonNull ByteBuffer byteBuffer) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and specifies the
+   * number of threads used for inference.
+   *
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   */
+  public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
+  }
+
+  /**
    * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
    *
    * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
@@ -111,7 +135,8 @@ public final class Interpreter implements AutoCloseable {
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
    *     input data. When {@link ByteBuffer} is used, its content should remain unchanged until
    *     model inference is done.
-   * @param output a multidimensional array of output data.
+   * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
+   *     types including int, float, long, and byte.
    */
   public void run(@NonNull Object input, @NonNull Object output) {
     Object[] inputs = {input};
@@ -131,26 +156,16 @@ public final class Interpreter implements AutoCloseable {
    *     primitive types including int, float, long, and byte. {@link ByteBuffer} is the preferred
    *     way to pass large input data. When {@link ByteBuffer} is used, its content should remain
    *     unchanged until model inference is done.
-   * @param outputs a map mapping output indices to multidimensional arrays of output data. It only
-   *     needs to keep entries for the outputs to be used.
+   * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
+   *     ByteBuffer}s of primitive types including int, float, long, and byte. It only needs to keep
+   *     entries for the outputs to be used.
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
-    Tensor[] tensors = wrapper.run(inputs);
-    if (outputs == null || tensors == null || outputs.size() > tensors.length) {
-      throw new IllegalArgumentException("Outputs do not match with model outputs.");
-    }
-    final int size = tensors.length;
-    for (Integer idx : outputs.keySet()) {
-      if (idx == null || idx < 0 || idx >= size) {
-        throw new IllegalArgumentException(
-            String.format("Invalid index of output %d (should be in range [0, %d))", idx, size));
-      }
-      tensors[idx].copyTo(outputs.get(idx));
-    }
+    wrapper.run(inputs, outputs);
   }
 
   /**
@@ -160,7 +175,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public void resizeInput(int idx, @NonNull int[] dims) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     wrapper.resizeInput(idx, dims);
   }
@@ -173,7 +188,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public int getInputIndex(String opName) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     return wrapper.getInputIndex(opName);
   }
@@ -186,7 +201,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public int getOutputIndex(String opName) {
     if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
     return wrapper.getOutputIndex(opName);
   }
@@ -198,7 +213,7 @@ public final class Interpreter implements AutoCloseable {
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
     if (wrapper == null) {
-      throw new IllegalStateException("The interpreter has already been closed.");
+      throw new IllegalStateException("Internal error: The interpreter has already been closed.");
     }
     return wrapper.getLastNativeInferenceDurationNanoseconds();
   }
@@ -208,22 +223,34 @@ public final class Interpreter implements AutoCloseable {
     if (wrapper != null) {
       wrapper.setUseNNAPI(useNNAPI);
     } else {
-      throw new IllegalStateException("NativeInterpreterWrapper has already been closed.");
+      throw new IllegalStateException(
+          "Internal error: NativeInterpreterWrapper has already been closed.");
     }
   }
 
-  public void setNumThreads(int num_threads) {
+  public void setNumThreads(int numThreads) {
     if (wrapper == null) {
       throw new IllegalStateException("The interpreter has already been closed.");
     }
-    wrapper.setNumThreads(num_threads);
+    wrapper.setNumThreads(numThreads);
   }
 
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
-    wrapper.close();
-    wrapper = null;
+    if (wrapper != null) {
+      wrapper.close();
+      wrapper = null;
+    }
+  }
+
+  @Override
+  protected void finalize() throws Throwable {
+    try {
+      close();
+    } finally {
+      super.finalize();
+    }
   }
 
   NativeInterpreterWrapper wrapper;

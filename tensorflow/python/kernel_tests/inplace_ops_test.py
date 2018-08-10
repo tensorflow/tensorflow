@@ -166,7 +166,8 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testEmpty(self):
     for dtype in [
-        dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64, dtypes.bool
+        dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64, dtypes.bool,
+        dtypes.uint8
     ]:
       with self.test_session(use_gpu=True):
         test_shapes = [(), (1,), (2, 3), (0, 2), (2, 3, 5), (2, 0, 5)]
@@ -187,11 +188,12 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
           self.assertEqual(val.dtype, dtype.as_numpy_dtype)
           self.assertAllEqual(val, np.zeros(shape, dtype.as_numpy_dtype))
 
-        val = inplace_ops.empty((1, 2), dtypes.string, init=True).eval()
-        self.assertEqual(val.tolist(), [[b"", b""]])
+    with self.test_session(use_gpu=True):
+      val = inplace_ops.empty((1, 2), dtypes.string, init=True).eval()
+      self.assertEqual(val.tolist(), [[b"", b""]])
 
-        val = inplace_ops.empty((1, 2), dtypes.string, init=False).eval()
-        self.assertEqual(val.tolist(), [[b"", b""]])
+      val = inplace_ops.empty((1, 2), dtypes.string, init=False).eval()
+      self.assertEqual(val.tolist(), [[b"", b""]])
 
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ class TemplateTest(test.TestCase):
       # Parameters are tied, so the loss should have gone down after training.
       self.assertLess(final_test_loss.numpy(), initial_test_loss.numpy())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_skip_stack_frames(self):
     first = traceback.format_stack()
     second = traceback.format_stack()
@@ -158,7 +158,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(result))
     self.assertNotEqual(len(first), len(result))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_template_with_name(self):
     tmpl1 = template.make_template("s1", variable_scoped_function)
     tmpl2 = template.make_template("s1", variable_scoped_function)
@@ -204,7 +204,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(v1, v3)
     self.assertEqual("s1/dummy:0", v1.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_template_in_scope(self):
     tmpl1 = template.make_template("s1", variable_scoped_function)
     tmpl2 = template.make_template("s1", variable_scoped_function)
@@ -221,7 +221,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("scope/s1/dummy:0", v1.name)
     self.assertEqual("scope/s1_1/dummy:0", v3.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_template_with_internal_reuse(self):
     tmpl1 = template.make_template("s1", internally_variable_scoped_function)
     tmpl2 = template.make_template("s1", internally_variable_scoped_function)
@@ -237,13 +237,13 @@ class TemplateTest(test.TestCase):
     with self.assertRaises(ValueError):
       tmpl1("not_test")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_template_without_name(self):
     with self.assertRaisesRegexp(
         ValueError, "name cannot be None."):
       template.make_template(None, variable_scoped_function)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_make_template(self):
     # Test both that we can call it with positional and keywords.
     tmpl1 = template.make_template(
@@ -266,7 +266,7 @@ class TemplateTest(test.TestCase):
     with self.assertRaises(ValueError):
       tmpl()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_enforces_no_extra_trainable_variables_eager(self):
     tmpl = template.make_template("s",
                                   function_with_side_create,
@@ -287,7 +287,7 @@ class TemplateTest(test.TestCase):
                                     trainable=False)
       self.assertEqual(tmpl(name="1"), tmpl(name="2"))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_internal_variable_reuse(self):
 
     def nested():
@@ -310,7 +310,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/nested/x:0", v1.name)
     self.assertEqual("s1_1/nested/x:0", v3.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_nested_templates(self):
 
     def nested_template():
@@ -360,7 +360,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("nested", tmpl1._checkpoint_dependencies[0].name)
     self.assertEqual("nested_1", tmpl1._checkpoint_dependencies[1].name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_nested_templates_with_defun(self):
 
     def variable_scoped_function_no_return_value(trainable=True):
@@ -429,7 +429,7 @@ class TemplateTest(test.TestCase):
           "a", partial, create_graph_function_=True)
       self.assertAllEqual(tmpl(ops.convert_to_tensor(1.0)), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_immediate_scope_creation(self):
     # Create templates in scope a then call in scope b. make_template should
     # capture the scope the first time it is called, and make_immediate_template
@@ -454,7 +454,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("ctor_scope/a/dummy:0", inner_imm_var.name)
     self.assertEqual("call_scope/b/dummy:0", inner_defer_var.name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_scope_access(self):
     # Ensure that we can access the scope inside the template, because the name
     # of that scope may be different from the name we pass to make_template, due
@@ -479,7 +479,7 @@ class TemplateTest(test.TestCase):
     # Template is called at the top level, so there is no preceding "foo_2".
     self.assertEqual(tc.variable_scope.name, "blah")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_custom_getter(self):
     # Custom getter that maintains call count and forwards to true getter
     custom_getter_count = [0]
@@ -512,7 +512,7 @@ class TemplateTest(test.TestCase):
     tmpl2()
     self.assertEqual(custom_getter_count[0], 2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_fails_gracefully(self):
     for create_scope_now in [True, False]:
       def module_function_with_one_arg(inputs):
@@ -535,7 +535,7 @@ class TemplateTest(test.TestCase):
       templatized_function(data)
       self.assertTrue(templatized_function._variables_created)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_name_scopes_for_variable_scopes(self):
     # Test that name scopes are not unnecessarily uniquified (but are
     # still uniquified when necessary).
@@ -586,7 +586,7 @@ class TemplateTest(test.TestCase):
                         "Second application of template should also get "
                         "a freshly uniquified name scope.")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_global_variables(self):
     # Make sure global_variables are created.
     with variable_scope.variable_scope("foo"):
@@ -608,7 +608,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(ta.global_variables))
     self.assertEqual(2, len(tb.global_variables))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_trainable_variables(self):
     # Make sure trainable_variables are created.
     with variable_scope.variable_scope("foo2"):
@@ -632,7 +632,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(1, len(ta.variables))
     self.assertEqual(1, len(tb.variables))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_non_trainable_variables(self):
     # Make sure non_trainable_variables are created.
     with variable_scope.variable_scope("foo2"):
@@ -675,7 +675,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(0, len(ta.local_variables))
     self.assertEqual(1, len(tb.local_variables))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_make_template_with_defun(self):
 
     def variable_scoped_function_no_return_value(scope_name):

@@ -295,5 +295,46 @@ REGISTER_OP("TensorListSetItem")
       return Status::OK();
     });
 
+REGISTER_OP("TensorListConcatLists")
+    .Input("input_a: variant")
+    .Input("input_b: variant")
+    .Attr("element_dtype: type")
+    .Output("output: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto input_a = c->input(0);
+      auto input_b = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(input_a, input_b, &input_a));
+      c->set_output(0, input_a);
+
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+
+      auto* handle_data_a = c->input_handle_shapes_and_types(0);
+      auto* handle_data_b = c->input_handle_shapes_and_types(1);
+      if (handle_data_a == nullptr && handle_data_b == nullptr) {
+        c->set_output_handle_shapes_and_types(0, {{c->UnknownShape(), t}});
+        return Status::OK();
+      }
+      shape_inference::ShapeAndType list_shape_type_a =
+          (handle_data_a) ? handle_data_a->at(0) : handle_data_b->at(0);
+      const shape_inference::ShapeAndType& list_shape_type_b =
+          (handle_data_b) ? handle_data_b->at(0) : handle_data_a->at(0);
+      if (list_shape_type_a.dtype != t) {
+        return errors::InvalidArgument("input_a.type != element_dtype: ",
+                                       DataTypeString(list_shape_type_a.dtype),
+                                       " vs. ", DataTypeString(t));
+      }
+      if (list_shape_type_b.dtype != t) {
+        return errors::InvalidArgument("input_b.type != element_dtype: ",
+                                       DataTypeString(list_shape_type_b.dtype),
+                                       " vs. ", DataTypeString(t));
+      }
+      TF_RETURN_IF_ERROR(c->Merge(list_shape_type_a.shape,
+                                  list_shape_type_b.shape,
+                                  &list_shape_type_a.shape));
+      c->set_output_handle_shapes_and_types(0, {list_shape_type_a});
+      return Status::OK();
+    });
+
 }  // namespace
 }  // namespace tensorflow

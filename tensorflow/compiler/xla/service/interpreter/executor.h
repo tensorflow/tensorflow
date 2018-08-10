@@ -44,8 +44,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/timer.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
@@ -213,7 +212,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_

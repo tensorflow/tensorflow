@@ -15,25 +15,24 @@ We divide the task of supporting a file format into two pieces:
 *   Record formats: We use decoder or parsing ops to turn a string record
     into tensors usable by TensorFlow.
 
-For example, to read a
-[CSV file](https://en.wikipedia.org/wiki/Comma-separated_values), we use
-@{tf.data.TextLineDataset$a dataset for reading text files line-by-line}
-and then @{tf.data.Dataset.map$map} an
-@{tf.decode_csv$op} that parses CSV data from each line of text in the dataset.
+For example, to re-implement `tf.contrib.data.make_csv_dataset` function, we
+could use `tf.data.TextLineDataset` to extract the records, and then
+use `tf.data.Dataset.map` and `tf.decode_csv` to parses the CSV records from
+each line of text in the dataset.
 
 [TOC]
 
 ## Writing a `Dataset` for a file format
 
-A @{tf.data.Dataset} represents a sequence of *elements*, which can be the
+A `tf.data.Dataset` represents a sequence of *elements*, which can be the
 individual records in a file. There are several examples of "reader" datasets
 that are already built into TensorFlow:
 
-*   @{tf.data.TFRecordDataset}
+*   `tf.data.TFRecordDataset`
     ([source in `kernels/data/reader_dataset_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/data/reader_dataset_ops.cc))
-*   @{tf.data.FixedLengthRecordDataset}
+*   `tf.data.FixedLengthRecordDataset`
     ([source in `kernels/data/reader_dataset_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/data/reader_dataset_ops.cc))
-*   @{tf.data.TextLineDataset}
+*   `tf.data.TextLineDataset`
     ([source in `kernels/data/reader_dataset_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/data/reader_dataset_ops.cc))
 
 Each of these implementations comprises three related classes:
@@ -45,7 +44,7 @@ Each of these implementations comprises three related classes:
 * A `tensorflow::GraphDatasetBase` subclass (e.g. `TextLineDatasetOp::Dataset`),
   which represents the *immutable* definition of the dataset itself, and tells
   TensorFlow how to construct an iterator object over that dataset, in its
-  `MakeIterator()` method.
+  `MakeIteratorInternal()` method.
 
 * A `tensorflow::DatasetIterator<Dataset>` subclass (e.g.
   `TextLineDatasetOp::Dataset::Iterator`), which represents the *mutable* state
@@ -64,7 +63,7 @@ need to:
    that implement the reading logic.
 2. In C++, register a new reader op and kernel with the name
    `"MyReaderDataset"`.
-3. In Python, define a subclass of @{tf.data.Dataset} called `MyReaderDataset`.
+3. In Python, define a subclass of `tf.data.Dataset` called `MyReaderDataset`.
 
 You can put all the C++ code in a single file, such as
 `my_reader_dataset_op.cc`. It will help if you are
@@ -77,18 +76,24 @@ can be used as a starting point for your implementation:
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
-namespace tensorflow {
+namespace myproject {
 namespace {
 
-class MyReaderDatasetOp : public DatasetOpKernel {
+using ::tensorflow::DT_STRING;
+using ::tensorflow::PartialTensorShape;
+using ::tensorflow::Status;
+
+class MyReaderDatasetOp : public tensorflow::DatasetOpKernel {
  public:
 
-  MyReaderDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
+  MyReaderDatasetOp(tensorflow::OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {
     // Parse and validate any attrs that define the dataset using
     // `ctx->GetAttr()`, and store them in member variables.
   }
 
-  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
+  void MakeDataset(tensorflow::OpKernelContext* ctx,
+                   tensorflow::DatasetBase** output) override {
     // Parse and validate any input tensors 0that define the dataset using
     // `ctx->input()` or the utility function
     // `ParseScalarArgument<T>(ctx, &arg)`.
@@ -99,14 +104,14 @@ class MyReaderDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public tensorflow::GraphDatasetBase {
    public:
-    Dataset(OpKernelContext* ctx) : GraphDatasetBase(ctx) {}
+    Dataset(tensorflow::OpKernelContext* ctx) : GraphDatasetBase(ctx) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::MyReader")}));
+      return std::unique_ptr<tensorflow::IteratorBase>(new Iterator(
+          {this, tensorflow::strings::StrCat(prefix, "::MyReader")}));
     }
 
     // Record structure: Each record is represented by a scalar string tensor.
@@ -114,8 +119,8 @@ class MyReaderDatasetOp : public DatasetOpKernel {
     // Dataset elements can have a fixed number of components of different
     // types and shapes; replace the following two methods to customize this
     // aspect of the dataset.
-    const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* dtypes = new DataTypeVector({DT_STRING});
+    const tensorflow::DataTypeVector& output_dtypes() const override {
+      static auto* const dtypes = new tensorflow::DataTypeVector({DT_STRING});
       return *dtypes;
     }
     const std::vector<PartialTensorShape>& output_shapes() const override {
@@ -124,7 +129,7 @@ class MyReaderDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "MyReaderDatasetOp::Dataset"; }
+    string DebugString() const override { return "MyReaderDatasetOp::Dataset"; }
 
    protected:
     // Optional: Implementation of `GraphDef` serialization for this dataset.
@@ -132,16 +137,16 @@ class MyReaderDatasetOp : public DatasetOpKernel {
     // Implement this method if you want to be able to save and restore
     // instances of this dataset (and any iterators over it).
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+                              tensorflow::Node** output) const override {
       // Construct nodes to represent any of the input tensors from this
       // object's member variables using `b->AddScalar()` and `b->AddVector()`.
-      std::vector<Node*> input_tensors;
+      std::vector<tensorflow::Node*> input_tensors;
       TF_RETURN_IF_ERROR(b->AddDataset(this, input_tensors, output));
       return Status::OK();
     }
 
    private:
-    class Iterator : public DatasetIterator<Dataset> {
+    class Iterator : public tensorflow::DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params), i_(0) {}
@@ -158,15 +163,15 @@ class MyReaderDatasetOp : public DatasetOpKernel {
       //    return `Status::OK()`.
       // 3. If an error occurs, return an error status using one of the helper
       //    functions from "tensorflow/core/lib/core/errors.h".
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
+      Status GetNextInternal(tensorflow::IteratorContext* ctx,
+                             std::vector<tensorflow::Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         // NOTE: `GetNextInternal()` may be called concurrently, so it is
         // recommended that you protect the iterator state with a mutex.
-        mutex_lock l(mu_);
+        tensorflow::mutex_lock l(mu_);
         if (i_ < 10) {
           // Create a scalar string tensor and add it to the output.
-          Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
+          tensorflow::Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
           record_tensor.scalar<string>()() = "MyReader!";
           out_tensors->emplace_back(std::move(record_tensor));
           ++i_;
@@ -183,20 +188,20 @@ class MyReaderDatasetOp : public DatasetOpKernel {
       //
       // Implement these two methods if you want to be able to save and restore
       // instances of this iterator.
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
+      Status SaveInternal(tensorflow::IteratorStateWriter* writer) override {
+        tensorflow::mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
         return Status::OK();
       }
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
+      Status RestoreInternal(tensorflow::IteratorContext* ctx,
+                             tensorflow::IteratorStateReader* reader) override {
+        tensorflow::mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
         return Status::OK();
       }
 
      private:
-      mutex mu_;
+      tensorflow::mutex mu_;
       int64 i_ GUARDED_BY(mu_);
     };
   };
@@ -211,20 +216,20 @@ class MyReaderDatasetOp : public DatasetOpKernel {
 REGISTER_OP("MyReaderDataset")
     .Output("handle: variant")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 // Register the kernel implementation for MyReaderDataset.
-REGISTER_KERNEL_BUILDER(Name("MyReaderDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("MyReaderDataset").Device(tensorflow::DEVICE_CPU),
                         MyReaderDatasetOp);
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace myproject
 ```
 
 The last step is to build the C++ code and add a Python wrapper. The easiest way
 to do this is by @{$adding_an_op#build_the_op_library$compiling a dynamic
 library} (e.g. called `"my_reader_dataset_op.so"`), and adding a Python class
-that subclasses @{tf.data.Dataset} to wrap it. An example Python program is
+that subclasses `tf.data.Dataset` to wrap it. An example Python program is
 given here:
 
 ```python
@@ -287,14 +292,14 @@ track down where the bad data came from.
 
 Examples of Ops useful for decoding records:
 
-*   @{tf.parse_single_example} (and @{tf.parse_example})
-*   @{tf.decode_csv}
-*   @{tf.decode_raw}
+*   `tf.parse_single_example` (and `tf.parse_example`)
+*   `tf.decode_csv`
+*   `tf.decode_raw`
 
 Note that it can be useful to use multiple Ops to decode a particular record
 format.  For example, you may have an image saved as a string in
 [a `tf.train.Example` protocol buffer](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
 Depending on the format of that image, you might take the corresponding output
-from a @{tf.parse_single_example} op and call @{tf.image.decode_jpeg},
-@{tf.image.decode_png}, or @{tf.decode_raw}.  It is common to take the output
-of `tf.decode_raw` and use @{tf.slice} and @{tf.reshape} to extract pieces.
+from a `tf.parse_single_example` op and call `tf.image.decode_jpeg`,
+`tf.image.decode_png`, or `tf.decode_raw`.  It is common to take the output
+of `tf.decode_raw` and use `tf.slice` and `tf.reshape` to extract pieces.

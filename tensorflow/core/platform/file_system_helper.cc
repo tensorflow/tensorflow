@@ -59,7 +59,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
   string eval_pattern = pattern;
   std::vector<string> all_files;
-  string dir = io::Dirname(fixed_prefix).ToString();
+  string dir = std::string(io::Dirname(fixed_prefix));
   // If dir is empty then we need to fix up fixed_prefix and eval_pattern to
   // include . as the top level directory.
   if (dir.empty()) {

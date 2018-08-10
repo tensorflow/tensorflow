@@ -94,6 +94,7 @@ def _Conv3DGrad(op, grad):
           array_ops.shape(op.inputs[0]),
           op.inputs[1],
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format),
@@ -101,6 +102,7 @@ def _Conv3DGrad(op, grad):
           op.inputs[0],
           array_ops.shape(op.inputs[1]),
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -116,12 +118,14 @@ def _Conv3DBackpropInputGrad(op, grad):
           grad,
           array_ops.shape(op.inputs[1]),
           op.inputs[2],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format),
       nn_ops.conv3d(
           grad,
           op.inputs[1],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -136,12 +140,14 @@ def _Conv3DBackpropFilterGrad(op, grad):
           array_ops.shape(op.inputs[0]),
           grad,
           op.inputs[2],
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format), None,
       nn_ops.conv3d(
           op.inputs[0],
           grad,
+          dilations=op.get_attr("dilations"),
           strides=op.get_attr("strides"),
           padding=op.get_attr("padding"),
           data_format=data_format)
@@ -234,13 +240,9 @@ def _SoftmaxGrad(op, grad_softmax):
      gradient w.r.t the input to the softmax
 
   """
-  # TODO(ilyasu): assert that the tensor has two dimensions at
-  # graph-construction time?  Alternatively: do different things
-  # depending on the dimensionality of the input tensors.
   softmax = op.outputs[0]
-  grad_x = ((grad_softmax - array_ops.reshape(
-      math_ops.reduce_sum(grad_softmax * softmax, [1]), [-1, 1])) * softmax)
-  return grad_x
+  sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
+  return (grad_softmax - sum_channels) * softmax
 
 
 @ops.RegisterGradient("LogSoftmax")
@@ -258,7 +260,7 @@ def _LogSoftmaxGrad(op, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, 1, keepdims=True) * softmax
+  return grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
 
 
 @ops.RegisterGradient("BiasAdd")

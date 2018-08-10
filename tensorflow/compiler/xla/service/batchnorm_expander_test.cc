@@ -19,12 +19,13 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -112,6 +113,34 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
   root = computation->root_instruction();
   // Make sure this operation is expanded.
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+}
+
+TEST_F(BatchNormExpanderTest, BatchNormTrainingSharding) {
+  const char* module_str = R"(
+HloModule module
+ENTRY entry {
+  %param.0 = f32[8,4] parameter(0)
+  %param.1 = f32[4] parameter(1)
+  %param.2 = f32[4] parameter(2)
+  ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
+    batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
+    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(module_str));
+  BatchNormExpander rewriter(/*rewrite_training_op=*/true,
+                             /*rewrite_inference_op=*/true,
+                             /*rewrite_grad_op=*/true);
+  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+
+  for (auto* instruction : module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      continue;
+    }
+    auto device = instruction->sharding_unique_device();
+    ASSERT_TRUE(device);
+    EXPECT_EQ(*device, 1);
+  }
 }
 
 }  // namespace

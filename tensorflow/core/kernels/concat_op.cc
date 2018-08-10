@@ -66,16 +66,17 @@ class ConcatBaseOp : public OpKernel {
     // In case of ConcatV2, "axis" could be int32 or int64
     if (AxisArgName == NAME_IS_AXIS) {
       OP_REQUIRES(
-          c, (concat_dim_tensor->dtype() == DT_INT32 ||
-              concat_dim_tensor->dtype() == DT_INT64),
+          c,
+          (concat_dim_tensor->dtype() == DT_INT32 ||
+           concat_dim_tensor->dtype() == DT_INT64),
           errors::InvalidArgument(axis_attribute_name,
                                   " tensor should be int32 or int64, but got ",
-                                  concat_dim_tensor->dtype()));
+                                  DataTypeString(concat_dim_tensor->dtype())));
     } else {
       OP_REQUIRES(c, (concat_dim_tensor->dtype() == DT_INT32),
-                  errors::InvalidArgument(axis_attribute_name,
-                                          " tensor should be int32, but got ",
-                                          concat_dim_tensor->dtype()));
+                  errors::InvalidArgument(
+                      axis_attribute_name, " tensor should be int32, but got ",
+                      DataTypeString(concat_dim_tensor->dtype())));
     }
     if (concat_dim_tensor->dtype() == DT_INT32) {
       concat_dim =
@@ -113,7 +114,7 @@ class ConcatBaseOp : public OpKernel {
     int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      const auto in = values[i];
+      const auto& in = values[i];
       const bool in_is_scalar = IsLegacyScalar(in.shape());
       OP_REQUIRES(
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),

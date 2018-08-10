@@ -161,7 +161,7 @@ Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
   if (n == 0) {
     return Status::OK();
   }
-  if (block_size_ == 0 || max_bytes_ == 0) {
+  if (!IsCacheEnabled()) {
     // The cache is effectively disabled, so we pass the read through to the
     // fetcher without breaking it up into blocks.
     return block_fetcher_(filename, offset, n, buffer, bytes_transferred);
@@ -215,6 +215,23 @@ Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
   }
   *bytes_transferred = total_bytes_transferred;
   return Status::OK();
+}
+
+bool RamFileBlockCache::ValidateAndUpdateFileSignature(const string& filename,
+                                                       int64 file_signature) {
+  mutex_lock lock(mu_);
+  auto it = file_signature_map_.find(filename);
+  if (it != file_signature_map_.end()) {
+    if (it->second == file_signature) {
+      return true;
+    }
+    // Remove the file from cache if the signatures don't match.
+    RemoveFile_Locked(filename);
+    it->second = file_signature;
+    return false;
+  }
+  file_signature_map_[filename] = file_signature;
+  return true;
 }
 
 size_t RamFileBlockCache::CacheSize() const {

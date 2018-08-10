@@ -26,12 +26,13 @@ from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class MetricsTest(test.TestCase):
@@ -117,6 +118,44 @@ class MetricsTest(test.TestCase):
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
 
+  def testCategoricalAccuracy(self):
+    m = metrics.CategoricalAccuracy()
+    m([[1, 0, 0, 0], [0, 1, 0, 0]],
+      [[0.6, 0.1, 0.25, 0.05], [0.4, 0.05, 0.45, 0.0]])  # 1/2 correct
+    m([[0, 0, 0, 1]], [[0.25, 0.95, 0.25, 0.0]])  # 0/1 correct
+    m([[1, 0, 0, 0], [0, 1, 0, 0]],
+      [[0.99, 0.01, 0.0, 0.0], [0.35, 0.35, 0.3, 0.0]])  # 1/2 correct
+    self.assertEqual(2.0/5, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testBinaryAccuracy(self):
+    m = metrics.BinaryAccuracy(threshold=0)
+    # as threshold is 0 hence the predictions are logits
+    m([[0, 0, 0, 0]],
+      [[-4.2, 4.5, 1.2, -1.1]])  # 2/4 correct
+    m([[0, 1]], [[-5.3, 11.65]])  # 2/2 correct
+    m([[0, 1], [1, 1]],
+      [[-5.3, 11.65], [-10.32, 56.38]])  # 3/4 correct
+    self.assertEqual(7.0/10, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testSparseAccuracy(self):
+    m = metrics.SparseAccuracy()
+    m([0, 2],
+      [[0.6, 0.1, 0.25, 0.05], [0.4, 0.05, 0.45, 0.0]])  # 2/2 correct
+    m([1], [[0.25, 0.95, 0.25, 0.0]])  # 1/1 correct
+    m([0, 3], [[0.99, 0.01, 0.0, 0.0], [0.35, 0.35, 0.3, 0.0]])  # 1/2 correct
+    self.assertEqual(4.0/5, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testAccuracyDifferentShapes(self):
+    m = metrics.Accuracy()
+    with self.assertRaises(errors.InvalidArgumentError):
+      m([[0], [0]], [0, 1])
+
   def testWeightedAccuracy(self):
     m = metrics.Accuracy()
     # 1 correct, total weight of 2
@@ -146,8 +185,6 @@ class MetricsTest(test.TestCase):
     self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
     m1 = metrics.Mean("has space")
     m1(0)
     self.assertEqual(m1.name, "has space")
@@ -169,7 +206,7 @@ class MetricsTest(test.TestCase):
       sess.run(accumulate, feed_dict={p: 7})
       self.assertAllEqual(m.result().eval(), 7)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGraphAndEagerTensor(self):
     m = metrics.Mean()
     inputs = ops.convert_to_tensor([1.0, 2.0])
@@ -186,8 +223,8 @@ class MetricsTest(test.TestCase):
     self.assertEqual(self.evaluate(value), 2.5)
 
   def testTwoMeansGraph(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
+    # Verify two metrics with the same name in the same graph raises a
+    # ValueError.
     with context.graph_mode():
       m1 = metrics.Mean()
       m1(0)
@@ -217,7 +254,7 @@ class MetricsTest(test.TestCase):
       self.assertAllEqual(m2.result().eval(), 2.0)
       self.assertAllEqual(m1.result().eval(), 1.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

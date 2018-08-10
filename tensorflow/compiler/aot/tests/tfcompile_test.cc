@@ -21,18 +21,26 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
+#include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace tfcompile {
 namespace {
+
+using ::testing::HasSubstr;
+using ::testing::IsSupersetOf;
 
 TEST(TFCompileTest, Add) {
   AddComp add;
@@ -141,6 +149,31 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.result0(), 153);
   EXPECT_EQ(add_const.result0_data()[0], 153);
   EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
+}
+
+TEST(TFCompileTest, Cond) {
+  CondComp cond;
+  EXPECT_EQ(cond.arg0_data(), cond.args()[0]);
+  EXPECT_EQ(cond.arg1_data(), cond.args()[1]);
+  EXPECT_EQ(cond.arg2_data(), cond.args()[2]);
+  cond.arg1() = 10;
+  cond.arg2() = 20;
+  {
+    cond.arg0() = true;
+    const int32 expected_result = cond.arg1();
+    EXPECT_TRUE(cond.Run());
+    EXPECT_EQ(cond.result0(), expected_result);
+    EXPECT_EQ(cond.result0_data()[0], expected_result);
+    EXPECT_EQ(cond.result0_data(), cond.results()[0]);
+  }
+  {
+    cond.arg0() = false;
+    const int32 expected_result = cond.arg2();
+    EXPECT_TRUE(cond.Run());
+    EXPECT_EQ(cond.result0(), expected_result);
+    EXPECT_EQ(cond.result0_data()[0], expected_result);
+    EXPECT_EQ(cond.result0_data(), cond.results()[0]);
+  }
 }
 
 TEST(TFCompileTest, Gather) {
@@ -482,6 +515,56 @@ TEST(TFCompileTest, ProgramShape) {
   const xla::Shape& muladd_result1 =
       ShapeUtil::GetTupleElementShape(muladd_result, 1);
   EXPECT_TRUE(ShapeUtil::Compatible(muladd_result1, f32_2x2));
+}
+
+TEST(TFCompileTest, HloProfiling) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  MatMulAndAddCompWithProfiling fn;
+  ASSERT_TRUE(fn.hlo_profiling_enabled());
+
+  fn.set_thread_pool(&device);
+
+  // x = [[1, 2], [3, 4]]
+  fn.arg0(0, 0) = 1;
+  fn.arg0(0, 1) = 2;
+  fn.arg0(1, 0) = 3;
+  fn.arg0(1, 1) = 4;
+
+  // y = [[10, 20], [30, 40]]
+  fn.arg1(0, 0) = 10;
+  fn.arg1(0, 1) = 20;
+  fn.arg1(1, 0) = 30;
+  fn.arg1(1, 1) = 40;
+
+  EXPECT_TRUE(fn.Run());
+
+  string hlo_profile_as_string =
+      xla::PrintHloProfile(fn.hlo_profile_printer_data(), fn.profile_counters(),
+                           /*clock_rate_ghz=*/1.0);
+  VLOG(1) << "HLO profile string:\n" << hlo_profile_as_string;
+
+  std::vector<string> hlo_profile_lines =
+      tensorflow::str_util::Split(hlo_profile_as_string, '\n');
+
+  auto header = HasSubstr("Execution profile for");
+  auto total_cycles_profile_line = HasSubstr("[total]");
+  auto dot_profile_line = HasSubstr(
+      "%dot.0.4 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
+      "%arg1.0.1)");
+  auto add_profile_line = HasSubstr(
+      "%add.0.6 = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
+      "%arg1.0.1)");
+  auto tuple_profile_line = HasSubstr(
+      "%tuple.0.8 = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(f32[2,2]{1,0} "
+      "%dot.0.4, f32[2,2]{1,0} %add.0.6)");
+  auto arg0_profile_line = HasSubstr("%arg0.0.0 = f32[2,2]{1,0} parameter(0)");
+  auto arg1_profile_line = HasSubstr("%arg1.0.1 = f32[2,2]{1,0} parameter(1)");
+
+  EXPECT_THAT(hlo_profile_lines,
+              IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
+                            add_profile_line, tuple_profile_line}));
 }
 
 }  // namespace

@@ -34,13 +34,14 @@ namespace tensorflow {
 class CropAndResizeOpTest : public OpsTestBase {
  protected:
   template <typename T>
-  void MakeOp(float extrapolation_value) {
+  void MakeOp(float extrapolation_value, const string& method) {
     TF_EXPECT_OK(NodeDefBuilder("crop_and_resize_op", "CropAndResize")
                      .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_INT32))
                      .Attr("extrapolation_value", extrapolation_value)
+                     .Attr("method", method)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -48,7 +49,7 @@ class CropAndResizeOpTest : public OpsTestBase {
 
 #define REGISTER_TEST(T)                                               \
   TEST_F(CropAndResizeOpTest, TestCropAndResize##T) {                  \
-    MakeOp<T>(0);                                                      \
+    MakeOp<T>(0, "bilinear");                                          \
     AddInputFromArray<T>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});     \
     AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});       \
     AddInputFromArray<int32>(TensorShape({1}), {0});                   \
@@ -57,6 +58,19 @@ class CropAndResizeOpTest : public OpsTestBase {
                                                                        \
     Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1})); \
     test::FillValues<float>(&expected, {2.5});                         \
+    test::ExpectTensorEqual<float>(expected, *GetOutput(0));           \
+  }                                                                    \
+                                                                       \
+  TEST_F(CropAndResizeOpTest, TestCropAndResize##T##nearest) {         \
+    MakeOp<T>(0, "nearest");                                           \
+    AddInputFromArray<T>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});     \
+    AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});       \
+    AddInputFromArray<int32>(TensorShape({1}), {0});                   \
+    AddInputFromArray<int32>(TensorShape({2}), {1, 1});                \
+    TF_ASSERT_OK(RunOpKernel());                                       \
+                                                                       \
+    Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1})); \
+    test::FillValues<float>(&expected, {4.0});                         \
     test::ExpectTensorEqual<float>(expected, *GetOutput(0));           \
   }
 
@@ -72,7 +86,7 @@ REGISTER_TEST(int64)
 #undef REGISTER_TEST
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8) {
-  MakeOp<uint8>(0);
+  MakeOp<uint8>(0, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
@@ -87,8 +101,24 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8NearestNeibor) {
+  MakeOp<uint8>(0, "nearest");
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<uint8>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<int32>(TensorShape({1}), {0});
+  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillValues<float>(&expected, {4.0});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Flipped) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
@@ -103,8 +133,24 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Flipped) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1FlippedNearestNeighbor) {
+  MakeOp<float>(0, "nearest");
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({1, 4}), {1, 1, 0, 0});
+  AddInputFromArray<int32>(TensorShape({1}), {0});
+  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillValues<float>(&expected, {4.0});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
@@ -124,8 +170,29 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NearestNeighbor) {
+  MakeOp<float>(0, "nearest");
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<int32>(TensorShape({1}), {0});
+  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {1,  2,  2,
+     3,  4,  4,
+     3,  4,  4});
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Flipped) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
@@ -145,8 +212,54 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Flipped) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3FlippedNearestNeighbor) {
+  MakeOp<float>(0, "nearest");
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({1, 4}), {1, 1, 0, 0});
+  AddInputFromArray<int32>(TensorShape({1}), {0});
+  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {4,  4,  3,
+     4,  4,  3,
+     2,  2,  1});
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
+  // Input:
+  //  1, 2, 3
+  //  4, 5, 6
+  //  7, 8, 9
+  AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<float>(TensorShape({2, 4}), {0, 0, 1, 1, 0, 0, 0.5, 0.5});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 2, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {1,  3,
+     7,  9,
+     1,  2,
+     4,  5});
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2NearestNeighbor) {
+  MakeOp<float>(0, "nearest");
   // Input:
   //  1, 2, 3
   //  4, 5, 6
@@ -171,7 +284,32 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2Flipped) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
+  // Input:
+  //  1, 2, 3
+  //  4, 5, 6
+  //  7, 8, 9
+  AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<float>(TensorShape({2, 4}), {1, 1, 0, 0, 0.5, 0.5, 0, 0});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 2, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    {9,  7,
+     3,  1,
+     5,  4,
+     2,  1});
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2FlippedNearestNeighbor) {
+  MakeOp<float>(0, "nearest");
   // Input:
   //  1, 2, 3
   //  4, 5, 6
@@ -197,7 +335,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2Flipped) {
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
   const float v = -1;
-  MakeOp<float>(v);
+  MakeOp<float>(v, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
@@ -218,7 +356,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
@@ -236,7 +374,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {0});
@@ -248,7 +386,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
@@ -261,7 +399,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {1});
@@ -274,7 +412,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
 }
 
 TEST_F(CropAndResizeOpTest, TestWithSharding) {
-  MakeOp<float>(0);
+  MakeOp<float>(0, "bilinear");
   // Generate a relatively large input (999x999) so that sharding happens.
   const int kLength = 999;  // Length of the input. Must use an odd number.
   const int kHalf = (kLength + 1) / 2;  // Half size for the cropped result.

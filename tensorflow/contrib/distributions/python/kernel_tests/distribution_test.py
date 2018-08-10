@@ -190,11 +190,30 @@ class DistributionTest(test.TestCase):
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
 
+  def testNameScopeWorksCorrectly(self):
+    x = tfd.Normal(loc=0., scale=1., name="x")
+    x_duplicate = tfd.Normal(loc=0., scale=1., name="x")
+    with ops.name_scope("y") as name:
+      y = tfd.Bernoulli(logits=0., name=name)
+    x_sample = x.sample(name="custom_sample")
+    x_sample_duplicate = x.sample(name="custom_sample")
+    x_log_prob = x.log_prob(0., name="custom_log_prob")
+    x_duplicate_sample = x_duplicate.sample(name="custom_sample")
+
+    self.assertEqual(x.name, "x/")
+    self.assertEqual(x_duplicate.name, "x_1/")
+    self.assertEqual(y.name, "y/")
+    self.assertTrue(x_sample.name.startswith("x/custom_sample"))
+    self.assertTrue(x_sample_duplicate.name.startswith("x/custom_sample_1"))
+    self.assertTrue(x_log_prob.name.startswith("x/custom_log_prob"))
+    self.assertTrue(x_duplicate_sample.name.startswith(
+        "x_1/custom_sample"))
+
   def testStrWorksCorrectlyScalar(self):
     normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
     self.assertEqual(
         ("tf.distributions.Normal("
-         "\"Normal\", "
+         "\"Normal/\", "
          "batch_shape=(), "
          "event_shape=(), "
          "dtype=float16)"),  # Got the dtype right.
@@ -203,7 +222,7 @@ class DistributionTest(test.TestCase):
     chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
     self.assertEqual(
         ("tf.distributions.Chi2("
-         "\"silly\", "  # What a silly name that is!
+         "\"silly/\", "  # What a silly name that is!
          "batch_shape=(2,), "
          "event_shape=(), "
          "dtype=float32)"),
@@ -211,7 +230,7 @@ class DistributionTest(test.TestCase):
 
     exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
     self.assertEqual(
-        ("tf.distributions.Exponential(\"Exponential\", "
+        ("tf.distributions.Exponential(\"Exponential/\", "
          # No batch shape.
          "event_shape=(), "
          "dtype=float32)"),
@@ -222,7 +241,7 @@ class DistributionTest(test.TestCase):
         loc=np.zeros([2, 2]), name="MVN")
     self.assertEqual(
         ("tf.distributions.MultivariateNormalDiag("
-         "\"MVN\", "
+         "\"MVN/\", "
          "batch_shape=(2,), "
          "event_shape=(2,), "
          "dtype=float64)"),
@@ -233,7 +252,7 @@ class DistributionTest(test.TestCase):
         name="MVN2")
     self.assertEqual(
         ("tf.distributions.MultivariateNormalDiag("
-         "\"MVN2\", "
+         "\"MVN2/\", "
          "batch_shape=(?,), "  # Partially known.
          "event_shape=(3,), "
          "dtype=float32)"),
@@ -243,7 +262,7 @@ class DistributionTest(test.TestCase):
     normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
     self.assertEqual(
         ("<tf.distributions.Normal"
-         " 'Normal'"
+         " 'Normal/'"
          " batch_shape=()"
          " event_shape=()"
          " dtype=float16>"),  # Got the dtype right.
@@ -252,7 +271,7 @@ class DistributionTest(test.TestCase):
     chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
     self.assertEqual(
         ("<tf.distributions.Chi2"
-         " 'silly'"  # What a silly name that is!
+         " 'silly/'"  # What a silly name that is!
          " batch_shape=(2,)"
          " event_shape=()"
          " dtype=float32>"),
@@ -261,7 +280,7 @@ class DistributionTest(test.TestCase):
     exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
     self.assertEqual(
         ("<tf.distributions.Exponential"
-         " 'Exponential'"
+         " 'Exponential/'"
          " batch_shape=<unknown>"
          " event_shape=()"
          " dtype=float32>"),
@@ -272,7 +291,7 @@ class DistributionTest(test.TestCase):
         loc=np.zeros([2, 2]), name="MVN")
     self.assertEqual(
         ("<tf.distributions.MultivariateNormalDiag"
-         " 'MVN'"
+         " 'MVN/'"
          " batch_shape=(2,)"
          " event_shape=(2,)"
          " dtype=float64>"),
@@ -283,7 +302,7 @@ class DistributionTest(test.TestCase):
         name="MVN2")
     self.assertEqual(
         ("<tf.distributions.MultivariateNormalDiag"
-         " 'MVN2'"
+         " 'MVN2/'"
          " batch_shape=(?,)"  # Partially known.
          " event_shape=(3,)"
          " dtype=float32>"),

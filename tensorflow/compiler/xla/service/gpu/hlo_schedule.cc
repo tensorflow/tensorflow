@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -99,7 +100,7 @@ GpuHloOrdering::GpuHloOrdering(
       if (last_instruction_per_stream[stream_no] != nullptr) {
         immediate_preds.push_back(last_instruction_per_stream[stream_no]);
       }
-      predecessor_map->SetReachabilityToUnion(immediate_preds, hlo);
+      predecessor_map->FastSetReachabilityToUnion(immediate_preds, hlo);
       last_instruction_per_stream[stream_no] = hlo;
     } else {
       // Only parameters and constants don't have an assigned stream, since they
@@ -198,8 +199,8 @@ StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
     // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
         schedule->thunk_launch_order_,
-        CreateMemoryMinimizingSequence(
-            *entry_computation, [pointer_size](const LogicalBuffer& buffer) {
+        ScheduleOneComputation(
+            *entry_computation, [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             }));
   } else {
