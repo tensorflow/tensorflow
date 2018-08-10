@@ -91,9 +91,10 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "FlatMapDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 

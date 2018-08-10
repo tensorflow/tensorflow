@@ -70,14 +70,6 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       return "SetStatsAggregatorDatasetOp::Dataset";
     }
 
-   protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      return errors::Unimplemented(
-          "Cannot currently serialize the `stats_aggregator` for a "
-          "SetStatsAggregatorDataset.");
-    }
-
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:

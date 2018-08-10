@@ -113,7 +113,8 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       // Input: input_dataset
       Node* input_graph_node = nullptr;
@@ -137,7 +138,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           b->AddScalar(num_parallel_calls_, &num_parallel_calls));
 
       // Attr: f
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
 

@@ -77,7 +77,8 @@ class ZipDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> input_graph_nodes;
       input_graph_nodes.reserve(inputs_.size());
