@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_
 
-#include <memory>
-
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -96,7 +94,7 @@ class XlaTensor {
 
   // Assert that the tensor's content is defined on 'stream' by the time 'event'
   // triggers.
-  void SetDefinedOn(se::Stream* stream, std::shared_ptr<se::Event> event);
+  void SetDefinedOn(se::Stream* stream, se::Event event);
 
   // Assert that the tensor's content is defined on 'stream'. This version does
   // not provide an event, and must be called *after* SetDefinedOn(Stream,
@@ -118,7 +116,7 @@ class XlaTensor {
   // An optional event that is triggered when the tensor's content has been
   // defined. If this event is nullptr, it is assumed that the tensor's content
   // is always defined.
-  std::shared_ptr<se::Event> definition_event_;
+  gtl::optional<se::Event> definition_event_;
   // A list of all streams for which the tensor's content is defined for any
   // newly enqueued command.
   gtl::InlinedVector<se::Stream*, 2> streams_defined_on_ GUARDED_BY(mu_);

@@ -93,9 +93,9 @@ class XlaComputationLaunchContext {
                       const std::map<int, OptionalTensor>& variables);
 
   // Given the XLA output in `output`, populate all outputs of `ctx`.
-  Status PopulateOutputs(OpKernelContext* ctx,
-                         const XlaCompiler::CompilationResult* kernel,
-                         xla::ScopedShapedBuffer output);
+  void PopulateOutputs(OpKernelContext* ctx,
+                       const XlaCompiler::CompilationResult* kernel,
+                       xla::ScopedShapedBuffer output);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.

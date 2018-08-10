@@ -77,8 +77,7 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
-  TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
-      ctx, result, run_result.ConsumeValueOrDie()));
+  launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());
   return Status::OK();
 }
 

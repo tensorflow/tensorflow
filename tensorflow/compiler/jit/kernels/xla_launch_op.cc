@@ -209,8 +209,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
-  OP_REQUIRES_OK(ctx, launch_context.PopulateOutputs(
-                          ctx, kernel, run_result.ConsumeValueOrDie()));
+  launch_context.PopulateOutputs(ctx, kernel, run_result.ConsumeValueOrDie());
   VLOG(1) << "Done";
 }
 
