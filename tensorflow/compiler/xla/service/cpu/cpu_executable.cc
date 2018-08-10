@@ -249,11 +249,24 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
+  if (GetRootPointsToSet().IsAmbiguous()) {
+    return Unimplemented("Points-to set of root instruction is ambiguous");
+  }
+
+  se::Stream* stream = run_options->stream();
+  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+
+  std::vector<OwningDeviceMemory> owning_buffers;
+  std::vector<se::DeviceMemoryBase> unowning_buffers;
   TF_ASSIGN_OR_RETURN(
-      auto result,
-      ExecuteAsyncOnStreamImpl(run_options, arguments, hlo_execution_profile));
-  TF_RETURN_IF_ERROR(run_options->stream()->BlockHostUntilDone());
-  return std::move(result);
+      std::tie(unowning_buffers, owning_buffers),
+      CreateTempArray(memory_allocator, stream->parent()->device_ordinal(),
+                      arguments));
+
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
+      &run_options->run_options(), unowning_buffers, hlo_execution_profile));
+
+  return CreateResultShapedBuffer(run_options, &owning_buffers);
 }
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
@@ -263,16 +276,6 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
     return Unimplemented(
         "Asynchronous execution on stream with hlo profiling is not yet "
         "supported on CPU.");
-  }
-  return ExecuteAsyncOnStreamImpl(run_options, arguments, nullptr);
-}
-
-StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
-    const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  if (GetRootPointsToSet().IsAmbiguous()) {
-    return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
   auto* host_stream = dynamic_cast<se::host::HostStream*>(
@@ -307,20 +310,19 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     ServiceExecutableRunOptions run_options;
     std::vector<se::DeviceMemoryBase> unowning_buffers;
     std::shared_ptr<std::vector<OwningDeviceMemory>> buffers;
-    HloExecutionProfile* hlo_execution_profile;
 
     void operator()() {
       // Failing a CHECK here is not great, but I don't see an obvious way to
       // return a failed Status asynchronously.
       TF_CHECK_OK(executable->ExecuteComputeFunction(
-          &run_options.run_options(), unowning_buffers, hlo_execution_profile));
+          &run_options.run_options(), unowning_buffers,
+          /*hlo_execution_profile=*/nullptr));
     }
   };
   host_stream->EnqueueTask(
       AsyncRunTask{this, *run_options, std::move(unowning_buffers),
                    std::make_shared<std::vector<OwningDeviceMemory>>(
-                       std::move(owning_buffers)),
-                   hlo_execution_profile});
+                       std::move(owning_buffers))});
 
   return std::move(result);
 }
