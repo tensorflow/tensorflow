@@ -27,6 +27,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -298,6 +299,43 @@ class RNNTest(test.TestCase):
       save = saver.Saver()
       save.restore(sess, save_path)
       self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
+
+  def testRNNCellSerialization(self):
+    for cell in  [
+        rnn_cell_impl.LSTMCell(32, use_peepholes=True, cell_clip=True),
+        rnn_cell_impl.BasicLSTMCell(32, dtype=dtypes.float32),
+        # TODO(scottzhu): GRU and BasicRNN cell are not compatible with Keras.
+        # rnn_cell_impl.BasicRNNCell(
+        #     32, activation="relu", dtype=dtypes.float32),
+        # rnn_cell_impl.GRUCell(
+        #     32, kernel_initializer="ones", dtype=dtypes.float32)
+    ]:
+      with self.test_session():
+        x = keras.Input((None, 5))
+        layer = keras.layers.RNN(cell)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.compile(optimizer="rmsprop", loss="mse")
+
+        # Test basic case serialization.
+        x_np = np.random.random((6, 5, 5))
+        y_np = model.predict(x_np)
+        weights = model.get_weights()
+        config = layer.get_config()
+        # The custom_objects is important here since rnn_cell_impl is
+        # not visible as a Keras layer, and also has a name conflict with
+        # keras.LSTMCell and GRUCell.
+        layer = keras.layers.RNN.from_config(
+            config, custom_objects={
+                # "BasicRNNCell": rnn_cell_impl.BasicRNNCell,
+                # "GRUCell": rnn_cell_impl.GRUCell,
+                "LSTMCell": rnn_cell_impl.LSTMCell,
+                "BasicLSTMCell": rnn_cell_impl.BasicLSTMCell})
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.set_weights(weights)
+        y_np_2 = model.predict(x_np)
+        self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
 ######### Benchmarking RNN code
 
