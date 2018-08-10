@@ -88,7 +88,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       GraphDefBuilder b;
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
-      TF_RETURN_IF_ERROR(db.AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(db.AddInputDataset(ctx, input_, &input_node));
       string output_node = input_node->name();
       GraphDef graph_def;
       TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
@@ -122,7 +122,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* optimizations_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(optimizations_, &optimizations_node));
       TF_RETURN_IF_ERROR(
@@ -157,13 +157,13 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 

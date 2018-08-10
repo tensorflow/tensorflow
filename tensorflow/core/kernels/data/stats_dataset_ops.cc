@@ -79,7 +79,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* tag_node;
       TF_RETURN_IF_ERROR(b->AddScalar(tag_, &tag_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_node, tag_node}, output));
@@ -114,14 +114,14 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
@@ -178,7 +178,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* tag_node;
       TF_RETURN_IF_ERROR(b->AddScalar(tag_, &tag_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_node, tag_node}, output));
@@ -215,14 +215,14 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
@@ -283,7 +283,7 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* tag_node;
       TF_RETURN_IF_ERROR(b->AddScalar(tag_, &tag_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_node, tag_node}, output));
@@ -406,14 +406,14 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 

@@ -368,19 +368,17 @@ class IteratorBase {
 
  protected:
   // This is needed so that sub-classes of IteratorBase can call
-  // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDatasetOp::Dataset`.
-  Status SaveParent(IteratorStateWriter* writer,
-                    const std::unique_ptr<IteratorBase>& parent) {
-    return parent->SaveInternal(writer);
+  // `SaveInternal` on their input iterators.
+  Status SaveInput(IteratorStateWriter* writer,
+                   const std::unique_ptr<IteratorBase>& input) {
+    return input->SaveInternal(writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
-  // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDatasetOp::Dataset`.
-  Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
-                       const std::unique_ptr<IteratorBase>& parent) {
-    return parent->RestoreInternal(ctx, reader);
+  // `RestoreInternal` on their input iterators.
+  Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return input->RestoreInternal(ctx, reader);
   }
 
   // Saves the state of this iterator recursively.
@@ -441,8 +439,8 @@ class DatasetBase : public core::RefCounted {
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
-    Status AddParentDataset(OpKernelContext* ctx, const DatasetBase* dataset,
-                            Node** output) {
+    Status AddInputDataset(OpKernelContext* ctx, const DatasetBase* dataset,
+                           Node** output) {
       return dataset->AsGraphDefInternal(ctx, this, output);
     }
   };
@@ -498,7 +496,7 @@ class GraphDatasetBase : public DatasetBase {
   const string op_name_;
 };
 
-// Represents an iterator that is associated with a particular parent dataset.
+// Represents an iterator that is associated with a particular dataset.
 class DatasetBaseIterator : public IteratorBase {
  public:
   struct BaseParams {
@@ -560,13 +558,13 @@ class DatasetBaseIterator : public IteratorBase {
   BaseParams params_;
 };
 
-// Represents an iterator that is associated with a particular parent dataset
+// Represents an iterator that is associated with a particular dataset
 // with a particular type.
 template <class DatasetType>
 class DatasetIterator : public DatasetBaseIterator {
  public:
   struct Params {
-    // Borrowed pointer to the parent dataset.
+    // Borrowed pointer to the dataset.
     const DatasetType* dataset;
 
     // Identifies the sequence of iterators leading up to this iterator.

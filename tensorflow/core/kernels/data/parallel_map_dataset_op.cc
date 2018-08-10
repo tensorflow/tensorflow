@@ -117,7 +117,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
                               Node** output) const override {
       // Input: input_dataset
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
       DataTypeVector other_arguments_types;
