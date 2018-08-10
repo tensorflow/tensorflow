@@ -257,6 +257,32 @@ class CondV2Test(test.TestCase):
     run_test(True)
     run_test(False)
 
+  def testNestedCondBothBranches(self):
+
+    def run_test(pred_value):
+
+      def build_graph():
+        pred = array_ops.placeholder(dtypes.bool, name="pred")
+        x = constant_op.constant(1.0, name="x")
+        y = constant_op.constant(2.0, name="y")
+
+        def true_fn():
+          return _cond(pred, lambda: x + y, lambda: x * x, name=None)
+
+        def false_fn():
+          return _cond(pred, lambda: x - y, lambda: y * y, name=None)
+
+        return x, y, pred, true_fn, false_fn
+
+      with ops.Graph().as_default():
+        x, y, pred, true_fn, false_fn = build_graph()
+        self._testCond(true_fn, false_fn, [x, y], {pred: pred_value})
+        self._testCond(true_fn, false_fn, [x], {pred: pred_value})
+        self._testCond(true_fn, false_fn, [y], {pred: pred_value})
+
+    run_test(True)
+    run_test(False)
+
   def testDoubleNestedCond(self):
 
     def run_test(pred1_value, pred2_value):
