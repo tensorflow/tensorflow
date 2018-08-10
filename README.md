@@ -22,6 +22,8 @@ organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
+TensorFlow provides stable Python API and C APIs as well as without API backwards compatibility guarantee like C++, Go, Java, JavaScript and Swift.
+
 Keep up to date with release announcements and security updates by
 subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
@@ -102,13 +104,15 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 
 ## For more information
-
+* [Tensorflow Blog](https://medium.com/tensorflow)
+* [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
+* [TensorFlow Model Zoo](https://github.com/tensorflow/models)
+* [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
+* [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
+* [Tensorflow Twitter](https://twitter.com/tensorflow)
 * [TensorFlow Website](https://www.tensorflow.org)
 * [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 * [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-* [TensorFlow Model Zoo](https://github.com/tensorflow/models)
-* [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
-* [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
 
 Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community) for a few ways to participate.
 
