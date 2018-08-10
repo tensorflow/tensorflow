@@ -120,19 +120,30 @@ class EagerFunc(object):
     return outputs
 
 
-class PythonFunc(object):
-  """A wrapper for a function owned by PyFunc."""
+class FuncRegistry(object):
+  """A helper class to keep track of registered py functions.
 
-  def __init__(self, func, Tout):
-    """Constructs a PythonFunc.
+  FuncRegistry keeps a map from unique tokens (string) to python
+  functions, which takes numpy arrays and outputs numpy arrays.
+  """
 
-    Args:
-      func: The function to wrap.
-      Tout: A list of datatypes for the output; an empty list if the output is
-            None.
-    """
-    self._func = func
-    self._out_dtypes = Tout
+  def __init__(self):
+    self._lock = threading.Lock()
+    self._unique_id = 0  # GUARDED_BY(self._lock)
+    # Only store weakrefs to the functions. The strong reference is stored in
+    # the graph.
+    self._funcs = weakref.WeakValueDictionary()
+
+  def insert(self, func):
+    """Registers `func` and returns a unique token for this entry."""
+    token = self._next_unique_token()
+    # Store a weakref to the function
+    self._funcs[token] = func
+    return token
+
+  def remove(self, token):
+    """Removes the registered function corresponding to `token`."""
+    self._funcs.pop(token, None)
 
   @staticmethod
   def _convert(value, dtype=None):
@@ -160,52 +171,8 @@ class PythonFunc(object):
       return np.asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U":
       return result.astype(np.bytes_)
-    return result
-
-  def __call__(self, args):
-    ret = self._func(*args)
-    # Strings seem to lead to a memory leak here if they're not wrapped in a
-    # list.
-    if isinstance(ret, six.binary_type):
-      ret = [ret]
-    # Ensures that we return either a single numpy array or a list of numpy
-    # arrays.
-    if isinstance(ret, (tuple, list)):
-      return [
-          self._convert(x, dtype=dtype.as_numpy_dtype)
-          for (x, dtype) in zip(ret, self._out_dtypes)
-      ]
-
-    dtype = None
-    if isinstance(self._out_dtypes, (tuple, list)) and self._out_dtypes:
-      dtype = self._out_dtypes[0].as_numpy_dtype
-    return self._convert(ret, dtype)
-
-
-class FuncRegistry(object):
-  """A helper class to keep track of registered py functions.
-
-  FuncRegistry keeps a map from unique tokens (string) to python
-  functions, which takes numpy arrays and outputs numpy arrays.
-  """
-
-  def __init__(self):
-    self._lock = threading.Lock()
-    self._unique_id = 0  # GUARDED_BY(self._lock)
-    # Only store weakrefs to the functions. The strong reference is stored in
-    # the graph.
-    self._funcs = weakref.WeakValueDictionary()
-
-  def insert(self, func):
-    """Registers `func` and returns a unique token for this entry."""
-    token = self._next_unique_token()
-    # Store a weakref to the function
-    self._funcs[token] = func
-    return token
-
-  def remove(self, token):
-    """Removes the registered function corresponding to `token`."""
-    self._funcs.pop(token, None)
+    else:
+      return result
 
   def __call__(self, token, device, args):
     """Calls the registered function for `token` with args.
@@ -235,10 +202,18 @@ class FuncRegistry(object):
       #
       # TODO(akshayka): Key the tape cache in a thread-safe way.
       return func(device, token, args)
-    elif isinstance(func, PythonFunc):
-      return func(args)
     else:
-      raise ValueError("callback %s type is invalid" % token)
+      ret = func(*args)
+      # Strings seem to lead to a memory leak here if they're not wrapped in a
+      # list.
+      if isinstance(ret, six.binary_type):
+        ret = [ret]
+      # Ensures that we return either a single numpy array or a list of numpy
+      # arrays.
+      if isinstance(ret, (tuple, list)):
+        return [self._convert(x) for x in ret]
+      else:
+        return self._convert(ret)
 
   def size(self):
     """Returns how many functions are currently registered."""
@@ -274,8 +249,6 @@ def _internal_py_func(func,
 
   if eager:
     func = EagerFunc(func, Tout, is_grad_func)
-  else:
-    func = PythonFunc(func, Tout)
 
   token = _py_funcs.insert(func)
   # We tie the registered function's lifetime with the current default graph,
