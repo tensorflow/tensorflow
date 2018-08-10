@@ -1470,13 +1470,15 @@ bool ROCMBlas::DoBlasGemm(
                       "precondition violation";
     }
   }
-  const rocblas_half alpha_half = _cvtss_sh(alpha, 0);
-  const rocblas_half beta_half = _cvtss_sh(beta, 0);
+  const Eigen::half alpha_half(alpha);
+  const Eigen::half beta_half(beta);
   return DoBlasInternal(
       wrap::rocblas_hgemm, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-      &alpha_half, static_cast<const rocblas_half*>(&ROCMMemory(a)->x), lda,
-      static_cast<const rocblas_half*>(&ROCMMemory(b)->x), ldb, &beta_half,
+      static_cast<const rocblas_half*>(&alpha_half.x),
+      static_cast<const rocblas_half*>(&ROCMMemory(a)->x), lda,
+      static_cast<const rocblas_half*>(&ROCMMemory(b)->x), ldb,
+      static_cast<const rocblas_half*>(&beta_half.x),
       static_cast<rocblas_half*>(&ROCMMemoryMutable(c)->x), ldc);
 }
 
