@@ -29,7 +29,7 @@ def _def_file_filter_configure_impl(repository_ctx):
     repository_ctx.file("def_file_filter.py", "")
     return
   vc_path = find_vc_path(repository_ctx)
-  if vc_path == "visual-studio-not-found":
+  if vc_path == None:
     auto_configure_fail("Visual C++ build tools not found on your machine")
 
   undname = find_msvc_tool(repository_ctx, vc_path, "undname.exe")
