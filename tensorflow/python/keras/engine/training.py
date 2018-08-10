@@ -858,7 +858,7 @@ class Model(Network):
     all_inputs = []
     is_build_called = False
     is_compile_called = False
-    if not self.built:
+    if not self.inputs:
       # We need to use `x` to set the model inputs.
       # We type-check that `x` and `y` are either single arrays
       # or lists of arrays.

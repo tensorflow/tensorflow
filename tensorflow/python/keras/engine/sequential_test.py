@@ -341,6 +341,18 @@ class TestSequentialEagerIntegration(test.TestCase):
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_build_before_fit(self):
+    # Fix for b/112433577
+    model = _get_small_mlp(4, 5)
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+
+    model.build((None, 6))
+
+    x = np.random.random((2, 6))
+    y = np.random.random((2, 5))
+    model.fit(x, y, epochs=1)
+
 
 if __name__ == '__main__':
   test.main()
