@@ -1475,11 +1475,11 @@ bool ROCMBlas::DoBlasGemm(
   return DoBlasInternal(
       wrap::rocblas_hgemm, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-      static_cast<const rocblas_half*>(&alpha_half.x),
-      static_cast<const rocblas_half*>(&ROCMMemory(a)->x), lda,
-      static_cast<const rocblas_half*>(&ROCMMemory(b)->x), ldb,
-      static_cast<const rocblas_half*>(&beta_half.x),
-      static_cast<rocblas_half*>(&ROCMMemoryMutable(c)->x), ldc);
+      reinterpret_cast<const rocblas_half*>(&alpha_half),
+      reinterpret_cast<const rocblas_half*>(ROCMMemory(a)), lda,
+      reinterpret_cast<const rocblas_half*>(ROCMMemory(b)), ldb,
+      reinterpret_cast<const rocblas_half*>(&beta_half),
+      reinterpret_cast<rocblas_half*>(ROCMMemoryMutable(c)), ldc);
 }
 
 bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
