@@ -134,8 +134,6 @@ class EagerContext {
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
 
-  mutex* FunctionsMu() { return &functions_mu_; }
-
   const tensorflow::DeviceMgr* local_device_mgr() const {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
                                               : local_unowned_device_manager_;
