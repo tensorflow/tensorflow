@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
@@ -1455,6 +1456,11 @@ class Network(base_layer.Layer):
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
+      # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
+      checkpoint_management.update_checkpoint_state(
+          save_dir=os.path.dirname(filepath),
+          model_checkpoint_path=filepath,
+          all_model_checkpoint_paths=[filepath])
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.

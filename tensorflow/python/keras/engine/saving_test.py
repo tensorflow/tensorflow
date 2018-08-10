@@ -36,6 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
 
 try:
@@ -813,6 +814,9 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         session.run([v.initializer for v in model.variables])
       ref_y = self.evaluate(ref_y_tensor)
       model.save_weights(prefix)
+      self.assertEqual(
+          prefix,
+          checkpoint_management.latest_checkpoint(temp_dir))
       for v in model.variables:
         self.evaluate(
             v.assign(random_ops.random_normal(shape=array_ops.shape(v))))
