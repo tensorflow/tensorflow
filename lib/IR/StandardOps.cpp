@@ -369,7 +369,6 @@ const char *LoadOp::verify() const {
 bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type *, 2> types;
-  SmallVector<SSAValue *, 2> operands;
 
   return parser->parseOperandList(opInfo, -1, OpAsmParser::Delimiter::None) ||
          (!opInfo.empty() && parser->parseColonTypeList(types)) ||
@@ -391,17 +390,15 @@ void ReturnOp::print(OpAsmPrinter *p) const {
 const char *ReturnOp::verify() const {
   // ReturnOp must be part of an ML function.
   if (auto *stmt = dyn_cast<OperationStmt>(getOperation())) {
-    StmtBlock *block = stmt->getBlock();
-
-    if (!block || !isa<MLFunction>(block) ||
-        &cast<MLFunction>(block)->back() != stmt)
+    MLFunction *func = dyn_cast_or_null<MLFunction>(stmt->getBlock());
+    if (!func || &func->back() != stmt)
       return "must be the last statement in the ML function";
 
     // Return success. Checking that operand types match those in the function
     // signature is performed in the ML function verifier.
     return nullptr;
   }
-  return "cannot occur in a CFG function.";
+  return "cannot occur in a CFG function";
 }
 
 //===----------------------------------------------------------------------===//
@@ -470,6 +467,6 @@ const char *StoreOp::verify() const {
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
   opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DimOp, LoadOp,
-                      StoreOp, ReturnOp>(
+                      ReturnOp, StoreOp>(
       /*prefix=*/"");
 }

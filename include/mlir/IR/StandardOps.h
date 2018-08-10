@@ -299,7 +299,6 @@ private:
   explicit StoreOp(const Operation *state) : OpBase(state) {}
 };
 
-/// TODO: change comment.
 /// The "return" operation represents a return statement of an ML function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types must match the signature of the ML function
