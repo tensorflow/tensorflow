@@ -127,8 +127,8 @@ def dense(
   """Functional interface for the densely-connected layer.
 
   This layer implements the operation:
-  `outputs = activation(inputs.kernel + bias)`
-  Where `activation` is the activation function passed as the `activation`
+  `outputs = activation(inputs * kernel + bias)`
+  where `activation` is the activation function passed as the `activation`
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
