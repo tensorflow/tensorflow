@@ -23,22 +23,19 @@ limitations under the License.
 
 namespace xla {
 
-LocalClientOptions::LocalClientOptions(perftools::gputools::Platform* platform,
+LocalClientOptions::LocalClientOptions(se::Platform* platform,
                                        int number_of_replicas,
                                        int intra_op_parallelism_threads)
     : platform_(platform),
       number_of_replicas_(number_of_replicas),
       intra_op_parallelism_threads_(intra_op_parallelism_threads) {}
 
-LocalClientOptions& LocalClientOptions::set_platform(
-    perftools::gputools::Platform* platform) {
+LocalClientOptions& LocalClientOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
   return *this;
 }
 
-perftools::gputools::Platform* LocalClientOptions::platform() const {
-  return platform_;
-}
+se::Platform* LocalClientOptions::platform() const { return platform_; }
 
 LocalClientOptions& LocalClientOptions::set_number_of_replicas(
     int number_of_replicas) {
@@ -69,7 +66,7 @@ ClientLibrary::ClientLibrary() = default;
 ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   LocalClientOptions default_options;
   default_options.set_platform(platform);
   return GetOrCreateLocalClient(default_options);
@@ -77,7 +74,7 @@ ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
     const LocalClientOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
   ClientLibrary& client_library = Singleton();
   tensorflow::mutex_lock lock(client_library.service_mutex_);
@@ -115,7 +112,7 @@ ClientLibrary::~ClientLibrary() = default;
 }
 
 /* static */ LocalService* ClientLibrary::GetXlaService(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
   tensorflow::mutex_lock lock(client_library.service_mutex_);
   auto it = client_library.local_instances_.find(platform->id());
@@ -124,8 +121,7 @@ ClientLibrary::~ClientLibrary() = default;
 }
 
 /* static */ StatusOr<CompileOnlyClient*>
-ClientLibrary::GetOrCreateCompileOnlyClient(
-    perftools::gputools::Platform* platform) {
+ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
   tensorflow::mutex_lock lock(client_library.service_mutex_);
 

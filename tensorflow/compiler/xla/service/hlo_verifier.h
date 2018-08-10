@@ -35,7 +35,9 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleClamp(HloInstruction* clamp) override;
   Status HandleSelect(HloInstruction* select) override;
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleConcatenate(HloInstruction* concatenate) override;
+  Status HandleIota(HloInstruction* iota) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -43,6 +45,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
@@ -54,7 +57,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleBroadcast(HloInstruction* broadcast) override;
-  Status HandleBroadcastDimOne(HloInstruction* broadcastDimOne) override;
   Status HandleReshape(HloInstruction* reshape) override;
   Status HandleTranspose(HloInstruction* transpose) override;
   Status HandleParameter(HloInstruction*) override;
@@ -82,10 +84,10 @@ class ShapeVerifier : public DfsHloVisitor {
       HloInstruction* batch_norm_inference) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleGather(HloInstruction* gather) override;
+  Status HandleScatter(HloInstruction* scatter) override;
+  Status HandleAfterAll(HloInstruction* token) override;
 
-  Status FinishVisit(HloInstruction*) override {
-    return tensorflow::Status::OK();
-  }
+  Status FinishVisit(HloInstruction*) override { return Status::OK(); }
 
  protected:
   // Check the instruction's shape against the shape given by ShapeInference
@@ -103,11 +105,14 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckTernaryShape(const HloInstruction* instruction);
   Status CheckVariadicShape(const HloInstruction* instruction);
 
-  // Checks if the given two instructions shares the same channel id.
-  Status CheckSameChannel(const HloInstruction* instr1,
-                          const HloInstruction* instr2);
-
  private:
+  // Return true if the shapes of the two operands have the same element type,
+  // and the result shape either has the same element type as the operand
+  // shapes or mixed precision is allowed and the result shape and the operand
+  // shapes have floating point element types.
+  bool HasCompatibleElementTypes(const Shape& shape_0, const Shape& shape_1,
+                                 const Shape& result_shape);
+
   // Whether the inputs and output of an instruction can contain both F32s and
   // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
   // this flag.
@@ -145,9 +150,17 @@ class HloVerifier : public HloPassInterface {
   // CHECKs various invariants of a fusion instruction.
   Status CheckFusionInstruction(HloInstruction* fusion) const;
 
+  Status CheckWhileInstruction(HloInstruction* instruction);
+
+  Status CheckConditionalInstruction(HloInstruction* instruction);
+
+  // Checks that the non-scalar operand shapes are compatible to the output
+  // shape, i.e., that there are no implicit broadcasts of size-one dimensions.
+  Status CheckElementwiseInstruction(HloInstruction* instruction);
+
   // Creates a ShapeVerifier that checks that shapes match inferred
-  // expectations.  This is a factory function because ShapeVerifier,  Note that
-  // ShapeVerifier, being a DfsHloVisitor, is stateful.  We want a clean object
+  // expectations. This is a factory function because ShapeVerifier,
+  // being a DfsHloVisitor, is stateful. We want a clean object
   // for each run of the verifier.
   ShapeVerifierFactory shape_verifier_factory_;
 };

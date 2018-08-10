@@ -1,0 +1,58 @@
+upper_tabs:
+# Tabs left of dropdown menu
+- include: /_upper_tabs_left.yaml
+# Dropdown menu
+- name: Ecosystem
+  path: /ecosystem
+  is_default: True
+  menu:
+  - include: /ecosystem/_menu_toc.yaml
+  lower_tabs:
+    # Subsite tabs
+    other:
+    - name: Guide
+      contents:
+      - title: Overview
+        path: /mobile/overview
+      - title: Developer Guide
+        path: /mobile/devguide
+      - title: Android Demo App
+        path: /mobile/demo_android
+      - title: iOS Demo App
+        path: /mobile/demo_ios
+      - title: Performance
+        path: /mobile/performance
+      - break: True
+      - title: TensorFlow Lite APIs
+        path: /mobile/apis
+      - title: Custom operators
+        path: /mobile/custom_operators
+      - title: TensorFlow Lite Ops Versioning
+        path: /mobile/ops_versioning
+      - title: TensorFlow Lite Compatibility Guide
+        path: /mobile/tf_ops_compatibility
+      - title: List of Hosted Models
+        path: /mobile/models
+      - title: TensorFlow Lite for iOS
+        path: /mobile/ios
+      - title: TensorFlow Lite for Raspberry Pi
+        path: /mobile/rpi
+
+      - heading: TF Mobile
+        status: deprecated
+      - title: Overview
+        path: /mobile/tfmobile/
+      - title: Building TensorFlow on Android
+        path: /mobile/tfmobile/android_build
+      - title: Building TensorFlow on IOS
+        path: /mobile/tfmobile/ios_build
+      - title: Integrating TensorFlow libraries
+        path: /mobile/tfmobile/linking_libs
+      - title: Preparing models for mobile deployment
+        path: /mobile/tfmobile/prepare_models
+      - title: Optimizing for mobile
+        path: /mobile/tfmobile/optimizing
+
+    - name: API
+      contents:
+      - include: /mobile/api_docs/python/_toc.yaml

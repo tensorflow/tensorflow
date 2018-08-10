@@ -7,10 +7,10 @@ term storage of graphs.  The MetaGraph contains the information required
 to continue training, perform evaluation, or run inference on a previously trained graph.
 
 The APIs for exporting and importing the complete model are in
-the @{tf.train.Saver} class:
-@{tf.train.export_meta_graph}
+the `tf.train.Saver` class:
+`tf.train.export_meta_graph`
 and
-@{tf.train.import_meta_graph}.
+`tf.train.import_meta_graph`.
 
 ## What's in a MetaGraph
 
@@ -22,14 +22,14 @@ protocol buffer. It contains the following fields:
 * [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto) for describing the graph.
 * [`SaverDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/saver.proto) for the saver.
 * [`CollectionDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto)
-map that further describes additional components of the model, such as
+map that further describes additional components of the model such as
 @{$python/state_ops$`Variables`},
-@{tf.train.QueueRunner}, etc.  In order for a Python object to be serialized
+`tf.train.QueueRunner`, etc.
+
+In order for a Python object to be serialized
 to and from `MetaGraphDef`, the Python class must implement `to_proto()` and
 `from_proto()` methods, and register them with the system using
-`register_proto_function`.
-
-  For example,
+`register_proto_function`. For example:
 
   ```Python
   def to_proto(self, export_scope=None):
@@ -122,7 +122,7 @@ The API for exporting a running model as a MetaGraph is `export_meta_graph()`.
 
 
 The MetaGraph is also automatically exported via the `save()` API in
-@{tf.train.Saver}.
+`tf.train.Saver`.
 
 
 ## Import a MetaGraph

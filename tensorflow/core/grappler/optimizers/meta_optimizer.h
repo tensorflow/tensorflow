@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -30,7 +30,7 @@ class MetaOptimizer : public GraphOptimizer {
  public:
   MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
       : cpu_device_(cpu_device), cfg_(cfg) {}
-  ~MetaOptimizer() override {}
+  ~MetaOptimizer() override = default;
 
   string name() const override { return "meta_optimizer"; };
 
@@ -43,10 +43,40 @@ class MetaOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
-  std::unique_ptr<GraphOptimizer> NewOptimizer(const string& optimizer);
+  std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
+      const string& optimizer) const;
+
+  // Initialize active optimizers from RewriterConfig toggles.
+  Status InitializeOptimizers(
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
+  // Initialize active optimizers from RewriterConfig optimizer names.
+  Status InitializeOptimizersByName(
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
+
+  // Run optimization pass over a single GrapplerItem. Meta optimizer might run
+  // multiple such passes: 1) for the main graph 2) for the function library
+  Status OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
+                       GraphDef* optimized_graph);
+
   DeviceBase* const cpu_device_;  // may be NULL
   RewriterConfig cfg_;
-  std::vector<std::pair<string, string>> result_;
+
+  struct OptimizerResult {
+    string optimizer_name;
+    string result;
+  };
+
+  struct GraphOptimizationResult {
+    explicit GraphOptimizationResult(const string& id) : id(id) {}
+    string id;
+    std::vector<OptimizerResult> results;
+  };
+
+  Status RunOptimizer(GraphOptimizer* optimizer, Cluster* cluster,
+                      GrapplerItem* optimized_item, GraphDef* optimized_graph,
+                      GraphOptimizationResult* optimization_result);
+
+  std::vector<GraphOptimizationResult> optimization_results_;
 };
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg);
@@ -64,4 +94,4 @@ Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_

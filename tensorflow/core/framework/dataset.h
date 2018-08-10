@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
+#include <deque>
 #include <memory>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -351,6 +352,10 @@ class IteratorBase {
   // in the outputs of this iterator.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
+  // Performs initialization that needs to happen outside of a constructor to
+  // properly propagate errors.
+  virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
+
   // Saves the state of this iterator.
   virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
     return SaveInternal(writer);
@@ -364,7 +369,7 @@ class IteratorBase {
  protected:
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
+  // `RepeatDatasetOp::Dataset`.
   Status SaveParent(IteratorStateWriter* writer,
                     const std::unique_ptr<IteratorBase>& parent) {
     return parent->SaveInternal(writer);
@@ -372,7 +377,7 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
+  // `RepeatDatasetOp::Dataset`.
   Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
                        const std::unique_ptr<IteratorBase>& parent) {
     return parent->RestoreInternal(ctx, reader);
@@ -402,12 +407,13 @@ class DatasetBase : public core::RefCounted {
   // iterator will traverse all elements in this dataset from the
   // start.
   //
-  // Ownership of the created iterator will be transferred to the caller.
-  //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  virtual std::unique_ptr<IteratorBase> MakeIterator(
-      const string& prefix) const = 0;
+  Status MakeIterator(IteratorContext* ctx, const string& prefix,
+                      std::unique_ptr<IteratorBase>* iterator) const {
+    *iterator = MakeIteratorInternal(prefix);
+    return (*iterator)->Initialize(ctx);
+  }
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -420,7 +426,7 @@ class DatasetBase : public core::RefCounted {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // A human-readable debug string for this dataset.
-  virtual string DebugString() = 0;
+  virtual string DebugString() const = 0;
 
   // Serializes the dataset and writes it to the `writer`.
   virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {
@@ -451,6 +457,11 @@ class DatasetBase : public core::RefCounted {
                                     Node** node) const {
     return errors::Unimplemented("AsGraphDefInternal");
   }
+
+  virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const = 0;
+
+  friend class DatasetToGraphOp;  // For access to graph related members.
 };
 
 // Base-class for datasets that are built by ops.
@@ -488,28 +499,24 @@ class GraphDatasetBase : public DatasetBase {
 };
 
 // Represents an iterator that is associated with a particular parent dataset.
-template <class DatasetType>
-class DatasetIterator : public IteratorBase {
+class DatasetBaseIterator : public IteratorBase {
  public:
-  struct Params {
-    // Owns one reference on the shared dataset resource.
-    const DatasetType* dataset;
+  struct BaseParams {
+    // Owns one reference on the shared dataset object.
+    const DatasetBase* dataset;
 
     // Identifies the sequence of iterators leading up to this iterator.
     const string prefix;
   };
 
-  explicit DatasetIterator(const Params& params) : params_(params) {
+  explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
   }
 
-  ~DatasetIterator() override { params_.dataset->Unref(); }
-
-  // The dataset from which this iterator was created.
-  const DatasetType* dataset() const { return params_.dataset; }
+  ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
   // The sequence of iterators leading up to this iterator.
-  const string prefix() const { return params_.prefix; }
+  const string& prefix() const { return params_.prefix; }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -521,7 +528,7 @@ class DatasetIterator : public IteratorBase {
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
-    port::Tracing::TraceMe activity(params_.prefix);
+    tracing::ScopedActivity activity(params_.prefix);
     Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
@@ -535,7 +542,7 @@ class DatasetIterator : public IteratorBase {
   }
 
   Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(dataset()->Save(ctx, writer));
+    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
     return IteratorBase::Save(ctx, writer);
   }
 
@@ -546,11 +553,40 @@ class DatasetIterator : public IteratorBase {
                                  bool* end_of_sequence) = 0;
 
   string full_name(const string& name) const {
-    return strings::StrCat(prefix(), ":", name);
+    return strings::StrCat(params_.prefix, ":", name);
   }
 
  private:
-  Params params_;
+  BaseParams params_;
+};
+
+// Represents an iterator that is associated with a particular parent dataset
+// with a particular type.
+template <class DatasetType>
+class DatasetIterator : public DatasetBaseIterator {
+ public:
+  struct Params {
+    // Borrowed pointer to the parent dataset.
+    const DatasetType* dataset;
+
+    // Identifies the sequence of iterators leading up to this iterator.
+    const string prefix;
+  };
+
+  explicit DatasetIterator(const Params& params)
+      : DatasetBaseIterator({params.dataset, params.prefix}),
+        typed_dataset_(params.dataset) {}
+
+  // The dataset from which this iterator was created.
+  const DatasetType* dataset() const { return typed_dataset_; }
+
+ protected:
+  virtual Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) = 0;
+
+ private:
+  const DatasetType* const typed_dataset_;  // Not owned.
 };
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow
@@ -574,6 +610,23 @@ class DatasetOpKernel : public OpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status ParseVectorArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name,
+                             std::vector<T>* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a vector");
+    }
+    int size = argument_t->vec<T>().size();
+    output->reserve(size);
+    for (int i = 0; i < size; ++i) {
+      output->push_back(argument_t->vec<T>()(i));
+    }
     return Status::OK();
   }
 };
@@ -618,6 +671,43 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 //
 // The ownership of `dataset` is transferred to `tensor`.
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+
+// A simple background worker that executes closures asynchronously and without
+// blocking.
+//
+// A `BackgroundWorker` is used to offload blocking work from an `AsyncOpKernel`
+// to avoid blocking an executor thread that may be required by the blocking
+// work.
+//
+// NOTE(mrry): We do not use a regular `tensorflow::thread::ThreadPool` for this
+// purpose because its current implementation (in Eigen) uses a finite-length
+// queue and will block the caller when full. This can lead to deadlock under
+// heavy load. Since the number of concurrent work items in each user of a
+// `BackgroundWorker` is at most one per op invocation, the dynamic allocation
+// overhead is tolerable.
+class BackgroundWorker {
+ public:
+  BackgroundWorker(Env* env, const string& name);
+
+  ~BackgroundWorker();
+
+  void Schedule(std::function<void()> work_item);
+
+ private:
+  void WorkerLoop();
+
+  std::unique_ptr<Thread> thread_;
+  mutex mu_;
+  condition_variable cond_var_;
+  bool cancelled_ GUARDED_BY(mu_) = false;
+  std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
+};
+
+namespace dataset {
+
+IteratorContext MakeIteratorContext(OpKernelContext* ctx);
+
+}  // namespace dataset
 
 }  // namespace tensorflow
 

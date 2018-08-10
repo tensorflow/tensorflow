@@ -19,24 +19,22 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python.training import training_util
-from tensorflow.contrib.layers.python.layers import optimizers
-
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
-
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.util import nest
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
+from tensorflow.python.util import nest
 
 
 class _NoStatePredictOutput(export_lib.PredictOutput):
@@ -102,12 +100,9 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         use_resource=True):
       model_outputs = self.create_loss(features, mode)
 
-    train_op = optimizers.optimize_loss(
+    train_op = self.optimizer.minimize(
         model_outputs.loss,
-        global_step=training_util.get_global_step(),
-        optimizer=self.optimizer,
-        # Learning rate is set in the Optimizer object
-        learning_rate=None)
+        global_step=training_util.get_global_step())
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
         mode=mode,
@@ -132,7 +127,8 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         loss=model_outputs.loss,
         mode=mode,
         eval_metric_ops=metrics,
-        predictions={})
+        # needed for custom metrics.
+        predictions=model_outputs.predictions)
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
@@ -185,7 +181,7 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
       return math_ops.cast(value, self.model.dtype)
     if name == feature_keys.PredictionFeatures.STATE_TUPLE:
       return value  # Correct dtypes are model-dependent
-    return ops.convert_to_tensor(value)
+    return sparse_tensor.convert_to_tensor_or_sparse_tensor(value)
 
   def _gather_state(self, features):
     """Returns `features` with state packed, indicates if packing was done."""
@@ -207,15 +203,38 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         flat_sequence=[tensor for _, _, tensor in numbered_state])
     return features, True
 
+  def _check_predict_features(self, features):
+    """Raises errors if features are not suitable for prediction."""
+    if feature_keys.PredictionFeatures.TIMES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.TIMES))
+    if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.STATE_TUPLE))
+    times_feature = features[feature_keys.PredictionFeatures.TIMES]
+    if not times_feature.get_shape().is_compatible_with([None, None]):
+      raise ValueError(
+          ("Expected shape (batch dimension, window size) for feature '{}' "
+           "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                    times_feature.get_shape()))
+    _check_feature_shapes_compatible_with(
+        features=features,
+        compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+        compatible_with_value=times_feature,
+        ignore=set([
+            # Model-dependent shapes
+            feature_keys.PredictionFeatures.STATE_TUPLE
+        ]))
+
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope(self._name, "head"):
-      if labels:
+      if labels is not None and labels != {}:  # for better error messages.
         raise ValueError(
-            "The model received a `labels` dictionary, which is "
-            "not supported. Pass '{}' and '{}' as "
-            "features.".format(feature_keys.TrainEvalFeatures.TIMES,
-                               feature_keys.TrainEvalFeatures.VALUES))
+            "The model received a `labels`, which is not supported. "
+            "Pass '{}' and '{}' as features.".format(
+                feature_keys.TrainEvalFeatures.TIMES,
+                feature_keys.TrainEvalFeatures.VALUES))
       del labels
       features = {
           name: self._convert_feature_to_tensor(name=name, value=value)
@@ -235,7 +254,7 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
           mode == estimator_lib.ModeKeys.EVAL):
         _check_train_eval_features(features, self.model)
       elif mode == estimator_lib.ModeKeys.PREDICT:
-        _check_predict_features(features)
+        self._check_predict_features(features)
       else:
         raise ValueError("Unknown mode '{}' passed to model_fn.".format(mode))
 
@@ -271,6 +290,44 @@ class OneShotPredictionHead(TimeSeriesRegressionHead):
   Model state is neither accepted nor returned, so filtering must be performed
   each time predictions are requested when using this head.
   """
+
+  def _check_predict_features(self, features):
+    """Raises errors if features are not suitable for one-shot prediction."""
+    if feature_keys.PredictionFeatures.TIMES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.TIMES))
+    if feature_keys.TrainEvalFeatures.VALUES not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.TrainEvalFeatures.VALUES))
+    if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
+      raise ValueError("Expected a '{}' feature for prediction.".format(
+          feature_keys.PredictionFeatures.STATE_TUPLE))
+    times_feature = features[feature_keys.PredictionFeatures.TIMES]
+    if not times_feature.get_shape().is_compatible_with([None, None]):
+      raise ValueError(
+          ("Expected shape (batch dimension, window size) for feature '{}' "
+           "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                    times_feature.get_shape()))
+    _check_feature_shapes_compatible_with(
+        features=features,
+        compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+        compatible_with_value=times_feature,
+        ignore=set([
+            # Model-dependent shapes
+            feature_keys.PredictionFeatures.STATE_TUPLE,
+            # One shot prediction head relies on values being shorter than
+            # times. Even though we're predicting eventually, we need values for
+            # the filtering phase.
+            feature_keys.TrainEvalFeatures.VALUES,
+        ]))
+
+  def _evaluate_ops(self, features):
+    """Add ops for evaluation (aka filtering) to the graph."""
+    spec = super(OneShotPredictionHead, self)._evaluate_ops(features)
+    # No state is fed to OneShotPredictionHead, so we don't return it; it being
+    # a tuple can cause issues for downstream infrastructure.
+    del spec.eval_metric_ops[feature_keys.State.STATE_TUPLE]
+    return spec
 
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""
@@ -336,29 +393,6 @@ def _check_feature_shapes_compatible_with(features,
                feature_shape=feature_shape,
                feature_name=name,
                times_shape=compatible_with_value.get_shape()))
-
-
-def _check_predict_features(features):
-  """Raises errors if features are not suitable for prediction."""
-  if feature_keys.PredictionFeatures.TIMES not in features:
-    raise ValueError("Expected a '{}' feature for prediction.".format(
-        feature_keys.PredictionFeatures.TIMES))
-  if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
-    raise ValueError("Expected a '{}' feature for prediction.".format(
-        feature_keys.PredictionFeatures.STATE_TUPLE))
-  times_feature = features[feature_keys.PredictionFeatures.TIMES]
-  if not times_feature.get_shape().is_compatible_with([None, None]):
-    raise ValueError(
-        ("Expected shape (batch dimension, window size) for feature '{}' "
-         "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
-                                  times_feature.get_shape()))
-  _check_feature_shapes_compatible_with(
-      features=features,
-      compatible_with_name=feature_keys.PredictionFeatures.TIMES,
-      compatible_with_value=times_feature,
-      ignore=set([
-          feature_keys.PredictionFeatures.STATE_TUPLE  # Model-dependent shapes
-      ]))
 
 
 def _check_train_eval_features(features, model):

@@ -81,7 +81,7 @@ class EstimatorTest(test.TestCase):
             damping=0.2,
             layer_collection=self.layer_collection
         )
-        est.make_ops_and_vars()
+        est.make_vars_and_create_op_thunks()
 
       # Check that we throw an error if we don't include registered variables,
       # i.e. self.weights
@@ -91,7 +91,7 @@ class EstimatorTest(test.TestCase):
             cov_ema_decay=0.1,
             damping=0.2,
             layer_collection=self.layer_collection)
-        est.make_ops_and_vars()
+        est.make_vars_and_create_op_thunks()
 
   @test.mock.patch.object(utils.SubGraph, "variable_uses", return_value=42)
   def testVariableWrongNumberOfUses(self, mock_uses):
@@ -101,7 +101,7 @@ class EstimatorTest(test.TestCase):
           cov_ema_decay=0.1,
           damping=0.2,
           layer_collection=self.layer_collection)
-      est.make_ops_and_vars()
+      est.make_vars_and_create_op_thunks()
 
   def testInvalidEstimationMode(self):
     with self.assertRaises(ValueError):
@@ -111,7 +111,7 @@ class EstimatorTest(test.TestCase):
           damping=0.2,
           layer_collection=self.layer_collection,
           estimation_mode="not_a_real_mode")
-      est.make_ops_and_vars()
+      est.make_vars_and_create_op_thunks()
 
   def testGradientsModeBuild(self):
     with self._graph.as_default():
@@ -121,7 +121,7 @@ class EstimatorTest(test.TestCase):
           damping=0.2,
           layer_collection=self.layer_collection,
           estimation_mode="gradients")
-      est.make_ops_and_vars()
+      est.make_vars_and_create_op_thunks()
 
   def testEmpiricalModeBuild(self):
     with self._graph.as_default():
@@ -131,7 +131,7 @@ class EstimatorTest(test.TestCase):
           damping=0.2,
           layer_collection=self.layer_collection,
           estimation_mode="empirical")
-      est.make_ops_and_vars()
+      est.make_vars_and_create_op_thunks()
 
   def testCurvaturePropModeBuild(self):
     with self._graph.as_default():
@@ -141,7 +141,7 @@ class EstimatorTest(test.TestCase):
           damping=0.2,
           layer_collection=self.layer_collection,
           estimation_mode="curvature_prop")
-      est.make_ops_and_vars()
+      est.make_vars_and_create_op_thunks()
 
   def testExactModeBuild(self):
     with self._graph.as_default():
@@ -151,7 +151,7 @@ class EstimatorTest(test.TestCase):
           damping=0.2,
           layer_collection=self.layer_collection,
           estimation_mode="exact")
-      est.make_ops_and_vars()
+      est.make_vars_and_create_op_thunks()
 
   def test_cov_update_thunks(self):
     """Ensures covariance update ops run once per global_step."""
@@ -215,8 +215,11 @@ class EstimatorTest(test.TestCase):
           inv_devices=["/cpu:{}".format(i) for i in range(2)])
 
       # Construct an op that executes one covariance update per step.
-      (cov_update_ops, _, inv_update_ops, _, _,
-       _) = fisher_estimator.make_ops_and_vars(scope="test")
+      (cov_update_thunks,
+       inv_update_thunks) = fisher_estimator.make_vars_and_create_op_thunks(
+           scope="test")
+      cov_update_ops = tuple(thunk() for thunk in cov_update_thunks)
+      inv_update_ops = tuple(thunk() for thunk in inv_update_thunks)
       self.assertEqual(cov_update_ops[0].device, "/device:CPU:0")
       self.assertEqual(cov_update_ops[1].device, "/device:CPU:1")
       self.assertEqual(inv_update_ops[0].device, "/device:CPU:0")

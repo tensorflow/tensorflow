@@ -458,7 +458,7 @@ def scattered_embedding_lookup_sparse(params,
     return embeddings
 
 
-def embedding_lookup_unique(params, ids, name=None):
+def embedding_lookup_unique(params, ids, partition_strategy="mod", name=None):
   """Version of embedding_lookup that avoids duplicate lookups.
 
   This can save communication in the case of repeated ids.
@@ -470,6 +470,9 @@ def embedding_lookup_unique(params, ids, name=None):
       `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
     ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
       the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+      if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
+      is `"mod"`.
     name: A name for this operation (optional).
 
   Returns:
@@ -485,7 +488,8 @@ def embedding_lookup_unique(params, ids, name=None):
     ids_flat = array_ops.reshape(
         ids, math_ops.reduce_prod(shape, keepdims=True))
     unique_ids, idx = array_ops.unique(ids_flat)
-    unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
+    unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids,
+                                                       partition_strategy)
     embeds_flat = array_ops.gather(unique_embeddings, idx)
     embed_shape = array_ops.concat(
         [shape, array_ops.shape(unique_embeddings)[1:]], 0)

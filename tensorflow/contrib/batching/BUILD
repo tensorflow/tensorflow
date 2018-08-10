@@ -50,6 +50,14 @@ cc_library(
 )
 
 cc_library(
+    name = "serial_device_batch_scheduler",
+    hdrs = ["serial_device_batch_scheduler.h"],
+    deps = [
+        "//tensorflow/core/kernels/batching_util:serial_device_batch_scheduler",
+    ],
+)
+
+cc_library(
     name = "basic_batch_scheduler",
     hdrs = ["basic_batch_scheduler.h"],
     deps = [
@@ -96,6 +104,7 @@ py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
+    shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [
         "manual",

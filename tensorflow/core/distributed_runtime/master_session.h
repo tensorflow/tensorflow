@@ -52,6 +52,7 @@ class MasterSession : public core::RefCounted {
       std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
       std::unique_ptr<DeviceSet> device_set,
+      std::vector<string> filtered_worker_list,
       StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
@@ -130,11 +131,17 @@ class MasterSession : public core::RefCounted {
   // The device set used by this session.
   std::unique_ptr<DeviceSet> devices_;
 
+  // The (partial device) names of remote worker tasks that this
+  // session will contact.
+  const std::vector<string> filtered_worker_list_;
+
   StatsPublisherFactory stats_publisher_factory_;
 
   std::atomic_ulong last_access_time_usec_;
 
   std::atomic<int64> partial_run_handle_counter_ = {0};
+
+  uint64 NewStepId(int64 graph_key);
 
   mutex mu_;
   std::unique_ptr<GraphExecutionState> execution_state_ GUARDED_BY(mu_);
@@ -170,6 +177,7 @@ class MasterSession : public core::RefCounted {
     std::unordered_map<string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
     uint64 step_id;
+    int64 collective_graph_key;
     int64 count = 0;
     PerStepState pss;
     std::unique_ptr<ProfileHandler> ph;
@@ -212,7 +220,6 @@ class MasterSession : public core::RefCounted {
   // workers.
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
 
-  // TODO(b/36574172): Always use Create/DeleteWorkerSession.
   bool should_delete_worker_sessions_ = false;
   Status DeleteWorkerSessions();
 

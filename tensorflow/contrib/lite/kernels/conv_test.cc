@@ -64,12 +64,6 @@ class BaseConvolutionOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
-    if (input.type != TensorType_FLOAT32) {
-      // The following is required by quantized inference. It is the unittest's
-      // responsibility to make sure the output scale falls into the correct
-      // range.
-      CHECK_LT(GetScale(input_) * GetScale(filter_), GetScale(output_));
-    }
 
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
                  CreateConv2DOptions(
@@ -439,6 +433,44 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
                                  144, 131, 130,  //
                                  164, 131, 130,  //
                              }));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
+  // output_multiplier = 1.0118
+  QuantizedConvolutionOpModel quant_op(
+      GetRegistration(), {TensorType_UINT8, {2, 2, 4, 1}, -128.5, 128},
+      {TensorType_UINT8, {3, 2, 2, 1}, -128.5, 128},
+      {TensorType_UINT8, {}, -127, 128});
+  ConvolutionOpModel float_op(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_FLOAT32, {3, 2, 2, 1}}, {TensorType_FLOAT32, {}});
+  std::initializer_list<float> input = {
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  };
+  std::initializer_list<float> filter = {
+      1,  2,  3,  4,  // first 2x2 filter
+      -1, 1,  -1, 1,  // second 2x2 filter
+      -1, -1, 1,  1,  // third 2x2 filter
+  };
+  std::initializer_list<float> bias = {1, 2, 3};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
 TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithAnisotropicStrides) {

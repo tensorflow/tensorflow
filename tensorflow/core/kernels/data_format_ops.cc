@@ -195,7 +195,14 @@ TF_CALL_int64(REGISTER_GPU_KERNEL);
 #define REGISTER_GPU_KERNEL(T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("DataFormatVecPermute").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      DataFormatVecPermuteOp<GPUDevice, T>);
+      DataFormatVecPermuteOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("DataFormatVecPermute")                        \
+                              .Device(DEVICE_GPU)                             \
+                              .HostMemory("x")                                \
+                              .HostMemory("y")                                \
+                              .Label("host")                                  \
+                              .TypeConstraint<T>("T"),                        \
+                          DataFormatVecPermuteOp<CPUDevice, T>);
 TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL

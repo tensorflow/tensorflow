@@ -34,7 +34,6 @@ import threading
 
 import six
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -287,35 +286,8 @@ def _get_thread_id():
 
 _log_prefix = google2_log_prefix
 
-# Controls which methods from pyglib.logging are available within the project.
-# Do not add methods here without also adding to platform/tf_logging.py.
-_allowed_symbols = [
-    'DEBUG',
-    'ERROR',
-    'FATAL',
-    'INFO',
-    'TaskLevelStatusMessage',
-    'WARN',
-    'debug',
-    'error',
-    'fatal',
-    'flush',
-    'get_verbosity',
-    'info',
-    'log',
-    'log_if',
-    'log_every_n',
-    'log_first_n',
-    'set_verbosity',
-    'vlog',
-    'warn',
-    'warning',
-]
-
 tf_export('logging.DEBUG').export_constant(__name__, 'DEBUG')
 tf_export('logging.ERROR').export_constant(__name__, 'ERROR')
 tf_export('logging.FATAL').export_constant(__name__, 'FATAL')
 tf_export('logging.INFO').export_constant(__name__, 'INFO')
 tf_export('logging.WARN').export_constant(__name__, 'WARN')
-
-remove_undocumented(__name__, _allowed_symbols)

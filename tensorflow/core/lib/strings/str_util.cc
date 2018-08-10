@@ -332,7 +332,7 @@ string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
                      bool replace_all) {
   // TODO(jlebar): We could avoid having to shift data around in the string if
   // we had a StringPiece::find() overload that searched for a StringPiece.
-  string res = s.ToString();
+  string res = std::string(s);
   size_t pos = 0;
   while ((pos = res.find(oldsub.data(), pos, oldsub.size())) != string::npos) {
     res.replace(pos, oldsub.size(), newsub.data(), newsub.size());
@@ -449,9 +449,17 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
   return SplitAndParseAsInts<float>(text, delim,
                                     [](StringPiece str, float* value) {
                                       return strings::safe_strtof(
-                                          str.ToString().c_str(), value);
+                                          std::string(str).c_str(), value);
                                     },
                                     result);
+}
+
+size_t Strnlen(const char* str, const size_t string_max_len) {
+  size_t len = 0;
+  while (len < string_max_len && str[len] != '\0') {
+    ++len;
+  }
+  return len;
 }
 
 bool StrContains(StringPiece haystack, StringPiece needle) {

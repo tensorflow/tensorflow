@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -25,28 +26,28 @@ limitations under the License.
 
 namespace xla {
 
-void LLVMIRGenTestBase::SetIrHook(bool match_optimized_ir) {
+void LlvmIrGenTestBase::SetIrHook(bool match_optimized_ir) {
   auto llvm_compiler = GetLLVMCompiler();
   using std::placeholders::_1;
 
   // Add the IR inspection hook to the LLVM compiler.
   if (match_optimized_ir) {
     llvm_compiler->SetPostOptimizationHook(
-        std::bind(&LLVMIRGenTestBase::IrHook, this, _1));
+        std::bind(&LlvmIrGenTestBase::IrHook, this, _1));
   } else {
     llvm_compiler->SetPreOptimizationHook(
-        std::bind(&LLVMIRGenTestBase::IrHook, this, _1));
+        std::bind(&LlvmIrGenTestBase::IrHook, this, _1));
   }
 }
 
-void LLVMIRGenTestBase::ResetIrHook() {
+void LlvmIrGenTestBase::ResetIrHook() {
   auto llvm_compiler = GetLLVMCompiler();
 
   llvm_compiler->RemovePreOptimizationHook();
   llvm_compiler->RemovePostOptimizationHook();
 }
 
-void LLVMIRGenTestBase::CompileAndVerifyIr(
+void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const string& pattern,
     bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
@@ -58,12 +59,22 @@ void LLVMIRGenTestBase::CompileAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
+void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
+                                           const string& expected_llvm_ir,
+                                           bool match_optimized_ir) {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text, config));
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
+}
+
+void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  ASSERT_TRUE(
-      CompileToAotCompilationResult(std::move(hlo_module), options).ok());
+  TF_ASSERT_OK(
+      CompileToAotCompilationResult(std::move(hlo_module), options).status());
   ResetIrHook();
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
@@ -71,11 +82,11 @@ void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() {
+LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
-Status LLVMIRGenTestBase::IrHook(const llvm::Module& module) {
+Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpModuleToString(module);
   return Status::OK();
 }

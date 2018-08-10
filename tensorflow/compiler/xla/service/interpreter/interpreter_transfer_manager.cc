@@ -21,12 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
-namespace sei = ::perftools::gputools::interpreter;
-
 namespace xla {
 
 InterpreterTransferManager::InterpreterTransferManager()
-    : GenericTransferManager(sei::kXlaInterpreterPlatformId,
+    : GenericTransferManager(se::interpreter::kXlaInterpreterPlatformId,
                              /*pointer_size=*/sizeof(void*)) {}
 
 }  // namespace xla
@@ -38,7 +36,8 @@ CreateInterpreterTransferManager() {
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
-      sei::kXlaInterpreterPlatformId, &CreateInterpreterTransferManager);
+      stream_executor::interpreter::kXlaInterpreterPlatformId,
+      &CreateInterpreterTransferManager);
   return true;
 }
 

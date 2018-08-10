@@ -93,6 +93,7 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -177,6 +178,8 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
     ],
 )
 

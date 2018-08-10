@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 
 class ConfusionMatrixTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testExample(self):
     """This is a test of the example provided in pydoc."""
     with self.test_session():

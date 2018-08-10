@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "IsFinite"
+  endpoint {
+    name: "debugging.is_finite"
+  }
+  endpoint {
+    name: "is_finite"
+    deprecated: true
+  }
+}

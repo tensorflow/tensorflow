@@ -18,6 +18,7 @@ limitations under the License.
 // bias.
 
 #ifdef INTEL_MKL
+#ifdef INTEL_MKL_ML
 
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
@@ -38,8 +39,10 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#ifdef INTEL_MKL_ML
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
+#endif
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
@@ -262,4 +265,5 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 } /* namespace tensorflow */
+#endif /* INTEL_MKL_ML */
 #endif /* INTEL_MKL */

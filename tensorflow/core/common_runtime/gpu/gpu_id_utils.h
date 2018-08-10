@@ -23,29 +23,31 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
-namespace gpu = ::perftools::gputools;
 
 // Utility methods for translation between Tensorflow GPU ids and CUDA GPU ids.
 class GpuIdUtil {
  public:
   // Convenient methods for getting the associated executor given a TfGpuId or
   // CudaGpuId.
-  static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForCudaGpuId(
-      gpu::Platform* gpu_manager, CudaGpuId cuda_gpu_id) {
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForCudaGpuId(
+      se::Platform* gpu_manager, CudaGpuId cuda_gpu_id) {
     return gpu_manager->ExecutorForDevice(cuda_gpu_id.value());
   }
-  static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForCudaGpuId(
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForCudaGpuId(
       CudaGpuId cuda_gpu_id) {
     return ExecutorForCudaGpuId(GPUMachineManager(), cuda_gpu_id);
   }
-  static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForTfGpuId(
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
-    return ExecutorForCudaGpuId(GpuIdManager::TfToCudaGpuId(tf_gpu_id));
+    CudaGpuId cuda_gpu_id;
+    TF_RETURN_IF_ERROR(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
+    return ExecutorForCudaGpuId(cuda_gpu_id);
   }
 
   // Verify that the cuda_gpu_id associated with a TfGpuId is legitimate.
   static void CheckValidTfGpuId(TfGpuId tf_gpu_id) {
-    const CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
     const int visible_device_count = GPUMachineManager()->VisibleDeviceCount();
     CHECK_LT(cuda_gpu_id.value(), visible_device_count)
         << "cuda_gpu_id is outside discovered device range."

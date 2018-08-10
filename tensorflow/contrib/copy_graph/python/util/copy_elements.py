@@ -18,7 +18,7 @@ These functions allow for recursive copying of elements (ops and variables)
 from one graph to another. The copied elements are initialized inside a
 user-specified scope in the other graph. There are separate functions to
 copy ops and variables.
-There is also a function to retrive the copied version of an op from the
+There is also a function to retrieve the copied version of an op from the
 first graph inside a scope in the second graph.
 
 @@copy_op_to_graph
@@ -77,7 +77,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=''):
       else:
         collections.append(scope + '/' + name)
 
-  #See if its trainable.
+  #See if it's trainable.
   trainable = (
       org_instance in org_instance.graph.get_collection(
           ops.GraphKeys.TRAINABLE_VARIABLES))
@@ -162,7 +162,7 @@ def copy_op_to_graph(org_instance, to_graph, variables, scope=''):
 
   if isinstance(org_instance, ops.Tensor):
 
-    #If its a Tensor, it is one of the outputs of the underlying
+    #If it's a Tensor, it is one of the outputs of the underlying
     #op. Therefore, copy the op itself and return the appropriate
     #output.
     op = org_instance.op
@@ -218,10 +218,11 @@ def copy_op_to_graph(org_instance, to_graph, variables, scope=''):
                            new_control_inputs, input_types, new_original_op,
                            op_def)
     #Use Graph's hidden methods to add the op
-    to_graph._add_op(new_op)  # pylint: disable=protected-access
     to_graph._record_op_seen_by_control_dependencies(new_op)
-    for device_function in reversed(to_graph._device_function_stack):
+    # pylint: disable=protected-access
+    for device_function in to_graph._device_functions_outer_to_inner:
       new_op._set_device(device_function(new_op))
+    # pylint: enable=protected-access
 
     return new_op
 

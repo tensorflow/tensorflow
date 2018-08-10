@@ -8,14 +8,22 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+config_setting(
+    name = "empty_condition",
+    values = {"define": "UNUSED=unused"},
+)
+
 py_binary(
     name = "predict",
     srcs = ["predict.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -41,9 +49,12 @@ py_binary(
     data = ["data/changepoints.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -64,9 +75,12 @@ py_binary(
     data = ["data/multivariate_level.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -89,11 +103,14 @@ py_binary(
     data = ["data/multivariate_periods.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/timeseries/python/timeseries:estimators",
         "//tensorflow/contrib/timeseries/python/timeseries:model",
-        "//third_party/py/numpy",
     ],
 )
 

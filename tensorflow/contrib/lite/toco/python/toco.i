@@ -24,9 +24,12 @@ namespace toco {
 // Convert a model represented in `input_contents`. `model_flags_proto`
 // describes model parameters. `toco_flags_proto` describes conversion
 // parameters (see relevant .protos for more information). Returns a string
-// representing the contents of the converted model.
+// representing the contents of the converted model. When extended_return
+// flag is set to true returns a dictionary that contains string representation
+// of the converted model and some statitics like arithmetic ops count.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                         PyObject* toco_flags_proto_txt_raw,
-                        PyObject* input_contents_txt_raw);
+                        PyObject* input_contents_txt_raw,
+                        bool extended_return = false);
 
 } // namespace toco

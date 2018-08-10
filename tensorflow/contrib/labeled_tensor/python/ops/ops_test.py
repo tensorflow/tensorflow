@@ -660,7 +660,7 @@ class ReduceSumTest(Base):
     sum_lt = ops.reduce_sum(self.original_lt, {('channel', 'hihowareyou')})
     golden_lt = core.LabeledTensor(
         math_ops.reduce_sum(
-            self.original_lt.tensor, 1, keep_dims=True),
+            self.original_lt.tensor, 1, keepdims=True),
         [self.a0, ('channel', ['hihowareyou']), self.a2, self.a3])
     self.assertLabeledTensorsEqual(sum_lt, golden_lt)
 
@@ -668,7 +668,7 @@ class ReduceSumTest(Base):
     sum_lt = ops.reduce_sum(self.original_lt, ('channel', 'hihowareyou'))
     golden_lt = core.LabeledTensor(
         math_ops.reduce_sum(
-            self.original_lt.tensor, 1, keep_dims=True),
+            self.original_lt.tensor, 1, keepdims=True),
         [self.a0, ('channel', ['hihowareyou']), self.a2, self.a3])
     self.assertLabeledTensorsEqual(sum_lt, golden_lt)
 

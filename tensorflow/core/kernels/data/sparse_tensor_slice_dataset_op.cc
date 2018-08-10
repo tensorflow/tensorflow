@@ -39,7 +39,7 @@ class Dataset : public GraphDatasetBase {
                  {-1},
                  {sparse_tensor.dims() - 1}}) {}
 
-  std::unique_ptr<IteratorBase> MakeIterator(
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::unique_ptr<IteratorBase>(
         new Iterator({this, strings::StrCat(prefix, "::SparseTensorSlice")}));
@@ -50,7 +50,7 @@ class Dataset : public GraphDatasetBase {
     return shapes_;
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 
@@ -252,10 +252,12 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
       previous_batch_index = next_batch_index;
     }
     gtl::InlinedVector<int64, 8> std_order(dense_shape->NumElements(), 0);
-    sparse::SparseTensor sparse_tensor(
-        *indices, *values, TensorShape(dense_shape->vec<int64>()), std_order);
-
-    *output = new Dataset<T>(ctx, sparse_tensor);
+    sparse::SparseTensor tensor;
+    OP_REQUIRES_OK(
+        ctx, sparse::SparseTensor::Create(
+                 *indices, *values, TensorShape(dense_shape->vec<int64>()),
+                 std_order, &tensor));
+    *output = new Dataset<T>(ctx, std::move(tensor));
   }
 
  private:

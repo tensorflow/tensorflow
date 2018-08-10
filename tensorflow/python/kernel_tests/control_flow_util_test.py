@@ -19,9 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.platform import test
 
@@ -65,6 +69,111 @@ class ControlFlowUtilTest(test.TestCase):
     self.assertTrue(control_flow_util.IsLoopExit(ref_exit))
 
     self.assertFalse(control_flow_util.IsLoopExit(test_ops.int_output().op))
+
+  def build_test_graph(self):
+    g = ops.Graph()
+    with g.as_default():
+
+      def while_loop(x):
+
+        def b(x):
+          with ops.name_scope("NestedCond"):
+            return control_flow_ops.cond(
+                math_ops.less(x, 100), lambda: math_ops.add(x, 1),
+                lambda: math_ops.add(x, 2))
+
+        c = lambda x: math_ops.less(x, 10000)
+        with ops.name_scope("OuterWhile"):
+          return control_flow_ops.while_loop(c, b, [x])
+
+      x = array_ops.placeholder(dtypes.int32)
+      with ops.name_scope("OuterCond"):
+        control_flow_ops.cond(
+            math_ops.less(x, 1000), lambda: while_loop(x),
+            lambda: math_ops.add(x, 2))
+    return g
+
+  def testIsCondSwitch(self):
+    g = self.build_test_graph()
+
+    cond_switch = [
+        "OuterCond/cond/Switch",
+        "OuterCond/cond/OuterWhile/while/Switch",
+        "OuterCond/cond/OuterWhile/while/NestedCond/cond/Switch",
+        "OuterCond/cond/OuterWhile/while/NestedCond/cond/Add/Switch",
+        "OuterCond/cond/OuterWhile/while/NestedCond/cond/Add_1/Switch",
+        "OuterCond/cond/Add/Switch",
+    ]
+    for n in g.get_operations():
+      if control_flow_util.IsSwitch(n):
+        self.assertTrue(
+            control_flow_util.IsCondSwitch(n) != control_flow_util.IsLoopSwitch(
+                n))
+      if n.name in cond_switch:
+        self.assertTrue(control_flow_util.IsSwitch(n))
+        self.assertTrue(
+            control_flow_util.IsCondSwitch(n),
+            msg="Mismatch for {}".format(n.name))
+        self.assertFalse(
+            control_flow_util.IsLoopSwitch(n),
+            msg="Mismatch for {}".format(n.name))
+      else:
+        self.assertFalse(
+            control_flow_util.IsCondSwitch(n),
+            msg="Mismatch for {}".format(n.name))
+
+  def testIsLoopSwitch(self):
+    g = self.build_test_graph()
+
+    loop_switch = ["OuterCond/cond/OuterWhile/while/Switch_1"]
+    for n in g.get_operations():
+      if control_flow_util.IsSwitch(n):
+        self.assertTrue(
+            control_flow_util.IsCondSwitch(n) != control_flow_util.IsLoopSwitch(
+                n))
+      if n.name in loop_switch:
+        self.assertTrue(control_flow_util.IsSwitch(n))
+        self.assertFalse(
+            control_flow_util.IsCondSwitch(n),
+            msg="Mismatch for {}".format(n.name))
+        self.assertTrue(
+            control_flow_util.IsLoopSwitch(n),
+            msg="Mismatch for {}".format(n.name))
+      else:
+        self.assertFalse(
+            control_flow_util.IsLoopSwitch(n),
+            msg="Mismatch for {}".format(n.name))
+
+  def testIsCondMerge(self):
+    g = self.build_test_graph()
+    cond_merges = [
+        "OuterCond/cond/OuterWhile/while/NestedCond/cond/Merge",
+        "OuterCond/cond/Merge"
+    ]
+    for n in g.get_operations():
+      if n.name in cond_merges:
+        self.assertTrue(control_flow_util.IsMerge(n))
+        self.assertTrue(control_flow_util.IsCondMerge(n))
+        self.assertFalse(control_flow_util.IsLoopMerge(n))
+      else:
+        self.assertFalse(control_flow_util.IsCondMerge(n))
+        self.assertTrue(not control_flow_util.IsMerge(n) or
+                        control_flow_util.IsLoopMerge(n))
+
+  def testIsLoopMerge(self):
+    g = self.build_test_graph()
+    loop_merges = [
+        "OuterCond/cond/OuterWhile/while/Merge",
+    ]
+    for n in g.get_operations():
+      if n.name in loop_merges:
+        self.assertTrue(control_flow_util.IsMerge(n))
+        self.assertFalse(control_flow_util.IsCondMerge(n))
+        self.assertTrue(control_flow_util.IsLoopMerge(n))
+      else:
+        self.assertFalse(control_flow_util.IsLoopMerge(n))
+        self.assertTrue(not control_flow_util.IsMerge(n) or
+                        control_flow_util.IsCondMerge(n))
 
 
 if __name__ == "__main__":

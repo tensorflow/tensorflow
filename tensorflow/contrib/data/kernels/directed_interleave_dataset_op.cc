@@ -91,7 +91,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           {this, strings::StrCat(prefix, "::DirectedInterleave")}));
@@ -105,7 +105,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
     }
 
@@ -130,15 +130,21 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            selector_input_impl_(params.dataset->selector_input_->MakeIterator(
-                params.prefix + ".selector")),
-            num_active_inputs_(params.dataset->data_inputs_.size()) {
-        data_input_impls_.reserve(params.dataset->data_inputs_.size());
-        for (size_t i = 0; i < params.dataset->data_inputs_.size(); ++i) {
-          const DatasetBase* data_input = params.dataset->data_inputs_[i];
-          data_input_impls_.push_back(data_input->MakeIterator(
-              strings::StrCat(params.prefix, "[", i, "]")));
+            num_active_inputs_(params.dataset->data_inputs_.size()) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(dataset()->selector_input_->MakeIterator(
+            ctx, strings::StrCat(prefix(), ".selector"),
+            &selector_input_impl_));
+        data_input_impls_.resize(dataset()->data_inputs_.size());
+        for (size_t i = 0; i < data_input_impls_.size(); ++i) {
+          const DatasetBase* data_input = dataset()->data_inputs_[i];
+          TF_RETURN_IF_ERROR(data_input->MakeIterator(
+              ctx, strings::StrCat(prefix(), "[", i, "]"),
+              &data_input_impls_[i]));
         }
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,

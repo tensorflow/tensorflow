@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -45,7 +46,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   The probability density function (pdf) is, with `@` as matrix multiplication,
 
   ```none
-  pdf(x; loc, covariance_matrix) = exp(-0.5 ||y||**2) / Z,
+  pdf(x; loc, covariance_matrix) = exp(-0.5 y) / Z,
   y = (x - loc)^T @ inv(covariance_matrix) @ (x - loc)
   Z = (2 pi)**(0.5 k) |det(covariance_matrix)|**(0.5).
   ```
@@ -54,8 +55,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
 
   * `loc` is a vector in `R^k`,
   * `covariance_matrix` is an `R^{k x k}` symmetric positive definite matrix,
-  * `Z` denotes the normalization constant, and,
-  * `||y||**2` denotes the squared Euclidean norm of `y`.
+  * `Z` denotes the normalization constant.
 
   Additional leading dimensions (if any) in `loc` and `covariance_matrix` allow
   for batch dimensions.
@@ -113,6 +113,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                covariance_matrix=None,
@@ -156,10 +164,10 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
     Raises:
       ValueError: if neither `loc` nor `covariance_matrix` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
 
     # Convert the covariance_matrix up to a scale_tril and call MVNTriL.
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[loc, covariance_matrix]):
         if covariance_matrix is None:
           scale_tril = None

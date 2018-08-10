@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -81,7 +81,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
 
   ~PrependFromQueueAndPaddedBatchDataset() override { input_->Unref(); }
 
-  std::unique_ptr<IteratorBase> MakeIterator(
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::unique_ptr<IteratorBase>(new Iterator(
         {this, strings::StrCat(prefix, "::PrependFromQueueAndPaddedBatch")}));
@@ -94,7 +94,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
     return batched_shapes_with_queue_;
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return "PrependFromQueueAndPaddedBatchDatasetOp::Dataset";
   }
 
@@ -152,14 +152,18 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
       : public DatasetIterator<PrependFromQueueAndPaddedBatchDataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<PrependFromQueueAndPaddedBatchDataset>(params),
-          queue_(new TensorQueue(/*input_impl*/
-                                 params.dataset->input_->MakeIterator(
-                                     params.prefix),
-                                 params.dataset->dtypes_,
-                                 params.dataset->shapes_)) {}
+        : DatasetIterator<PrependFromQueueAndPaddedBatchDataset>(params) {}
 
     ~Iterator() override { queue_->Unref(); }
+
+    Status Initialize(IteratorContext* ctx) override {
+      std::unique_ptr<IteratorBase> iterator;
+      TF_RETURN_IF_ERROR(
+          dataset()->input_->MakeIterator(ctx, prefix(), &iterator));
+      queue_ = new TensorQueue(std::move(iterator), dataset()->dtypes_,
+                               dataset()->shapes_);
+      return Status::OK();
+    }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
@@ -372,7 +376,8 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
         if (reader->Contains(iter->full_name("input_exhausted"))) {
           input_impl_.reset();
         } else {
-          input_impl_ = iter->dataset_input()->MakeIterator(iter->prefix());
+          TF_RETURN_IF_ERROR(iter->dataset_input()->MakeIterator(
+              ctx, iter->prefix(), &input_impl_));
           TF_RETURN_IF_ERROR(iter->RestoreParent(ctx, reader, input_impl_));
         }
         entries_.clear();
@@ -469,7 +474,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
     };
 
    private:
-    TensorQueue* const queue_;
+    TensorQueue* queue_;
   };
 
  private:

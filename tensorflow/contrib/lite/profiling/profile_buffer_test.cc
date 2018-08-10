@@ -49,13 +49,13 @@ TEST(ProfileBufferTest, AddEvent) {
 
   auto event = GetProfileEvents(buffer)[0];
   EXPECT_EQ(event->tag, "hello");
-  EXPECT_GT(event->begin_timestamp_ms, 0);
+  EXPECT_GT(event->begin_timestamp_us, 0);
   EXPECT_EQ(event->event_type, ProfileEvent::EventType::DEFAULT);
   EXPECT_EQ(event->event_metadata, 42);
 
   buffer.EndEvent(event_handle);
   EXPECT_EQ(1, buffer.Size());
-  EXPECT_GE(event->end_timestamp_ms, event->begin_timestamp_ms);
+  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
 }
 
 TEST(ProfileBufferTest, OverFlow) {

@@ -22,7 +22,6 @@ import collections
 import six
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
@@ -33,7 +32,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.VocabInfo", "estimator.VocabInfo")
+@tf_export("train.VocabInfo", allow_multiple_exports=True)
 class VocabInfo(
     collections.namedtuple("VocabInfo", [
         "new_vocab",
@@ -45,7 +44,7 @@ class VocabInfo(
     ])):
   """Vocabulary information for warm-starting.
 
-  See @{tf.estimator.WarmStartSettings$WarmStartSettings} for examples of using
+  See `tf.estimator.WarmStartSettings` for examples of using
   VocabInfo to warm-start.
 
   Attributes:
@@ -81,11 +80,6 @@ class VocabInfo(
         old_vocab_size,
         backup_initializer,
     )
-
-
-def _is_variable(x):
-  return (isinstance(x, variables_lib.Variable) or
-          isinstance(x, resource_variable_ops.ResourceVariable))
 
 
 def _infer_var_name(var):
@@ -126,9 +120,10 @@ def _warm_start_var(var, prev_ckpt, prev_tensor_name=None):
     prev_tensor_name: Name of the tensor to lookup in provided `prev_ckpt`. If
       None, we lookup tensor with same name as given `var`.
   """
-  if _is_variable(var):
+  if checkpoint_utils._is_variable(var):  # pylint: disable=protected-access
     current_var_name = _infer_var_name([var])
-  elif isinstance(var, list) and all(_is_variable(v) for v in var):
+  elif (isinstance(var, list) and
+        all(checkpoint_utils._is_variable(v) for v in var)):  # pylint: disable=protected-access
     current_var_name = _infer_var_name(var)
   elif isinstance(var, variables_lib.PartitionedVariable):
     current_var_name = _infer_var_name([var])
@@ -193,9 +188,10 @@ def _warm_start_var_with_vocab(var,
           prev_vocab_path):
     raise ValueError("Invalid args: Must provide all of [current_vocab_path, "
                      "current_vocab_size, prev_ckpt, prev_vocab_path}.")
-  if _is_variable(var):
+  if checkpoint_utils._is_variable(var):
     var = [var]
-  elif isinstance(var, list) and all(_is_variable(v) for v in var):
+  elif (isinstance(var, list) and
+        all(checkpoint_utils._is_variable(v) for v in var)):
     var = var
   elif isinstance(var, variables_lib.PartitionedVariable):
     var = var._get_variable_list()
@@ -237,6 +233,62 @@ def _warm_start_var_with_vocab(var,
 # pylint: enable=protected-access
 
 
+def _get_grouped_variables(vars_to_warm_start):
+  """Collects and groups (possibly partitioned) variables into a dictionary.
+
+  The variables can be provided explicitly through vars_to_warm_start, or they
+  are retrieved from collections (see below).
+
+  Args:
+    vars_to_warm_start: One of the following:
+
+      - A regular expression (string) that captures which variables to
+        warm-start (see tf.get_collection).  This expression will only consider
+        variables in the TRAINABLE_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - A list of strings, each representing a full variable name to warm-start.
+      - `None`, in which case only variables specified in
+        `var_name_to_vocab_info` will be warm-started.
+  Returns:
+    A dictionary mapping variable names (strings) to lists of Variables.
+  Raises:
+    ValueError: If vars_to_warm_start is not a string, `None`, a list of
+      `Variables`, or a list of strings.
+  """
+  if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
+    # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
+    # everything (in TRAINABLE_VARIABLES) here.
+    list_of_vars = ops.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES,
+        scope=vars_to_warm_start)
+  elif isinstance(vars_to_warm_start, list):
+    if all([isinstance(v, str) for v in vars_to_warm_start]):
+      list_of_vars = []
+      for v in vars_to_warm_start:
+        list_of_vars += ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                           scope=v)
+    elif all([checkpoint_utils._is_variable(v) for v in vars_to_warm_start]):  # pylint: disable=protected-access
+      list_of_vars = vars_to_warm_start
+    else:
+      raise ValueError("If `vars_to_warm_start` is a list, it must be all "
+                       "`Variable` or all `str`.  Given types are {}".format(
+                           [type(v) for v in vars_to_warm_start]))
+  else:
+    raise ValueError("`vars_to_warm_start must be a `list` or `str`.  Given "
+                     "type is {}".format(type(vars_to_warm_start)))
+  # We have to deal with partitioned variables, since get_collection flattens
+  # out the list.
+  grouped_variables = {}
+  for v in list_of_vars:
+    if not isinstance(v, list):
+      var_name = _infer_var_name([v])
+    else:
+      var_name = _infer_var_name(v)
+    grouped_variables.setdefault(var_name, []).append(v)
+
+  return grouped_variables
+
+
 @tf_export("train.warm_start")
 def warm_start(ckpt_to_initialize_from,
                vars_to_warm_start=".*",
@@ -251,10 +303,19 @@ def warm_start(ckpt_to_initialize_from,
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    vars_to_warm_start: [Optional] A regular expression that captures which
-      variables to warm-start (see tf.get_collection).  Defaults to `'.*'`,
-      which warm-starts all variables.  If `None` is explicitly given, only
-      variables specified in `var_name_to_vocab_info` will be warm-started.
+    vars_to_warm_start: [Optional] One of the following:
+
+      - A regular expression (string) that captures which variables to
+        warm-start (see tf.get_collection).  This expression will only consider
+        variables in the TRAINABLE_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - A list of strings, each representing a full variable name to warm-start.
+      - `None`, in which case only variables specified in
+        `var_name_to_vocab_info` will be warm-started.
+
+      Defaults to `'.*'`, which warm-starts all variables in the
+      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
+      accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
       VocabInfo. The variable names should be "full" variables, not the names
       of the partitions.  If not explicitly provided, the variable is assumed to
@@ -274,21 +335,7 @@ def warm_start(ckpt_to_initialize_from,
   if var_name_to_prev_var_name is None:
     var_name_to_prev_var_name = {}
   logging.info("Warm-starting from: %s", (ckpt_to_initialize_from,))
-  # We have to deal with partitioned variables, since get_collection flattens
-  # out the list.
-  grouped_variables = {}
-  # Both vars_to_warm_start = '.*' and
-  # vars_to_warm_start = None will match everything here.
-  for v in ops.get_collection(
-      # TODO(eddz): Allow for different collections here (to support
-      # warm-starting accumulators).
-      ops.GraphKeys.TRAINABLE_VARIABLES,
-      scope=vars_to_warm_start):
-    if not isinstance(v, list):
-      var_name = _infer_var_name([v])
-    else:
-      var_name = _infer_var_name(v)
-    grouped_variables.setdefault(var_name, []).append(v)
+  grouped_variables = _get_grouped_variables(vars_to_warm_start)
 
   # Keep track of which var_names in var_name_to_prev_var_name and
   # var_name_to_vocab_info have been used.  Err on the safer side by throwing an

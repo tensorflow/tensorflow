@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -30,10 +30,10 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ tensorflow::Status TextLiteralWriter::WriteToPath(
+/* static */ Status TextLiteralWriter::WriteToPath(
     const Literal& literal, tensorflow::StringPiece path) {
   std::unique_ptr<tensorflow::WritableFile> f;
-  auto s = tensorflow::Env::Default()->NewWritableFile(path.ToString(), &f);
+  auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
     return s;
   }
@@ -43,7 +43,7 @@ namespace xla {
     return s;
   }
 
-  tensorflow::Status status;
+  Status status;
   tensorflow::WritableFile* f_ptr = f.get();
   literal.EachCellAsString(
       [f_ptr, &status](tensorflow::gtl::ArraySlice<int64> indices,

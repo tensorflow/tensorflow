@@ -22,14 +22,14 @@ limitations under the License.
 // In your BUILD rule, add a dependency on a platform plugin that you'd like
 // to use, such as:
 //
-//   //perftools/gputools/executor/cuda:cuda_platform
-//   //perftools/gputools/executor/opencl:opencl_platform
+//   //third_party/tensorflow/stream_executor/cuda:cuda_platform
+//   //third_party/tensorflow/stream_executor/opencl:opencl_platform
 //
 // This will register platform plugins that can be discovered via this
 // interface. Sample API usage:
 //
 //   port::StatusOr<Platform*> platform_status =
-//      gpu::MultiPlatformManager::PlatformWithName("OpenCL");
+//      se::MultiPlatformManager::PlatformWithName("OpenCL");
 //   if (!platform_status.ok()) { ... }
 //   Platform* platform = platform_status.ValueOrDie();
 //   LOG(INFO) << platform->VisibleDeviceCount() << " devices visible";
@@ -56,10 +56,10 @@ limitations under the License.
 // And similarly, for standard interfaces (BLAS, RNG, etc.) you can add
 // dependencies on support libraries, e.g.:
 //
-//    //perftools/gputools/executor/cuda:pluton_blas_plugin
-//    //perftools/gputools/executor/cuda:cudnn_plugin
-//    //perftools/gputools/executor/cuda:cublas_plugin
-//    //perftools/gputools/executor/cuda:curand_plugin
+//    //third_party/tensorflow/stream_executor/cuda:pluton_blas_plugin
+//    //third_party/tensorflow/stream_executor/cuda:cudnn_plugin
+//    //third_party/tensorflow/stream_executor/cuda:cublas_plugin
+//    //third_party/tensorflow/stream_executor/cuda:curand_plugin
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
@@ -68,6 +68,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -75,8 +76,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Manages multiple platforms that may be present on the current machine.
 class MultiPlatformManager {
@@ -181,7 +181,11 @@ class MultiPlatformManager {
   SE_DISALLOW_COPY_AND_ASSIGN(MultiPlatformManager);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
+
+// multi_platform_manager.cc will define this instance. Includers of this header
+// should use
+// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_platform, multi_platform_manager);
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_

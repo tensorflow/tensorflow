@@ -29,6 +29,10 @@ from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
 
 
+ops.NotDifferentiable("TensorListConcat")
+ops.NotDifferentiable("TensorListPushBackBatch")
+
+
 @ops.RegisterGradient("TensorListPushBack")
 def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(

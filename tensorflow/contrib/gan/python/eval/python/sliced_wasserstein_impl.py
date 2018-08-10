@@ -161,7 +161,7 @@ def _sliced_wasserstein(a, b, random_sampling_count, random_projection_dim):
     proj = random_ops.random_normal(
         [array_ops.shape(a)[1], random_projection_dim])
     proj *= math_ops.rsqrt(
-        math_ops.reduce_sum(math_ops.square(proj), 0, keep_dims=True))
+        math_ops.reduce_sum(math_ops.square(proj), 0, keepdims=True))
     # Project both distributions and sort them.
     proj_a = math_ops.matmul(a, proj)
     proj_b = math_ops.matmul(b, proj)

@@ -30,7 +30,8 @@ def from_contrib_estimator(estimator,
                            prediction_input_fn,
                            input_alternative_key=None,
                            output_alternative_key=None,
-                           graph=None):
+                           graph=None,
+                           config=None):
   """Constructs a `Predictor` from a `tf.contrib.learn.Estimator`.
 
   Args:
@@ -44,6 +45,7 @@ def from_contrib_estimator(estimator,
       multi-headed models.
     graph: Optional. The Tensorflow `graph` in which prediction should be
       done.
+    config: `ConfigProto` proto used to configure the session.
 
   Returns:
     An initialized `Predictor`.
@@ -62,13 +64,15 @@ def from_contrib_estimator(estimator,
       prediction_input_fn,
       input_alternative_key=input_alternative_key,
       output_alternative_key=output_alternative_key,
-      graph=graph)
+      graph=graph,
+      config=config)
 
 
 def from_estimator(estimator,
                    serving_input_receiver_fn,
                    output_key=None,
-                   graph=None):
+                   graph=None,
+                   config=None):
   """Constructs a `Predictor` from a `tf.python.estimator.Estimator`.
 
   Args:
@@ -79,6 +83,7 @@ def from_estimator(estimator,
       `None`, then `DEFAULT_SERVING_SIGNATURE_DEF_KEY` is used.
     graph: Optional. The Tensorflow `graph` in which prediction should be
       done.
+    config: `ConfigProto` proto used to configure the session.
 
   Returns:
     An initialized `Predictor`.
@@ -93,14 +98,21 @@ def from_estimator(estimator,
                     'tf.contrib.learn.Estimator. You likely want to call '
                     'from_contrib_estimator.')
   return core_estimator_predictor.CoreEstimatorPredictor(
-      estimator, serving_input_receiver_fn, output_key=output_key, graph=graph)
+      estimator,
+      serving_input_receiver_fn,
+      output_key=output_key,
+      graph=graph,
+      config=config)
 
 
 def from_saved_model(export_dir,
                      signature_def_key=None,
                      signature_def=None,
+                     input_names=None,
+                     output_names=None,
                      tags=None,
-                     graph=None):
+                     graph=None,
+                     config=None):
   """Constructs a `Predictor` from a `SavedModel` on disk.
 
   Args:
@@ -111,10 +123,17 @@ def from_saved_model(export_dir,
     signature_def: A `SignatureDef` proto specifying the inputs and outputs
       for prediction. Only one of `signature_def_key` and `signature_def`
       should be specified.
+      input_names: A dictionary mapping strings to `Tensor`s in the `SavedModel`
+        that represent the input. The keys can be any string of the user's
+        choosing.
+      output_names: A dictionary mapping strings to `Tensor`s in the
+        `SavedModel` that represent the output. The keys can be any string of
+        the user's choosing.
     tags: Optional. Tags that will be used to retrieve the correct
       `SignatureDef`. Defaults to `DEFAULT_TAGS`.
     graph: Optional. The Tensorflow `graph` in which prediction should be
       done.
+    config: `ConfigProto` proto used to configure the session.
 
   Returns:
     An initialized `Predictor`.
@@ -127,5 +146,8 @@ def from_saved_model(export_dir,
       export_dir,
       signature_def_key=signature_def_key,
       signature_def=signature_def,
+      input_names=input_names,
+      output_names=output_names,
       tags=tags,
-      graph=graph)
+      graph=graph,
+      config=config)

@@ -45,6 +45,7 @@ class SimpleTestGraph : public GraphInfo {
   TfLiteTensor* tensor(size_t index) override { return &tensors_[index]; }
   const std::vector<int>& inputs() const override { return inputs_; }
   const std::vector<int>& outputs() const override { return outputs_; }
+  const std::vector<int>& variables() const override { return variables_; }
 
   void AddNode(const std::vector<int>& inputs,
                const std::vector<int>& outputs) {
@@ -67,6 +68,7 @@ class SimpleTestGraph : public GraphInfo {
   std::vector<TfLiteTensor> tensors_;
   std::vector<int> inputs_;
   std::vector<int> outputs_;
+  std::vector<int> variables_;
 };
 
 // Partition a graph to generate a list of subgraphs. This wraps the API call

@@ -13,23 +13,15 @@
 # limitations under the License.
 # =============================================================================
 
-# pylint: disable=unused-import,g-bad-import-order
 """Contains the convolutional layer classes and their functional aliases.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras._impl.keras import layers as keras_layers
+from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
-from tensorflow.python.layers import utils
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -217,7 +209,6 @@ def conv1d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -421,7 +412,6 @@ def conv2d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -627,7 +617,6 @@ def conv3d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1266,7 +1255,6 @@ def conv2d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1438,7 +1426,6 @@ def conv3d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

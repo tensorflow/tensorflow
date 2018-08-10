@@ -36,14 +36,13 @@ class HloToIrBindings {
  public:
   HloToIrBindings(const HloModule& module,
                   const BufferAssignment* buffer_assignment,
-                  llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module,
+                  llvm::IRBuilder<>* b, llvm::Module* llvm_module,
                   bool is_nested)
       : buffer_assignment_(buffer_assignment),
         is_nested_(is_nested),
-        ir_builder_(ir_builder),
+        b_(b),
         module_(llvm_module),
-        alias_analysis_(module, *buffer_assignment_,
-                        &ir_builder_->getContext()) {}
+        alias_analysis_(module, *buffer_assignment_, &b_->getContext()) {}
 
   void EmitBasePointersForHlos(
       tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,
@@ -51,7 +50,7 @@ class HloToIrBindings {
 
   // Rebinds the given HLO to the LLVM IR value that represent its address.
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
-                        const ShapeIndex& shape_index = {});
+                        ShapeIndexView shape_index = {});
 
   // Unbinds all IR values that's defined in an LLVM function, e.g., function
   // arguments and stack variables. Global variables will be kept in bindings_.
@@ -71,7 +70,7 @@ class HloToIrBindings {
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
   llvm::Value* GetBasePointer(const HloInstruction& hlo,
-                              const ShapeIndex& shape_index = {}) const {
+                              ShapeIndexView shape_index = {}) const {
     auto it = base_ptrs_.find(&hlo);
     CHECK(it != base_ptrs_.end()) << hlo.ToString();
     return it->second.element(shape_index);
@@ -97,14 +96,14 @@ class HloToIrBindings {
 
   // Returns an llvm typed ir representation of 'ir_value' based on 'hlo' shape.
   llvm::Value* GetTypedIrValue(const HloInstruction& hlo,
-                               const ShapeIndex& shape_index,
+                               ShapeIndexView shape_index,
                                llvm::Value* ir_value);
 
   const BufferAssignment* buffer_assignment_;
 
   const bool is_nested_;
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Module* module_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.

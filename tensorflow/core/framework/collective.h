@@ -52,7 +52,8 @@ struct CollGroupParams {
   DeviceType device_type;
   int32 num_tasks;  // number of distinct tasks in group
   string ToString() const;
-  CollGroupParams() : device_type(DEVICE_CPU) {}
+  CollGroupParams()
+      : group_key(0), group_size(0), device_type(DEVICE_CPU), num_tasks(0) {}
 };
 
 // The best implementation of a collective op depends on many factors
@@ -71,14 +72,17 @@ struct CollImplDetails {
 
 // Data common to all members of a collective instance.
 struct CollInstanceParams {
-  int32 instance_key;  // Identifies all participating graph nodes.
-  CollectiveType type;
-  DataType data_type;
-  TensorShape shape;
+  // Identifies all participating graph nodes.
+  int32 instance_key = -1;
+  CollectiveType type = UNDEFINED_COLLECTIVE;
+  DataType data_type = DT_FLOAT;
+  TensorShape shape = {0};
   // Fully qualified name of device for each member, in default rank order.
   std::vector<string> device_names;
   // Task name prefix of corresponding device name.
   std::vector<string> task_names;
+  // True if every task has the same number of devices.
+  bool same_num_devices_per_task = false;
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -97,12 +101,11 @@ struct CollectiveParams {
   CollInstanceParams instance;
   CollTaskParams task;
 
-  string name;       // node name used only for log or error messages
-  int default_rank;  // index of this op within device_names
-  bool is_source;    // broadcast only
+  string name = "";        // node name used only for log or error messages
+  int default_rank = -1;   // index of this op within device_names
+  bool is_source = false;  // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
-  std::vector<int> subdiv_source_rank;
   std::unique_ptr<OpKernel> merge_op;  // reduction only
   std::unique_ptr<OpKernel> final_op;  // reduction only
   string ToString() const;
@@ -222,6 +225,7 @@ class PeerAccessInterface {
                             const AllocatorAttributes& to_alloc_attr,
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
+                            int dev_to_dev_stream_index,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,
@@ -284,12 +288,14 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
 };
 
-// Interface of a helper object that provices a CollectiveExecutor with
+// Interface of a helper object that provides a CollectiveExecutor with
 // all of the remote access it needs.
 class CollectiveRemoteAccess : public PeerAccessInterface,
                                public DeviceResolverInterface {
  public:
   virtual ~CollectiveRemoteAccess() {}
+
+  virtual BufRendezvous* buf_rendezvous() = 0;
 };
 
 // A per-step version of CollectiveRemoteAccess that cleans up outstanding

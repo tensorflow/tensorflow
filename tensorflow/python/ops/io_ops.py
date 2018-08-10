@@ -17,53 +17,6 @@
 """Inputs and Readers.
 
 See the @{$python/io_ops} guide.
-
-@@placeholder
-@@placeholder_with_default
-@@sparse_placeholder
-@@ReaderBase
-@@TextLineReader
-@@WholeFileReader
-@@IdentityReader
-@@TFRecordReader
-@@LMDBReader
-@@FixedLengthRecordReader
-@@decode_csv
-@@decode_raw
-@@VarLenFeature
-@@FixedLenFeature
-@@FixedLenSequenceFeature
-@@SparseFeature
-@@parse_example
-@@parse_single_example
-@@parse_tensor
-@@serialize_tensor
-@@decode_json_example
-@@QueueBase
-@@FIFOQueue
-@@PaddingFIFOQueue
-@@RandomShuffleQueue
-@@PriorityQueue
-@@ConditionalAccumulatorBase
-@@ConditionalAccumulator
-@@SparseConditionalAccumulator
-@@matching_files
-@@read_file
-@@write_file
-@@match_filenames_once
-@@limit_epochs
-@@input_producer
-@@range_input_producer
-@@slice_input_producer
-@@string_input_producer
-@@batch
-@@maybe_batch
-@@batch_join
-@@maybe_batch_join
-@@shuffle_batch
-@@maybe_shuffle_batch
-@@shuffle_batch_join
-@@maybe_shuffle_batch_join
 """
 
 from __future__ import absolute_import

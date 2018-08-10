@@ -38,9 +38,9 @@ the heavy lifting of training your model. In addition, viewing input pipelines
 as an ETL process provides structure that facilitates the application of
 performance optimizations.
 
-When using the @{tf.estimator.Estimator} API, the first two phases (Extract and
+When using the `tf.estimator.Estimator` API, the first two phases (Extract and
 Transform) are captured in the `input_fn` passed to
-@{tf.estimator.Estimator.train}. In code, this might look like the following
+`tf.estimator.Estimator.train`. In code, this might look like the following
 (naive, sequential) implementation:
 
 ```
@@ -99,7 +99,7 @@ With pipelining, idle time diminishes significantly:
 ![with pipelining](/images/datasets_with_pipelining.png)
 
 The `tf.data` API provides a software pipelining mechanism through the
-@{tf.data.Dataset.prefetch} transformation, which can be used to decouple the
+`tf.data.Dataset.prefetch` transformation, which can be used to decouple the
 time data is produced from the time it is consumed. In particular, the
 transformation uses a background thread and an internal buffer to prefetch
 elements from the input dataset ahead of the time they are requested. Thus, to
@@ -130,7 +130,7 @@ The preceding recommendation is simply the most common application.
 ### Parallelize Data Transformation
 
 When preparing a batch, input elements may need to be pre-processed. To this
-end, the `tf.data` API offers the @{tf.data.Dataset.map} transformation, which
+end, the `tf.data` API offers the `tf.data.Dataset.map` transformation, which
 applies a user-defined function (for example, `parse_fn` from the running
 example) to each element of the input dataset. Because input elements are
 independent of one another, the pre-processing can be parallelized across
@@ -164,7 +164,7 @@ dataset = dataset.map(map_func=parse_fn, num_parallel_calls=FLAGS.num_parallel_c
 
 Furthermore, if your batch size is in the hundreds or thousands, your pipeline
 will likely additionally benefit from parallelizing the batch creation. To this
-end, the `tf.data` API provides the @{tf.contrib.data.map_and_batch}
+end, the `tf.data` API provides the `tf.contrib.data.map_and_batch`
 transformation, which effectively "fuses" the map and batch transformations.
 
 To apply this change to our running example, change:
@@ -205,7 +205,7 @@ is stored locally or remotely, but can be worse in the remote case if data is
 not prefetched effectively.
 
 To mitigate the impact of the various data extraction overheads, the `tf.data`
-API offers the @{tf.contrib.data.parallel_interleave} transformation. Use this
+API offers the `tf.contrib.data.parallel_interleave` transformation. Use this
 transformation to parallelize the execution of and interleave the contents of
 other datasets (such as data file readers). The
 number of datasets to overlap can be specified by the `cycle_length` argument.
@@ -232,7 +232,7 @@ dataset = files.apply(tf.contrib.data.parallel_interleave(
 The throughput of remote storage systems can vary over time due to load or
 network events. To account for this variance, the `parallel_interleave`
 transformation can optionally use prefetching. (See
-@{tf.contrib.data.parallel_interleave} for details).
+`tf.contrib.data.parallel_interleave` for details).
 
 By default, the `parallel_interleave` transformation provides a deterministic
 ordering of elements to aid reproducibility. As an alternative to prefetching
@@ -261,7 +261,7 @@ function (that is, have it operate over a batch of inputs at once) and apply the
 
 ### Map and Cache
 
-The @{tf.data.Dataset.cache} transformation can cache a dataset, either in
+The `tf.data.Dataset.cache` transformation can cache a dataset, either in
 memory or on local storage. If the user-defined function passed into the `map`
 transformation is expensive, apply the cache transformation after the map
 transformation as long as the resulting dataset can still fit into memory or
@@ -281,9 +281,9 @@ performance (for example, to enable fusing of the map and batch transformations)
 
 ### Repeat and Shuffle
 
-The @{tf.data.Dataset.repeat} transformation repeats the input data a finite (or
+The `tf.data.Dataset.repeat` transformation repeats the input data a finite (or
 infinite) number of times; each repetition of the data is typically referred to
-as an _epoch_. The @{tf.data.Dataset.shuffle} transformation randomizes the
+as an _epoch_. The `tf.data.Dataset.shuffle` transformation randomizes the
 order of the dataset's examples.
 
 If the `repeat` transformation is applied before the `shuffle` transformation,
@@ -296,7 +296,7 @@ internal state of the `shuffle` transformation. In other words, the former
 (`shuffle` before `repeat`) provides stronger ordering guarantees.
 
 When possible, we recommend using the fused
-@{tf.contrib.data.shuffle_and_repeat} transformation, which combines the best of
+`tf.contrib.data.shuffle_and_repeat` transformation, which combines the best of
 both worlds (good performance and strong ordering guarantees). Otherwise, we
 recommend shuffling before repeating.
 

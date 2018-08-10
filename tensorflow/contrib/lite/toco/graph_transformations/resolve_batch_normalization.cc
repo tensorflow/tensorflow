@@ -134,9 +134,9 @@ bool ResolveBatchNormalization::Run(Model* model, std::size_t op_index) {
   }
 
   // Remove the old param arrays
-  model->EraseArray(bn_op->inputs[1]);
-  model->EraseArray(bn_op->inputs[2]);
-  model->EraseArray(bn_op->inputs[3]);
+  DeleteArrayIfUsedOnce(bn_op->inputs[1], model);
+  DeleteArrayIfUsedOnce(bn_op->inputs[2], model);
+  DeleteArrayIfUsedOnce(bn_op->inputs[3], model);
 
   // Remove the old operator
   DCHECK_EQ(bn_it->get(), bn_op);

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 
 #include <vector>
-#include "tensorflow/core/framework/resource_handle.pb.h"
+
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
@@ -64,40 +64,6 @@ bool DecodeStringList(const string& src, string* strings, int64 n) {
 
 void CopyFromArray(string* s, const char* base, size_t bytes) {
   s->assign(base, bytes);
-}
-
-void EncodeResourceHandleList(const ResourceHandle* p, int64 n, string* out) {
-  out->clear();
-  string rest;
-  ResourceHandleProto proto;
-  for (int i = 0; i < n; ++i) {
-    p[i].AsProto(&proto);
-    core::PutVarint32(out, proto.ByteSize());
-    proto.AppendToString(&rest);
-  }
-  *out += rest;
-}
-
-bool DecodeResourceHandleList(const string& in, ResourceHandle* ps, int64 n) {
-  std::vector<uint32> sizes(n);
-  StringPiece reader(in);
-  int64 total = 0;
-  for (auto& size : sizes) {
-    if (!core::GetVarint32(&reader, &size)) return false;
-    total += size;
-  }
-  if (total != static_cast<int64>(reader.size())) {
-    return false;
-  }
-  ResourceHandleProto proto;
-  for (int i = 0; i < n; ++i) {
-    if (!proto.ParseFromArray(reader.data(), sizes[i])) {
-      return false;
-    }
-    ps[i].FromProto(proto);
-    reader.remove_prefix(sizes[i]);
-  }
-  return true;
 }
 
 }  // namespace port

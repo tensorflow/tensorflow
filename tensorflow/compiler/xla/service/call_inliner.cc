@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -151,6 +152,14 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
         }
         return Status::OK();
       }));
+  if (did_mutate) {
+    // Run DCE to remove called computations which are now becoming unused.
+    // This can result then in problems if within the called computation, there
+    // were send/recv instructions, which the module group verifier will flag as
+    // error findingthe same channel ID used for multiple send/recv
+    // instructions.
+    TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
+  }
   return did_mutate;
 }
 

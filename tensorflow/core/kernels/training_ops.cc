@@ -153,8 +153,10 @@ struct ApplyAdagrad<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstFlat grad) {
-    accum.device(d) += grad.square();
+                  typename TTypes<T>::ConstFlat grad, bool update_slots) {
+    if (update_slots) {
+      accum.device(d) += grad.square();
+    }
     var.device(d) -= grad * lr() * accum.rsqrt();
   }
 };
@@ -1074,6 +1076,7 @@ class ApplyAdagradOp : public OpKernel {
  public:
   explicit ApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1111,13 +1114,15 @@ class ApplyAdagradOp : public OpKernel {
 
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyAdagrad<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
-                                       lr.scalar<T>(), grad.flat<T>());
+                                       lr.scalar<T>(), grad.flat<T>(),
+                                       update_slots_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
 
  private:
   bool use_exclusive_lock_;
+  bool update_slots_;
 };
 
 #define REGISTER_KERNELS(D, T)                                        \
@@ -1145,7 +1150,7 @@ namespace functor {
   void ApplyAdagrad<GPUDevice, T>::operator()(                            \
       const GPUDevice& d, typename TTypes<T>::Flat var,                   \
       typename TTypes<T>::Flat accum, typename TTypes<T>::ConstScalar lr, \
-      typename TTypes<T>::ConstFlat grad);                                \
+      typename TTypes<T>::ConstFlat grad, bool update_slots);             \
   extern template struct ApplyAdagrad<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
@@ -1266,6 +1271,7 @@ class SparseApplyAdagradOp : public OpKernel {
  public:
   explicit SparseApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
@@ -1339,7 +1345,9 @@ class SparseApplyAdagradOp : public OpKernel {
           auto a = accum_flat.template chip<0>(index);
           auto g = grad_flat.template chip<0>(i);
           auto v = var_flat.template chip<0>(index);
-          a += g.square();
+          if (update_slots_) {
+            a += g.square();
+          }
           v -= g.constant(lr_scalar) * g * a.rsqrt();
         }
       } else {
@@ -1358,7 +1366,9 @@ class SparseApplyAdagradOp : public OpKernel {
                                           " in indices is out of range")));
           T& a = accum_flat(index);
           const T& g = grad_flat(i);
-          a += g * g;
+          if (update_slots_) {
+            a += g * g;
+          }
           var_flat(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
         }
       }
@@ -1369,6 +1379,7 @@ class SparseApplyAdagradOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool update_slots_;
 };
 
 #define REGISTER_KERNELS(T, Tindices)                                \

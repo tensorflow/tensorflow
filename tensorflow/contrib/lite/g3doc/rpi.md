@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite for Raspberry Pi
 
 ## Cross compiling
@@ -32,7 +35,7 @@ This has been tested on Raspberry Pi 3b, Raspbian GNU/Linux 9.1 (stretch), gcc v
 
 Log in to you RPI, install the toolchain.
 ```bash
-sudo apt-get instal build-essential
+sudo apt-get install build-essential
 ```
 
 First, clone this TensorFlow repository. Run this at the root of the repository:

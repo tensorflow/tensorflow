@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -50,8 +51,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     const gtl::InlinedVector<int64, 4> input_shape =
         input_tensor_shape.dim_sizes();
 
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
 
     int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format_);
     int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format_);
@@ -135,7 +135,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     //       input_shape[1] / block_size_, block_size_,
     //       input_shape[2] / block_size_, block_size_,
     //       depth]
-    xla::ComputationDataHandle reshaped = b->Reshape(input, reshaped_shape);
+    xla::XlaOp reshaped = xla::Reshape(input, reshaped_shape);
 
     // 2. Permute dimensions of `reshaped` to produce
     //    `permuted_reshaped` of shape:
@@ -145,8 +145,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     //       input_shape[2] / block_size_,
     //       block_size_, block_size_,
     //       depth]
-    xla::ComputationDataHandle permuted_reshaped =
-        b->Transpose(reshaped, transpose_order);
+    xla::XlaOp permuted_reshaped = xla::Transpose(reshaped, transpose_order);
 
     // 3. Reshape `permuted_reshaped` to flatten `block_shape` into the
     //    batch dimension, producing an output tensor of shape:
@@ -156,8 +155,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     //       input_shape[2] / block_size_,
     //       block_size_ * block_size_ * depth]
     //
-    xla::ComputationDataHandle output =
-        b->Reshape(permuted_reshaped, output_shape);
+    xla::XlaOp output = xla::Reshape(permuted_reshaped, output_shape);
 
     ctx->SetOutput(0, output);
   }

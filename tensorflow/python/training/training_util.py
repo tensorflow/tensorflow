@@ -44,11 +44,13 @@ def global_step(sess, global_step_tensor):
   """Small helper to get the global step.
 
   ```python
-  # Creates a variable to hold the global_step.
+  # Create a variable to hold the global_step.
   global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
-  # Creates a session.
+  # Create a session.
   sess = tf.Session()
-  # Initializes the variable.
+  # Initialize the variable
+  sess.run(global_step_tensor.initializer)
+  # Get the variable value.
   print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
   global_step: 10
@@ -119,18 +121,18 @@ def create_global_step(graph=None):
   graph = graph or ops.get_default_graph()
   if get_global_step(graph) is not None:
     raise ValueError('"global_step" already exists.')
+  if context.executing_eagerly():
+    with ops.device('cpu:0'):
+      return variable_scope.get_variable(
+          ops.GraphKeys.GLOBAL_STEP,
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                       ops.GraphKeys.GLOBAL_STEP])
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    if context.executing_eagerly():
-      with ops.device('cpu:0'):
-        return variable_scope.get_variable(
-            ops.GraphKeys.GLOBAL_STEP,
-            shape=[],
-            dtype=dtypes.int64,
-            initializer=init_ops.zeros_initializer(),
-            trainable=False,
-            collections=[ops.GraphKeys.GLOBAL_VARIABLES,
-                         ops.GraphKeys.GLOBAL_STEP])
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],

@@ -25,6 +25,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import monitor as monitor_lib
 from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python.single_loss_example import single_loss_example
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
@@ -51,11 +52,11 @@ class MonitorTest(test.TestCase, parameterized.TestCase):
 
       self.assertEqual(1, len(layer.trainable_variables))
       mirrored_weight_variable = layer.trainable_variables[0]
-      start_error = self.evaluate(distribution.fetch(mirrored_weight_variable))
+      start_error = self.evaluate(mirrored_weight_variable)
       start_error = abs(numpy.array(start_error) - 1)
 
       monitor.run_steps(9)
-      end_error = self.evaluate(distribution.fetch(mirrored_weight_variable))
+      end_error = self.evaluate(mirrored_weight_variable)
       end_error = abs(numpy.array(end_error) - 1)
       self.assertGreaterEqual(start_error, end_error)
 
@@ -65,7 +66,7 @@ class MonitorTest(test.TestCase, parameterized.TestCase):
     step_function, _ = single_loss_example(
         lambda: gradient_descent.GradientDescentOptimizer(0.2), distribution)
 
-    with self.test_session() as sess:
+    with session.Session() as sess, context.eager_mode():
       with self.assertRaisesRegexp(ValueError, "Should not provide"):
         _ = monitor_lib.Monitor(step_function, sess)
 

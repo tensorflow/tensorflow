@@ -33,6 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 class CancellationManager;
+class CollectiveExecutor;
 class GraphDef;
 class OpKernel;
 class ProcessFunctionLibraryRuntime;
@@ -260,7 +261,10 @@ class FunctionCallFrame : public CallFrameInterface {
   // Caller methods.
   Status SetArgs(gtl::ArraySlice<Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
-  Status ConsumeRetvals(std::vector<Tensor>* rets);
+
+  // Moves the return values from the frame to rets. If allow_dead_tensors is
+  // false it will fail if any of the retvals do not have a value.
+  Status ConsumeRetvals(std::vector<Tensor>* rets, bool allow_dead_tensors);
 
   size_t num_args() const override { return arg_types_.size(); }
   size_t num_retvals() const override { return ret_types_.size(); }
@@ -449,6 +453,12 @@ class FunctionLibraryRuntime {
     // state (in stateful kernels); and two functions with different
     // values for `state_handle` will have independent state.
     string state_handle;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function using an executor of the given type. If empty,
+    // the default TensorFlow executor will be used.
+    string executor_type;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -484,6 +494,7 @@ class FunctionLibraryRuntime {
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollector* stats_collector = nullptr;
 
@@ -502,6 +513,9 @@ class FunctionLibraryRuntime {
     // If true, we create a new IntraProcessRendezvous, else use the existing
     // one.
     bool create_rendezvous = false;
+
+    // If True, allow returning dead tensors.
+    bool allow_dead_tensors = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
