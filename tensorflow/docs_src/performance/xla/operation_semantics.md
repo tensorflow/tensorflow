@@ -2385,8 +2385,6 @@ restrictions listed below.
     last execution of the `body`.
 *   The shape of the type `T` is statically determined and must be the same
     across all iterations.
-*   `While` nodes are not allowed to be nested. (This restriction may be lifted
-    in the future on some targets.)
 
 The T parameters of the computations are initialized with the `init` value in
 the first iteration and are automatically updated to the new result from `body`
