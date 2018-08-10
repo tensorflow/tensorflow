@@ -115,13 +115,13 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
         slice_size, Tindices, Tparams, Tout, &error_loc);
 
 #ifdef INTEL_MKL
-    // Eigen implementation below is not highly performant. gather_nd_generator
-    // does not seem to be called in parallel, leading to very poor performance.
-    // Additionally, since it uses scalar (Tscratch) to invoke 'generate', it
-    // needs to go through redundant operations like 'reshape', 'broadcast' and
-    // 'sum'. OpenMP loop below essentially does same thing as Eigen code, but
-    // is considerably more efficient.
-    #pragma omp parallel for
+// Eigen implementation below is not highly performant. gather_nd_generator
+// does not seem to be called in parallel, leading to very poor performance.
+// Additionally, since it uses scalar (Tscratch) to invoke 'generate', it
+// needs to go through redundant operations like 'reshape', 'broadcast' and
+// 'sum'. OpenMP loop below essentially does same thing as Eigen code, but
+// is considerably more efficient.
+#pragma omp parallel for
     for (Eigen::DenseIndex i = 0; i < batch_size; i++) {
       const Eigen::array<Eigen::DenseIndex, 1> loc = i;
       gather_nd_generator(loc);
