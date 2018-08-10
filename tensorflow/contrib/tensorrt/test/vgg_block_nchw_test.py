@@ -42,11 +42,9 @@ class VGGBlockNCHWTest(trt_test.TfTrtIntegrationTestBase):
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       x, _, _ = nn_impl.fused_batch_norm(
-          x,
-          np.random.randn(2).astype(np.float32),
-          np.random.randn(2).astype(np.float32),
-          mean=np.random.randn(2).astype(np.float32),
-          variance=np.random.randn(2).astype(np.float32),
+          x, [1.0, 1.0], [0.0, 0.0],
+          mean=[0.5, 0.5],
+          variance=[1.0, 1.0],
           data_format="NCHW",
           is_training=False)
       e = constant_op.constant(
@@ -72,10 +70,11 @@ class VGGBlockNCHWTest(trt_test.TfTrtIntegrationTestBase):
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        expected_engines=["my_trt_op_0"],
-        expected_output_dims=(5, 6, 2, 2),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        expected_output_dims=(5, 6, 2, 2))
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["my_trt_op_0"]
 
 
 if __name__ == "__main__":
