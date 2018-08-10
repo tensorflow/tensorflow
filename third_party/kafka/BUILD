@@ -50,6 +50,7 @@ cc_library(
         "src/rdkafka.h",
         "src/rdkafka_assignor.c",
         "src/rdkafka_assignor.h",
+        "src/rdkafka_background.c",
         "src/rdkafka_broker.c",
         "src/rdkafka_broker.h",
         "src/rdkafka_buf.c",
