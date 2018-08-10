@@ -35,9 +35,13 @@ import numbers as _numbers
 
 import numpy as _np
 import six as _six
+try:
+  from collections.abc import Iterable as _Iterable
+except ImportError:
+  from collections import Iterable as _Iterable
 
 from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.python.framework import ops
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
@@ -111,15 +115,19 @@ def as_str_any(value):
 
 @tf_export('compat.path_to_str')
 def path_to_str(path):
-  """Returns the file system path representation of a `PathLike` object, else as it is.
+  """Returns the file system path representation of one or more `PathLike` objects, otherwise 
+  `path` is passed through unchanged.
 
   Args:
-    path: An object that can be converted to path representation.
+    path: One or more objects to be conditionally converted to path representation.
 
   Returns:
-    A `str` object.
+    If `path` is a `PathLike` object, then the return value is one or more `str` objects.
+    Otherwise `path` is returned unchanged
   """
-  if hasattr(path, '__fspath__'):
+  if isinstance(path, _Iterable) and not isinstance(path, (str, bytes, bytearray, ops.Tensor)):
+    path = [path_to_str(p) for p in path]
+  elif hasattr(path, '__fspath__'):
     path = as_str_any(path.__fspath__())
   return path
 
