@@ -2003,8 +2003,8 @@ def sparse_softmax_cross_entropy_with_logits(
   A common use case is to have logits and labels of shape
   `[batch_size, num_classes]`, but higher dimensions are supported, in which
   case the `dim`-th dimension is assumed to be of size `num_classes`.
-  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
-  or `float64`).
+  `logits` must have the dtype of `float16`, `float32`, or `float64`, and
+  `labels` must have the dtype of `int32` or `int64`.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
