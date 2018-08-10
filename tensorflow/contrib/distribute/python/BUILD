@@ -466,17 +466,27 @@ py_library(
     ],
 )
 
+py_library(
+    name = "step_fn_test_lib",
+    testonly = 1,
+    srcs = ["step_fn_test.py"],
+    deps = [
+        ":combinations",
+        ":single_loss_example",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     additional_deps = [
-        ":single_loss_example",
-        ":combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
+        ":step_fn_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
