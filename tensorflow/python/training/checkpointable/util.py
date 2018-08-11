@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import os
 import weakref
 
 from tensorflow.core.protobuf import checkpointable_object_graph_pb2
@@ -36,6 +37,7 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
@@ -101,6 +103,7 @@ class _CheckpointRestoreCoordinator(object):
     # this checkpoint.
     self.restore_ops = []
     self.restore_ops_by_name = {}
+    self.new_restore_ops_callback = None
     # A mapping from optimizer proto ids to lists of slot variables to be
     # restored when the optimizer is tracked. Only includes slot variables whose
     # regular variables have already been created, and only for optimizer
@@ -120,6 +123,11 @@ class _CheckpointRestoreCoordinator(object):
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
+
+  def new_restore_ops(self, new_ops):
+    self.restore_ops.extend(new_ops)
+    if self.new_restore_ops_callback:
+      self.new_restore_ops_callback(new_ops)  # pylint: disable=not-callable
 
 
 class _NameBasedRestoreCoordinator(object):
@@ -361,24 +369,42 @@ class _ObjectIdentityWeakKeyDictionary(_ObjectIdentityDictionary):
         yield unwrapped
 
 
-class _ObjectIdentityWeakSet(collections.MutableSet):
-  """Like weakref.WeakSet, but compares objects with "is"."""
+class _ObjectIdentitySet(collections.MutableSet):
+  """Like the built-in set, but compares objects with "is"."""
 
-  def __init__(self):
-    self._storage = set()
+  def __init__(self, *args):
+    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
 
   def __contains__(self, key):
-    return _WeakObjectIdentityWrapper(key) in self._storage
+    return self._wrap_key(key) in self._storage
 
   def discard(self, key):
-    self._storage.discard(_WeakObjectIdentityWrapper(key))
+    self._storage.discard(self._wrap_key(key))
 
   def add(self, key):
-    self._storage.add(_WeakObjectIdentityWrapper(key))
+    self._storage.add(self._wrap_key(key))
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakSet(_ObjectIdentitySet):
+  """Like weakref.WeakSet, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
 
   def __len__(self):
     # Iterate, discarding old weak refs
-    return len(list(self))
+    return len([_ for _ in self])
 
   def __iter__(self):
     keys = list(self._storage)
@@ -747,7 +773,7 @@ def capture_dependencies(template):
           initial_value=initializer,
           name=name,
           **inner_kwargs)
-    if name.startswith(name_prefix):
+    if name is not None and name.startswith(name_prefix):
       scope_stripped_name = name[len(name_prefix) + 1:]
       if not checkpointable_parent:
         return template._add_variable_with_custom_getter(  # pylint: disable=protected-access
@@ -801,6 +827,31 @@ class _LoadStatus(object):
   def initialize_or_restore(self, session=None):
     """Runs restore ops from the checkpoint, or initializes variables."""
     pass
+
+
+def streaming_restore(status, session=None):
+  """When graph building, runs restore ops as soon as they come in.
+
+  Args:
+    status: A _LoadStatus objects from an object-based saver's
+      restore(). Streaming restore from name-based checkpoints is not currently
+      supported.
+    session: A session to run new restore ops in.
+  """
+  if context.executing_eagerly():
+    # Streaming restore is the default/only behavior when executing eagerly.
+    return
+  if session is None:
+    session = ops.get_default_session()
+  if isinstance(status, NameBasedSaverStatus):
+    raise NotImplementedError(
+        "Streaming restore not supported from name-based checkpoints. File a "
+        "feature request if this limitation bothers you.")
+  status.run_restore_ops(session=session)
+  # pylint: disable=protected-access
+  status._checkpoint.new_restore_ops_callback = (
+      lambda ops: session.run(ops, feed_dict=status._feed_dict))
+  # pylint: enable=protected-access
 
 
 class CheckpointLoadStatus(_LoadStatus):
@@ -857,8 +908,8 @@ class CheckpointLoadStatus(_LoadStatus):
     for checkpointable_object in list_objects(self._root_checkpointable):
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
-        set(self._checkpoint.all_python_objects)
-        - set(self._checkpoint.object_by_proto_id.values()))
+        _ObjectIdentitySet(self._checkpoint.all_python_objects)
+        - _ObjectIdentitySet(self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
       raise AssertionError(
           ("Some Python objects were not bound to checkpointed values, likely "
@@ -894,7 +945,7 @@ class CheckpointLoadStatus(_LoadStatus):
     if session is None:
       session = ops.get_default_session()
     all_objects = list_objects(self._root_checkpointable)
-    already_initialized_objects = set(
+    already_initialized_objects = _ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
     initializers_for_non_restored_variables = [
         c.initializer for c in all_objects
@@ -974,11 +1025,13 @@ _DEPRECATED_RESTORE_INSTRUCTIONS = (
     "one this message is coming from) and use that checkpoint in the future.")
 
 
-@deprecation.deprecated(
-    date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
 class NameBasedSaverStatus(_LoadStatus):
   """Status for loading a name-based training checkpoint."""
 
+  # Ideally this deprecation decorator would be on the class, but that
+  # interferes with isinstance checks.
+  @deprecation.deprecated(
+      date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
   def __init__(self, checkpoint, root_checkpointable):
     self._checkpoint = checkpoint
     self._root_checkpointable = root_checkpointable
@@ -1049,7 +1102,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
 
 def _copy_saver_with_new_var_list(old_saver, new_var_list):
   """Copy a `tf.train.Saver`'s state to a new Saver with different variables."""
-  new_saver = saver_lib.Saver(var_list=new_var_list)
+  new_saver = saver_lib.Saver(var_list=new_var_list, max_to_keep=None)
   # TODO(allenl): Move to copying functionality to Saver?
   # pylint: disable=protected-access
   new_saver._last_checkpoints = old_saver._last_checkpoints
@@ -1175,7 +1228,8 @@ class CheckpointableSaver(object):
         self._last_save_saver = _copy_saver_with_new_var_list(
             old_saver=self._last_save_saver, new_var_list=named_variables)
       else:
-        self._last_save_saver = saver_lib.Saver(var_list=named_variables)
+        self._last_save_saver = saver_lib.Saver(
+            var_list=named_variables, max_to_keep=None)
       self._last_save_object_graph = graph_proto
     with ops.device("/cpu:0"):
       save_path = self._last_save_saver.save(
@@ -1183,6 +1237,7 @@ class CheckpointableSaver(object):
               session=session, feed_additions=feed_additions),
           save_path=file_prefix,
           write_meta_graph=False,
+          write_state=False,
           global_step=checkpoint_number)
     return save_path
 
@@ -1435,6 +1490,32 @@ class Checkpoint(tracking.Checkpointable):
             add_variable(self, name="save_counter", initializer=0,
                          dtype=dtypes.int64))
 
+  def write(self, file_prefix, session=None):
+    """Writes a training checkpoint.
+
+    The checkpoint includes variables created by this object and any
+    checkpointable objects it depends on at the time `Checkpoint.write()` is
+    called.
+
+    `write` does not number checkpoints, increment `save_counter`, or update the
+    metadata used by `tf.train.latest_checkpoint`. It is primarily intended for
+    use by higher level checkpoint management utilities. `save` provides a very
+    basic implementation of these features.
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix).
+      session: The session to evaluate variables in. Ignored when executing
+        eagerly. If not provided when graph building, the default session is
+        used.
+
+    Returns:
+      The full path to the checkpoint (i.e. `file_prefix`).
+    """
+    return self._saver.save(
+        file_prefix=file_prefix,
+        session=session)
+
   @property
   def save_counter(self):
     """An integer variable which starts at zero and is incremented on save.
@@ -1447,12 +1528,20 @@ class Checkpoint(tracking.Checkpointable):
     self._maybe_create_save_counter()
     return self._save_counter
 
+  # TODO(allenl): Update save's docstring with a pointer to
+  # tf.contrib.checkpoint.CheckpointManager once that's in.
   def save(self, file_prefix, session=None):
-    """Save a training checkpoint.
+    """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
     checkpointable objects it depends on at the time `Checkpoint.save()` is
     called.
+
+    `save` is a basic convenience wrapper around the `write` method,
+    sequentially numbering checkpoints using `save_counter` and updating the
+    metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
+    management, for example garbage collection and custom numbering, may be
+    provided by other utilities which also wrap `write`.
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1476,15 +1565,20 @@ class Checkpoint(tracking.Checkpointable):
         session.run(self.save_counter.initializer)
     if not graph_building or self._save_assign_op is None:
       with ops.colocate_with(self.save_counter):
-        assign_op = self.save_counter.assign_add(1, read_value=False)
+        assign_op = self.save_counter.assign_add(1, read_value=True)
       if graph_building:
-        self._save_assign_op = assign_op
+        self._save_assign_op = data_structures.NoDependency(assign_op)
     if graph_building:
-      session.run(self._save_assign_op)
-    return self._saver.save(
-        file_prefix=file_prefix,
-        checkpoint_number=self.save_counter,
-        session=session)
+      checkpoint_number = session.run(self._save_assign_op)
+    else:
+      checkpoint_number = assign_op.numpy()
+    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
+                           session=session)
+    checkpoint_management.update_checkpoint_state(
+        save_dir=os.path.dirname(file_prefix),
+        model_checkpoint_path=file_path,
+        all_model_checkpoint_paths=[file_path])
+    return file_path
 
   def restore(self, save_path):
     """Restore a training checkpoint.

@@ -194,7 +194,8 @@ class KinesisDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "KinesisDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* stream = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(stream_, &stream));

@@ -100,80 +100,22 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
+#include "tensorflow/contrib/tensorrt/test/utils.h"
 %}
 
 %ignoreall
 %unignore tensorflow;
-%unignore trt_convert;
 %unignore calib_convert;
 %unignore get_linked_tensorrt_version;
 %unignore get_loaded_tensorrt_version;
+%unignore is_tensorrt_enabled;
+%unignore enable_test_value;
+%unignore clear_test_values;
+%unignore add_test_value;
+%unignore get_test_value;
 
 %{
-
-std::pair<string, string> trt_convert(
-    string graph_def_string,  // The serialized GraphDef string.
-    std::vector<string> output_names,
-    size_t max_batch_size,
-    size_t max_workspace_size_bytes,
-    int precision_mode,
-    int minimum_segment_size,
-    bool is_dyn_op,
-    int max_cached_engines,
-    std::vector<int> cached_engine_batches
-    // Unfortunately we can't use TF_Status here since it
-    // is in c/c_api and brings in a lot of other libraries
-    // which in turn declare ops. These ops are included
-    // statically in our library and cause an abort when
-    // module is loaded due to double registration
-    // until Tensorflow properly exposes these headers
-    // we have to work around this by returning a string
-    // and converting it to exception on python side.
-    //,TF_Status* out_status) {
-) {
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  string out_status;
-
-  tensorflow::GraphDef graph_def;
-  if (!graph_def.ParseFromString(graph_def_string)) {
-    out_status = "InvalidArgument;Couldn't interpret input as a GraphDef";
-    return std::pair<string, string>{out_status, ""};
-  }
-
-  if(precision_mode < 0 || precision_mode > 2){
-    out_status = "InvalidArgument;Invalid precision_mode";
-    return std::pair<string, string>{out_status, ""};
-  }
-  if (!output_names.size()) {
-    out_status = "InvalidArgument;Size of the output_names vector is 0";
-    return std::pair<string, string>{out_status, ""};
-  }
-  tensorflow::GraphDef out_graph;
-  tensorflow::Status conversion_status =
-      tensorflow::tensorrt::convert::ConvertGraphDefToTensorRT(
-          graph_def, output_names, max_batch_size, max_workspace_size_bytes,
-          &out_graph, precision_mode, minimum_segment_size,
-          is_dyn_op, max_cached_engines, cached_engine_batches);
-  if (!conversion_status.ok()) {
-    auto retCode = (int)conversion_status.code();
-    char buff[2000];
-    snprintf(buff, 2000, "%d;%s", retCode,
-             conversion_status.error_message().c_str());
-    out_status = buff;
-    return std::pair<string, string>{out_status, ""};
-  }
-  string result;
-  if (!out_graph.SerializeToString(&result)) {
-    out_status = "InvalidArgument;Couldn't serialize output as a GraphDef";
-    return std::pair<string, string>{out_status, ""};
-  }
-  out_status = "OK;All good!";
-  return std::pair<string, string>{out_status, result};
-#else
-  // Returns FAILED_PRECONDITION.
-  return std::pair<string, string>{"9;TensorRT is not enabled!", ""};
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-}
 
 std::pair<string, string> calib_convert(
     string graph_def_string, bool is_dyn_op
@@ -232,7 +174,8 @@ version_struct get_linked_tensorrt_version() {
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
   return s;
 }
-version_struct get_loaded_tensorrt_version(){
+
+version_struct get_loaded_tensorrt_version() {
   // Return the version from the loaded library.
   version_struct s;
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -244,19 +187,48 @@ version_struct get_loaded_tensorrt_version(){
   return s;
 }
 
+bool is_tensorrt_enabled() {
+  return tensorflow::tensorrt::IsGoogleTensorRTEnabled();
+}
+
+void enable_test_value() {
+  tensorflow::tensorrt::test::EnableTestValue();
+}
+
+#if PY_MAJOR_VERSION < 3
+#define TRT_PY_TO_CPP_STRING PyString_AsString
+#define TRT_CPP_TO_PY_STRING PyString_FromString
+#else
+#define TRT_PY_TO_CPP_STRING PyUnicode_AsUTF8
+#define TRT_CPP_TO_PY_STRING PyUnicode_FromString
+#endif
+
+void clear_test_values(PyObject* pattern) {
+  tensorflow::tensorrt::test::ClearTestValues(
+      string(TRT_PY_TO_CPP_STRING(pattern)));
+}
+
+void add_test_value(PyObject* label, PyObject* value) {
+  tensorflow::tensorrt::test::AddTestValue(
+      string(TRT_PY_TO_CPP_STRING(label)), string(TRT_PY_TO_CPP_STRING(value)));
+}
+
+PyObject* get_test_value(PyObject* label) {
+  string value = tensorflow::tensorrt::test::GetTestValue(
+      string(TRT_PY_TO_CPP_STRING(label)));
+  return TRT_CPP_TO_PY_STRING(value.c_str());
+}
+
 %}
 
-std::pair<string, string> calib_convert(string graph_def_string, bool is_dyn_op);
-
-std::pair<string, string> trt_convert(string graph_def_string,
-                                      std::vector<string> output_names,
-                                      size_t max_batch_size,
-                                      size_t max_workspace_size_bytes,
-                                      int precision_mode, int minimum_segment_size,
-                                      bool is_dyn_op,
-                                      int max_cached_engines,
-                                      std::vector<int> cached_engine_batches);
+std::pair<string, string> calib_convert(
+    string graph_def_string, bool is_dyn_op);
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
+bool is_tensorrt_enabled();
+void enable_test_value();
+void clear_test_values(PyObject* pattern);
+void add_test_value(PyObject* label, PyObject* value);
+PyObject* get_test_value(PyObject* label);
 
 %unignoreall

@@ -935,5 +935,27 @@ class DeprecationArgumentsTest(test.TestCase):
     self.assertEqual(new_docs, new_docs_ref)
 
 
+class DeprecatedEndpointsTest(test.TestCase):
+
+  def testSingleDeprecatedEndpoint(self):
+    @deprecation.deprecated_endpoints("foo1")
+    def foo():
+      pass
+    self.assertEqual(("foo1",), foo._tf_deprecated_api_names)
+
+  def testMultipleDeprecatedEndpoint(self):
+    @deprecation.deprecated_endpoints("foo1", "foo2")
+    def foo():
+      pass
+    self.assertEqual(("foo1", "foo2"), foo._tf_deprecated_api_names)
+
+  def testCannotSetDeprecatedEndpointsTwice(self):
+    with self.assertRaises(deprecation.DeprecatedNamesAlreadySet):
+      @deprecation.deprecated_endpoints("foo1")
+      @deprecation.deprecated_endpoints("foo2")
+      def foo():  # pylint: disable=unused-variable
+        pass
+
+
 if __name__ == "__main__":
   test.main()

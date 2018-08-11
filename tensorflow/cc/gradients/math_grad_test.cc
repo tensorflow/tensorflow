@@ -42,6 +42,7 @@ using ops::Placeholder;
 using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
+using ops::SegmentSum;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
@@ -475,11 +476,7 @@ TEST_F(CWiseUnaryGradTest, Tan_Complex) {
   auto x_fn = [this](const int i) {
     return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
   };
-  // TODO(kbsriram)
-  // Enable when tan kernel supports complex inputs
-  if (false) {
-    TestCWiseGrad<complex64, complex64>(TAN, x_fn);
-  }
+  TestCWiseGrad<complex64, complex64>(TAN, x_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Atan) {
@@ -899,6 +896,15 @@ TEST_F(NaryGradTest, Prod) {
   auto y = Prod(scope_, x, {1});
   // y's shape is the result of reducing x along axes 1
   TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, SegmentSum) {
+  TensorShape x_shape({3, 4});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = SegmentSum(scope_, x, {0, 0, 1});
+  // the sum is always on the first dimension
+  TensorShape y_shape({2, 4});
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 

@@ -285,7 +285,7 @@ def merge(inputs, collections=None, name=None):
 
 
 @tf_export('summary.merge_all')
-def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
+def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None, name=None):
   """Merges all summaries collected in the default graph.
 
   Args:
@@ -314,7 +314,7 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
   if not summary_ops:
     return None
   else:
-    return merge(summary_ops)
+    return merge(summary_ops, name=name)
 
 
 @tf_export('summary.get_summary_description')

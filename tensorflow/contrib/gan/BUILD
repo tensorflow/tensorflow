@@ -42,8 +42,10 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
@@ -55,20 +57,22 @@ py_library(
 py_test(
     name = "train_test",
     srcs = ["python/train_test.py"],
+    shard_count = 50,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
-        ":features",
         ":namedtuples",
         ":random_tensor_pool",
         ":train",
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/slim:learning",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:training",
@@ -77,6 +81,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -191,11 +196,16 @@ py_test(
     srcs = ["python/losses/python/tuple_losses_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":losses_impl",
         ":namedtuples",
         ":tuple_losses",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -252,12 +262,15 @@ py_library(
 py_test(
     name = "random_tensor_pool_test",
     srcs = ["python/features/python/random_tensor_pool_test.py"],
+    shard_count = 6,
     srcs_version = "PY2AND3",
     deps = [
         ":random_tensor_pool",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -446,8 +459,7 @@ py_library(
         ":train",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/estimator:head",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -464,7 +476,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -484,8 +496,7 @@ py_library(
         "//tensorflow/python:metrics",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -513,8 +524,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:model_fn",
-        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

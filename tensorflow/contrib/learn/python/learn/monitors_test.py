@@ -39,9 +39,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 
 
@@ -317,7 +317,7 @@ class MonitorsTest(test.TestCase):
         self._run_monitor(monitor)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_no_ckpt(self, mock_latest_checkpoint,
                                       mock_estimator_class):
     estimator = mock_estimator_class()
@@ -336,7 +336,7 @@ class MonitorsTest(test.TestCase):
       mock_latest_checkpoint.assert_called_with(model_dir)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_no_early_stopping_rounds(self,
                                                        mock_latest_checkpoint,
                                                        mock_estimator_class):
@@ -356,7 +356,7 @@ class MonitorsTest(test.TestCase):
       self._assert_validation_monitor(monitor)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_invalid_metric(self, mock_latest_checkpoint,
                                              mock_estimator_class):
     estimator = mock_estimator_class()
@@ -375,7 +375,7 @@ class MonitorsTest(test.TestCase):
         self._run_monitor(monitor, num_epochs=1, num_steps_per_epoch=1)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor(self, mock_latest_checkpoint,
                               mock_estimator_class):
     estimator = mock_estimator_class()
@@ -464,7 +464,7 @@ class MonitorsTest(test.TestCase):
       monitor.epoch_end(epoch=0)
       monitor.end()
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_with_core_estimator(self, mock_latest_checkpoint):
     estimator = test.mock.Mock(spec=core_estimator.Estimator)
     model_dir = 'model/dir'
@@ -495,7 +495,7 @@ class MonitorsTest(test.TestCase):
           expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_fail_with_core_estimator_and_metrics(
       self, mock_latest_checkpoint):
     estimator = test.mock.Mock(spec=core_estimator.Estimator)

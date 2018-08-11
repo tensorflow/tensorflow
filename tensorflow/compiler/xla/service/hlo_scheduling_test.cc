@@ -282,7 +282,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(
       SequentialHloOrdering::HloModuleSequence sequence,
       ScheduleComputationsInModule(*module,
-                                   [&TUPLE_SIZE](const BufferValue& buffer) {
+                                   [](const BufferValue& buffer) {
                                      return ShapeUtil::ByteSizeOf(
                                          buffer.shape(), TUPLE_SIZE);
                                    },

@@ -9,6 +9,7 @@ load(
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "if_static",
+    "if_dynamic_kernels",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -24,7 +25,10 @@ load(
     "if_mkl",
     "if_mkl_lnx_x64"
 )
-
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_mkl_open_source_only"
+)
 def register_extension_info(**kwargs):
     pass
 
@@ -134,6 +138,14 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+# Config setting selector used when building for products
+# which requires restricted licenses to be avoided.
+def if_not_lgpl_restricted(a):
+  _ = (a,)
+  return select({
+      "//conditions:default": [],
+  })
+
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
@@ -178,9 +190,13 @@ def get_win_copts(is_external=False):
         "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
-        "/U_HAS_EXCEPTIONS",
-        "/D_HAS_EXCEPTIONS=1",
-        "/EHsc",  # -fno-exceptions
+        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+        # default. We can't pass /EHs-c- to disable exception, otherwise
+        # we will get a waterfall of flag conflict warnings. Wait for
+        # Bazel to fix this.
+        # "/D_HAS_EXCEPTIONS=0",
+        # "/EHs-c-",
+        "/wd4577",
         "/DNOGDI",
     ]
     if is_external:
@@ -212,6 +228,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
+      + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
@@ -225,6 +242,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): ["-std=c++11"],
+            clean_dep("//tensorflow:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"]
       }))
 
@@ -297,18 +315,36 @@ def tf_binary_additional_srcs():
           clean_dep("//tensorflow:libtensorflow_framework.so"),
       ])
 
+
+# Helper functions to add kernel dependencies to tf binaries when using dynamic
+# kernel linking.
+def tf_binary_dynamic_kernel_dsos(kernels):
+  return if_dynamic_kernels(
+      extra_deps=["libtfkernel_%s.so" % clean_dep(k) for k in kernels],
+      otherwise=[])
+
+# Helper functions to add kernel dependencies to tf binaries when using static
+# kernel linking.
+def tf_binary_dynamic_kernel_deps(kernels):
+  return if_dynamic_kernels(
+      extra_deps=[],
+      otherwise=kernels)
+
 def tf_cc_shared_object(
     name,
     srcs=[],
     deps=[],
+    data=[],
     linkopts=[],
     framework_so=tf_binary_additional_srcs(),
+    kernels=[],
     **kwargs):
   native.cc_binary(
       name=name,
       srcs=srcs + framework_so,
-      deps=deps,
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels),
       linkshared = 1,
+      data = data + tf_binary_dynamic_kernel_dsos(kernels),
       linkopts=linkopts + _rpath_linkopts(name) + select({
           clean_dep("//tensorflow:darwin"): [
               "-Wl,-install_name,@rpath/" + name.split("/")[-1],
@@ -332,18 +368,21 @@ register_extension_info(
 def tf_cc_binary(name,
                  srcs=[],
                  deps=[],
+                 data=[],
                  linkopts=[],
                  copts=tf_copts(),
+                 kernels=[],
                  **kwargs):
   native.cc_binary(
       name=name,
       copts=copts,
       srcs=srcs + tf_binary_additional_srcs(),
-      deps=deps + if_mkl(
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl(
           [
               "//third_party/mkl:intel_binary_blob",
           ],
       ),
+      data=data +  tf_binary_dynamic_kernel_dsos(kernels),
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
 
@@ -528,9 +567,6 @@ def tf_gen_op_wrappers_cc(name,
 #     is invalid to specify both "hidden" and "op_whitelist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
 #     specified ops.
-#   gen_locally: if True, the genrule to generate the Python library will be run
-#     without sandboxing. This would help when the genrule depends on symlinks
-#     which may not be supported in the sandbox.
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
@@ -541,8 +577,7 @@ def tf_gen_op_wrapper_py(name,
                          generated_target_name=None,
                          op_whitelist=[],
                          cc_linkopts=[],
-                         api_def_srcs=[],
-                         gen_locally=False):
+                         api_def_srcs=[]):
   if (hidden or hidden_file) and op_whitelist:
     fail('Cannot pass specify both hidden and op_whitelist.')
 
@@ -597,7 +632,6 @@ def tf_gen_op_wrapper_py(name,
         outs=[out],
         srcs=api_def_srcs + [hidden_file],
         tools=[tool_name] + tf_binary_additional_srcs(),
-        local = (1 if gen_locally else 0),
         cmd=("$(location " + tool_name + ") " + api_def_args_str +
              " @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
@@ -607,7 +641,6 @@ def tf_gen_op_wrapper_py(name,
         outs=[out],
         srcs=api_def_srcs,
         tools=[tool_name] + tf_binary_additional_srcs(),
-        local = (1 if gen_locally else 0),
         cmd=("$(location " + tool_name + ") " + api_def_args_str + " " +
              op_list_arg + " " +
              ("1" if require_shape_functions else "0") + " " +
@@ -637,11 +670,13 @@ def tf_gen_op_wrapper_py(name,
 def tf_cc_test(name,
                srcs,
                deps,
+               data=[],
                linkstatic=0,
                extra_copts=[],
                suffix="",
                linkopts=[],
                nocopts=None,
+               kernels=[],
                **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
@@ -660,11 +695,12 @@ def tf_cc_test(name,
             "-lm"
         ],
       }) + linkopts + _rpath_linkopts(name),
-      deps=deps + if_mkl(
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl(
           [
               "//third_party/mkl:intel_binary_blob",
           ],
       ),
+      data=data + tf_binary_dynamic_kernel_dsos(kernels),
       # Nested select() statements seem not to be supported when passed to
       # linkstatic, and we already have a cuda select() passed in to this
       # function.
@@ -765,6 +801,7 @@ def tf_cuda_only_cc_test(name,
                     size="medium",
                     linkstatic=0,
                     args=[],
+                    kernels=[],
                     linkopts=[]):
   native.cc_test(
       name="%s%s" % (name, "_gpu"),
@@ -772,8 +809,8 @@ def tf_cuda_only_cc_test(name,
       size=size,
       args=args,
       copts= _cuda_copts() + tf_copts(),
-      data=data,
-      deps=deps + if_cuda([
+      data=data + tf_binary_dynamic_kernel_dsos(kernels),
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda([
           clean_dep("//tensorflow/core:cuda"),
           clean_dep("//tensorflow/core:gpu_lib")]),
       linkopts=if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
@@ -816,9 +853,11 @@ def tf_cc_tests(srcs,
 def tf_cc_test_mkl(srcs,
                    deps,
                    name="",
+                   data=[],
                    linkstatic=0,
                    tags=[],
                    size="medium",
+                   kernels=[],
                    args=None):
   # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
   disable_header_modules = ["-use_header_modules"]
@@ -838,11 +877,12 @@ def tf_cc_test_mkl(srcs,
             "-lm"
         ],
       }) + _rpath_linkopts(src_to_test_name(src)),
-      deps=deps + if_mkl(
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl(
           [
               "//third_party/mkl:intel_binary_blob",
           ],
       ),
+      data=data + tf_binary_dynamic_kernel_dsos(kernels),
       linkstatic=linkstatic,
       tags=tags,
       size=size,
@@ -882,12 +922,13 @@ def tf_cuda_cc_tests(srcs,
 def tf_java_test(name,
                  srcs=[],
                  deps=[],
+                 kernels=[],
                  *args,
                  **kwargs):
   native.java_test(
       name=name,
       srcs=srcs,
-      deps=deps + tf_binary_additional_srcs(),
+      deps=deps + tf_binary_additional_srcs() + tf_binary_dynamic_kernel_dsos(kernels) + tf_binary_dynamic_kernel_deps(kernels),
       *args,
       **kwargs)
 
@@ -1049,6 +1090,10 @@ def tf_kernel_library(
     tf_gpu_kernel_library(
         name=name + "_gpu", srcs=gpu_srcs, deps=deps, **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
+  kwargs["tags"] = kwargs.get("tags", []) + [
+      "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
+      "req_dep=@local_config_cuda//cuda:cuda_headers",
+  ]
   tf_cuda_library(
       name=name,
       srcs=srcs,
@@ -1060,6 +1105,15 @@ def tf_kernel_library(
       alwayslink=alwayslink,
       deps=deps,
       **kwargs)
+
+  # TODO(gunan): CUDA dependency not clear here. Fix it.
+  tf_cc_shared_object(
+      name="libtfkernel_%s.so" % name,
+      srcs=srcs + hdrs,
+      copts=copts,
+      deps=deps,
+      tags=["manual", "notap"])
+
 
 register_extension_info(
     extension_name = "tf_kernel_library",
@@ -1145,7 +1199,6 @@ _py_wrap_cc = rule(
             allow_files = True,
         ),
         "swig_includes": attr.label_list(
-            cfg = "data",
             allow_files = True,
         ),
         "deps": attr.label_list(
@@ -1337,7 +1390,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       name=name,
       srcs=srcs,
       deps=deps + if_cuda(cuda_deps),
-      data=[name + "_check_deps"],
+      data=if_static([name + "_check_deps"]),
       copts=tf_copts(is_external=True),
       features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({
@@ -1432,7 +1485,7 @@ def tf_py_wrap_cc(name,
       srcs=srcs,
       swig_includes=swig_includes,
       deps=deps + extra_deps,
-      toolchain_deps=["//tools/defaults:crosstool"],
+      toolchain_deps=["@bazel_tools//tools/cpp:current_cc_toolchain"],
       module_name=module_name,
       py_module_name=name)
   vscriptname=name+"_versionscript"

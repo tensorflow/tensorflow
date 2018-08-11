@@ -53,9 +53,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    {R"(^\/div.*int32)", "68808744"},
-    {R"(^\/sub.*int32)", "68808744"},
-
     // Pad and PadV2 only supports 4D tensors.
     {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
@@ -88,9 +85,6 @@ std::map<string, string> kBrokenTests = {
 
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
-
-    // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
-    {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
 
     // No support for axis!=0 in GatherV2.
     {R"(^\/gather.*axis=1)", "76910444"},
@@ -229,7 +223,8 @@ TEST_P(OpsTest, RunZipTests) {
   string message = test_driver.GetErrorMessage();
   if (bug_number.empty()) {
     if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
-      EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
+      EXPECT_EQ(message, string("Failed to invoke NNAPI interpreter"))
+          << message;
     } else {
       EXPECT_TRUE(result) << message;
     }

@@ -44,6 +44,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
+  const auto* params =
+      reinterpret_cast<TfLiteFakeQuantParams*>(node->builtin_data);
+
+  if (params->narrow_range) {
+    context->ReportError(
+        context,
+        "narrow_range FakeQuant is not currently supported at runtime. "
+        "narrow_range is only meant to be applied to weights, not activations");
+    return kTfLiteError;
+  }
+
   OpContext op_context(context, node);
   TfLiteIntArray* output_dims = TfLiteIntArrayCopy(op_context.input->dims);
   op_context.output->type = op_context.input->type;

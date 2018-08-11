@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+from collections import OrderedDict
 import contextlib
 import gc
 import itertools
@@ -49,7 +51,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
@@ -496,9 +497,7 @@ def assert_no_new_tensors(f):
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._zeros_cache.flush()
-    context.get_default_context().ones_rank_cache().flush()
-    context.get_default_context().scalar_cache().clear()
+    context.get_default_context()._clear_caches()  # pylint: disable=protected-access
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
@@ -571,6 +570,78 @@ def assert_no_garbage_created(f):
   return decorator
 
 
+def _combine_named_parameters(**kwargs):
+  """Generate combinations based on its keyword arguments.
+
+  Two sets of returned combinations can be concatenated using +.  Their product
+  can be computed using `times()`.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]`
+         or `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  if not kwargs:
+    return [OrderedDict()]
+
+  sort_by_key = lambda k: k[0][0]
+  kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
+  first = list(kwargs.items())[0]
+
+  rest = dict(list(kwargs.items())[1:])
+  rest_combined = _combine_named_parameters(**rest)
+
+  key = first[0]
+  values = first[1]
+  if not isinstance(values, list):
+    values = [values]
+
+  combinations = [
+      OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
+      for v in values
+      for combined in rest_combined
+  ]
+  return combinations
+
+
+def generate_combinations_with_testcase_name(**kwargs):
+  """Generate combinations based on its keyword arguments using combine().
+
+  This function calls combine() and appends a testcase name to the list of
+  dictionaries returned. The 'testcase_name' key is a required for named
+  parameterized tests.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]`
+         or `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  combinations = _combine_named_parameters(**kwargs)
+  named_combinations = []
+  for combination in combinations:
+    assert isinstance(combination, OrderedDict)
+    name = "".join([
+        "_{}_{}".format(
+            "".join(filter(str.isalnum, key)),
+            "".join(filter(str.isalnum, str(value))))
+        for key, value in combination.items()
+    ])
+    named_combinations.append(
+        OrderedDict(
+            list(combination.items()) + [("testcase_name",
+                                          "_test{}".format(name))]))
+
+  return named_combinations
+
+
 def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
@@ -588,10 +659,10 @@ def run_in_graph_and_eager_modes(func=None,
   """Execute the decorated test with and without enabling eager execution.
 
   This function returns a decorator intended to be applied to test methods in
-  a @{tf.test.TestCase} class. Doing so will cause the contents of the test
+  a `tf.test.TestCase` class. Doing so will cause the contents of the test
   method to be executed twice - once normally, and once with eager execution
   enabled. This allows unittests to confirm the equivalence between eager
-  and graph execution (see @{tf.enable_eager_execution}).
+  and graph execution (see `tf.enable_eager_execution`).
 
   For example, consider the following unittest:
 
@@ -1227,8 +1298,8 @@ class TensorFlowTestCase(googletest.TestCase):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    a_is_dict = isinstance(a, dict)
-    if a_is_dict != isinstance(b, dict):
+    a_is_dict = isinstance(a, collections.Mapping)
+    if a_is_dict != isinstance(b, collections.Mapping):
       raise ValueError("Can't compare dict to non-dict, a%s vs b%s. %s" %
                        (path_str, path_str, msg))
     if a_is_dict:

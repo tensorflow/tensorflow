@@ -662,6 +662,7 @@ cc_library(
         "lib/random/random_distributions.h",
         "lib/random/simple_philox.h",
         "lib/strings/numbers.h",
+        "lib/strings/proto_serialization.h",
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
@@ -849,6 +850,7 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
+        "util/status_util.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -882,6 +884,16 @@ cc_library(
         "util/stats_calculator.h",
     ],
     copts = tf_copts(),
+)
+
+tf_cc_test(
+    name = "stats_calculator_test",
+    srcs = ["util/stats_calculator_test.cc"],
+    deps = [
+        ":stats_calculator_portable",
+        ":test",
+        ":test_main",
+    ],
 )
 
 cc_library(
@@ -1646,6 +1658,7 @@ cc_library(
     copts = tf_copts(android_optimization_level_override = None) + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
+    linkopts = if_android(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -1669,6 +1682,7 @@ cc_library(
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
         "-DSUPPORT_SELECTIVE_REGISTRATION",
     ],
+    linkopts = if_android(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -2024,6 +2038,7 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
+        "//tensorflow:android": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",
@@ -2222,6 +2237,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2250,6 +2266,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2276,6 +2293,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
         "@png_archive//:png",
     ],
 )
@@ -2462,6 +2480,7 @@ tf_cuda_library(
             "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/stats_calculator.*",
             "util/version_info.cc",
         ],
     ) + select({
@@ -2487,6 +2506,7 @@ tf_cuda_library(
         ":protos_all_proto_text",
         ":error_codes_proto_text",
         ":protos_all_cc",
+        ":stats_calculator_portable",
         ":version_lib",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
@@ -2906,6 +2926,14 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "session_ref",
+    srcs = ["common_runtime/session_ref.cc"],
+    hdrs = ["common_runtime/session_ref.h"],
+    copts = tf_copts(),
+    deps = [":core_cpu_base"],
+)
+
+cc_library(
     name = "gpu_id",
     hdrs = [
         "common_runtime/gpu/gpu_id.h",
@@ -3209,6 +3237,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/mutex_test.cc",
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
@@ -3223,6 +3252,7 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+        "@zlib_archive//:zlib",
     ],
 )
 
@@ -3465,6 +3495,7 @@ tf_cc_tests(
         "framework/tensor_shape_test.cc",
         "framework/tensor_slice_test.cc",
         "framework/tensor_test.cc",
+        "framework/tensor_testutil_test.cc",
         "framework/tensor_util_test.cc",
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",
@@ -3732,7 +3763,6 @@ tf_cc_tests_gpu(
         "common_runtime/gpu/gpu_bfc_allocator_test.cc",
         "common_runtime/gpu/gpu_device_test.cc",
         "common_runtime/gpu/gpu_id_manager_test.cc",
-        "common_runtime/gpu/gpu_event_mgr_test.cc",
         "common_runtime/gpu/pool_allocator_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -3753,6 +3783,23 @@ tf_cc_tests_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "gpu_event_mgr_test",
+    srcs = ["common_runtime/gpu/gpu_event_mgr_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
     ],
 )
 
@@ -4535,6 +4582,8 @@ filegroup(
         # PNG data
         "lib/png/testdata/lena_gray.png",
         "lib/png/testdata/lena_rgba.png",
+        "lib/png/testdata/lena_palette.png",
+        "lib/png/testdata/lena_palette_trns.png",
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",

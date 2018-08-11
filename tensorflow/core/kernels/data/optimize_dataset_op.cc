@@ -53,39 +53,55 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, ParseVectorArgument<string>(ctx, "optimizations", &optimizations));
     Dataset* dataset =
-        new Dataset(ctx, optimizations, output_types_, output_shapes_);
-    OP_REQUIRES_OK(ctx, dataset->Optimize(ctx, input));
+        new Dataset(ctx, input, optimizations, output_types_, output_shapes_);
+    OP_REQUIRES_OK(ctx, dataset->Optimize(ctx));
     *output = dataset;
   }
 
  private:
   class Dataset : public GraphDatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const std::vector<string>& optimizations,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const std::vector<string>& optimizations,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : GraphDatasetBase(ctx),
+          input_(input),
           optimizations_(optimizations),
           output_types_(output_types),
-          output_shapes_(output_shapes) {}
+          output_shapes_(output_shapes) {
+      input_->Ref();
+    }
 
-    ~Dataset() override { input_->Unref(); }
+    ~Dataset() override {
+      input_->Unref();
+      optimized_input_->Unref();
+    }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Optimize")}));
+      // We do not add a token for the optimization dataset to the prefix. The
+      // prefix is used to identify checkpoint elements and since the
+      // optimization dataset is excluded from the checkpoint, adding a token
+      // here would result in invalid checkpoint identifiers.
+      return std::unique_ptr<IteratorBase>(new Iterator({this, prefix}));
     }
 
-    Status Optimize(OpKernelContext* ctx, const DatasetBase* input) {
+    Status Optimize(OpKernelContext* ctx) {
       GraphDefBuilder b;
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
-      TF_RETURN_IF_ERROR(db.AddParentDataset(ctx, input, &input_node));
+      SerializationContext::Params params;
+      params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+      SerializationContext serialization_ctx(params);
+      TF_RETURN_IF_ERROR(
+          db.AddInputDataset(&serialization_ctx, input_, &input_node));
       string output_node = input_node->name();
       GraphDef graph_def;
       TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
+      VLOG(3) << "Before optimization: " << graph_def.DebugString();
       TF_RETURN_IF_ERROR(ApplyOptimizations(ctx, &graph_def, &output_node));
+      VLOG(3) << "After optimization: " << graph_def.DebugString();
       flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
                                                     graph_def.library()));
       Graph graph(OpRegistry::Global());
@@ -94,8 +110,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       GraphRunner graph_runner(ctx->function_library()->device());
       TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
                                           {output_node}, &outputs));
-      TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &input_));
-      input_->Ref();
+      TF_RETURN_IF_ERROR(
+          GetDatasetFromVariantTensor(outputs[0], &optimized_input_));
+      optimized_input_->Ref();
       return Status::OK();
     }
 
@@ -109,14 +126,12 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "OptimizeDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
-      Node* optimizations_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddVector(optimizations_, &optimizations_node));
-      TF_RETURN_IF_ERROR(
-          b->AddDataset(this, {input_graph_node, optimizations_node}, output));
+      // We only serialize the optimized dataset to avoid re-running
+      // optimizations when the input pipeline is restored from a checkpoint.
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, optimized_input_, output));
       return Status::OK();
     }
 
@@ -127,7 +142,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->optimized_input_->MakeIterator(ctx, prefix(),
+                                                         &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -146,13 +162,13 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
@@ -199,6 +215,12 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       tensorflow::grappler::VirtualCluster cluster(device_map);
 
       // Run optimizer.
+      if (VLOG_IS_ON(2)) {
+        LOG(INFO) << "Performing the following optimizations:";
+        for (const string& optimization : optimizations_) {
+          LOG(INFO) << "  " << optimization;
+        }
+      }
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
           *grappler_item, rewriter_config, ctx->device(), &cluster, graph_def));
 
@@ -213,8 +235,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       return Status::OK();
     }
 
-    DatasetBase* input_;
+    DatasetBase* optimized_input_;
     std::shared_ptr<FunctionLibraryDefinition> flib_def_;
+    const DatasetBase* input_;
     const std::vector<string> optimizations_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;

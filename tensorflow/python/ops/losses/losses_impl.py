@@ -190,7 +190,7 @@ def compute_weighted_loss(
     When calculating the gradient of a weighted loss contributions from
     both `losses` and `weights` are considered. If your `weights` depend
     on some model parameters but you do not want this to affect the loss
-    gradient, you need to apply @{tf.stop_gradient} to `weights` before
+    gradient, you need to apply `tf.stop_gradient` to `weights` before
     passing them to `compute_weighted_loss`.
 
   @compatbility(eager)

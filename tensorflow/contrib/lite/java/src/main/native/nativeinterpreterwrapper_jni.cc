@@ -152,10 +152,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
   if (error_reporter == nullptr) return;
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    throwException(env, kNullPointerException,
-                   "Internal error: Cannot allocate memory for the interpreter:"
-                   " %s",
-                   error_reporter->CachedErrorMessage());
+    throwException(
+        env, kIllegalStateException,
+        "Internal error: Unexpected failure when preparing tensor allocations:"
+        " %s",
+        error_reporter->CachedErrorMessage());
   }
 }
 
@@ -336,10 +337,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   // allocates memory
   status = interpreter->AllocateTensors();
   if (status != kTfLiteOk) {
-    throwException(env, kNullPointerException,
-                   "Internal error: Cannot allocate memory for the interpreter:"
-                   " %s",
-                   error_reporter->CachedErrorMessage());
+    throwException(
+        env, kIllegalStateException,
+        "Internal error: Unexpected failure when preparing tensor allocations:"
+        " %s",
+        error_reporter->CachedErrorMessage());
     return 0;
   }
   return reinterpret_cast<jlong>(interpreter.release());

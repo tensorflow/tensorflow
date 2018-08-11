@@ -100,6 +100,16 @@ py_test(
 )
 
 py_test(
+    name = "origin_info_test",
+    srcs = ["origin_info_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "parser_test",
     srcs = ["parser_test.py"],
     srcs_version = "PY2AND3",

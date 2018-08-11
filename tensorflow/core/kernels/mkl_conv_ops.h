@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 
 #include <limits>
-#include <string>
 #include <vector>
 #include <memory>
 
@@ -41,7 +40,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
@@ -53,7 +52,7 @@ using mkldnn::convolution_forward;
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 class MklDnnConvUtil {
  protected:
@@ -398,8 +397,7 @@ class MklConv2DBackpropCommonOp : public OpKernel {
   TensorFormat data_format_;  // NCHW or NHWC
 };
 
-#endif  // INTEL_MKL_ML
-
+#endif  // INTEL_MKL_ML_ONLY
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate

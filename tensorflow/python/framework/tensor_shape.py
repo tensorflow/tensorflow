@@ -500,7 +500,7 @@ class TensorShape(object):
   may be inferred if there is a registered shape function for
   `"Foo"`. See @{$adding_an_op#shape-functions-in-c$`Shape functions in C++`}
   for details of shape functions and how to register them. Alternatively,
-  the shape may be set explicitly using @{tf.Tensor.set_shape}.
+  the shape may be set explicitly using `tf.Tensor.set_shape`.
   """
 
   def __init__(self, dims):

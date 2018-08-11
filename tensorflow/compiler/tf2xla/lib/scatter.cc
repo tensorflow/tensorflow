@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -132,7 +132,7 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
     // Discard updates with negative indices, since some users expect this.
     auto index_in_range = xla::ReduceAll(
         xla::Le(zero_index, index), xla::ConstantR0<bool>(body_builder, true),
-        xla::CreateScalarAndComputation(body_builder));
+        xla::CreateScalarAndComputation(xla::PRED, body_builder));
 
     // Make the index in bounds to prevent implementation defined behavior.
     index = xla::Max(index, zero_index);

@@ -28,36 +28,50 @@ limitations under the License.
 namespace tensorflow {
 namespace shape_inference {
 
-tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
-  std::vector<tensorflow::TensorShape> shapes;
-  for (int i = 0; i < context->num_outputs(); ++i) {
-    context->set_output(i, context->UnknownShape());
+tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
+  for (int i = 0; i < c->num_outputs(); ++i) {
+    c->set_output(i, c->UnknownShape());
   }
-  auto status = context->GetAttr("input_shapes", &shapes);
-  // it is ok to not to have shapes
-  if (!status.ok()) return Status::OK();
-  if ((int)shapes.size() != context->num_inputs()) return Status::OK();
-  bool different_input = false;
-  for (int i = 0; i < context->num_inputs(); ++i) {
-    if (shapes.at(i) != context->input_tensor(i)->shape())
-      different_input = true;
+
+  // Check the sanity of the input shapes.
+  std::vector<tensorflow::TensorShape> input_shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("input_shapes", &input_shapes));
+  if (input_shapes.size() != c->num_inputs()) {
+    return tensorflow::errors::InvalidArgument(
+        "The actual number of inputs doesn't match the number of input "
+        "shapes set in the attr: ",
+        c->num_inputs(), " vs ", input_shapes.size());
   }
-  if (different_input) return Status::OK();
-  shapes.resize(0);
-  status = context->GetAttr("output_shapes", &shapes);
-  if (!status.ok()) return Status::OK();
-  if ((int)shapes.size() != context->num_outputs()) return Status::OK();
-  std::vector<ShapeHandle> shape_handles(shapes.size());
-  for (size_t i = 0; i < shapes.size(); ++i) {
-    status =
-        context->MakeShapeFromTensorShape(shapes.at(i), &shape_handles.at(i));
-    if (!status.ok()) return Status::OK();
+  bool input_match = true;
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    ShapeHandle handle;
+    TF_RETURN_IF_ERROR(
+        c->MakeShapeFromTensorShape(input_shapes.at(i), &handle));
+    ShapeHandle merged;
+    if (!c->Merge(c->input(i), handle, &merged).ok()) {
+      // Input shape doesn't match what was set in attr, fine.
+      input_match = false;
+    }
   }
-  for (int i = 0; i < context->num_outputs(); ++i) {
-    context->set_output(i, shape_handles.at(i));
+
+  // Check the sanity of the output shapes.
+  std::vector<tensorflow::TensorShape> output_shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  if (output_shapes.size() != c->num_outputs()) {
+    return tensorflow::errors::InvalidArgument(
+        "The actual number of outputs doesn't match the number of output "
+        "shapes set in the attr: ",
+        c->num_outputs(), " vs ", output_shapes.size());
+  }
+  for (size_t i = 0; i < output_shapes.size(); ++i) {
+    ShapeHandle handle;
+    TF_RETURN_IF_ERROR(
+        c->MakeShapeFromTensorShape(output_shapes.at(i), &handle));
+    if (input_match) c->set_output(i, handle);
   }
   return Status::OK();
 }
+
 }  // namespace shape_inference
 }  // namespace tensorflow
 

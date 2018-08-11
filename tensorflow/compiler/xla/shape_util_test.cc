@@ -31,6 +31,15 @@ namespace {
 
 using ::testing::ElementsAre;
 
+TEST(ShapeUtilTest, ShapeIndexViewTest) {
+  ShapeIndex index = {1, 2, 3, 4};
+  ShapeIndexView index_view(index, 1);
+  EXPECT_EQ(3, index_view.size());
+  EXPECT_EQ(ShapeIndexView({2, 3, 4}), index_view);
+  EXPECT_EQ(ShapeIndexView({3, 4}), index_view.ConsumeFront());
+  EXPECT_EQ(ShapeIndexView({2, 3}), index_view.ConsumeBack());
+}
+
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
   EXPECT_EQ(3, ShapeUtil::GetDimension(matrix, -1));
@@ -323,6 +332,17 @@ TEST(ShapeUtilTest, IncompatibleScalarVsTuple) {
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+}
+
+TEST(ShapeUtilTest, OpaqueVsArray) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape2 = ShapeUtil::MakeOpaqueShape();
+  EXPECT_FALSE(ShapeUtil::Compatible(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
 }
 
 TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {

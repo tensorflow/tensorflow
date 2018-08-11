@@ -37,6 +37,11 @@ _PRINT_DEPRECATION_WARNINGS = True
 _PRINTED_WARNING = {}
 
 
+class DeprecatedNamesAlreadySet(Exception):
+  """Raised when setting deprecated names multiple times for the same symbol."""
+  pass
+
+
 def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
   """Adds a deprecation notice to a docstring for deprecated functions."""
   main_text = ['THIS FUNCTION IS DEPRECATED. It will be removed %s.' %
@@ -219,6 +224,35 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
             func_or_class.__doc__, None, 'Please use %s instead.' % name))
 
 
+def deprecated_endpoints(*args):
+  """Decorator for marking endpoints deprecated.
+
+  This decorator does not print deprecation messages.
+  TODO(annarev): eventually start printing deprecation warnings when
+  @deprecation_endpoints decorator is added.
+
+  Args:
+    *args: Deprecated endpoint names.
+
+  Returns:
+    A function that takes symbol as an argument and adds
+    _tf_deprecated_api_names to that symbol.
+    _tf_deprecated_api_names would be set to a list of deprecated
+    endpoint names for the symbol.
+  """
+  def deprecated_wrapper(func):
+    # pylint: disable=protected-access
+    if '_tf_deprecated_api_names' in func.__dict__:
+      raise DeprecatedNamesAlreadySet(
+          'Cannot set deprecated names for %s to %s. '
+          'Deprecated names are already set to %s.' % (
+              func.__name__, str(args), str(func._tf_deprecated_api_names)))
+    func._tf_deprecated_api_names = args
+    # pylint: disable=protected-access
+    return func
+  return deprecated_wrapper
+
+
 def deprecated(date, instructions, warn_once=True):
   """Decorator for marking functions or methods deprecated.
 
@@ -354,13 +388,13 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     Args:
       names_to_ok_vals: dict from string arg_name to a list of values,
         possibly empty, which should not elicit a warning.
-      arg_spec: Output from tf_inspect.getargspec on the called function.
+      arg_spec: Output from tf_inspect.getfullargspec on the called function.
 
     Returns:
       Dictionary from arg_name to DeprecatedArgSpec.
     """
-    arg_name_to_pos = dict(
-        (name, pos) for (pos, name) in enumerate(arg_spec.args))
+    arg_name_to_pos = {
+        name: pos for pos, name in enumerate(arg_spec.args)}
     deprecated_positional_args = {}
     for arg_name, spec in iter(names_to_ok_vals.items()):
       if arg_name in arg_name_to_pos:
@@ -374,16 +408,16 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     decorator_utils.validate_callable(func, 'deprecated_args')
     deprecated_arg_names = _get_arg_names_to_ok_vals()
 
-    arg_spec = tf_inspect.getargspec(func)
+    arg_spec = tf_inspect.getfullargspec(func)
     deprecated_positions = _get_deprecated_positional_arguments(
         deprecated_arg_names, arg_spec)
 
     is_varargs_deprecated = arg_spec.varargs in deprecated_arg_names
-    is_kwargs_deprecated = arg_spec.keywords in deprecated_arg_names
+    is_kwargs_deprecated = arg_spec.varkw in deprecated_arg_names
 
     if (len(deprecated_positions) + is_varargs_deprecated + is_kwargs_deprecated
         != len(deprecated_arg_names_or_tuples)):
-      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.keywords]
+      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.varkw]
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
       raise ValueError('The following deprecated arguments are not present '
@@ -433,7 +467,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
         if is_varargs_deprecated and len(args) > len(arg_spec.args):
           invalid_args.append(arg_spec.varargs)
         if is_kwargs_deprecated and kwargs:
-          invalid_args.append(arg_spec.keywords)
+          invalid_args.append(arg_spec.varkw)
         for arg_name in deprecated_arg_names:
           if (arg_name in kwargs and
               not (deprecated_positions[arg_name].has_ok_value and

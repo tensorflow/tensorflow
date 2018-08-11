@@ -14,11 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
+
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
 
 namespace tflite {
 namespace tensor_utils {
@@ -37,15 +42,13 @@ bool PortableIsZeroVector(const float* vector, int v_size) {
 }
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
-                                     int8_t* quantized_values,
-                                     float* __restrict__ min,
-                                     float* __restrict__ max,
-                                     float* __restrict__ scaling_factor) {
+                                     int8_t* quantized_values, float* min_value,
+                                     float* max_value, float* scaling_factor) {
   auto minmax = std::minmax_element(values, values + size);
-  *min = *minmax.first;
-  *max = *minmax.second;
+  *min_value = *minmax.first;
+  *max_value = *minmax.second;
   const int kScale = 127;
-  const float range = std::max(std::abs(*min), std::abs(*max));
+  const float range = std::max(std::abs(*min_value), std::abs(*max_value));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
     *scaling_factor = 1;
@@ -70,10 +73,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
   for (int b = 0; b < n_batch; b++) {
     const float* matrix_ptr = matrix;
     for (int r = 0; r < m_rows; r++) {
+      float dot_prod = 0.0f;
       const float* vector_in_batch = vector + b * m_cols;
       for (int c = 0; c < m_cols; c++) {
-        *result_in_batch += *matrix_ptr++ * *vector_in_batch++;
+        dot_prod += *matrix_ptr++ * *vector_in_batch++;
       }
+      *result_in_batch += dot_prod;
       result_in_batch += result_stride;
     }
   }
@@ -81,9 +86,8 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors,
-    const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride) {
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
   int batch, row, col;
   for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
@@ -92,9 +96,11 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     for (row = 0; row < m_rows; ++row, result += result_stride) {
       // Initialize the dot product sum for the row to 0.
       int32_t dotprod = 0;
+#if defined(__GNUC__)
       // Prefetch the row to cache.
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
                          3 /* temporal locality */);
+#endif
       // For every block of 16 8-bit elements (128-bit register) from each row.
       for (col = 0; col < m_cols; ++col, ++row_ptr) {
         dotprod += (*row_ptr) * (vectors[col]);
@@ -193,6 +199,13 @@ void PortableSub1Vector(const float* vector, int v_size, float* result) {
 
 void PortableZeroVector(float* vector, int v_size) {
   memset(vector, 0, v_size * sizeof(float));
+}
+
+void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
+                                  const float scale, float* result) {
+  for (int v = 0; v < v_size; ++v) {
+    *result++ = scale * *vector++;
+  }
 }
 
 void PortableClipVector(const float* vector, int v_size, float abs_limit,

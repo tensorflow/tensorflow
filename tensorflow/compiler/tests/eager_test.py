@@ -32,6 +32,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -121,6 +122,14 @@ class EagerTest(xla_test.XLATestCase):
   def testIdentity(self):
     with self.test_scope():
       self.assertAllEqual(2, array_ops.identity(2))
+
+  def testRandomOps(self):
+    with self.test_scope():
+      tensor = gen_random_ops.random_uniform((2, 2), dtypes.float32)
+      row0 = tensor[0].numpy()
+      row1 = tensor[1].numpy()
+      # It should be very unlikely to rng to generate two equal rows.
+      self.assertFalse((row0 == row1).all())
 
   def testIdentityOnVariable(self):
     with self.test_scope():
@@ -400,10 +409,25 @@ class EagerFunctionTest(xla_test.XLATestCase):
     self.assertEqual(75, y.numpy())
     self.assertEqual(30, dy.numpy())
 
+  def testGradientTapeInDefun(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun
+      def f():
+        x = constant_op.constant(1.0)
+        with backprop.GradientTape() as tape:
+          y = v0 * x
+        dy = tape.gradient(y, v0)
+        return dy
+
+      dy = f()
+      self.assertEqual(1.0, dy.numpy())
+
   def testSliceInDefun(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x, y):
         return x[0::2, y:, ...]
 
@@ -417,6 +441,22 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       self.assertAllEqual(np.ones([1, 2, 4]), z.numpy())
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
+
+  def testNestedDefun(self):
+    self.skipTest('Nested defuns do not work on TPU at the moment')
+    with self.test_scope():
+
+      @function.defun
+      def times_two(x):
+        return 2 * x
+
+      @function.defun
+      def two_x_plus_1(x):
+        return times_two(x) + 1
+
+      x = constant_op.constant([2, 3, 4])
+      y = two_x_plus_1(x)
+      self.assertAllEqual([5, 7, 9], y.numpy())
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):
@@ -468,6 +508,36 @@ class ExcessivePaddingTest(xla_test.XLATestCase):
       y = f(3)
       reduced = math_ops.reduce_sum(y, axis=2)
       self.assertAllEqual(100 * [[36.0]], reduced)
+
+
+def multiple_tpus():
+  devices = context.context().devices()
+  return len([d for d in devices if 'device:TPU:' in d]) > 1
+
+
+class MultiDeviceTest(xla_test.XLATestCase):
+  """Test running TPU computation on more than one core."""
+
+  def testBasic(self):
+    if not multiple_tpus():
+      self.skipTest('MultiDeviceTest requires multiple TPU devices.')
+
+    # Compute 10 on TPU core 0
+    with ops.device('device:TPU:0'):
+      two = constant_op.constant(2)
+      five = constant_op.constant(5)
+      ten = two * five
+      self.assertAllEqual(10, ten)
+
+    # Compute 6 on TPU core 1
+    with ops.device('device:TPU:1'):
+      two = constant_op.constant(2)
+      three = constant_op.constant(3)
+      six = two * three
+      self.assertAllEqual(6, six)
+
+    # Copy 10 and 6 to CPU and sum them
+    self.assertAllEqual(16, ten + six)
 
 
 if __name__ == '__main__':

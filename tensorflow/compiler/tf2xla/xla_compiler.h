@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -250,6 +251,12 @@ class XlaCompiler {
     // Name of the compilation device to use. It must be set by the caller.
     // The default empty value is invalid.
     DeviceType device_type = DeviceType("");
+
+    // The device to use during compilation to execute instructions on, for
+    // example for auto-tuning.
+    // Valid values are defined by `xla::Backend::devices_ordinal_supported()`.
+    // -1 indicates the default device should be used.
+    int device_ordinal = -1;
 
     xla::Client* client = nullptr;
 

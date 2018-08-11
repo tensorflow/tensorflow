@@ -844,7 +844,10 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         *elem_count *= dim;
       }
     }
-    if (elem_count.has_value() && *elem_count <= 8) {
+    // Allow HloDotDumper to print HloInstruction reconstructed from HloProto
+    // collected from profiling tools. Those constants may not have a valid
+    // literal.
+    if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
       return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }
@@ -948,6 +951,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGe:
     case HloOpcode::kGt:
     case HloOpcode::kImag:
+    case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
@@ -1018,6 +1022,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
         return kWhite;
       }
       return kGreen;
+    case HloOpcode::kScatter:
+      // Do not de-emphasize Scatter, since it involves significant work.
     case HloOpcode::kCopy:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
@@ -1042,6 +1048,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMap:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:

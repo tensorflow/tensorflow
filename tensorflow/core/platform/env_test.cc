@@ -86,7 +86,7 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
-                           1 << 20, (1 << 20) + 1}) {
+                           1 << 20, (1 << 20) + 1, (256 << 20) + 100}) {
     const string filename = strings::StrCat(BaseDir(), "/bar/..//file", length);
 
     // Write a file with the given length

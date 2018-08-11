@@ -105,7 +105,8 @@ class SqlDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* driver_name_node;
       TF_RETURN_IF_ERROR(b->AddScalar(driver_name_, &driver_name_node));

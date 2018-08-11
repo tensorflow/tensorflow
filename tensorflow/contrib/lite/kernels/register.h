@@ -26,6 +26,10 @@ namespace builtin {
 class BuiltinOpResolver : public MutableOpResolver {
  public:
   BuiltinOpResolver();
+
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override;
+  const TfLiteRegistration* FindOp(const char* op, int version) const override;
 };
 
 }  // namespace builtin

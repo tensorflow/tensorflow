@@ -1,0 +1,39 @@
+path: "tensorflow.profiler"
+tf_module {
+  member {
+    name: "AdviceProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "GraphNodeProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "MultiGraphNodeProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "OpLogProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "ProfileOptionBuilder"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Profiler"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "advise"
+    argspec: "args=[\'graph\', \'run_meta\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
+  }
+  member_method {
+    name: "profile"
+    argspec: "args=[\'graph\', \'run_meta\', \'op_log\', \'cmd\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'scope\', \'0\'], "
+  }
+  member_method {
+    name: "write_op_log"
+    argspec: "args=[\'graph\', \'log_dir\', \'op_log\', \'run_meta\', \'add_trace\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+  }
+}

@@ -55,7 +55,8 @@ class Dataset : public GraphDatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* indices_node;
     TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.indices(), &indices_node));
@@ -252,10 +253,12 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
       previous_batch_index = next_batch_index;
     }
     gtl::InlinedVector<int64, 8> std_order(dense_shape->NumElements(), 0);
-    sparse::SparseTensor sparse_tensor(
-        *indices, *values, TensorShape(dense_shape->vec<int64>()), std_order);
-
-    *output = new Dataset<T>(ctx, sparse_tensor);
+    sparse::SparseTensor tensor;
+    OP_REQUIRES_OK(
+        ctx, sparse::SparseTensor::Create(
+                 *indices, *values, TensorShape(dense_shape->vec<int64>()),
+                 std_order, &tensor));
+    *output = new Dataset<T>(ctx, std::move(tensor));
   }
 
  private:

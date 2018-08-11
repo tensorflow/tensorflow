@@ -36,7 +36,7 @@ Status OutfeedThunk::ExecuteOnStream(
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* outfeed_buffers =
-      outfeed_manager->BlockingGetNextOutfeedDestination();
+      outfeed_manager->BlockingGetNextDestination();
 
   // Nothing to be done for empty tuples.
   if (ShapeUtil::IsEmptyTuple(hlo_instruction()->operand(0)->shape())) {
@@ -50,10 +50,6 @@ Status OutfeedThunk::ExecuteOnStream(
         if (!*buffer) {  // Tuple pointers.
           return Status::OK();
         }
-        // Allocate storage for the literal data.
-        const Shape& shape =
-            ShapeUtil::GetSubshape(outfeed_buffers->shape(), index);
-        (*buffer)->set_destination(Literal::CreateFromShape(shape));
 
         BufferAllocation::Slice slice = outfeed_slices_.element(index);
         se::DeviceMemoryBase data_address;

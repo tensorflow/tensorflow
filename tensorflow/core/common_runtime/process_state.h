@@ -65,7 +65,7 @@ class ProcessState {
 
   // Returns the one CPUAllocator used for the given numa_node.
   // TEMPORARY: ignores numa_node.
-  Allocator* GetCPUAllocator(int numa_node);
+  VisitableAllocator* GetCPUAllocator(int numa_node);
 
   typedef std::unordered_map<const void*, MemDesc> MDMap;
 
@@ -87,7 +87,7 @@ class ProcessState {
 
   mutex mu_;
 
-  std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
+  std::vector<VisitableAllocator*> cpu_allocators_ GUARDED_BY(mu_);
 
   virtual ~ProcessState();
 

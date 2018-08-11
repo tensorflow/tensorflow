@@ -111,7 +111,7 @@ class Interpreter {
   // processing this model will be forwarded to the error_reporter object.
   //
   // Note, if error_reporter is nullptr, then a default StderrReporter is
-  // used.
+  // used. Ownership of 'error_reporter' remains with the caller.
   explicit Interpreter(ErrorReporter* error_reporter = DefaultErrorReporter());
 
   ~Interpreter();
@@ -165,7 +165,7 @@ class Interpreter {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
                                        allocation);
-  };
+  }
 
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
@@ -416,6 +416,13 @@ class Interpreter {
  private:
   friend class InterpreterTest;
 
+  // Prevent 'context_' from accessing functions that are only available to
+  // delegated kernels.
+  void SwitchToKernelContext();
+
+  // Add delegate-only functions to 'context_'.
+  void SwitchToDelegateContext();
+
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
@@ -502,6 +509,7 @@ class Interpreter {
   // Update the execution graph to replace some of the nodes with stub
   // nodes. Specifically any node index that has `nodes[index]==1` will be
   // slated for replacement with a delegate kernel specified by registration.
+  // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
       TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
@@ -519,12 +527,13 @@ class Interpreter {
                                              TfLiteRegistration** registration);
 
   // WARNING: This is an experimental interface that is subject to change.
-  // Gets an TfLiteIntArray* representing the execution plan. The caller owns
-  // this memory and must free it with TfLiteIntArrayFree().
+  // Gets an TfLiteIntArray* representing the execution plan. The interpreter
+  // owns this memory and it is only guaranteed to exist during the invocation
+  // of the delegate prepare.
   TfLiteStatus GetExecutionPlan(TfLiteIntArray** execution_plan);
 
   // WARNING: This is an experimental interface that is subject to change.
-  // Entry point for C node plugin API to get the execution plan
+  // Entry point for C node plugin API to get the execution plan.
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
@@ -629,7 +638,7 @@ class Interpreter {
   bool tensor_resized_since_op_invoke_ = false;
 
   // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
 
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
