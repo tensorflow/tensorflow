@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -46,6 +48,7 @@ using ops::SegmentSum;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::UnsafeDiv;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -849,6 +852,36 @@ TEST_F(NaryGradTest, RealDiv) {
   auto y =
       RealDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
   RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, UnsafeDiv) {
+  {
+    TensorShape x_shape({3, 2, 5});
+    const auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+    // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+    // division errors in the numeric estimator used by the gradient checker.
+    const auto y = UnsafeDiv(
+        scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+    RunTest({x}, {x_shape}, {y}, {x_shape});
+  }
+  {
+    // Return 0 gradient (rather than NaN) for division by zero.
+    const auto x = Placeholder(scope_, DT_FLOAT);
+    const auto zero = Const<float>(scope_, 0.0);
+    const auto y = UnsafeDiv(scope_, x, zero);
+
+    std::vector<Output> grad_outputs;
+    TF_EXPECT_OK(AddSymbolicGradients(scope_, {y}, {x}, &grad_outputs));
+    ClientSession session(scope_);
+    std::vector<Tensor> grad_result;
+    TF_EXPECT_OK(
+        session.Run({{x, {-3.0f, 0.0f, 3.0f}}}, grad_outputs, &grad_result));
+    EXPECT_EQ(grad_result.size(), 1);
+    EXPECT_EQ(grad_result[0].NumElements(), 3);
+    EXPECT_EQ(grad_result[0].flat<float>()(0), 0.0f);
+    EXPECT_EQ(grad_result[0].flat<float>()(1), 0.0f);
+    EXPECT_EQ(grad_result[0].flat<float>()(2), 0.0f);
+  }
 }
 
 TEST_F(NaryGradTest, SquaredDifference) {

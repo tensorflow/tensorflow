@@ -972,6 +972,24 @@ def _RealDivGrad(op, grad):
                   grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))
 
 
+@ops.RegisterGradient("UnsafeDiv")
+def _UnsafeDivGrad(op, grad):
+  """UnsafeDiv op gradient."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  x = math_ops.conj(x)
+  y = math_ops.conj(y)
+  return (array_ops.reshape(
+      math_ops.reduce_sum(math_ops.unsafe_div(grad, y), rx), sx),
+          array_ops.reshape(
+              math_ops.reduce_sum(
+                  grad * math_ops.unsafe_div(math_ops.unsafe_div(-x, y), y),
+                  ry), sy))
+
+
 @ops.RegisterGradient("Pow")
 def _PowGrad(op, grad):
   """Returns grad * (y*x^(y-1), z*log(x))."""
