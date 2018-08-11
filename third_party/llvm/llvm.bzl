@@ -294,6 +294,7 @@ llvm_all_cmake_vars = select({
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-apple-darwin"),
+            posix_cmake_vars,
             darwin_cmake_vars,
         ),
     ),
@@ -301,6 +302,7 @@ llvm_all_cmake_vars = select({
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu"),
+            posix_cmake_vars,
             linux_cmake_vars,
         ),
     ),
@@ -315,6 +317,7 @@ llvm_all_cmake_vars = select({
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-unknown-linux_gnu"),
+            posix_cmake_vars,
             linux_cmake_vars,
         ),
     ),
