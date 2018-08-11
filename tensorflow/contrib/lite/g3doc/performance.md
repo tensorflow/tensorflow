@@ -39,7 +39,6 @@ Device | CPU_MASK |
 Pixel 2 | f0 |
 Pixel xl | 0c |
 
-
 <table>
   <thead>
     <tr>
@@ -50,7 +49,7 @@ Pixel xl | 0c |
   </thead>
   <tr>
     <td rowspan = 2>
-      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz">Mobilenet_1.0_224(float)</a>
+      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz">Mobilenet_1.0_224(float)</a>
     </td>
     <td>Pixel 2 </td>
     <td>166.5 ms (2.6 ms)</td>
@@ -61,7 +60,7 @@ Pixel xl | 0c |
   </tr>
   <tr>
     <td rowspan = 2>
-      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224_quant.tgz">Mobilenet_1.0_224 (quant)</a>
+      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz">Mobilenet_1.0_224 (quant)</a>
     </td>
     <td>Pixel 2 </td>
     <td>69.5 ms (0.9 ms)</td>
@@ -134,14 +133,14 @@ modified  to set `num_threads` to 1.
   </thead>
   <tr>
     <td>
-      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz">Mobilenet_1.0_224(float)</a>
+      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz">Mobilenet_1.0_224(float)</a>
     </td>
     <td>iPhone 8 </td>
     <td>32.2 ms (0.8 ms)</td>
   </tr>
   <tr>
     <td>
-      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224_quant.tgz)">Mobilenet_1.0_224 (quant)</a>
+      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz)">Mobilenet_1.0_224 (quant)</a>
     </td>
     <td>iPhone 8 </td>
     <td>24.4 ms (0.8 ms)</td>

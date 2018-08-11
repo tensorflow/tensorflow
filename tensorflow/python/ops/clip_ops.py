@@ -42,6 +42,9 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Any values less than `clip_value_min` are set to `clip_value_min`. Any values
   greater than `clip_value_max` are set to `clip_value_max`.
 
+  Note: `clip_value_min` needs to be smaller or equal to `clip_value_max` for
+  correct results.
+
   Args:
     t: A `Tensor`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape

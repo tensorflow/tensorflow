@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/while_transformer.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -170,40 +170,6 @@ Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
   bindings_.UnbindAllLocalIrValues();
   return DfsHloVisitor::Postprocess(hlo);
 }
-
-namespace {
-bool ImplementedAsHostToDeviceMemcpy(const BufferAssignment& buffer_assignment,
-                                     const HloInstruction& hlo) {
-  // `hlo` needs to satisfy the following conditions to be implemented as a
-  // host-to-device cuMemcpy.
-  //
-  // 1. `hlo` is a kCopy instruction.
-  // 2. `hlo`'s only operand is a kConstant instruction.
-  // 3. `hlo` and its operand have the same shape (thus the same layout too).
-  // 4. The address of `hlo`'s buffer is known at runtime (without dereferencing
-  //    pointers in a tuple).
-  return hlo.opcode() == HloOpcode::kCopy &&
-         hlo.operand(0)->opcode() == HloOpcode::kConstant &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.GetUniqueTopLevelSlice(&hlo).ok();
-}
-
-bool ImplementedAsDeviceToDeviceMemcpy(
-    const BufferAssignment& buffer_assignment, const HloInstruction& hlo) {
-  // `hlo` needs to satisfy three conditions to be implemented as a
-  // device-to-device cuMemcpy.
-  //
-  // 1. `hlo` is a kCopy instruction.
-  // 2. `hlo` and its operand have the same shape (thus the same layout too).
-  // 3. `hlo` and its operand have a statically-known buffer assignment
-  //     (constants do not, for instance), which means the source buffer also
-  //     resides on the device.
-  return hlo.opcode() == HloOpcode::kCopy &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.GetUniqueTopLevelSlice(&hlo).ok() &&
-         buffer_assignment.GetUniqueTopLevelSlice(hlo.operand(0)).ok();
-}
-}  // namespace
 
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     const HloInstruction& inst,
@@ -379,11 +345,6 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() > 0 ||
-      dnums.rhs_batch_dimensions_size() > 0) {
-    return Unimplemented("Dot with batch dimensions not implemented.");
-  }
   if (ImplementedAsGemm(*dot)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(dot));
     return Status::OK();
@@ -584,6 +545,11 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     switch (root->opcode()) {
       case HloOpcode::kTuple:
       case HloOpcode::kReduce: {
+        if (root->opcode() == HloOpcode::kReduce &&
+            ShapeUtil::IsTuple(root->shape())) {
+          // TODO(b/112040122): Support variadic reduce.
+          return Unimplemented("Variadic reduce is not supported on GPU");
+        }
         VLOG(3) << "Emitting fused reduction to vector: " << fusion->ToString();
         std::vector<std::unique_ptr<Thunk>> thunks;
         ArraySlice<HloInstruction*> output_instructions =
@@ -730,13 +696,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 }
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
-  if (ImplementedAsHostToDeviceMemcpy(ir_emitter_context_->buffer_assignment(),
-                                      *copy)) {
-    thunk_sequence_->emplace_back(BuildHostToDeviceCopyThunk(copy));
-    return Status::OK();
-  }
-  if (ImplementedAsDeviceToDeviceMemcpy(
-          ir_emitter_context_->buffer_assignment(), *copy)) {
+  CHECK(ShapeUtil::Compatible(copy->operand(0)->shape(), copy->shape()));
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context_->buffer_assignment();
+  if (LayoutUtil::Equal(copy->operand(0)->shape().layout(),
+                        copy->shape().layout()) &&
+      buffer_assignment.GetUniqueTopLevelSlice(copy->operand(0)).ok()) {
     thunk_sequence_->emplace_back(BuildDeviceToDeviceCopyThunk(copy));
     return Status::OK();
   }
@@ -1734,6 +1699,10 @@ Status IrEmitterUnnested::EmitReductionToVector(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
+  // TODO(b/112040122): Support multi-output reduce.
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return Unimplemented("Multi-output reduce is not supported on GPU");
+  }
   auto input = reduce->operand(0);
   auto init_value = reduce->operand(1);
   tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce(reduce->dimensions());
@@ -2003,19 +1972,13 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  auto result = CanTransformWhileToFor(xla_while);
-  if (result.ok()) {
-    auto tuple = result.ConsumeValueOrDie();
-    // loop_trip_count = (limit - start + increment - 1) / increment
-    const int64 loop_trip_count =
-        (std::get<1>(tuple) - std::get<0>(tuple) + std::get<2>(tuple) - 1) /
-        std::get<2>(tuple);
-    thunk_sequence_->emplace_back(BuildForThunk(xla_while, loop_trip_count));
+  // TODO(b/112163966): Move trip count computation earlier in the pipeline.
+  if (auto loop_trip_count = ComputeWhileLoopTripCount(xla_while)) {
+    thunk_sequence_->emplace_back(BuildForThunk(xla_while, *loop_trip_count));
     VLOG(3) << "Built ForThunk for while: " << xla_while->name();
   } else {
     thunk_sequence_->emplace_back(BuildWhileThunk(xla_while));
-    VLOG(3) << "Built WhileThunk for while: " << xla_while->name()
-            << " while-to-for transform status: " << result.status();
+    VLOG(3) << "Built WhileThunk for while: " << xla_while->name();
   }
   return Status::OK();
 }

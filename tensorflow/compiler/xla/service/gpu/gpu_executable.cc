@@ -131,9 +131,10 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    // If this thunk requests it, wait for all currently-executing thunks to
-    // finish.  This is useful e.g. if the thunk is about to perform autotuning.
-    if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
+    // If this thunk is about to autotune then wait for all currently executing
+    // thunks to finish.  This reduces noise and thus the probability of
+    // choosing a suboptimal algorithm.
+    if (thunk->WillAutotuneKernel(stream)) {
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
@@ -293,7 +294,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
   TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
-      [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
+      [&buffer_allocations, &buffers_in_result, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
         // The points-to set is unambiguous so the set should be a

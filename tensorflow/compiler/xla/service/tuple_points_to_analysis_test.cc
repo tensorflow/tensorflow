@@ -1118,7 +1118,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
 
-  auto make_cond = [this, &data_shape]() {
+  auto make_cond = [&data_shape]() {
     auto builder = HloComputation::Builder(TestName() + ".Cond");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
@@ -1127,7 +1127,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  auto make_body = [this, &data_shape]() {
+  auto make_body = [&data_shape]() {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));

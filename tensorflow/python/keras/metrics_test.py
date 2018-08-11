@@ -258,6 +258,13 @@ class KerasMetricsTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(m.total), 57.5, 2)  # 55.5 + 1 + 1
     self.assertAlmostEqual(self.evaluate(m.count), 5.1, 2)  # 3.9 + 1.2
 
+    # check values reduced to the dimensions of weight
+    result_t = m([[[1., 2.], [3., 2.], [0.5, 4.]]], sample_weight=[0.5])
+    result = np.round(self.evaluate(result_t), decimals=2)  # 58.5 / 5.6
+    self.assertEqual(result, 10.45)
+    self.assertEqual(np.round(self.evaluate(m.total), decimals=2), 58.54)
+    self.assertEqual(np.round(self.evaluate(m.count), decimals=2), 5.6)
+
   def test_mean_graph_with_placeholder(self):
     with context.graph_mode(), self.test_session() as sess:
       m = metrics.Mean()
@@ -354,6 +361,30 @@ class KerasMetricsTest(test.TestCase):
     result_t = acc_obj([[1], [1], [0], [0]], [[0.9], [0.6], [0.4], [0.8]])
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.5, 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_accuracy(self):
+    acc_obj = metrics.CategoricalAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[0, 0, 1], [0, 1, 0]],
+                                     [[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[0, 0, 1], [0, 1, 0]],
+                       [[0.1, 0.1, 0.8], [0.05, 0, 0.95]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_result(self):

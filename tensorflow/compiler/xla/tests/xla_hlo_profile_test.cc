@@ -84,8 +84,8 @@ Status ParseOneProfileOutputLine(
     tensorflow::gtl::ArraySlice<tensorflow::StringPiece> opcodes_to_ignore =
         {}) {
   string separator = "[^:]*:: +";
-  string match_percentage = "\\d+\\.\\d\\d%";
-  string match_cycles = "(\\d+) cycles +\\( *(" + match_percentage + ")\\)";
+  string match_percentage = R"(\d+\.\d*% +\d+Σ)";
+  string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
   string match_usecs = "([0-9.]+) usec";
   string match_flops = "([^ ]*)";
   string match_trops = "([^ ]*)";
@@ -225,7 +225,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                           MaybeFind(parsed_profile_lines, "tanh"));
 
   EXPECT_GT(total_profile.cycles, 0);
-  EXPECT_EQ(total_profile.cycles_percentage, "100.00%");
+  EXPECT_EQ(total_profile.cycles_percentage, "100.% 100Σ");
 
   EXPECT_TRUE(HasFlops(total_profile));
   EXPECT_TRUE(HasTrops(total_profile));
@@ -333,7 +333,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
 
   EXPECT_GT(total_while_body_profile.cycles, 0);
   EXPECT_EQ(total_while_body_profile.opcode, "[total]");
-  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.00%");
+  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.% 100Σ");
 
   EXPECT_GT(total_while_body_profile.cycles, multiply_profile.cycles);
   EXPECT_NE(multiply_profile.cycles_percentage, "0.00%");

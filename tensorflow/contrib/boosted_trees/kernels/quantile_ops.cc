@@ -125,6 +125,8 @@ void QuantizeFeatures(
     auto flat_values = values_tensor.flat<float>();
     for (int64 instance = 0; instance < num_values; ++instance) {
       const float value = flat_values(instance);
+      CHECK(!buckets_vector.empty())
+          << "Got empty buckets for feature " << feature_index;
       auto bucket_iter =
           std::lower_bound(buckets_vector.begin(), buckets_vector.end(), value);
       if (bucket_iter == buckets_vector.end()) {

@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -34,7 +35,7 @@ class IotaTest : public ClientLibraryTestBase {
   }
 };
 
-TEST_F(IotaTest, SimpleR1) {
+XLA_TEST_F(IotaTest, SimpleR1) {
   for (int num_elements = 1; num_elements < 10000001; num_elements *= 10) {
     {
       XlaBuilder builder(TestName() + "_f32");

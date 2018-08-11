@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.opt.python.training import shampoo
@@ -40,9 +41,10 @@ def np_power(mat_g, alpha):
   return np.dot(np.dot(mat_u, np.diag(diag_d)), mat_v)
 
 
-class ShampooTest(test.TestCase):
+class ShampooTest(test.TestCase, parameterized.TestCase):
 
-  def testBasicVector(self):
+  @parameterized.named_parameters(('Var', False), ('ResourceVar', True))
+  def testBasicVector(self, use_resource_var):
     """Similar to the full Adagrad update."""
 
     size = 20
@@ -51,8 +53,10 @@ class ShampooTest(test.TestCase):
     grad_np_2 = np.random.rand(size)
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
 
@@ -91,7 +95,8 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testBasicMatrix(self):
+  @parameterized.named_parameters(('Var', False), ('ResourceVar', True))
+  def testBasicMatrix(self, use_resource_var):
     """Check update when gradient is a matrix."""
     size = [10, 5]
     init_var_np = np.zeros(size)
@@ -99,8 +104,10 @@ class ShampooTest(test.TestCase):
     grad_np_2 = np.random.rand(size[0], size[1])
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
 
@@ -143,16 +150,23 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def _testBasicTensor(self, use_iterative_root):
-    """Check update when gradient is a tensor."""
+  def _testBasicTensor(self, use_iterative_root, use_resource_var):
+    """Check update when gradient is a tensor.
+
+    Args:
+      use_iterative_root: use iterative power method or SVD to find nth roots.
+      use_resource_var: use resource var as variables.
+    """
     size = [10, 5, 7]
     init_var_np = np.zeros(size)
     grad_np = np.random.rand(size[0], size[1], size[2])
     grad_np_2 = np.random.rand(size[0], size[1], size[2])
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
 
@@ -208,11 +222,17 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testBasicTensor(self):
-    for use_iterative_root in [True, False]:
-      self._testBasicTensor(use_iterative_root)
+  @parameterized.named_parameters(
+      ('SVDWithVar', False, False),
+      ('SVDWithResourceVar', False, True),
+      ('IterRootWithVar', True, False),
+      ('IterRootWithResourceVar', True, True),
+  )
+  def testBasicTensor(self, use_iterative_root, use_resource_var):
+    self._testBasicTensor(use_iterative_root, use_resource_var)
 
-  def testLargeVector(self):
+  @parameterized.named_parameters(('Var', False), ('ResourceVar', True))
+  def testLargeVector(self, use_resource_var):
     """This is just the diagonal Adagrad update."""
 
     size = 2000
@@ -221,8 +241,10 @@ class ShampooTest(test.TestCase):
     grad_np_2 = np.random.rand(size)
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
 
@@ -257,10 +279,14 @@ class ShampooTest(test.TestCase):
 
       self.assertAllCloseAccordingToType(new_val_np, new_val)
 
-  def testLargeMatrix(self):
+  @parameterized.named_parameters(('Var', False), ('ResourceVar', True))
+  def testLargeMatrix(self, use_resource_var):
     """Gradient is a matrix, one of whose dimensions is large.
 
     We do diagonal updates for large dimensions.
+
+    Args:
+      use_resource_var: use resource var as variables.
     """
 
     size = [2000, 3]
@@ -269,8 +295,10 @@ class ShampooTest(test.TestCase):
     grad_np_2 = np.random.rand(size[0], size[1])
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
 
@@ -316,12 +344,15 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testSparseUpdateLarge(self):
+  @parameterized.named_parameters(('Var', False))
+  def testSparseUpdateLarge(self, use_resource_var):
     """Check update when gradient is of type IndexSlices.
 
     We do diagonal updates for the first dimension, unless it is very small.
-    """
 
+    Args:
+      use_resource_var: use resource var as variables.
+    """
     size = [2000, 3]
     sample_size_1 = 100
     init_var_np = np.zeros(size)
@@ -335,8 +366,10 @@ class ShampooTest(test.TestCase):
     grad_np_2 = np.random.rand(sample_size_2, size[1])
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = ops.IndexedSlices(
           constant_op.constant(grad_np, dtype=dtypes.float32),
           constant_op.constant(grad_indices),
@@ -395,13 +428,14 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def _testSparseUpdateSmall(self, use_iterative_root):
+  def _testSparseUpdateSmall(self, use_iterative_root, use_resource_var):
     """Gradient is of type IndexSlices, but the first dimension is small.
 
     We create dense gradient and do the full update with SVD etc.
 
     Args:
       use_iterative_root: use iterative power method or SVD to find nth roots.
+      use_resource_var: use resource var as variables.
     """
 
     size = [100, 3, 5]
@@ -412,8 +446,10 @@ class ShampooTest(test.TestCase):
     grad_np = np.random.rand(sample_size, size[1], size[2])
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = ops.IndexedSlices(
           constant_op.constant(grad_np, dtype=dtypes.float32),
           constant_op.constant(grad_indices),
@@ -453,15 +489,21 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testSparseUpdateSmall(self):
-    for use_iterative_root in [True, False]:
-      self._testSparseUpdateSmall(use_iterative_root)
+  @parameterized.named_parameters(
+      ('SVDWithVar', False, False),
+      ('SVDWithResourceVar', False, True),
+      ('IterRootWithVar', True, False),
+      ('IterRootWithResourceVar', True, True),
+  )
+  def testSparseUpdateSmall(self, use_iterative_root, use_resource_var):
+    self._testSparseUpdateSmall(use_iterative_root, use_resource_var)
 
-  def _testBasicTensorWithMomentum(self, use_iterative_root):
+  def _testBasicTensorWithMomentum(self, use_iterative_root, use_resource_var):
     """Check update with momentum when gradient is a tensor.
 
     Args:
       use_iterative_root: use iterative power method or SVD to find nth roots.
+      use_resource_var: use resource var as variables.
     """
     size = [10, 5, 7]
     init_var_np = np.zeros(size)
@@ -471,8 +513,10 @@ class ShampooTest(test.TestCase):
     gbar_weight = 0.1
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = constant_op.constant(grad_np, dtype=dtypes.float32)
       grad_2 = constant_op.constant(grad_np_2, dtype=dtypes.float32)
 
@@ -528,15 +572,21 @@ class ShampooTest(test.TestCase):
       self.assertAllCloseAccordingToType(new_val_np, new_val,
                                          atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testBasicTensorWithMomentum(self):
-    for use_iterative_root in [True, False]:
-      self._testBasicTensorWithMomentum(use_iterative_root)
+  @parameterized.named_parameters(
+      ('SVDWithVar', False, False),
+      ('SVDWithResourceVar', False, True),
+      ('IterRootWithVar', True, False),
+      ('IterRootWithResourceVar', True, True),
+  )
+  def testBasicTensorWithMomentum(self, use_iterative_root, use_resource_var):
+    self._testBasicTensorWithMomentum(use_iterative_root, use_resource_var)
 
-  def _testDelayedSVD(self, use_iterative_root):
+  def _testDelayedSVD(self, use_iterative_root, use_resource_var):
     """Performing the SVD every nth step.
 
     Args:
       use_iterative_root: use iterative power method or SVD to find nth roots.
+      use_resource_var: use resource var as variables.
     """
     size = [10, 5, 7]
     init_var_np = np.zeros(size).astype(np.float32)
@@ -552,8 +602,10 @@ class ShampooTest(test.TestCase):
     mat_g3 = np.zeros_like(mat_g3_a)
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = array_ops.placeholder(dtypes.float32, shape=size)
 
       opt = shampoo.ShampooOptimizer(global_step, svd_interval=svd_interval,
@@ -590,15 +642,21 @@ class ShampooTest(test.TestCase):
         self.assertAllCloseAccordingToType(new_val_np, new_val,
                                            atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testDelayedSVD(self):
-    for use_iterative_root in [True, False]:
-      self._testDelayedSVD(use_iterative_root)
+  @parameterized.named_parameters(
+      ('SVDWithVar', False, False),
+      ('SVDWithResourceVar', False, True),
+      ('IterRootWithVar', True, False),
+      ('IterRootWithResourceVar', True, True),
+  )
+  def testDelayedSVD(self, use_iterative_root, use_resource_var):
+    self._testDelayedSVD(use_iterative_root, use_resource_var)
 
-  def _testDelayedPrecondUpdate(self, use_iterative_root):
+  def _testDelayedPrecondUpdate(self, use_iterative_root, use_resource_var):
     """Update the squared sum every nth step, drop the other steps.
 
     Args:
       use_iterative_root: use iterative power method or SVD to find nth roots.
+      use_resource_var: use resource var as variables.
     """
     size = [10, 5, 7]
     init_var_np = np.zeros(size).astype(np.float32)
@@ -615,8 +673,10 @@ class ShampooTest(test.TestCase):
     mat_g3 = np.zeros_like(mat_g3_a)
 
     with self.test_session() as sess:
-      global_step = variables.Variable(0, dtype=dtypes.int64)
-      var = variables.Variable(init_var_np, dtype=dtypes.float32)
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, use_resource=use_resource_var)
+      var = variables.Variable(
+          init_var_np, dtype=dtypes.float32, use_resource=use_resource_var)
       grad = array_ops.placeholder(dtypes.float32, shape=size)
 
       opt = shampoo.ShampooOptimizer(
@@ -660,9 +720,14 @@ class ShampooTest(test.TestCase):
         self.assertAllCloseAccordingToType(new_val_np, new_val,
                                            atol=TOLERANCE, rtol=TOLERANCE)
 
-  def testDelayedPrecondUpdate(self):
-    for use_iterative_root in [True, False]:
-      self._testDelayedPrecondUpdate(use_iterative_root)
+  @parameterized.named_parameters(
+      ('SVDWithVar', False, False),
+      ('SVDWithResourceVar', False, True),
+      ('IterRootWithVar', True, False),
+      ('IterRootWithResourceVar', True, True),
+  )
+  def testDelayedPrecondUpdate(self, use_iterative_root, use_resource_var):
+    self._testDelayedPrecondUpdate(use_iterative_root, use_resource_var)
 
 
 if __name__ == '__main__':

@@ -44,7 +44,7 @@ class VocabInfo(
     ])):
   """Vocabulary information for warm-starting.
 
-  See @{tf.estimator.WarmStartSettings$WarmStartSettings} for examples of using
+  See `tf.estimator.WarmStartSettings` for examples of using
   VocabInfo to warm-start.
 
   Attributes:

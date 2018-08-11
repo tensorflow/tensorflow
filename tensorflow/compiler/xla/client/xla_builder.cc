@@ -45,21 +45,6 @@ int64 GetUniqueId() {
   return id;
 }
 
-// Returns true if an instruction with the given opcode can be the root of the
-// computation.
-bool CanBeRoot(HloOpcode opcode) {
-  switch (opcode) {
-    case HloOpcode::kAfterAll:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kTrace:
-      return false;
-    default:
-      return true;
-  }
-}
-
 }  // namespace
 
 XlaOp operator-(const XlaOp& x) { return Neg(x); }
@@ -142,28 +127,13 @@ XlaOp XlaBuilder::ReportErrorOrReturn(
   return ReportErrorOrReturn(op_creator());
 }
 
-StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) const {
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64 root_id) const {
   TF_RETURN_IF_ERROR(first_error_);
-
-  TF_RET_CHECK(root_id != nullptr);
+  TF_RET_CHECK((root_id >= 0) && (root_id < instructions_.size()));
 
   ProgramShape program_shape;
 
-  // Not all instructions can be roots. Walk backwards from the last added
-  // instruction until a valid root is found.
-  int64 index = instructions_.size() - 1;
-  for (; index >= 0; index--) {
-    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
-                        StringToHloOpcode(instructions_[index].opcode()));
-    if (CanBeRoot(opcode)) {
-      break;
-    }
-  }
-  if (index < 0) {
-    return FailedPrecondition("no root instruction was found");
-  }
-  *root_id = instructions_[index].id();
-  *program_shape.mutable_result() = instructions_[index].shape();
+  *program_shape.mutable_result() = instructions_[root_id].shape();
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
@@ -188,8 +158,15 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) const {
 }
 
 StatusOr<ProgramShape> XlaBuilder::GetProgramShape() const {
-  int64 root;
-  return GetProgramShape(&root);
+  TF_RET_CHECK(!instructions_.empty());
+  return GetProgramShape(instructions_.back().id());
+}
+
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
+  if (root.builder_ != this) {
+    return InvalidArgument("Given root operation is not in this computation.");
+  }
+  return GetProgramShape(root.handle());
 }
 
 void XlaBuilder::IsConstantVisitor(const int64 op_handle,
@@ -257,17 +234,29 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
+  return Build(instructions_.back().id());
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root) {
+  if (root.builder_ != this) {
+    return InvalidArgument("Given root operation is not in this computation.");
+  }
+  return Build(root.handle());
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
+  if (!first_error_.ok()) {
+    string backtrace;
+    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
+    return AppendStatus(first_error_, backtrace);
+  }
 
   HloComputationProto entry;
   entry.set_id(GetUniqueId());  // Give the computation a global unique id.
   entry.set_name(StrCat(name_, entry.id()));  // Ensure that the name is unique.
 
-  {
-    int64 root_id;
-    TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(),
-                        GetProgramShape(&root_id));
-    entry.set_root_id(root_id);
-  }
+  TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(), GetProgramShape(root_id));
+  entry.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.
@@ -1099,11 +1088,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           sharding_builder::AssignDevice(0);
       XlaScopedShardingAssignment scoped_sharding(this,
                                                   infeed_instruction_sharding);
-      TF_ASSIGN_OR_RETURN(infeed,
-                          AddInstruction(std::move(instr), HloOpcode::kInfeed));
+      TF_ASSIGN_OR_RETURN(
+          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
     } else {
-      TF_ASSIGN_OR_RETURN(infeed,
-                          AddInstruction(std::move(instr), HloOpcode::kInfeed));
+      TF_ASSIGN_OR_RETURN(
+          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
     }
 
     // The infeed instruction produces a tuple of the infed data and a token
@@ -1635,6 +1624,32 @@ XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
   });
 }
 
+XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+                          const XlaOp& updates,
+                          const XlaComputation& update_computation,
+                          const ScatterDimensionNumbers& dimension_numbers) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
+    TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
+                        GetShape(scatter_indices));
+    TF_ASSIGN_OR_RETURN(const Shape& updates_shape, GetShape(updates));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                        update_computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferScatterShape(
+                            input_shape, scatter_indices_shape, updates_shape,
+                            to_apply_shape, dimension_numbers));
+
+    *instr.mutable_scatter_dimension_numbers() = dimension_numbers;
+
+    AddCalledComputation(update_computation, &instr);
+    return AddInstruction(std::move(instr), HloOpcode::kScatter,
+                          {input, scatter_indices, updates});
+  });
+}
+
 XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaComputation& true_computation,
                               const XlaOp& false_operand,
@@ -1681,7 +1696,7 @@ XlaOp XlaBuilder::Reduce(
 
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferReduceShape(
-                            operand_shape, init_shape, dimensions_to_reduce,
+                            {&operand_shape, &init_shape}, dimensions_to_reduce,
                             called_program_shape));
 
     for (int64 dim : dimensions_to_reduce) {
@@ -1863,6 +1878,61 @@ XlaOp XlaBuilder::CrossReplicaSum(
 
     return AddInstruction(std::move(instr), HloOpcode::kCrossReplicaSum,
                           {operand});
+  });
+}
+
+XlaOp XlaBuilder::AllToAll(const XlaOp& operand, int64 split_dimension,
+                           int64 concat_dimension, int64 split_count,
+                           const std::vector<ReplicaGroup>& replica_groups) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+
+    // The HloInstruction for Alltoall currently only handles the data
+    // communication: it accepts N already split parts and scatters them to N
+    // cores, and each core gathers the N received parts into a tuple as the
+    // output. So here we explicitly split the operand before the hlo alltoall,
+    // and concat the tuple elements.
+    //
+    // First, run shape inference to make sure the shapes are valid.
+    TF_RETURN_IF_ERROR(
+        ShapeInference::InferAllToAllShape(operand_shape, split_dimension,
+                                           concat_dimension, split_count)
+            .status());
+
+    // Split into N parts.
+    std::vector<XlaOp> slices;
+    slices.reserve(split_count);
+    const int64 block_size =
+        operand_shape.dimensions(split_dimension) / split_count;
+    for (int i = 0; i < split_count; i++) {
+      slices.push_back(SliceInDim(operand, /*start_index=*/i * block_size,
+                                  /*limit_index=*/(i + 1) * block_size,
+                                  /*stride=*/1, /*dimno=*/split_dimension));
+    }
+
+    // Handle data communication.
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(auto slice_shapes, this->GetOperandShapes(slices));
+    std::vector<const Shape*> slice_shape_ptrs;
+    c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
+                [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    TF_ASSIGN_OR_RETURN(
+        XlaOp alltoall,
+        AddInstruction(std::move(instr), HloOpcode::kAllToAll, slices));
+
+    // Concat the N received parts.
+    std::vector<XlaOp> received;
+    received.reserve(split_count);
+    for (int i = 0; i < split_count; i++) {
+      received.push_back(this->GetTupleElement(alltoall, i));
+    }
+    return this->ConcatInDim(received, concat_dimension);
   });
 }
 
@@ -2137,11 +2207,6 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       LookUpInstruction(root_op));
-  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
-  if (!CanBeRoot(opcode)) {
-    return InvalidArgument("the operand with opcode %s cannot be root",
-                           root->opcode().c_str());
-  }
 
   HloComputationProto entry;
   entry.set_id(GetUniqueId());  // Give the computation a global unique id.
@@ -2667,6 +2732,13 @@ XlaOp CrossReplicaSum(
                                             replica_group_ids, channel_id);
 }
 
+XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
+               int64 concat_dimension, int64 split_count,
+               const std::vector<ReplicaGroup>& replica_groups) {
+  return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
+                                     split_count, replica_groups);
+}
+
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
@@ -2801,6 +2873,13 @@ XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
              tensorflow::gtl::ArraySlice<int64> window_bounds) {
   return input.builder()->Gather(input, gather_indices, dimension_numbers,
                                  window_bounds);
+}
+
+XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
+              const XlaOp& updates, const XlaComputation& update_computation,
+              const ScatterDimensionNumbers& dimension_numbers) {
+  return input.builder()->Scatter(input, scatter_indices, updates,
+                                  update_computation, dimension_numbers);
 }
 
 void Send(const XlaOp& operand, const ChannelHandle& handle) {

@@ -329,7 +329,7 @@ def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
 
       [1, 11, 3, 10, 9, 6, 7, 12]
 
-  See @{tf.scatter_nd} for more details about how to make updates to
+  See `tf.scatter_nd` for more details about how to make updates to
   slices.
 
   Args:
@@ -443,7 +443,7 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
 
       [1, 13, 3, 14, 14, 6, 7, 20]
 
-  See @{tf.scatter_nd} for more details about how to make updates to
+  See `tf.scatter_nd` for more details about how to make updates to
   slices.
 
   Args:

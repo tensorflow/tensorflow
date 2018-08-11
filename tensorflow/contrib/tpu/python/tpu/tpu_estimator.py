@@ -224,7 +224,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
   `Tensor`s transferred from TPU system to CPU host and passed to `metric_fn`.
   To be precise, TPU evaluation expects a slightly different signature from the
-  @{tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  `tf.estimator.Estimator`. While `EstimatorSpec.eval_metric_ops` expects a
   dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
   The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
   `tensors` usually specify the model logits, which are transferred back from
@@ -247,7 +247,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   sending tensors from TPU to CPU. To reduce the overhead, try reducing the
   size of the tensors. The `tensors` are concatenated along their major (batch)
   dimension, and so must be >= rank 1. The `host_call` is useful for writing
-  summaries with @{tf.contrib.summary.create_file_writer}.
+  summaries with `tf.contrib.summary.create_file_writer`.
   """
 
   def __new__(cls,
@@ -2886,7 +2886,8 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       multi_tpu_predict_steps_on_single_shard,
       inputs=[],
       num_shards=num_cores,
-      outputs_from_all_shards=False)
+      outputs_from_all_shards=False,
+      device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
   return dummy_predict_op, host_calls, scaffold, captured_predict_hooks.get()

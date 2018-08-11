@@ -183,13 +183,13 @@ class Layer(base_layer.Layer):
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
       partitioner: (optional) partitioner instance (callable).  If
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,

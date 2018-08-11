@@ -55,7 +55,6 @@ import time
 import numpy as np
 
 from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -82,7 +81,11 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
-TPUDistributionStrategy = tpu_strategy.TPUStrategy  # pylint: disable=invalid-name
+
+# Work-around dependency cycle between DistributionStrategy and TPU lib.
+def TPUDistributionStrategy(*args, **kw):  # pylint: disable=invalid-name
+  from tensorflow.contrib.distribute.python import tpu_strategy  # pylint: disable=g-import-not-at-top
+  return tpu_strategy.TPUStrategy(*args, **kw)
 
 
 class TPUEmbedding(embeddings.Embedding):
@@ -1130,7 +1133,7 @@ Output shape: %(output_shape)s
       'layer': layer,
       'input_shape': layer.input_shape,
       'output_shape': layer.output_shape
-  })
+      })
 
 
 @experimental

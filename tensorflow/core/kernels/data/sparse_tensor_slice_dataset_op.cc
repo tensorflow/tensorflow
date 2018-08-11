@@ -55,7 +55,8 @@ class Dataset : public GraphDatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* indices_node;
     TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.indices(), &indices_node));

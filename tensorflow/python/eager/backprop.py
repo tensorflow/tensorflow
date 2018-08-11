@@ -276,7 +276,7 @@ def implicit_grad(f):
 def _get_arg_spec(f, params, param_args):
   """The positions of the parameters of f to be differentiated in param_args."""
   try:
-    args = tf_inspect.getargspec(f).args
+    args = tf_inspect.getfullargspec(f).args
   except TypeError as e:
     # TypeError can happen when f is a callable object.
     if params is None:
@@ -591,9 +591,6 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_zeros_cache = context._TensorCache()  # pylint: disable=protected-access
-
-
 def _fast_fill(value, shape, dtype):
   return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
 
@@ -611,10 +608,10 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
   cache_key = shape, dtype, device
-  cached = _zeros_cache.get(cache_key)
+  cached = ctx.zeros_cache().get(cache_key)
   if cached is None:
     cached = _fast_fill(0, shape, dtype)
-    _zeros_cache.put(cache_key, cached)
+    ctx.zeros_cache().put(cache_key, cached)
   return cached
 
 
@@ -649,7 +646,7 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.Variable` or @{tf.get_variable},
+  Trainable variables (created by `tf.Variable` or `tf.get_variable`,
   trainable=True is default in both cases) are automatically watched. Tensors
   can be manually watched by invoking the `watch` method on this context
   manager.
@@ -708,6 +705,7 @@ class GradientTape(object):
     self._tape = None
     self._persistent = persistent
     self._recording = False
+    context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -735,6 +733,9 @@ class GradientTape(object):
       raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
     self._recording = False
+
+  def __del__(self):
+    context.context().end_step()
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.

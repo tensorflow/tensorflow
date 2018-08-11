@@ -134,24 +134,22 @@ Status GraphDefBuilderWrapper::AddDataset(
   return Status::OK();
 }
 
-Status GraphDefBuilderWrapper::AddFunction(OpKernelContext* ctx,
-                                           const string& function_name) {
+Status GraphDefBuilderWrapper::AddFunction(
+    const FunctionLibraryDefinition& flib_def, const string& function_name) {
   if (b_->HasFunction(function_name)) {
-    LOG(INFO) << "Function with name " << function_name << "already exists in"
-              << " the graph. It will not be added again.";
+    VLOG(1) << "Function with name " << function_name << "already exists in"
+            << " the graph. It will not be added again.";
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(ctx, function_name));
-  const FunctionLibraryDefinition* flib_def =
-      ctx->function_library()->GetFunctionLibraryDefinition();
-  const FunctionDef* f_def = flib_def->Find(function_name);
+  TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(flib_def, function_name));
+  const FunctionDef* f_def = flib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
                                    function_name, " in the registry.");
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
-  const string gradient_func = flib_def->FindGradient(function_name);
+  const string gradient_func = flib_def.FindGradient(function_name);
   if (!gradient_func.empty()) {
     GradientDef* g_def = def.add_gradient();
     g_def->set_function_name(function_name);
@@ -162,19 +160,19 @@ Status GraphDefBuilderWrapper::AddFunction(OpKernelContext* ctx,
   // Recursively add functions in inputs of function_name.
   for (const NodeDef& node_def : f_def->node_def()) {
     const OpRegistrationData* op_reg_data = nullptr;
-    TF_RETURN_IF_ERROR(flib_def->LookUp(node_def.op(), &op_reg_data));
+    TF_RETURN_IF_ERROR(flib_def.LookUp(node_def.op(), &op_reg_data));
     if (op_reg_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
+      TF_RETURN_IF_ERROR(AddFunction(flib_def, op_reg_data->op_def.name()));
     }
     // Recursively add functions in attrs of this NodeDef.
     for (const auto& pair : node_def.attr()) {
-      TF_RETURN_IF_ERROR(AddAttrFunctions(pair.second, ctx));
+      TF_RETURN_IF_ERROR(AddAttrFunctions(pair.second, flib_def));
     }
   }
 
   // Recursively add functions in attrs of function_name.
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
-    TF_RETURN_IF_ERROR(AddAttrFunctions(iter->second, ctx));
+    TF_RETURN_IF_ERROR(AddAttrFunctions(iter->second, flib_def));
   }
   return Status::OK();
 }
@@ -196,7 +194,7 @@ bool GraphDefBuilderWrapper::HasAttr(const string& op_type_name,
   return HasAttr(op_def, attr_name);
 }
 
-Status GraphDatasetBase::Serialize(OpKernelContext* ctx,
+Status GraphDatasetBase::Serialize(SerializationContext* ctx,
                                    string* serialized_graph_def,
                                    string* output_node) const {
   GraphDefBuilder b;
@@ -269,6 +267,53 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
 const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char GraphDatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
+
+BackgroundWorker::BackgroundWorker(Env* env, const string& name) {
+  thread_.reset(env->StartThread({} /* thread_options */, name,
+                                 [this]() { WorkerLoop(); }));
+}
+
+BackgroundWorker::~BackgroundWorker() {
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+  }
+  cond_var_.notify_one();
+  // Block until the background thread has terminated.
+  //
+  // NOTE(mrry): We explicitly free and join the thread here because
+  // `WorkerLoop()` uses other members of this object, and so we must join
+  // the thread before destroying them.
+  thread_.reset();
+}
+
+void BackgroundWorker::Schedule(std::function<void()> work_item) {
+  {
+    mutex_lock l(mu_);
+    work_queue_.push_back(std::move(work_item));
+  }
+  cond_var_.notify_one();
+}
+
+void BackgroundWorker::WorkerLoop() {
+  while (true) {
+    std::function<void()> work_item = nullptr;
+    {
+      mutex_lock l(mu_);
+      while (!cancelled_ && work_queue_.empty()) {
+        cond_var_.wait(l);
+      }
+      if (cancelled_) {
+        return;
+      }
+      DCHECK(!work_queue_.empty());
+      work_item = std::move(work_queue_.front());
+      work_queue_.pop_front();
+    }
+    DCHECK(work_item != nullptr);
+    work_item();
+  }
+}
 
 namespace dataset {
 

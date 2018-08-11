@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/deadness_analysis.h"
+#include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -45,6 +46,7 @@ class Predicate {
 
   virtual string ToString() const = 0;
   int64 hash() const { return hash_; }
+  virtual gtl::ArraySlice<Predicate*> GetOperands() const = 0;
 
   virtual Kind kind() const = 0;
   virtual ~Predicate() {}
@@ -89,7 +91,8 @@ class AndPredicate : public Predicate {
 
   Kind kind() const override { return Kind::kAnd; }
 
-  const gtl::ArraySlice<Predicate*> operands() const { return operands_; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
+  gtl::ArraySlice<Predicate*> operands() const { return operands_; }
 
  private:
   std::vector<Predicate*> operands_;
@@ -116,7 +119,8 @@ class OrPredicate : public Predicate {
   }
 
   Kind kind() const override { return Kind::kOr; }
-  const gtl::ArraySlice<Predicate*> operands() const { return operands_; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
+  gtl::ArraySlice<Predicate*> operands() const { return operands_; }
 
  private:
   std::vector<Predicate*> operands_;
@@ -127,17 +131,18 @@ class NotPredicate : public Predicate {
  public:
   explicit NotPredicate(Predicate* operand)
       : Predicate(HashPredicateSequence(Kind::kNot, {operand})),
-        operand_(operand) {}
+        operands_({operand}) {}
 
   string ToString() const override {
     return strings::StrCat("~", operand()->ToString());
   }
 
   Kind kind() const override { return Kind::kNot; }
-  Predicate* operand() const { return operand_; }
+  Predicate* operand() const { return operands_[0]; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return operands_; }
 
  private:
-  Predicate* operand_;
+  std::array<Predicate*, 1> operands_;
 };
 
 // Represents an uninterpreted symbol in a logical predicate.
@@ -151,8 +156,13 @@ class SymbolPredicate : public Predicate {
         tensor_id_(std::move(tensor_id)),
         must_be_true_(must_be_true) {}
 
-  string ToString() const override { return tensor_id_.ToString(); }
+  string ToString() const override {
+    return must_be_true() ? strings::StrCat("*", tensor_id_.ToString())
+                          : tensor_id_.ToString();
+  }
+
   Kind kind() const override { return Kind::kSymbol; }
+  gtl::ArraySlice<Predicate*> GetOperands() const override { return {}; }
 
   // If `must_be_true()` is true this SymbolPredicate represents the proposition
   // "tensor_id() is live and evaluates to true".
@@ -283,10 +293,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(gtl::ArraySlice<Predicate*> operands,
 
     if (op->kind() == pred_kind) {
       // "Inline" the operands of an inner And/Or into the parent And/Or.
-      gtl::ArraySlice<Predicate*> operands =
-          is_and ? dynamic_cast<AndPredicate*>(op)->operands()
-                 : dynamic_cast<OrPredicate*>(op)->operands();
-      for (Predicate* subop : operands) {
+      for (Predicate* subop : op->GetOperands()) {
         if (simplified_ops_set.insert(subop).second) {
           simplified_ops.push_back(subop);
         }
@@ -348,6 +355,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status Populate();
   bool HasInputsWithMismatchingDeadness(const Node& node) override;
   void Print() const override;
+  gtl::FlatMap<TensorId, string, TensorId::Hasher> PredicateMapAsString() const;
 
  private:
   enum class EdgeKind { kDataAndControl, kDataOnly, kControlOnly };
@@ -562,5 +570,25 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
   *result = std::move(analysis);
   return Status::OK();
 }
+
+gtl::FlatMap<TensorId, string, TensorId::Hasher>
+DeadnessAnalysisImpl::PredicateMapAsString() const {
+  gtl::FlatMap<TensorId, string, TensorId::Hasher> result;
+  std::vector<TensorId> tensor_ids;
+  for (const auto& kv_pair : predicate_map_) {
+    CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);
+  }
+  return result;
+}
+
+namespace deadness_analysis_internal {
+Status ComputePredicates(const Graph& graph,
+                         PredicateMapTy* out_predicate_map) {
+  DeadnessAnalysisImpl impl(&graph);
+  TF_RETURN_IF_ERROR(impl.Populate());
+  *out_predicate_map = impl.PredicateMapAsString();
+  return Status::OK();
+}
+}  // namespace deadness_analysis_internal
 
 }  // namespace tensorflow

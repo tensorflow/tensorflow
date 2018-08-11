@@ -299,9 +299,12 @@ TokKind HloLexer::LexNumberOrPattern() {
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
   if (RE2::Consume(&consumable, *int_pattern)) {
     current_ptr_ = consumable.begin();
-    tensorflow::strings::safe_strto64(
-        StringPieceFromPointers(token_start_, current_ptr_), &int64_val_);
-    return TokKind::kInt;
+    auto slice = StringPieceFromPointers(token_start_, current_ptr_);
+    if (tensorflow::strings::safe_strto64(slice, &int64_val_)) {
+      return TokKind::kInt;
+    }
+    LOG(ERROR) << "Failed to parse int literal: " << slice;
+    return TokKind::kError;
   }
 
   static LazyRE2 neg_inf = {"-inf"};

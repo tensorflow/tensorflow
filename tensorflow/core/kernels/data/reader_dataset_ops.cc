@@ -109,7 +109,8 @@ class TextLineDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "TextLineDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       Node* compression_type = nullptr;
@@ -345,7 +346,8 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       Node* header_bytes = nullptr;
@@ -563,7 +565,8 @@ class TFRecordDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "TFRecordDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));

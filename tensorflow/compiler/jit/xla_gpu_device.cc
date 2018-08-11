@@ -59,7 +59,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
   }
 
   // TODO(b/78468222): Uncomment after fixing this bug
-  // status = device->CreateAndSetGpuDeviceInfo();
+  // status = device->UseGpuDeviceInfo();
   // if (!status.ok()) {
   //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
   //                          " device");

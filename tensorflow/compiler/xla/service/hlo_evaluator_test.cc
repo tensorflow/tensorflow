@@ -2048,6 +2048,459 @@ ENTRY main {
                              *Evaluate({operand.get(), gather_indices.get()})));
 }
 
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *LiteralUtil::CreateR2<int32>({{10, 20, 30}, {4, 5, 6}, {70, 80, 90}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV2_Update) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterV2
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[3,2] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={0},
+      inserted_window_dims={1},
+      scatter_dims_to_operand_dims={1},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{10, 30}, {40, 60}, {70, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *LiteralUtil::CreateR2<int32>({{10, 2, 30}, {40, 5, 60}, {70, 8, 90}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_Add) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *LiteralUtil::CreateR2<int32>({{11, 22, 33}, {4, 5, 6}, {77, 88, 99}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_Mul) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT mul = s32[] multiply(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=mul_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *LiteralUtil::CreateR2<int32>({{10, 40, 90}, {4, 5, 6}, {490, 640, 810}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_F32) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+add_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(f32[] lhs, f32[] rhs)
+}
+
+ENTRY main {
+  operand = f32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = f32[2,3] parameter(2)
+  ROOT scatter = f32[3,3] scatter(operand, indices, updates),
+      to_apply=add_f32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<float>(
+      {{1.1, 2.2, 3.3}, {4.4, 5.5, 6.6}, {7.7, 8.8, 9.9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({2, 1});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<float>({{0.4, 1.1, 0.7}, {2.3, 3.1, 1.6}});
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      *LiteralUtil::CreateR2<float>(
+          {{1.1, 2.2, 3.3}, {6.7, 8.6, 8.2}, {8.1, 9.9, 10.6}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()}),
+      ErrorSpec{0.1, 0.01}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_RepeatedIndices) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({1, 1});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {84, 105, 126}, {7, 8, 9}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_MultipleBatchDims) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterMultipleBatchDims
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,3,2] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={1},
+      scatter_dims_to_operand_dims={1},
+      index_vector_dim=2
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+  std::unique_ptr<Literal> updates = LiteralUtil::CreateR3<int32>(
+      {{{10, 30}, {40, 60}, {70, 90}}, {{5, 5}, {5, 5}, {5, 5}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *LiteralUtil::CreateR2<int32>({{11, 7, 38}, {44, 10, 71}, {77, 13, 104}}),
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterNd) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNd
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{-10, 10}, {-40, 40}});
+  std::unique_ptr<Literal> expected =
+      LiteralUtil::CreateR3<int32>({{{-10, 10}, {-2, 2}, {-3, 3}},  //
+                                    {{-40, 40}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *expected,
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest,
+       EvaluateScatter_TensorFlowScatterNd_NonDefaultIndexVectorDim) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNdNonDefaultIndexVectorDim
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=0
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{-10, 10}, {-20, 20}});
+  std::unique_ptr<Literal> expected =
+      LiteralUtil::CreateR3<int32>({{{-20, 20}, {-10, 10}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},      //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *expected,
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_DynamicUpdateSlice) {
+  const char* hlo_text = R"(
+HloModule DynamicUpdateSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[1,1] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={0,1},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=0
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({1, 1});
+  std::unique_ptr<Literal> updates = LiteralUtil::CreateR2<int32>({{10}});
+  std::unique_ptr<Literal> expected =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 10, 6}, {7, 8, 9}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *expected,
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_BatchDynamicUpdateSlice) {
+  const char* hlo_text = R"(
+HloModule BatchDynamicUpdateSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,1,1] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=0
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR3<int32>({{{10}}, {{20}}});
+  std::unique_ptr<Literal> expected =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 20, 6}, {7, 10, 9}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *expected,
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_ZeroDimBounds) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter_ZeroDimBounds
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,0] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,0] parameter(2)
+  ROOT scatter = s32[3,0] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> updates = LiteralUtil::CreateR2<int32>({{}, {}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *operand,
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_NoUpdateWindowDims) {
+  const string hlo_text = R"(
+HloModule Scatter_NoUpdateWindowDims
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3] parameter(0)
+  indices = s32[2,2,1] parameter(1)
+  updates = s32[2,2] parameter(2)
+  ROOT scatter = s32[3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({0, 1, 2});
+  std::unique_ptr<Literal> scatter_indices =
+      LiteralUtil::CreateR3<int32>({{{0}, {1}}, {{2}, {1}}});
+  std::unique_ptr<Literal> updates =
+      LiteralUtil::CreateR2<int32>({{10, 20}, {30, 40}});
+  std::unique_ptr<Literal> expected =
+      LiteralUtil::CreateR1<int32>({10, 61, 32});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *expected,
+      *Evaluate({operand.get(), scatter_indices.get(), updates.get()})));
+}
+
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise comparison with 2 bfloat16 operands.
 TEST_P(HloEvaluatorTest, DoesCompareBF16) {

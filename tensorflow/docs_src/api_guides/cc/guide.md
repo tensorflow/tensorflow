@@ -7,6 +7,12 @@ You should, as a result, be sure you are following the
 [`master` version of this doc](https://www.tensorflow.org/versions/master/api_guides/cc/guide),
 in case there have been any changes.
 
+Note: The C++ API is only designed to work with TensorFlow `bazel build`.
+If you need a stand-alone option use the [C-api](../../install/install_c.md).
+See [these instructions](https://docs.bazel.build/versions/master/external.html)
+for details on how to include TensorFlow as a subproject (instead of building
+your project from inside TensorFlow, as in this example).
+
 [TOC]
 
 TensorFlow's C++ API provides mechanisms for constructing and executing a data
@@ -92,7 +98,7 @@ We will delve into the details of each below.
 
 ### Scope
 
-@{tensorflow::Scope} is the main data structure that holds the current state
+`tensorflow::Scope` is the main data structure that holds the current state
 of graph construction. A `Scope` acts as a handle to the graph being
 constructed, as well as storing TensorFlow operation properties. The `Scope`
 object is the first argument to operation constructors, and operations that use
@@ -102,7 +108,7 @@ explained further below.
 
 Create a new `Scope` object by calling `Scope::NewRootScope`. This creates
 some resources such as a graph to which operations are added. It also creates a
-@{tensorflow::Status} object which will be used to indicate errors encountered
+`tensorflow::Status` object which will be used to indicate errors encountered
 when constructing operations. The `Scope` class has value semantics, thus, a
 `Scope` object can be freely copied and passed around.
 
@@ -121,7 +127,7 @@ Here are some of the properties controlled by a `Scope` object:
 * Device placement for an operation
 * Kernel attribute for an operation
 
-Please refer to @{tensorflow::Scope} for the complete list of member functions
+Please refer to `tensorflow::Scope` for the complete list of member functions
 that let you create child scopes with new properties.
 
 ### Operation Constructors
@@ -213,7 +219,7 @@ auto c = Concat(scope, s, 0);
 
 You may pass many different types of C++ values directly to tensor
 constants. You may explicitly create a tensor constant by calling the
-@{tensorflow::ops::Const} function from various kinds of C++ values. For
+`tensorflow::ops::Const` function from various kinds of C++ values. For
 example:
 
 * Scalars
@@ -257,7 +263,7 @@ auto y = Add(scope, {1, 2, 3, 4}, 10);
 ## Graph Execution
 
 When executing a graph, you will need a session. The C++ API provides a
-@{tensorflow::ClientSession} class that will execute ops created by the
+`tensorflow::ClientSession` class that will execute ops created by the
 operation constructors. TensorFlow will automatically determine which parts of
 the graph need to be executed, and what values need feeding. For example:
 
@@ -291,5 +297,5 @@ session.Run({ {a, { {1, 2}, {3, 4} } } }, {c}, &outputs);
 // outputs[0] == [4 5; 6 7]
 ```
 
-Please see the @{tensorflow::Tensor} documentation for more information on how
+Please see the `tensorflow::Tensor` documentation for more information on how
 to use the execution output.

@@ -388,7 +388,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
         normalization, which can be useful for bag-of-words features.  For more
-        details, see @{tf.feature_column.linear_model$linear_model}.
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -586,7 +586,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
         normalization, which can be useful for bag-of-words features.  For more
-        details, see @{tf.feature_column.linear_model$linear_model}.
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are

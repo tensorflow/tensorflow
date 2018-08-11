@@ -354,6 +354,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   EmptyNT = collections.namedtuple("empty_nt", "")  # pylint: disable=invalid-name
 
+  def testHeterogeneousComparison(self):
+    nest.assert_same_structure({"a": 4}, _CustomMapping(a=3))
+    nest.assert_same_structure(_CustomMapping(b=3), {"b": 4})
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))

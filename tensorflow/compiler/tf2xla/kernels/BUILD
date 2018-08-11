@@ -129,6 +129,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/compiler/xla/client/lib:pooling",
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:framework",
