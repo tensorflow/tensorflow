@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,11 +33,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Helper class for converting MKL tesnors to TF tensor and comparing to
+// Helper class for converting MKL tesnors to TF tensors and comparing to
 // expected values
 
-const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
-const TensorShape dummy_shape({8});
+static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const TensorShape dummy_shape({8});
 
 class ConvMklToTF : public OpsTestBase {
  public:

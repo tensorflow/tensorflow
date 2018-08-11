@@ -979,9 +979,11 @@ class MklConv2DOp : public OpKernel {
     // if the paddings_tf is [ [0, 0] [1,2] [3,4] [0,0] ]
     // paddings = {0, 0, 1, 2, 3, 4, 0, 0} ; flat method is row major
     // then, values are: top = 1, bottom =2, left=3, right=4
-    // For NCHW format, 
+    // For NCHW format: 
     // paddings[0], paddings[1], paddings[2], paddings[3] should be zero 
     // similar explanation as NHWC format will apply.
+    int64 pad_top, pad_left; 
+    int64 pad_bottom, pad_right; 
     string data_format = ToString(data_format_);
     if(data_format == "NHWC"){
       pad_top = paddings[2]; 
@@ -1004,8 +1006,6 @@ class MklConv2DOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   std::vector<int32> dilations_;
-  int64 pad_top, pad_left; 
-  int64 pad_bottom, pad_right; 
   Padding padding_;
   TensorFormat data_format_;
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
@@ -1139,7 +1139,7 @@ class MklConv2DOp : public OpKernel {
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
-#endif
+#endif // INTEL_MKL_ML
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
