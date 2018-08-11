@@ -5381,6 +5381,18 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "android_whole_file_read_ops",
+    srcs = if_android(["whole_file_read_ops.cc"]),
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:android_tensorflow_lib_lite",
+    ],
+    alwayslink = 1,
+)
+
 #   Quantization-specific OpKernels
 
 tf_kernel_library(
