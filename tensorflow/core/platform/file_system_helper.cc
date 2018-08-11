@@ -82,10 +82,11 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     dir_q.pop_front();
     std::vector<string> children;
     Status s = fs->GetChildren(current_dir, &children);
-    // We will ignore permission denied error, and update status otherwise.
-    if (s.code() != tensorflow::error::PERMISSION_DENIED) {
-      ret.Update(s);
+    // In case PERMISSION_DENIED is encountered, we bail here.
+    if (s.code() == tensorflow::error::PERMISSION_DENIED) {
+      continue;
     }
+    ret.Update(s);
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
     children_dir_status.resize(children.size());
