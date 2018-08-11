@@ -220,7 +220,7 @@ class L2LossTest(test_lib.TestCase):
       output = nn_ops.l2_loss(x)
       err = gradient_checker.compute_gradient_error(x, x_shape, output, [1])
     print("L2Loss gradient err = %g " % err)
-    err_tolerance = 1e-11
+    err_tolerance = 1e-10
     self.assertLess(err, err_tolerance)
 
 
