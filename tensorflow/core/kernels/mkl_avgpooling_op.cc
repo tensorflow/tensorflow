@@ -24,7 +24,7 @@
 
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::algorithm;
 using mkldnn::engine;
@@ -40,7 +40,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public OpKernel {
@@ -664,7 +664,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   }
 };  // MklAvgPoolingGradOp
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .Device(DEVICE_CPU)
