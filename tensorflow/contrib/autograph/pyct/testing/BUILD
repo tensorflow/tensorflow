@@ -33,7 +33,10 @@ py_test(
     size = "large",
     srcs = ["codegen_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomsan",
+    ],
     deps = [
         ":testing",
         "//tensorflow/contrib/autograph/pyct",
