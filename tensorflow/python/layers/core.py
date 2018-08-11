@@ -127,8 +127,8 @@ def dense(
   """Functional interface for the densely-connected layer.
 
   This layer implements the operation:
-  `outputs = activation(inputs.kernel + bias)`
-  Where `activation` is the activation function passed as the `activation`
+  `outputs = activation(inputs * kernel + bias)`
+  where `activation` is the activation function passed as the `activation`
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
@@ -203,7 +203,7 @@ class Dropout(keras_layers.Dropout, base.Layer):
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}.
+      `tf.set_random_seed`.
       for behavior.
     name: The name of the layer (string).
   """
@@ -248,7 +248,7 @@ def dropout(inputs,
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode

@@ -73,7 +73,7 @@ def custom_gradient(f):
   With this definition, the gradient at x=100 will be correctly evaluated as
   1.0.
 
-  See also @{tf.RegisterGradient} which registers a gradient function for a
+  See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
   for fine grained control over the gradient computation of a sequence of
   operations.
@@ -100,7 +100,7 @@ def custom_gradient(f):
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose
-    gradient (as calculated by @{tf.gradients}) is determined by `f(x)[1]`.
+    gradient (as calculated by `tf.gradients`) is determined by `f(x)[1]`.
   """
 
   def decorated(*args, **kwargs):

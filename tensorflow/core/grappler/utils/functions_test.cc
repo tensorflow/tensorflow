@@ -734,6 +734,33 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   EXPECT_EQ("output:output:0", (*specialized.mutable_ret())["z"]);
 }
 
+TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "DoNothing",
+      // Args
+      {"i: int32"},
+      // Return values
+      {"o: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"o"}, "Identity", {"i"}, {{"T", DT_INT32}}}});
+
+  constexpr char description[] = "This is a helpful description.";
+  func.mutable_signature()->set_description(description);
+  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
+
+  GrapplerFunctionItem item;
+  std::unordered_map<string, AttrValue> func_attr;
+  func_attr["T"].set_type(DT_INT32);
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+
+  FunctionDef func2;
+  TF_EXPECT_OK(MakeFunctionDef(item, flib, &func2));
+  EXPECT_TRUE(FunctionDefsEqual(func, func2));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

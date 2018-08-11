@@ -15,25 +15,24 @@ We divide the task of supporting a file format into two pieces:
 *   Record formats: We use decoder or parsing ops to turn a string record
     into tensors usable by TensorFlow.
 
-For example, to read a
-[CSV file](https://en.wikipedia.org/wiki/Comma-separated_values), we use
-@{tf.data.TextLineDataset$a dataset for reading text files line-by-line}
-and then @{tf.data.Dataset.map$map} an
-@{tf.decode_csv$op} that parses CSV data from each line of text in the dataset.
+For example, to re-implement `tf.contrib.data.make_csv_dataset` function, we
+could use `tf.data.TextLineDataset` to extract the records, and then
+use `tf.data.Dataset.map` and `tf.decode_csv` to parses the CSV records from
+each line of text in the dataset.
 
 [TOC]
 
 ## Writing a `Dataset` for a file format
 
-A @{tf.data.Dataset} represents a sequence of *elements*, which can be the
+A `tf.data.Dataset` represents a sequence of *elements*, which can be the
 individual records in a file. There are several examples of "reader" datasets
 that are already built into TensorFlow:
 
-*   @{tf.data.TFRecordDataset}
+*   `tf.data.TFRecordDataset`
     ([source in `kernels/data/reader_dataset_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/data/reader_dataset_ops.cc))
-*   @{tf.data.FixedLengthRecordDataset}
+*   `tf.data.FixedLengthRecordDataset`
     ([source in `kernels/data/reader_dataset_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/data/reader_dataset_ops.cc))
-*   @{tf.data.TextLineDataset}
+*   `tf.data.TextLineDataset`
     ([source in `kernels/data/reader_dataset_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/data/reader_dataset_ops.cc))
 
 Each of these implementations comprises three related classes:
@@ -64,7 +63,7 @@ need to:
    that implement the reading logic.
 2. In C++, register a new reader op and kernel with the name
    `"MyReaderDataset"`.
-3. In Python, define a subclass of @{tf.data.Dataset} called `MyReaderDataset`.
+3. In Python, define a subclass of `tf.data.Dataset` called `MyReaderDataset`.
 
 You can put all the C++ code in a single file, such as
 `my_reader_dataset_op.cc`. It will help if you are
@@ -230,7 +229,7 @@ REGISTER_KERNEL_BUILDER(Name("MyReaderDataset").Device(tensorflow::DEVICE_CPU),
 The last step is to build the C++ code and add a Python wrapper. The easiest way
 to do this is by @{$adding_an_op#build_the_op_library$compiling a dynamic
 library} (e.g. called `"my_reader_dataset_op.so"`), and adding a Python class
-that subclasses @{tf.data.Dataset} to wrap it. An example Python program is
+that subclasses `tf.data.Dataset` to wrap it. An example Python program is
 given here:
 
 ```python
@@ -293,14 +292,14 @@ track down where the bad data came from.
 
 Examples of Ops useful for decoding records:
 
-*   @{tf.parse_single_example} (and @{tf.parse_example})
-*   @{tf.decode_csv}
-*   @{tf.decode_raw}
+*   `tf.parse_single_example` (and `tf.parse_example`)
+*   `tf.decode_csv`
+*   `tf.decode_raw`
 
 Note that it can be useful to use multiple Ops to decode a particular record
 format.  For example, you may have an image saved as a string in
 [a `tf.train.Example` protocol buffer](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
 Depending on the format of that image, you might take the corresponding output
-from a @{tf.parse_single_example} op and call @{tf.image.decode_jpeg},
-@{tf.image.decode_png}, or @{tf.decode_raw}.  It is common to take the output
-of `tf.decode_raw` and use @{tf.slice} and @{tf.reshape} to extract pieces.
+from a `tf.parse_single_example` op and call `tf.image.decode_jpeg`,
+`tf.image.decode_png`, or `tf.decode_raw`.  It is common to take the output
+of `tf.decode_raw` and use `tf.slice` and `tf.reshape` to extract pieces.

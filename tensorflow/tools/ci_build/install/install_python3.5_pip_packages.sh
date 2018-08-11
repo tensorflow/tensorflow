@@ -85,8 +85,8 @@ pip3.5 install --upgrade termcolor
 pip3.5 install --upgrade setuptools==39.1.0
 
 # Keras
-pip3.5 install keras_applications==1.0.2
-pip3.5 install keras_preprocessing==1.0.1
+pip3.5 install keras_applications==1.0.4
+pip3.5 install keras_preprocessing==1.0.2
 
 # Install last working version of setuptools.
 pip3.5 install --upgrade setuptools==39.1.0

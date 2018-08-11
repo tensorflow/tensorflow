@@ -130,22 +130,22 @@ void RunSafeCastTests() {
 }
 
 TEST(QuantizationUtilTest, SafeCast) {
-  RunSafeCastTests<float, int8>();
-  RunSafeCastTests<double, int8>();
-  RunSafeCastTests<float, int16>();
-  RunSafeCastTests<double, int16>();
-  RunSafeCastTests<float, int32>();
-  RunSafeCastTests<double, int32>();
-  RunSafeCastTests<float, int64>();
-  RunSafeCastTests<double, int64>();
-  RunSafeCastTests<float, uint8>();
-  RunSafeCastTests<double, uint8>();
-  RunSafeCastTests<float, uint16>();
-  RunSafeCastTests<double, uint16>();
-  RunSafeCastTests<float, uint32>();
-  RunSafeCastTests<double, uint32>();
-  RunSafeCastTests<float, uint64>();
-  RunSafeCastTests<double, uint64>();
+  RunSafeCastTests<float, int8_t>();
+  RunSafeCastTests<double, int8_t>();
+  RunSafeCastTests<float, int16_t>();
+  RunSafeCastTests<double, int16_t>();
+  RunSafeCastTests<float, int32_t>();
+  RunSafeCastTests<double, int32_t>();
+  RunSafeCastTests<float, int64_t>();
+  RunSafeCastTests<double, int64_t>();
+  RunSafeCastTests<float, uint8_t>();
+  RunSafeCastTests<double, uint8_t>();
+  RunSafeCastTests<float, uint16_t>();
+  RunSafeCastTests<double, uint16_t>();
+  RunSafeCastTests<float, uint32_t>();
+  RunSafeCastTests<double, uint32_t>();
+  RunSafeCastTests<float, uint64_t>();
+  RunSafeCastTests<double, uint64_t>();
 }
 
 // Example taken from http://www.tensorflow.org/performance/quantization

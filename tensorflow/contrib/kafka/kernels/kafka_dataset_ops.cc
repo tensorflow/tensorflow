@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
-#include "src-cpp/rdkafkacpp.h"
+#include "rdkafkacpp.h"
 
 namespace tensorflow {
 
@@ -84,7 +84,8 @@ class KafkaDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "KafkaDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* topics = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(topics_, &topics));

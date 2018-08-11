@@ -203,8 +203,9 @@ def _check_flags(flags, unparsed):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
 
-  if flags.dump_graphviz_video and not flags.dump_graphviz:
-    raise ValueError("--dump_graphviz_video must be used with --dump_graphviz")
+  if flags.dump_graphviz_video and not flags.dump_graphviz_dir:
+    raise ValueError("--dump_graphviz_video must be used with "
+                     "--dump_graphviz_dir")
 
 
 def run_main(_):

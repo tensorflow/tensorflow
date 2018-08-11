@@ -118,7 +118,7 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
      pipeline.
 
   For saving the input pipeline checkpoint alongside the model weights use
-  @{tf.contrib.data.make_saveable_from_iterator} directly to create a
+  `tf.contrib.data.make_saveable_from_iterator` directly to create a
   `SaveableObject` and add to the `SAVEABLE_OBJECTS` collection. Note, however,
   that you will need to be careful not to restore the training iterator during
   eval. You can do that by not adding the iterator to the SAVEABLE_OBJECTS

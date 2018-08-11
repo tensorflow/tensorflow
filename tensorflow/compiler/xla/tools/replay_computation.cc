@@ -223,8 +223,12 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
                                      const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
   HloSnapshot snapshot;
-  if (tensorflow::ReadBinaryProto(env, filename, &snapshot).ok()) {
+  auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
+  if (s.ok()) {
     return snapshot;
+  }
+  if (s.code() == tensorflow::error::NOT_FOUND) {
+    return s;
   }
   CHECK(opts.use_fake_data)
       << "Without --use_fake_data, you must pass an HloSnapshot -- HloProto "
@@ -258,6 +262,9 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
     StatusOr<HloSnapshot> maybe_snapshot = ParseInputFile(arg, opts);
     if (maybe_snapshot.ok()) {
       snapshots.push_back(std::move(maybe_snapshot).ValueOrDie());
+    } else {
+      LOG(ERROR) << "Can't handle file " << arg << ": "
+                 << maybe_snapshot.status();
     }
   }
 

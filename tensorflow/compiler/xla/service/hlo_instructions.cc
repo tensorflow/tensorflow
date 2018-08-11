@@ -359,6 +359,67 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
       cross_replica_sum_barrier(), all_reduce_id());
 }
 
+HloAllToAllInstruction::HloAllToAllInstruction(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const std::vector<ReplicaGroup>& replica_groups,
+    tensorflow::StringPiece barrier)
+    : HloInstruction(HloOpcode::kAllToAll, shape),
+      replica_groups_(replica_groups),
+      cross_replica_sum_barrier_(barrier.begin(), barrier.end()) {
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+}
+
+bool HloAllToAllInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloAllToAllInstruction&>(other);
+  return ContainersEqual(replica_groups(), casted_other.replica_groups(),
+                         [](const ReplicaGroup& a, const ReplicaGroup& b) {
+                           return ContainersEqual(a.replica_ids(),
+                                                  b.replica_ids());
+                         }) &&
+         cross_replica_sum_barrier() ==
+             casted_other.cross_replica_sum_barrier();
+}
+
+std::unique_ptr<HloInstruction>
+HloAllToAllInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* /*context*/) const {
+  return MakeUnique<HloAllToAllInstruction>(
+      shape, new_operands, replica_groups(), cross_replica_sum_barrier());
+}
+
+std::vector<string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> result;
+  std::vector<string> replica_group_str;
+  for (const ReplicaGroup& group : replica_groups()) {
+    replica_group_str.push_back(
+        StrCat("{", Join(group.replica_ids(), ","), "}"));
+  }
+  result.push_back(
+      StrCat("replica_groups={", Join(replica_group_str, ","), "}"));
+
+  if (!cross_replica_sum_barrier().empty()) {
+    result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
+  }
+
+  return result;
+}
+
+HloInstructionProto HloAllToAllInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_replica_groups() = {replica_groups_.begin(),
+                                     replica_groups_.end()};
+  proto.set_cross_replica_sum_barrier(cross_replica_sum_barrier_);
+  return proto;
+}
+
 HloReverseInstruction::HloReverseInstruction(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> dimensions)

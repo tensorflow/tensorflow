@@ -29,7 +29,7 @@ class StatsAggregator(object):
   """A stateful resource that aggregates statistics from one or more iterators.
 
   To record statistics, use one of the custom transformation functions defined
-  in this module when defining your @{tf.data.Dataset}. All statistics will be
+  in this module when defining your `tf.data.Dataset`. All statistics will be
   aggregated by the `StatsAggregator` that is associated with a particular
   iterator (see below). For example, to record the total number of bytes
   produced by iterating over a dataset:
@@ -39,7 +39,7 @@ class StatsAggregator(object):
   dataset = dataset.apply(stats_ops.bytes_produced_stats("total_bytes"))
   ```
 
-  To associate a `StatsAggregator` with a @{tf.data.Iterator} object, use
+  To associate a `StatsAggregator` with a `tf.data.Iterator` object, use
   the following pattern:
 
   ```python
@@ -55,7 +55,7 @@ class StatsAggregator(object):
 
   To get a protocol buffer summary of the currently aggregated statistics,
   use the `StatsAggregator.get_summary()` tensor. The easiest way to do this
-  is to add the returned tensor to the @{tf.GraphKeys.SUMMARIES} collection,
+  is to add the returned tensor to the `tf.GraphKeys.SUMMARIES` collection,
   so that the summaries will be included with any existing summaries.
 
   ```python
@@ -74,13 +74,13 @@ class StatsAggregator(object):
     self._resource = gen_dataset_ops.stats_aggregator_handle()
 
   def get_summary(self):
-    """Returns a string @{tf.Tensor} that summarizes the aggregated statistics.
+    """Returns a string `tf.Tensor` that summarizes the aggregated statistics.
 
-    The returned tensor will contain a serialized @{tf.summary.Summary} protocol
+    The returned tensor will contain a serialized `tf.summary.Summary` protocol
     buffer, which can be used with the standard TensorBoard logging facilities.
 
     Returns:
-      A scalar string @{tf.Tensor} that summarizes the aggregated statistics.
+      A scalar string `tf.Tensor` that summarizes the aggregated statistics.
     """
     return gen_dataset_ops.stats_aggregator_summary(self._resource)
 
@@ -122,7 +122,7 @@ def set_stats_aggregator(stats_aggregator):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -145,7 +145,7 @@ def bytes_produced_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -169,7 +169,7 @@ def latency_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -192,7 +192,7 @@ def feature_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):

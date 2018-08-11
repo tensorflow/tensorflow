@@ -50,10 +50,6 @@ Status OutfeedThunk::ExecuteOnStream(
         if (!*buffer) {  // Tuple pointers.
           return Status::OK();
         }
-        // Allocate storage for the literal data.
-        const Shape& shape =
-            ShapeUtil::GetSubshape(outfeed_buffers->shape(), index);
-        (*buffer)->set_destination(Literal::CreateFromShape(shape));
 
         BufferAllocation::Slice slice = outfeed_slices_.element(index);
         se::DeviceMemoryBase data_address;

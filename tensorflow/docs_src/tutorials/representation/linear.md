@@ -1,6 +1,6 @@
 # Large-scale Linear Models with TensorFlow
 
-@{tf.estimator$Estimators} provides (among other things) a rich set of tools for
+`tf.estimator` provides (among other things) a rich set of tools for
 working with linear models in TensorFlow. This document provides an overview of
 those tools. It explains:
 

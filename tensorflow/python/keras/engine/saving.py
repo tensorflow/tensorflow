@@ -127,6 +127,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
                 },
                 'loss': model.loss,
                 'metrics': model.metrics,
+                'weighted_metrics': model.weighted_metrics,
                 'sample_weight_mode': model.sample_weight_mode,
                 'loss_weights': model.loss_weights,
             },
@@ -246,6 +247,8 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       # Recover loss functions and metrics.
       loss = convert_custom_objects(training_config['loss'])
       metrics = convert_custom_objects(training_config['metrics'])
+      weighted_metrics = convert_custom_objects(
+          training_config['weighted_metrics'])
       sample_weight_mode = training_config['sample_weight_mode']
       loss_weights = training_config['loss_weights']
 
@@ -254,6 +257,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
           optimizer=optimizer,
           loss=loss,
           metrics=metrics,
+          weighted_metrics=weighted_metrics,
           loss_weights=loss_weights,
           sample_weight_mode=sample_weight_mode)
 

@@ -176,7 +176,7 @@ Rank | Shape | Dimension number | Example
 n | [D0, D1, ... Dn-1] | n-D | A tensor with shape [D0, D1, ... Dn-1].
 
 Shapes can be represented via Python lists / tuples of ints, or with the
-@{tf.TensorShape}.
+`tf.TensorShape`.
 
 ### Getting a `tf.Tensor` object's shape
 

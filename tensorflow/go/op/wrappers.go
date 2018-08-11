@@ -2618,70 +2618,6 @@ func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) 
 	return op.Output(0)
 }
 
-// Copy a tensor setting everything outside a central band in each innermost matrix
-//
-// to zero.
-//
-// The `band` part is computed as follows:
-// Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
-// tensor with the same shape where
-//
-// `band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
-//
-// The indicator function
-//
-// `in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
-//                  (num_upper < 0 || (n-m) <= num_upper)`.
-//
-// For example:
-//
-// ```
-// # if 'input' is [[ 0,  1,  2, 3]
-//                  [-1,  0,  1, 2]
-//                  [-2, -1,  0, 1]
-//                  [-3, -2, -1, 0]],
-//
-// tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-//                                        [-1,  0,  1, 2]
-//                                        [ 0, -1,  0, 1]
-//                                        [ 0,  0, -1, 0]],
-//
-// tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-//                                       [-1,  0,  1, 0]
-//                                       [-2, -1,  0, 1]
-//                                       [ 0, -2, -1, 0]]
-// ```
-//
-// Useful special cases:
-//
-// ```
-//  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
-//  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
-//  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
-// ```
-//
-// Arguments:
-//	input: Rank `k` tensor.
-//	num_lower: 0-D tensor. Number of subdiagonals to keep. If negative, keep entire
-// lower triangle.
-//	num_upper: 0-D tensor. Number of superdiagonals to keep. If negative, keep
-// entire upper triangle.
-//
-// Returns Rank `k` tensor of the same shape as input. The extracted banded tensor.
-func MatrixBandPart(scope *Scope, input tf.Output, num_lower tf.Output, num_upper tf.Output) (band tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixBandPart",
-		Input: []tf.Input{
-			input, num_lower, num_upper,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns the batched diagonal part of a batched tensor.
 //
 // This operation returns a tensor with the `diagonal` part
@@ -3378,6 +3314,42 @@ func Unbatch(scope *Scope, batched_tensor tf.Output, batch_index tf.Output, id t
 			batched_tensor, batch_index, id,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Elementwise computes the bitwise left-shift of `x` and `y`.
+//
+// If `y` is negative, or greater than or equal to the width of `x` in bits the
+// result is implementation defined.
+func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LeftShift",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Elementwise computes the bitwise XOR of `x` and `y`.
+//
+// The result will have those bits set, that are different in `x` and `y`. The
+// computation is performed on the underlying representations of `x` and `y`.
+func BitwiseXor(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BitwiseXor",
+		Input: []tf.Input{
+			x, y,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -12594,6 +12566,65 @@ func ResourceSparseApplyAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, l
 	return scope.AddOperation(opspec)
 }
 
+// Elementwise computes the bitwise right-shift of `x` and `y`.
+//
+// Performs a logical shift for unsigned integer types, and an arithmetic shift
+// for signed integer types.
+//
+// If `y` is negative, or greater than or equal to than the width of `x` in bits
+// the result is implementation defined.
+func RightShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RightShift",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TensorListStackAttr is an optional argument to TensorListStack.
+type TensorListStackAttr func(optionalAttr)
+
+// TensorListStackNumElements sets the optional num_elements attribute to value.
+// If not specified, defaults to -1
+func TensorListStackNumElements(value int64) TensorListStackAttr {
+	return func(m optionalAttr) {
+		m["num_elements"] = value
+	}
+}
+
+// Stacks all tensors in the list.
+//
+// Requires that all tensors have the same shape.
+//
+// input_handle: the input list
+// tensor: the gathered result
+// num_elements: optional. If not -1, the number of elements in the list.
+//
+func TensorListStack(scope *Scope, input_handle tf.Output, element_dtype tf.DataType, optional ...TensorListStackAttr) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListStack",
+		Input: []tf.Input{
+			input_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // StatelessRandomUniformAttr is an optional argument to StatelessRandomUniform.
 type StatelessRandomUniformAttr func(optionalAttr)
 
@@ -12665,24 +12696,6 @@ func Fact(scope *Scope) (fact tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "Fact",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Elementwise computes the bitwise XOR of `x` and `y`.
-//
-// The result will have those bits set, that are different in `x` and `y`. The
-// computation is performed on the underlying representations of `x` and `y`.
-func BitwiseXor(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BitwiseXor",
-		Input: []tf.Input{
-			x, y,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -19391,6 +19404,70 @@ func LogMatrixDeterminant(scope *Scope, input tf.Output) (sign tf.Output, log_ab
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Copy a tensor setting everything outside a central band in each innermost matrix
+//
+// to zero.
+//
+// The `band` part is computed as follows:
+// Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+// tensor with the same shape where
+//
+// `band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+//
+// The indicator function
+//
+// `in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+//                  (num_upper < 0 || (n-m) <= num_upper)`.
+//
+// For example:
+//
+// ```
+// # if 'input' is [[ 0,  1,  2, 3]
+//                  [-1,  0,  1, 2]
+//                  [-2, -1,  0, 1]
+//                  [-3, -2, -1, 0]],
+//
+// tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+//                                        [-1,  0,  1, 2]
+//                                        [ 0, -1,  0, 1]
+//                                        [ 0,  0, -1, 0]],
+//
+// tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+//                                       [-1,  0,  1, 0]
+//                                       [-2, -1,  0, 1]
+//                                       [ 0, -2, -1, 0]]
+// ```
+//
+// Useful special cases:
+//
+// ```
+//  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+//  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+//  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+// ```
+//
+// Arguments:
+//	input: Rank `k` tensor.
+//	num_lower: 0-D tensor. Number of subdiagonals to keep. If negative, keep entire
+// lower triangle.
+//	num_upper: 0-D tensor. Number of superdiagonals to keep. If negative, keep
+// entire upper triangle.
+//
+// Returns Rank `k` tensor of the same shape as input. The extracted banded tensor.
+func MatrixBandPart(scope *Scope, input tf.Output, num_lower tf.Output, num_upper tf.Output) (band tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixBandPart",
+		Input: []tf.Input{
+			input, num_lower, num_upper,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // SumAttr is an optional argument to Sum.
@@ -31832,83 +31909,6 @@ func BitwiseAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "BitwiseAnd",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Elementwise computes the bitwise left-shift of `x` and `y`.
-//
-// If `y` is negative, or greater than or equal to the width of `x` in bits the
-// result is implementation defined.
-func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LeftShift",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TensorListStackAttr is an optional argument to TensorListStack.
-type TensorListStackAttr func(optionalAttr)
-
-// TensorListStackNumElements sets the optional num_elements attribute to value.
-// If not specified, defaults to -1
-func TensorListStackNumElements(value int64) TensorListStackAttr {
-	return func(m optionalAttr) {
-		m["num_elements"] = value
-	}
-}
-
-// Stacks all tensors in the list.
-//
-// Requires that all tensors have the same shape.
-//
-// input_handle: the input list
-// tensor: the gathered result
-// num_elements: optional. If not -1, the number of elements in the list.
-//
-func TensorListStack(scope *Scope, input_handle tf.Output, element_dtype tf.DataType, optional ...TensorListStackAttr) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListStack",
-		Input: []tf.Input{
-			input_handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Elementwise computes the bitwise right-shift of `x` and `y`.
-//
-// Performs a logical shift for unsigned integer types, and an arithmetic shift
-// for signed integer types.
-//
-// If `y` is negative, or greater than or equal to than the width of `x` in bits
-// the result is implementation defined.
-func RightShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RightShift",
 		Input: []tf.Input{
 			x, y,
 		},

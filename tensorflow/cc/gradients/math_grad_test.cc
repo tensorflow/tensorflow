@@ -42,6 +42,7 @@ using ops::Placeholder;
 using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
+using ops::SegmentSum;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
@@ -895,6 +896,15 @@ TEST_F(NaryGradTest, Prod) {
   auto y = Prod(scope_, x, {1});
   // y's shape is the result of reducing x along axes 1
   TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, SegmentSum) {
+  TensorShape x_shape({3, 4});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = SegmentSum(scope_, x, {0, 0, 1});
+  // the sum is always on the first dimension
+  TensorShape y_shape({2, 4});
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 

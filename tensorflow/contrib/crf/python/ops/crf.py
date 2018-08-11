@@ -548,7 +548,9 @@ def crf_decode(potentials, transition_params, sequence_length):
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
     # Sequence length is not allowed to be less than zero.
-    sequence_length_less_one = math_ops.maximum(0, sequence_length - 1)
+    sequence_length_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_length.dtype),
+        sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,
         inputs=inputs,

@@ -235,12 +235,16 @@ def add_dict_to_dict(add_from, add_to):
 
 # Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
-  return {'tf.test': ['mock']}
+  return {
+      'tf.contrib.autograph': ['utils', 'operators'],
+      'tf.test': ['mock'],
+      'tf.compat': ['v1', 'v2'],
+  }
 
 
 # Exclude members of some libraries.
 def _get_default_do_not_descend_map():
-  # TODO(wicke): Shrink this list once the modules get sealed.
+  # TODO(markdaoust): Use docs_controls decorators, locally, instead.
   return {
       'tf': ['cli', 'lib', 'wrappers'],
       'tf.contrib': [
@@ -284,10 +288,13 @@ def _get_default_do_not_descend_map():
   }
 
 
-def extract(py_modules, private_map, do_not_descend_map):
+def extract(py_modules,
+            private_map,
+            do_not_descend_map,
+            visitor_cls=doc_generator_visitor.DocGeneratorVisitor):
   """Extract docs from tf namespace and write them to disk."""
   # Traverse the first module.
-  visitor = doc_generator_visitor.DocGeneratorVisitor(py_modules[0][0])
+  visitor = visitor_cls(py_modules[0][0])
   api_visitor = public_api.PublicAPIVisitor(visitor)
   api_visitor.set_root_name(py_modules[0][0])
   add_dict_to_dict(private_map, api_visitor.private_map)

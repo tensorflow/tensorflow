@@ -323,6 +323,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
   ```
+  Note that in current implementation `estimator.evaluate` will be called
+  multiple times. This means that evaluation graph (including eval_input_fn)
+  will be re-created for each `evaluate` call. `estimator.train` will be called
+  only once.
 
   Example of distributed training:
 

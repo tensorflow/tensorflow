@@ -18,6 +18,10 @@
 @@cross_replica_sum
 @@infeed_dequeue
 @@infeed_dequeue_tuple
+@@infeed_enqueue
+@@infeed_enqueue_tuple
+@@outfeed_dequeue
+@@outfeed_dequeue_tuple
 @@outfeed_enqueue
 @@outfeed_enqueue_tuple
 

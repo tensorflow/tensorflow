@@ -67,7 +67,8 @@ class TensorDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "TensorDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> components;
       components.reserve(tensors_.size());

@@ -120,27 +120,8 @@ Status GrpcServer::Init(
   master_env_.env = env_;
   worker_env_.env = env_;
 
-  SessionOptions sess_opts;
-  ConfigProto config = server_def_.default_session_config();
-  sess_opts.config = config;
-
-  // Configure shared devices between master and worker.
-  string name_prefix =
-      strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
-                      "/task:", server_def_.task_index());
-  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
-                                               &master_env_.local_devices));
-  worker_env_.local_devices = master_env_.local_devices;
-  worker_env_.device_mgr = new DeviceMgr(worker_env_.local_devices);
-  worker_env_.rendezvous_mgr = rendezvous_mgr_func == nullptr
-                                   ? new RpcRendezvousMgr(&worker_env_)
-                                   : rendezvous_mgr_func(&worker_env_);
-  string unused;
-  string default_worker_name;
-  if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
-                                        &default_worker_name, &unused)) {
-    return errors::Internal("Could not parse worker name.");
-  }
+  // Check parameters before DeviceFactory::AddDevices,
+  // otherwise if 'task_index=-1' the program will abort.
 
   // Look up the port that has been requested for this task in `server_def_`.
   int requested_port = -1;
@@ -165,6 +146,28 @@ Status GrpcServer::Init(
   if (requested_port == -1) {
     return errors::Internal("Job \"", server_def_.job_name(),
                             "\" was not defined in cluster");
+  }
+
+  SessionOptions sess_opts;
+  ConfigProto config = server_def_.default_session_config();
+  sess_opts.config = config;
+
+  // Configure shared devices between master and worker.
+  string name_prefix =
+      strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
+                      "/task:", server_def_.task_index());
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
+                                               &master_env_.local_devices));
+  worker_env_.local_devices = master_env_.local_devices;
+  worker_env_.device_mgr = new DeviceMgr(worker_env_.local_devices);
+  worker_env_.rendezvous_mgr = rendezvous_mgr_func == nullptr
+                                   ? new RpcRendezvousMgr(&worker_env_)
+                                   : rendezvous_mgr_func(&worker_env_);
+  string unused;
+  string default_worker_name;
+  if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
+                                        &default_worker_name, &unused)) {
+    return errors::Internal("Could not parse worker name.");
   }
 
   // N.B. The order of initialization here is intricate, because we
