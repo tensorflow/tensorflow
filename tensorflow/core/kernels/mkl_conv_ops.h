@@ -281,6 +281,14 @@ class MklDnnConvUtil {
        out_rows = out_rows + (pad_top + pad_bottom ) / stride_rows;  
        out_cols = out_cols + (pad_left + pad_right ) / stride_cols; 
     }
+    // Handle padding. MKL-DNN uses asymetric padding.
+    // But, if padEnabled, i.e., pad and conv op are fused,
+    // then, *pad_l and *pad_r are already set from pad op.
+    // In that case they need not set here.
+    else {
+      *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
+      *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+    }
     // Tensorflow output is in data_format order. (NHWC or NCHW)
     TensorShape out_shape =
         ShapeFromFormat(data_format_, out_batch, out_rows, out_cols, out_depth);
@@ -297,10 +305,6 @@ class MklDnnConvUtil {
     // Now handle padding. MKL-DNN uses asymetric padding.
     // But, if padEnabled, i.e., pad and conv op are fused,
     // then, *pad_l and *pad_r are already set from pad op
-    if(!padEnabled) {
-      *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
-      *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
-    }
   }
 
   // Calculate output and pad size of forward Convolution operator.
