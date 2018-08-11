@@ -1451,7 +1451,8 @@ REGISTER_OP("Bincount")
       // Return `[size]` shape if size is known.
       int32 size_val = size_tensor->scalar<int32>()();
       if (size_val < 0) {
-        return errors::InvalidArgument("size (", size_val, ") must be non-negative");
+        return errors::InvalidArgument("size (", size_val,
+                                       ") must be non-negative");
       }
       c->set_output(0, c->MakeShape({size_val}));
       return Status::OK();
