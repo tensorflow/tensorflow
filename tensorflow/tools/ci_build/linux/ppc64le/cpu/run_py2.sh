@@ -27,11 +27,11 @@ echo ""
 # Run configure.
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mcpu=power8 -mtune=power8'
-export PYTHON_BIN_PATH=`which python3`
+export PYTHON_BIN_PATH=`which python2`
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --config=opt \
-    --test_size_filters=small,medium --test_output=errors -- \
-    //tensorflow/contrib/...
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only --config=opt \
+    --test_output=errors --test_size_filters=small,medium -- \
+    //tensorflow/... -//tensorflow/compiler/...
