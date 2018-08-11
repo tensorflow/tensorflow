@@ -1573,7 +1573,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 REGISTER_OP("__MklDummyConv2DWithBiasAndRelu")
     .Input("input: T")
@@ -1698,7 +1698,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
     .Input("input: T")
