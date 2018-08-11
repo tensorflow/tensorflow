@@ -50,9 +50,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import evaluation
@@ -103,7 +104,7 @@ class Estimator(object):
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
 
-  @compatbility(eager)
+  @compatibility(eager)
   Calling methods of `Estimator` will work while eager execution is enabled.
   However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
   will switch to graph model before calling all user-provided functions (incl.
@@ -127,7 +128,7 @@ class Estimator(object):
     ```
 
     For more details on warm-start configuration, see
-    @{tf.estimator.WarmStartSettings$WarmStartSettings}.
+    `tf.estimator.WarmStartSettings`.
 
     Args:
       model_fn: Model function. Follows the signature:
@@ -268,7 +269,7 @@ class Estimator(object):
       found.
     """
     with context.graph_mode():
-      return saver.latest_checkpoint(self.model_dir)
+      return checkpoint_management.latest_checkpoint(self.model_dir)
 
   def train(self,
             input_fn,
@@ -417,7 +418,7 @@ class Estimator(object):
 
       # Check that model has been trained (if nothing has been set explicitly).
       if not checkpoint_path:
-        latest_path = saver.latest_checkpoint(self._model_dir)
+        latest_path = checkpoint_management.latest_checkpoint(self._model_dir)
         if not latest_path:
           logging.info('Could not find trained model in model_dir: {}, running '
                        'initialization to evaluate.'.format(self._model_dir))
@@ -504,7 +505,8 @@ class Estimator(object):
       hooks = _check_hooks_type(hooks)
       # Check that model has been trained.
       if not checkpoint_path:
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            self._model_dir)
       if not checkpoint_path:
         logging.info('Could not find trained model in model_dir: {}, running '
                      'initialization to predict.'.format(self._model_dir))
@@ -769,7 +771,8 @@ class Estimator(object):
     with context.graph_mode():
       if not checkpoint_path:
         # Locate the latest checkpoint
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            self._model_dir)
       if not checkpoint_path:
         raise ValueError("Couldn't find trained model at %s." % self._model_dir)
 
@@ -985,7 +988,7 @@ class Estimator(object):
   def _get_features_and_labels_from_input_fn(self, input_fn, mode,
                                              distribution=None):
     """Extracts the `features` and labels from return values of `input_fn`."""
-    if distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+    if distribution is not None:
       result = distribution.distribute_dataset(
           lambda: self._call_input_fn(input_fn, mode))
     else:
@@ -1024,7 +1027,7 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection @{tf.GraphKeys.GLOBAL_STEP}.
+    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
 
     Args:
       graph: The graph in which to create the global step tensor.
@@ -1212,19 +1215,23 @@ class Estimator(object):
                 labels,
                 model_fn_lib.ModeKeys.TRAIN,
                 self.config)
-            ctx.last_step_outputs = estimator_spec.loss
-            ctx.non_tensor_outputs = {'estimator_spec': estimator_spec}
-            with ops.control_dependencies([estimator_spec.train_op]):
-              return array_ops.identity(estimator_spec.loss)
+            ctx.set_last_step_output(
+                name='loss',
+                output=estimator_spec.loss,
+                aggregation=distribute_lib.get_loss_reduction())
+            ctx.set_non_tensor_output(
+                name='estimator_spec', output=estimator_spec)
+            return estimator_spec.train_op
 
           # Create new train_op post graph rewrites
           # TODO(sourabhbajaj): Make sure train_steps and tpu_iterations
           # work correctly. Currently hardcoded at 2
           initial_training_loss = constant_op.constant(1e7)
-          distributed_train_op, tpu_result, ctx = \
-              self._train_distribution._run_steps_on_dataset(  # pylint: disable=protected-access
-                  step_fn, iterator, iterations=2,
-                  initial_loop_values=initial_training_loss)
+          ctx = self._train_distribution.run_steps_on_dataset(
+              step_fn, iterator, iterations=2,
+              initial_loop_values={'loss': initial_training_loss})
+          distributed_train_op = ctx.run_op
+          tpu_result = ctx.last_step_outputs
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
           features, labels, input_hooks = (
@@ -1258,17 +1265,13 @@ class Estimator(object):
         training_chief_hooks = get_hooks_from_the_first_device(
             grouped_estimator_spec.training_chief_hooks)
 
-        # TODO(sourabhbajaj): Merge the two code paths once we can
-        # handle per device variables correctly in reduce and can output
-        # the loss scaler.
+        # TODO(sourabhbajaj): Merge the two code paths and clean up the code
         if is_tpu_strategy:
-          loss = self._train_distribution.unwrap(
-              self._train_distribution.reduce(
-                  distribute_lib.get_loss_reduction(), tpu_result)[0])[0]
+          loss = tpu_result['loss']
           worker_hooks.append(
               estimator_util.StrategyInitFinalizeHook(
-                  self._train_distribution.get_initialization_ops,
-                  self._train_distribution.get_finalize_ops))
+                  self._train_distribution.initialize,
+                  self._train_distribution.finalize))
         else:
           loss = self._train_distribution.unwrap(
               self._train_distribution.reduce(
@@ -1630,7 +1633,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
 
 
 def _check_checkpoint_available(model_dir):
-  latest_path = saver.latest_checkpoint(model_dir)
+  latest_path = checkpoint_management.latest_checkpoint(model_dir)
   if not latest_path:
     raise ValueError(
         'Could not find trained model in model_dir: {}.'.format(model_dir))
@@ -1784,10 +1787,24 @@ def _write_dict_to_summary(output_dir,
         logging.warn('Skipping summary for %s, cannot parse string to Summary.',
                      key)
         continue
+    elif isinstance(dictionary[key], np.ndarray):
+      value = summary_proto.value.add()
+      value.tag = key
+      value.node_name = key
+      tensor_proto = tensor_util.make_tensor_proto(dictionary[key])
+      value.tensor.CopyFrom(tensor_proto)
+      # pylint: disable=line-too-long
+      logging.info(
+          'Summary for np.ndarray is not visible in Tensorboard by default. '
+          'Consider using a Tensorboard plugin for visualization (see '
+          'https://github.com/tensorflow/tensorboard-plugin-example/blob/master/README.md'
+          ' for more information).')
+      # pylint: enable=line-too-long
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int or a serialized string of Summary.', key)
+          'np.int32 or int or np.ndarray or a serialized string of Summary.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -2002,14 +2019,11 @@ class WarmStartSettings(
 def _get_saved_model_ckpt(saved_model_dir):
   """Return path to variables checkpoint in a SavedModel directory."""
   if not gfile.Exists(
-      os.path.join(compat.as_bytes(saved_model_dir),
-                   compat.as_bytes('variables/variables.index'))):
+      os.path.join(saved_model_utils.get_variables_dir(saved_model_dir),
+                   compat.as_text('variables.index'))):
     raise ValueError('Directory provided has an invalid SavedModel format: %s'
                      % saved_model_dir)
-  return os.path.join(
-      compat.as_bytes(saved_model_dir),
-      compat.as_bytes('{}/{}'.format(constants.VARIABLES_DIRECTORY,
-                                     constants.VARIABLES_FILENAME)))
+  return saved_model_utils.get_variables_path(saved_model_dir)
 
 
 def _get_default_warm_start_settings(warm_start_from):
@@ -2031,12 +2045,15 @@ def _get_default_warm_start_settings(warm_start_from):
   if isinstance(warm_start_from, (six.string_types, six.binary_type)):
     # Infer that this is a SavedModel if export_path +
     # 'variables/variables.index' exists, and if so, construct the
-    # WarmStartSettings pointing to export_path + 'variables/variables'.
-    if gfile.Exists(os.path.join(compat.as_bytes(warm_start_from),
-                                 compat.as_bytes('variables/variables.index'))):
+    # WarmStartSettings pointing to the variables path
+    # (export_path + 'variables/variables').
+    if gfile.Exists(os.path.join(
+        saved_model_utils.get_variables_dir(warm_start_from),
+        compat.as_text('variables.index'))):
       logging.info('Warm-starting from a SavedModel')
       return WarmStartSettings(
-          ckpt_to_initialize_from=_get_saved_model_ckpt(warm_start_from))
+          ckpt_to_initialize_from=saved_model_utils.get_variables_path(
+              warm_start_from))
     return WarmStartSettings(ckpt_to_initialize_from=warm_start_from)
   elif isinstance(warm_start_from, WarmStartSettings):
     return warm_start_from

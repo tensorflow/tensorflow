@@ -18,8 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import tokenize
 
 import gast
+import six
 
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import ast_util
@@ -56,13 +58,14 @@ class Location(
 class OriginInfo(
     collections.namedtuple(
         'OriginInfo',
-        ('loc', 'function_name', 'source_code_line'))):
+        ('loc', 'function_name', 'source_code_line', 'comment'))):
   """Container for information about the source code before conversion.
 
   Attributes:
     loc: Location
     function_name: Optional[Text]
     source_code_line: Text
+    comment: Optional[Text]
   """
 
   def as_frame(self):
@@ -152,6 +155,15 @@ def resolve(nodes, source, function=None):
     function_lineno = None
     function_filepath = None
 
+  # TODO(mdan): Pull this to a separate utility.
+  code_reader = six.StringIO(source)
+  comment_map = {}
+  for token in tokenize.generate_tokens(code_reader.readline):
+    tok_type, tok_string, loc, _, _ = token
+    srow, _ = loc
+    if tok_type == tokenize.COMMENT:
+      comment_map[srow] = tok_string.strip()[1:].strip()
+
   source_lines = source.split('\n')
   for node in nodes:
     for n in gast.walk(node):
@@ -162,12 +174,13 @@ def resolve(nodes, source, function=None):
 
       source_code_line = source_lines[lineno_in_body - 1]
       if function:
-        source_lineno = function_lineno + lineno_in_body - 1
+        source_lineno = function_lineno + lineno_in_body
         function_name = function.__name__
       else:
         source_lineno = lineno_in_body
         function_name = None
 
       location = Location(function_filepath, source_lineno, n.col_offset)
-      origin = OriginInfo(location, function_name, source_code_line)
+      origin = OriginInfo(location, function_name,
+                          source_code_line, comment_map.get(source_lineno))
       anno.setanno(n, anno.Basic.ORIGIN, origin)

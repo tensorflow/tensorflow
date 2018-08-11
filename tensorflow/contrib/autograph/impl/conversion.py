@@ -118,6 +118,17 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
       node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+  # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
+  elif hasattr(o, '__class__'):
+    raise NotImplementedError(
+        'Object conversion is not yet supported. If you are '
+        'trying to convert code that uses an existing object, '
+        'try including the creation of that object in the '
+        'conversion. For example, instead of converting the method '
+        'of a class, try converting the entire class instead. '
+        'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+        'contrib/autograph/README.md#using-the-functional-api '
+        'for more information.')
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
@@ -181,7 +192,7 @@ def class_to_graph(c, program_ctx):
   class_name = namer.compiled_class_name(c.__name__, c)
 
   # TODO(mdan): This needs to be explained more thoroughly.
-  # Process any base classes: if the sueprclass if of a whitelisted type, an
+  # Process any base classes: if the superclass if of a whitelisted type, an
   # absolute import line is generated. Otherwise, it is marked for conversion
   # (as a side effect of the call to namer.compiled_class_name() followed by
   # program_ctx.update_name_map(namer)).

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import math
 
+from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -67,7 +68,7 @@ class ZeroFractionTest(test_lib.TestCase):
       self.assertTrue(np.isnan(y))
 
 
-class SoftmaxTest(test_lib.TestCase):
+class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _softmax(self, x):
     assert len(x.shape) == 2
@@ -102,15 +103,15 @@ class SoftmaxTest(test_lib.TestCase):
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
-  def testGradient(self):
-    x_shape = [5, 10]
+  @parameterized.parameters(((5, 10),), ((2, 3, 4),))
+  def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.test_session():
       x_tf = constant_op.constant(x_np)
       y_tf = nn_ops.softmax(x_tf)
       err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                     x_shape)
-    eps = 1e-8
+    eps = 2e-8
     self.assertLess(err, eps)
 
 
@@ -156,7 +157,7 @@ class LogPoissonLossTest(test_lib.TestCase):
     self.assertLess(err_stirling, eps)
 
 
-class LogSoftmaxTest(test_lib.TestCase):
+class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _log_softmax(self, x):
     assert len(x.shape) == 2
@@ -187,8 +188,8 @@ class LogSoftmaxTest(test_lib.TestCase):
     self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
-  def testGradient(self):
-    x_shape = [5, 10]
+  @parameterized.parameters(((5, 10),), ((2, 3, 4),))
+  def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.test_session():
       x_tf = constant_op.constant(x_np)

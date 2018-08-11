@@ -50,7 +50,7 @@ def group_by_reducer(key_func, reducer):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -92,7 +92,7 @@ def group_by_window(key_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: if neither or both of {`window_size`, `window_size_func`} are
@@ -142,11 +142,11 @@ def bucket_by_sequence_length(element_length_func,
     bucket_batch_sizes: `list<int>`, batch size per bucket. Length should be
       `len(bucket_boundaries) + 1`.
     padded_shapes: Nested structure of `tf.TensorShape` to pass to
-      @{tf.data.Dataset.padded_batch}. If not provided, will use
+      `tf.data.Dataset.padded_batch`. If not provided, will use
       `dataset.output_shapes`, which will result in variable length dimensions
       being padded out to the maximum length in each batch.
     padding_values: Values to pad with, passed to
-      @{tf.data.Dataset.padded_batch}. Defaults to padding with 0.
+      `tf.data.Dataset.padded_batch`. Defaults to padding with 0.
     pad_to_bucket_boundary: bool, if `False`, will pad dimensions with unknown
       size to maximum length in batch. If `True`, will pad dimensions with
       unknown size to bucket boundary minus 1 (i.e., the maximum length in each
@@ -155,7 +155,7 @@ def bucket_by_sequence_length(element_length_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: if `len(bucket_batch_sizes) != len(bucket_boundaries) + 1`.

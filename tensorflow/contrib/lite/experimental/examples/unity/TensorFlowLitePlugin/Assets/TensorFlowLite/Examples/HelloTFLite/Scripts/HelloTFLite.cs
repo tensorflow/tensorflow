@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using TensorFlowLite;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Simple example demonstrating use of the experimental C# bindings for TensorFlowLite.
@@ -30,14 +31,24 @@ public class HelloTFLite : MonoBehaviour {
   [Tooltip("Configurable TFLite input tensor data.")]
   public float[] inputs;
 
+  [Tooltip("Target Text widget for display of inference execution.")]
+  public Text inferenceText;
+
   private Interpreter interpreter;
   private float[] outputs;
 
+  void Awake() {
+    // As the demo is extremely simple, there's no need to run at full frame-rate.
+    QualitySettings.vSyncCount = 0;
+    Application.targetFrameRate = 5;
+  }
+
   void Start () {
     interpreter = new Interpreter(model.bytes);
-    Debug.LogFormat("InputCount: {0}, OutputCount: {1}",
-                    interpreter.GetInputTensorCount(),
-                    interpreter.GetOutputTensorCount());
+    Debug.LogFormat(
+        "InputCount: {0}, OutputCount: {1}",
+        interpreter.GetInputTensorCount(),
+        interpreter.GetOutputTensorCount());
   }
 
   void Update () {
@@ -51,13 +62,17 @@ public class HelloTFLite : MonoBehaviour {
       outputs = new float[inputs.Length];
     }
 
+    float startTimeSeconds = Time.realtimeSinceStartup;
     interpreter.SetInputTensorData(0, inputs);
     interpreter.Invoke();
     interpreter.GetOutputTensorData(0, outputs);
+    float inferenceTimeSeconds = Time.realtimeSinceStartup - startTimeSeconds;
 
-    Debug.LogFormat("Input: {0}, Output: {1}",
-                    ArrayToString(inputs),
-                    ArrayToString(outputs));
+    inferenceText.text = string.Format(
+        "Inference took {0:0.0000} ms\nInput(s): {1}\nOutput(s): {2}",
+        inferenceTimeSeconds * 1000.0,
+        ArrayToString(inputs),
+        ArrayToString(outputs));
   }
 
   void OnDestroy() {

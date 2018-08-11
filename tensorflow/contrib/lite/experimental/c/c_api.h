@@ -30,6 +30,9 @@ limitations under the License.
 //
 // Conventions:
 // * We use the prefix TFL_ for everything in the API.
+// * size_t is used to represent byte sizes of objects that are
+//   materialized in the address space of the calling process.
+// * int is used as an index into arrays.
 
 #ifdef SWIG
 #define TFL_CAPI_EXPORT
@@ -54,15 +57,50 @@ typedef TfLiteStatus TFL_Status;
 typedef TfLiteType TFL_Type;
 
 // --------------------------------------------------------------------------
-// TFL_Interpreter provides inference from a provided model.
-typedef struct _TFL_Interpreter TFL_Interpreter;
+// TFL_Model wraps a loaded TensorFlow Lite model.
+typedef struct TFL_Model TFL_Model;
 
-// Returns an interpreter for the provided model, or null on failure.
+// Returns a model from the provided buffer, or null on failure.
+TFL_CAPI_EXPORT extern TFL_Model* TFL_NewModel(const void* model_data,
+                                               size_t model_size);
+
+// Returns a model from the provided file, or null on failure.
+TFL_CAPI_EXPORT extern TFL_Model* TFL_NewModelFromFile(const char* model_path);
+
+// Destroys the model instance.
+TFL_CAPI_EXPORT extern void TFL_DeleteModel(TFL_Model* model);
+
+// --------------------------------------------------------------------------
+// TFL_InterpreterOptions allows customized interpreter configuration.
+typedef struct TFL_InterpreterOptions TFL_InterpreterOptions;
+
+// Returns a new interpreter options instances.
+TFL_CAPI_EXPORT extern TFL_InterpreterOptions* TFL_NewInterpreterOptions();
+
+// Destroys the interpreter options instance.
+TFL_CAPI_EXPORT extern void TFL_DeleteInterpreterOptions(
+    TFL_InterpreterOptions* options);
+
+// Sets the number of CPU threads to use for the interpreter.
+TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetNumThreads(
+    TFL_InterpreterOptions* options, int32_t num_threads);
+
+// --------------------------------------------------------------------------
+// TFL_Interpreter provides inference from a provided model.
+typedef struct TFL_Interpreter TFL_Interpreter;
+
+// Returns a new interpreter using the provided model and options, or null on
+// failure.
+//
+// * `model` must be a valid model instance. The caller retains ownership of the
+//   object, and can destroy it immediately after creating the interpreter.
+// * `optional_options` may be null. The caller retains ownership of the object,
+//   and can safely destroy it immediately after creating the interpreter.
 //
 // NOTE: The client *must* explicitly allocate tensors before attempting to
 // access input tensor data or invoke the interpreter.
 TFL_CAPI_EXPORT extern TFL_Interpreter* TFL_NewInterpreter(
-    const void* model_data, int32_t model_size);
+    const TFL_Model* model, const TFL_InterpreterOptions* optional_options);
 
 // Destroys the interpreter.
 TFL_CAPI_EXPORT extern void TFL_DeleteInterpreter(TFL_Interpreter* interpreter);
@@ -76,7 +114,8 @@ TFL_CAPI_EXPORT extern int TFL_InterpreterGetInputTensorCount(
 TFL_CAPI_EXPORT extern TFL_Tensor* TFL_InterpreterGetInputTensor(
     const TFL_Interpreter* interpreter, int32_t input_index);
 
-// Attempts to resize the specified input tensor.
+// Resizes the specified input tensor.
+//
 // NOTE: After a resize, the client *must* explicitly allocate tensors before
 // attempting to access the resized tensor data or invoke the interpreter.
 // REQUIRES: 0 <= input_index < TFL_InterpreterGetInputTensorCount(tensor)
@@ -131,16 +170,24 @@ TFL_CAPI_EXPORT extern int32_t TFL_TensorDim(const TFL_Tensor* tensor,
 // Returns the size of the underlying data in bytes.
 TFL_CAPI_EXPORT extern size_t TFL_TensorByteSize(const TFL_Tensor* tensor);
 
+// Returns a pointer to the underlying data buffer.
+//
+// Note: The result may be null if tensors have not yet been allocated, e.g.,
+// if the Tensor has just been created or resized and `TFL_AllocateTensors()`
+// has yet to be called, or if the output tensor is dynamically sized and the
+// interpreter hasn't been invoked.
+TFL_CAPI_EXPORT extern void* TFL_TensorData(const TFL_Tensor* tensor);
+
 // Copies from the provided input buffer into the tensor's buffer.
 // REQUIRES: input_data_size == TFL_TensorByteSize(tensor)
 TFL_CAPI_EXPORT extern TFL_Status TFL_TensorCopyFromBuffer(
-    TFL_Tensor* tensor, const void* input_data, int32_t input_data_size);
+    TFL_Tensor* tensor, const void* input_data, size_t input_data_size);
 
 // Copies to the provided output buffer from the tensor's buffer.
 // REQUIRES: output_data_size == TFL_TensorByteSize(tensor)
 TFL_CAPI_EXPORT extern TFL_Status TFL_TensorCopyToBuffer(
     const TFL_Tensor* output_tensor, void* output_data,
-    int32_t output_data_size);
+    size_t output_data_size);
 
 #ifdef __cplusplus
 }  // extern "C"

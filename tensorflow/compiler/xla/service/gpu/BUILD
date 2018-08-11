@@ -153,7 +153,6 @@ cc_library(
         ":ir_emission_utils",
         ":parallel_loop_emitter",
         ":partition_assignment",
-        ":while_transformer",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -166,6 +165,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
@@ -636,7 +636,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
-        "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
@@ -656,7 +655,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
-        "//tensorflow/compiler/xla/service:while_loop_invariant_code_motion",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/gpu:cudnn_batchnorm_rewriter",
@@ -749,6 +747,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
     ],
@@ -787,32 +787,17 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "while_transformer",
-    srcs = ["while_transformer.cc"],
-    hdrs = ["while_transformer.h"],
-    deps = [
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:lib",
-    ],
-)
-
 tf_cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
     deps = [
         ":instruction_fusion",
-        ":while_transformer",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",

@@ -55,7 +55,8 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
     TF_CALL_variant(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ", value.dtype());
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(value.dtype()));
   }
 }
 
@@ -71,7 +72,8 @@ Status DoParallelConcat(const SyclDevice& d, const Tensor& value, int32 loc,
     TF_CALL_GPU_NUMBER_TYPES_NO_HALF(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ", value.dtype());
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(value.dtype()));
   }
 }
 #endif  // TENSORFLOW_USE_SYCL
@@ -347,7 +349,8 @@ Status DoInplace(const CPUDevice& device, InplaceOpType op, const Tensor& i,
     TF_CALL_NUMBER_TYPES(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ", v.dtype());
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(v.dtype()));
   }
   return Status::OK();
 }
@@ -415,7 +418,8 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
     TF_CALL_bool(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ", x.dtype());
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(x.dtype()));
   }
   return Status::OK();
 }

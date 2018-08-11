@@ -536,6 +536,29 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
+TEST_F(LoopOptimizerTest, RemovePush_NoPopButStackLives) {
+  GrapplerItem item;
+  GraphDef& graph = item.graph;
+  AddSimpleNode("c", "Const", {}, &graph);
+  // Stack with corresponding push
+  AddSimpleNode("stack1", "StackV2", {}, &graph);
+  AddSimpleNode("push1", "StackPushV2", {"stack1", "c"}, &graph);
+  // Stack with corresponding push behind Enter.
+  AddSimpleNode("stack2", "StackV2", {}, &graph);
+  AddEnterNode("enter2_c", "frame_name", false, 1, {"c"}, &graph);
+  AddEnterNode("enter2_stack2", "frame_name", false, 1, {"stack2"}, &graph);
+  AddSimpleNode("push2", "StackPushV2", {"enter2_stack2", "enter2_c"}, &graph);
+  item.keep_ops.push_back("stack1");
+  item.keep_ops.push_back("stack2");
+
+  LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
 TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   GrapplerItem item;
   GraphDef& graph = item.graph;

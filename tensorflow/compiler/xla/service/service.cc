@@ -53,10 +53,10 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrCat;
-using ::xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
@@ -409,7 +409,7 @@ Service::ExecuteParallelAndRegisterResult(
       streams.push_back(std::move(stream));
 
       if (replica == 0 && profile != nullptr) {
-        timers.emplace_back(new se::Timer(streams.back()->parent()));
+        timers.push_back(MakeUnique<se::Timer>(streams.back()->parent()));
         streams.back()
             ->InitTimer(timers.back().get())
             .ThenStartTimer(timers.back().get());
@@ -441,7 +441,7 @@ Service::ExecuteParallelAndRegisterResult(
         streams.back()->ThenStopTimer(timers.back().get());
       }
 
-      result_buffers.emplace_back(std::move(result));
+      result_buffers.push_back(std::move(result));
     }
     TF_ASSIGN_OR_RETURN(GlobalDataHandle handle,
                         allocation_tracker_.RegisterReplicatedBuffers(
@@ -559,7 +559,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   std::vector<tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
       replicated_arguments;
   for (const auto& arg : arguments) {
-    replicated_arguments.emplace_back(arg);
+    replicated_arguments.push_back(arg);
   }
 
   TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
@@ -1053,11 +1053,12 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  Literal literal;
+  auto literal = Literal::CreateFromShape(arg->shape_with_layout());
+
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), &literal));
-  *result->mutable_literal() = literal.ToProto();
+          executor, arg->shape_with_layout(), *literal));
+  *result->mutable_literal() = literal->ToProto();
   return Status::OK();
 }
 

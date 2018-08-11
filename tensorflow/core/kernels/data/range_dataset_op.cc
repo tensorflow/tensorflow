@@ -71,7 +71,8 @@ class RangeDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* start = nullptr;
       Node* stop = nullptr;
