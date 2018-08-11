@@ -1,4 +1,4 @@
-# Bigtable #
+# Google Cloud Bigtable
 
 [Cloud Bigtable](https://cloud.google.com/bigtable/) is a high
 performance storage system that can store and serve training data. This contrib
@@ -13,7 +13,7 @@ Bigtable at high speed, in particular to feed modern accelerators. For
 general-purpose Cloud Bigtable
 APIs, see the [official Cloud Bigtable client library documentation][clientdoc].
 
-[clientdoc]:  https://cloud.google.com/bigtable/docs/reference/libraries
+[clientdoc]: https://cloud.google.com/bigtable/docs/reference/libraries
 
 ## Sample Use
 
