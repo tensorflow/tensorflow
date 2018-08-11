@@ -631,6 +631,7 @@ class MultiDeviceIterator(object):
   def __init__(self,
                dataset,
                devices,
+               max_buffer_size=1,
                prefetch_buffer_size=1,
                source_device="/cpu:0"):
     """Constructs a MultiDeviceIterator.
@@ -638,6 +639,7 @@ class MultiDeviceIterator(object):
     Args:
       dataset: The input dataset to be iterated over.
       devices: The list of devices to fetch data to.
+      max_buffer_size: Maximum size of the host side per device buffer to keep.
       prefetch_buffer_size: if > 1, then we setup a buffer on each device
         to prefetch into.
       source_device: The host device to place the `dataset` on.
@@ -668,7 +670,8 @@ class MultiDeviceIterator(object):
       # iterators and the multi-device iterator.
       self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(
           self._dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          self._multi_device_iterator_resource)
+          self._multi_device_iterator_resource,
+          max_buffer_size=max_buffer_size)
 
     # TODO(rohanj): Explore the possibility of the MultiDeviceIterator to
     # initialize the device side of the pipeline. This would allow the
