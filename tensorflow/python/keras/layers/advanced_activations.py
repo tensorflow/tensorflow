@@ -315,7 +315,7 @@ class ReLU(Layer):
                        'cannot be negative value: ' + str(negative_slope))
 
     self.support_masking = True
-    self.max_value = K.cast_to_floatx(max_value)
+    self.max_value = None if max_value is None else K.cast_to_floatx(max_value)
     self.negative_slope = K.cast_to_floatx(negative_slope)
     self.threshold = K.cast_to_floatx(threshold)
 
