@@ -845,8 +845,8 @@ class Model(Network):
       x_values, y_values = distributed_training_utils.\
         validate_distributed_dataset_inputs(self._distribution_strategy, x, y)
 
-    _, _, sample_weights = self._standardize_weights(x_values[0],
-                                                     y_values[0],
+    _, _, sample_weights = self._standardize_weights(x_values,
+                                                     y_values,
                                                      sample_weight,
                                                      class_weight,
                                                      batch_size)
