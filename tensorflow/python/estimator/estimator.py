@@ -53,6 +53,7 @@ from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import distribute as distribute_lib
@@ -345,7 +346,23 @@ class Estimator(object):
       return self
 
   def _convert_train_steps_to_hooks(self, steps, max_steps):
+    """Create hooks to run correct number of steps in training.
+
+    Args:
+      steps: number of steps to run during training.
+      max_steps: maximum number of steps to be run during training. It'll be
+        the maximum number of steps the model will train to after restoring
+        from checkpoint even across multiple estimator.train calls.
+
+    Returns:
+      List of hooks to be passed to the estimator.
+    """
     if steps is not None or max_steps is not None:
+      if self._train_distribution:
+        steps_per_run = getattr(self._train_distribution, 'steps_per_run', 1)
+        if steps_per_run > 1:
+          return [basic_session_run_hooks._MultiStepStopAtStepHook(  # pylint: disable=protected-access
+              steps, max_steps, steps_per_run)]
       return [training.StopAtStepHook(steps, max_steps)]
     else:
       return []
@@ -1184,6 +1201,10 @@ class Estimator(object):
 
     worker_hooks = []
     with ops.Graph().as_default() as g:
+      # We want to create the iterations variable outside the distribution scope
+      # as that is just stored on the host and mainly used to drive the loop
+      # and doesn't need to be a Mirrored/Device variable.
+      steps_per_run_variable = training.get_or_create_steps_per_run_variable()
       with self._train_distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
 
@@ -1224,11 +1245,9 @@ class Estimator(object):
             return estimator_spec.train_op
 
           # Create new train_op post graph rewrites
-          # TODO(sourabhbajaj): Make sure train_steps and tpu_iterations
-          # work correctly. Currently hardcoded at 2
           initial_training_loss = constant_op.constant(1e7)
           ctx = self._train_distribution.run_steps_on_dataset(
-              step_fn, iterator, iterations=2,
+              step_fn, iterator, iterations=steps_per_run_variable,
               initial_loop_values={'loss': initial_training_loss})
           distributed_train_op = ctx.run_op
           tpu_result = ctx.last_step_outputs

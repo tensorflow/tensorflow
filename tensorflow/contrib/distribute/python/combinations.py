@@ -326,7 +326,8 @@ one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
 tpu_strategy = NamedDistribution(
-    "TPU", lambda: tpu_lib.TPUStrategy(TPUClusterResolver("")),
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=5),
     required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.
