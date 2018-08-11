@@ -47,6 +47,7 @@ namespace xla {
 #define HLO_OPCODE_LIST(V)                                   \
   V(kAbs, "abs")                                             \
   V(kAdd, "add")                                             \
+  V(kAllToAll, "all-to-all")                                 \
   V(kAtan2, "atan2")                                         \
   V(kBatchNormGrad, "batch-norm-grad")                       \
   V(kBatchNormInference, "batch-norm-inference")             \
@@ -118,6 +119,7 @@ namespace xla {
   V(kReverse, "reverse")                                     \
   V(kRng, "rng")                                             \
   V(kRoundNearestAfz, "round-nearest-afz")                   \
+  V(kScatter, "scatter")                                     \
   V(kSelect, "select")                                       \
   V(kSelectAndScatter, "select-and-scatter")                 \
   V(kSend, "send")                                           \

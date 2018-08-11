@@ -27,7 +27,7 @@ load(
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkl_open_source_only",
+    "if_mkl_open_source_only"
 )
 def register_extension_info(**kwargs):
     pass
@@ -230,7 +230,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
-      + if_mkl_open_source_only(["-DDO_NOT_USE_ML"])
+      + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
@@ -1096,6 +1096,10 @@ def tf_kernel_library(
     tf_gpu_kernel_library(
         name=name + "_gpu", srcs=gpu_srcs, deps=deps, **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
+  kwargs["tags"] = kwargs.get("tags", []) + [
+      "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
+      "req_dep=@local_config_cuda//cuda:cuda_headers",
+  ]
   tf_cuda_library(
       name=name,
       srcs=srcs,
@@ -1201,7 +1205,6 @@ _py_wrap_cc = rule(
             allow_files = True,
         ),
         "swig_includes": attr.label_list(
-            cfg = "data",
             allow_files = True,
         ),
         "deps": attr.label_list(

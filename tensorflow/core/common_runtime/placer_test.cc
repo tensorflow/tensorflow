@@ -1158,10 +1158,10 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
       true);
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(
-      str_util::StrContains(s.error_message(),
-                            "Cannot assign a device for operation 'in'"
-                            " (defined at ^^node:in:${file}:${line}^^)"));
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Cannot assign a device for operation 'in'"
+                                    "^^node:in:${defined_at}^^"));
 }
 
 // Test that the "Cannot assign a device" error message does not contain a

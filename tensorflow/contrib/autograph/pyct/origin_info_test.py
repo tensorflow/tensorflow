@@ -85,16 +85,19 @@ class OriginInfoTest(test.TestCase):
     self.assertEqual(origin.loc.lineno, 1)
     self.assertEqual(origin.loc.col_offset, 0)
     self.assertEqual(origin.source_code_line, 'def test_fn(x):')
+    self.assertIsNone(origin.comment)
 
     origin = anno.getanno(fn_node.body[0], anno.Basic.ORIGIN)
     self.assertEqual(origin.loc.lineno, 2)
     self.assertEqual(origin.loc.col_offset, 2)
     self.assertEqual(origin.source_code_line, '  """Docstring."""')
+    self.assertIsNone(origin.comment)
 
     origin = anno.getanno(fn_node.body[1], anno.Basic.ORIGIN)
     self.assertEqual(origin.loc.lineno, 3)
     self.assertEqual(origin.loc.col_offset, 2)
     self.assertEqual(origin.source_code_line, '  return x  # comment')
+    self.assertEqual(origin.comment, 'comment')
 
 
 if __name__ == '__main__':

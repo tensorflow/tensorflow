@@ -1784,9 +1784,9 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 REGISTER_OP("_MklConv2DWithBiasBackpropBias")
     .Input("out_backprop: T")
     .Input("mkl_out_backprop: uint8")
@@ -1948,7 +1948,7 @@ REGISTER_OP("_MklMaxPool")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -1974,7 +1974,7 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")
@@ -2046,7 +2046,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -2074,7 +2074,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")

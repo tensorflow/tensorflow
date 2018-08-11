@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
@@ -198,6 +199,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + var
     sess = session.Session()
+    sess.run(_global_variables_initializer())
 
     # Convert model and ensure model is not None.
     converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
@@ -655,9 +657,7 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    os.remove(keras_file)
-
-    # Check values from converted model.
+    # Check tensor details of converted model.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
@@ -674,6 +674,18 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
 
   def testSequentialModelInputArray(self):
     """Test a Sequential tf.keras model testing input arrays argument."""
@@ -755,17 +767,17 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
     model.predict(x)
     fd, keras_file = tempfile.mkstemp('.h5')
-    keras.models.save_model(model, keras_file)
+    try:
+      keras.models.save_model(model, keras_file)
+    finally:
+      os.close(fd)
 
     # Convert to TFLite model.
     converter = lite.TocoConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    os.close(fd)
-    os.remove(keras_file)
-
-    # Check values from converted model.
+    # Check tensor details of converted model.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
@@ -782,6 +794,18 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
 
   def testFunctionalModelMultipleInputs(self):
     """Test a Functional tf.keras model with multiple inputs and outputs."""
@@ -865,17 +889,17 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
     model.predict(x)
     fd, keras_file = tempfile.mkstemp('.h5')
-    keras.models.save_model(model, keras_file)
+    try:
+      keras.models.save_model(model, keras_file)
+    finally:
+      os.close(fd)
 
     # Convert to TFLite model.
     converter = lite.TocoConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-    os.close(fd)
-    os.remove(keras_file)
-
-    # Check values from converted model.
+    # Check tensor details of converted model.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
@@ -892,6 +916,18 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
 
 
 if __name__ == '__main__':

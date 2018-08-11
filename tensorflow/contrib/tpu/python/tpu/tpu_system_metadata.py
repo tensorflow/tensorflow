@@ -45,7 +45,7 @@ _TPUSystemMetadata = collections.namedtuple('_TPUSystemMetadata', [
 ])
 
 
-def _query_tpu_system_metadata(master_address, run_config,
+def _query_tpu_system_metadata(master_address, cluster_def=None,
                                query_topology=False):
   """Automatically detects the TPU system metadata in the system."""
   tpu_core_count = 0
@@ -61,7 +61,8 @@ def _query_tpu_system_metadata(master_address, run_config,
         with session_lib.Session(
             master_address,
             config=get_session_config_with_timeout(
-                _PINGING_MASTER_TIMEOUT_IN_MS, run_config)) as sess:
+                _PINGING_MASTER_TIMEOUT_IN_MS,
+                cluster_def)) as sess:
           devices = sess.list_devices()
           for device in devices:
             match = _TPU_DEVICE_REG.match(device.name)
@@ -105,7 +106,7 @@ def _query_tpu_system_metadata(master_address, run_config,
           'TPU worker has some problems. Available devices: {}'.format(
               master_address, devices))
 
-    topology = _obtain_topology(master_address, run_config)
+    topology = _obtain_topology(master_address, cluster_def)
 
   metadata = _TPUSystemMetadata(
       num_cores=tpu_core_count,
@@ -127,14 +128,15 @@ def _query_tpu_system_metadata(master_address, run_config,
   return metadata
 
 
-def _obtain_topology(master_address, run_config):
+def _obtain_topology(master_address, cluster_def):
+  """Obtains TPU fabric topology."""
   try:
     logging.info('Initializing TPU system (master: %s) to fetch topology '
                  'for model parallelism. This might take a while.',
                  master_address)
     with ops.Graph().as_default():
       session_config = get_session_config_with_timeout(
-          _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS, run_config)
+          _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS, cluster_def)
       with session_lib.Session(
           master_address, config=session_config) as sess:
         topology = sess.run(tpu.initialize_system())
@@ -146,11 +148,8 @@ def _obtain_topology(master_address, run_config):
             master_address))
 
 
-def get_session_config_with_timeout(timeout_in_secs, run_config):
-  cluster_def = None
-  if run_config.session_config and run_config.session_config.cluster_def.job:
-    cluster_def = run_config.session_config.cluster_def
-
+def get_session_config_with_timeout(timeout_in_secs, cluster_def):
+  """Returns a session given a timeout and a cluster configuration."""
   config = config_pb2.ConfigProto(
       operation_timeout_in_ms=timeout_in_secs, cluster_def=cluster_def)
   return config

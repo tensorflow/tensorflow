@@ -27,11 +27,17 @@ namespace {
 constexpr char kConstOpName[] = "Const";
 
 template <typename Predicate, typename Collection>
-int GetElementIdxWithPredicate(const Predicate& predicate,
-                               const Collection& collection) {
-  auto it = std::find_if(collection.begin(), collection.end(), predicate);
-  if (it == collection.end()) return -1;
-  return std::distance(collection.begin(), it);
+std::vector<int> GetElementIndicesWithPredicate(const Predicate& predicate,
+                                                const Collection& collection) {
+  std::vector<int> indices = {};
+  unsigned idx = 0;
+  for (auto&& element : collection) {
+    if (predicate(element)) {
+      indices.push_back(idx);
+    }
+    idx++;
+  }
+  return indices;
 }
 
 std::vector<int> CreateNameIndex(const GraphDef& graph) {
@@ -82,17 +88,17 @@ NodeDef* AddScalarConstNodeHelper(
 
 }  // namespace
 
-NodeDef* AddNode(const string& name, const string& op,
+NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph) {
   NodeDef node;
   if (!name.empty()) {
-    node.set_name(name);
+    node.set_name(name.ToString());
   } else {
     SetUniqueGraphNodeName(op, graph->GetGraph(), &node);
   }
-  node.set_op(op);
+  node.set_op(op.ToString());
   for (const string& input : inputs) {
     node.add_input(input);
   }
@@ -170,64 +176,91 @@ bool Compare(const GraphDef& g1, const GraphDef& g2) {
   return true;
 }
 
-bool ContainsGraphNodeWithName(const string& name, const GraphDef& graph) {
+bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph) {
   return FindGraphNodeWithName(name, graph) != -1;
 }
 
-bool ContainsNodeWithOp(const string& op, const GraphDef& graph) {
+bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph) {
   return FindNodeWithOp(op, graph) != -1;
 }
 
-bool ContainsGraphFunctionWithName(const string& name,
+bool ContainsGraphFunctionWithName(StringPiece name,
                                    const FunctionDefLibrary& library) {
   return FindGraphFunctionWithName(name, library) != -1;
 }
 
-bool ContainsFunctionNodeWithName(const string& name,
+bool ContainsFunctionNodeWithName(StringPiece name,
                                   const FunctionDef& function) {
   return FindFunctionNodeWithName(name, function) != -1;
 }
 
-int FindGraphNodeWithName(const string& name, const GraphDef& graph) {
-  return GetElementIdxWithPredicate(
-      [&name](const NodeDef& node) { return node.name() == name; },
-      graph.node());
+bool ContainsFunctionNodeWithOp(StringPiece op, const FunctionDef& function) {
+  return FindFunctionNodeWithOp(op, function) != -1;
 }
 
-int FindNodeWithOp(const string& op, const GraphDef& graph) {
-  return GetElementIdxWithPredicate(
+int FindGraphNodeWithName(StringPiece name, const GraphDef& graph) {
+  std::vector<int> indices = GetElementIndicesWithPredicate(
+      [&name](const NodeDef& node) { return node.name() == name; },
+      graph.node());
+  return indices.empty() ? -1 : indices.front();
+}
+
+int FindNodeWithOp(StringPiece op, const GraphDef& graph) {
+  std::vector<int> indices = GetElementIndicesWithPredicate(
+      [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
+  return indices.empty() ? -1 : indices.front();
+}
+
+std::vector<int> FindAllGraphNodesWithOp(const string& op,
+                                         const GraphDef& graph) {
+  return GetElementIndicesWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
 }
 
-int FindGraphFunctionWithName(const string& name,
+int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library) {
-  return GetElementIdxWithPredicate(
+  std::vector<int> indices = GetElementIndicesWithPredicate(
       [&name](const FunctionDef& function) {
         return function.signature().name() == name;
       },
       library.function());
+  return indices.empty() ? -1 : indices.front();
 }
 
-int FindFunctionNodeWithName(const string& name, const FunctionDef& function) {
-  return GetElementIdxWithPredicate(
+int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function) {
+  std::vector<int> indices = GetElementIndicesWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       function.node_def());
+  return indices.empty() ? -1 : indices.front();
 }
 
-void SetUniqueGraphNodeName(const string& prefix, GraphDef* graph,
+int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function) {
+  std::vector<int> indices = GetElementIndicesWithPredicate(
+      [&op](const NodeDef& node) { return node.op() == op; },
+      function.node_def());
+
+  return indices.empty() ? -1 : indices.front();
+}
+
+void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
                             NodeDef* node) {
-  string name = prefix;
+  string name = prefix.ToString();
   int id = graph->node_size();
   while (ContainsGraphNodeWithName(name, *graph)) {
-    name = strings::StrCat(prefix, "/_", id);
+    if (name.rfind("_generated") != std::string::npos &&
+        (name.rfind("_generated") == (name.size() - strlen("_generated")))) {
+      name.insert(name.rfind("_generated"), strings::StrCat("/_", id));
+    } else {
+      name = strings::StrCat(prefix, "/_", id);
+    }
     ++id;
   }
   node->set_name(std::move(name));
 }
 
-void SetUniqueFunctionNodeName(const string& prefix, FunctionDef* function,
+void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
                                NodeDef* node) {
-  string name = prefix;
+  string name = prefix.ToString();
   int id = function->node_def_size();
   while (ContainsFunctionNodeWithName(name, *function)) {
     name = strings::StrCat(prefix, "/_", id);
@@ -236,16 +269,15 @@ void SetUniqueFunctionNodeName(const string& prefix, FunctionDef* function,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(const string& prefix,
-                                FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function) {
-  string name = prefix;
+  string name = prefix.ToString();
   int id = library->function_size();
   while (ContainsGraphFunctionWithName(name, *library)) {
     name = strings::StrCat(prefix, "/_", id);
     ++id;
   }
-  function->mutable_signature()->set_name(name);
+  function->mutable_signature()->set_name(std::move(name));
 }
 
 }  // end namespace graph_utils

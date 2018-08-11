@@ -16,6 +16,8 @@ using System;
 using System.Runtime.InteropServices;
 
 using TFL_Interpreter = System.IntPtr;
+using TFL_InterpreterOptions = System.IntPtr;
+using TFL_Model = System.IntPtr;
 using TFL_Tensor = System.IntPtr;
 
 namespace TensorFlowLite
@@ -32,7 +34,9 @@ namespace TensorFlowLite
     public Interpreter(byte[] modelData) {
       GCHandle modelDataHandle = GCHandle.Alloc(modelData, GCHandleType.Pinned);
       IntPtr modelDataPtr = modelDataHandle.AddrOfPinnedObject();
-      handle = TFL_NewInterpreter(modelDataPtr, modelData.Length);
+      TFL_Model model = TFL_NewModel(modelDataPtr, modelData.Length);
+      handle = TFL_NewInterpreter(model, /*options=*/IntPtr.Zero);
+      TFL_DeleteModel(model);
       if (handle == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Interpreter");
     }
 
@@ -89,9 +93,15 @@ namespace TensorFlowLite
     #region Externs
 
     [DllImport (TensorFlowLibrary)]
+    private static extern unsafe TFL_Interpreter TFL_NewModel(IntPtr model_data, int model_size);
+
+    [DllImport (TensorFlowLibrary)]
+    private static extern unsafe TFL_Interpreter TFL_DeleteModel(TFL_Model model);
+
+    [DllImport (TensorFlowLibrary)]
     private static extern unsafe TFL_Interpreter TFL_NewInterpreter(
-        IntPtr model_data,
-        int model_size);
+        TFL_Model model,
+        TFL_InterpreterOptions optional_options);
 
     [DllImport (TensorFlowLibrary)]
     private static extern unsafe void TFL_DeleteInterpreter(TFL_Interpreter interpreter);

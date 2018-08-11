@@ -19,5 +19,5 @@ uncompressed_binary = ffmpeg.encode_audio(
     waveform, file_format='wav', samples_per_second=44100)
 ```
 
-*   @{tf.contrib.ffmpeg.decode_audio}
-*   @{tf.contrib.ffmpeg.encode_audio}
+*   `tf.contrib.ffmpeg.decode_audio`
+*   `tf.contrib.ffmpeg.encode_audio`

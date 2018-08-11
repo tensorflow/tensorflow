@@ -1,0 +1,29 @@
+path: "tensorflow.GradientTape"
+tf_class {
+  is_instance: "<class \'tensorflow.python.eager.backprop.GradientTape\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'persistent\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "gradient"
+    argspec: "args=[\'self\', \'target\', \'sources\', \'output_gradients\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "reset"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stop_recording"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "watch"
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "watched_variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -182,7 +182,7 @@ XLA_TEST_F(PrngTest, Uniformity256) {
 
 XLA_TEST_F(PrngTest, MapUsingRng) {
   // Build a x -> (x + U[0,1)) computation.
-  auto build_sum_rng = [this](XlaBuilder& builder) {
+  auto build_sum_rng = [](XlaBuilder& builder) {
     auto b = builder.CreateSubBuilder("sum_with_rng");
     auto x = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "input");
     Add(x,

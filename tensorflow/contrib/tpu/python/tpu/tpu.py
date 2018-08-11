@@ -970,8 +970,15 @@ def rewrite(computation,
   Args:
     computation: A Python function that builds a computation to apply
       to the input. If the function takes n inputs, 'inputs' should be
-      a list of n tensors. If the function returns m outputs, rewrite
-      will return a list of m tensors.
+      a list of n tensors.
+
+      `computation` may return a list of operations and tensors.  Tensors must
+      come before operations in the returned list.  The return value of
+      `rewrite` is a list of tensors corresponding to the tensors from the
+      from `computation`.
+
+      All `Operation`s returned from `computation` will be executed when
+      evaluating any of the returned output tensors.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
@@ -1006,6 +1013,19 @@ _BLACKLISTED_INFERENCE_OPS = set([
     "Variable",
     "VariableV2",
 ])
+
+
+def under_tpu_inference_context():
+  """Check if it is currently under `tpu.rewrite_for_inference()`."""
+  graph = ops.get_default_graph()
+
+  context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  while context:
+    if isinstance(context, _TPUInferenceContext):
+      return True
+    context = context.outer_context
+
+  return False
 
 
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):

@@ -273,6 +273,47 @@ class HloAllReduceInstruction : public HloInstruction {
   tensorflow::gtl::optional<int64> all_reduce_id_;
 };
 
+class HloAllToAllInstruction : public HloInstruction {
+ public:
+  explicit HloAllToAllInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operand,
+      const std::vector<ReplicaGroup>& replica_groups,
+      tensorflow::StringPiece barrier);
+
+  const std::vector<ReplicaGroup>& replica_groups() const {
+    return replica_groups_;
+  }
+
+  // TODO(b/110096724): rename this.
+  void set_cross_replica_sum_barrier(string barrier) {
+    cross_replica_sum_barrier_ = barrier;
+  }
+  string cross_replica_sum_barrier() const {
+    return cross_replica_sum_barrier_;
+  }
+
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<ReplicaGroup> replica_groups_;
+
+  // The string representation of the barrier config.
+  string cross_replica_sum_barrier_;
+};
+
 class HloReverseInstruction : public HloInstruction {
  public:
   explicit HloReverseInstruction(const Shape& shape, HloInstruction* operand,
@@ -331,7 +372,7 @@ class HloConcatenateInstruction : public HloInstruction {
 class HloReduceInstruction : public HloInstruction {
  public:
   explicit HloReduceInstruction(
-      const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> args,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
   // Returns the dimension sizes or numbers associated with this instruction.
@@ -339,6 +380,18 @@ class HloReduceInstruction : public HloInstruction {
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+
+  // Returns the input tensors to be reduced.
+  tensorflow::gtl::ArraySlice<HloInstruction*> inputs() const {
+    return tensorflow::gtl::ArraySlice<HloInstruction*>(operands(), 0,
+                                                        operand_count() / 2);
+  }
+
+  // Returns the init values of the reduction.
+  tensorflow::gtl::ArraySlice<HloInstruction*> init_values() const {
+    return tensorflow::gtl::ArraySlice<HloInstruction*>(
+        operands(), operand_count() / 2, operand_count());
+  }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -534,6 +587,8 @@ class HloConstantInstruction : public HloInstruction {
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const { return literal_ != nullptr; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1196,6 +1251,45 @@ class HloGatherInstruction : public HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
+};
+
+class HloScatterInstruction : public HloInstruction {
+ public:
+  explicit HloScatterInstruction(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* scatter_indices, HloInstruction* updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
+  const ScatterDimensionNumbers& scatter_dimension_numbers() const {
+    CHECK(scatter_dimension_numbers_ != nullptr);
+    return *scatter_dimension_numbers_;
+  }
+  // Returns the dump string of the scatter dimension numbers.
+  string ScatterDimensionNumbersToString() const;
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  // Creates an instance of ScatterDimensionNumbers.
+  static ScatterDimensionNumbers MakeScatterDimNumbers(
+      tensorflow::gtl::ArraySlice<int64> update_window_dims,
+      tensorflow::gtl::ArraySlice<int64> inserted_window_dims,
+      tensorflow::gtl::ArraySlice<int64> scatter_dims_to_operand_dims,
+      int64 index_vector_dim);
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
 };
 
 }  // namespace xla

@@ -32,6 +32,8 @@ These projects inside the TensorFlow GitHub organization have lists dedicated to
   and peer support for TensorFlow.js.
 * [tflite](https://groups.google.com/a/tensorflow.org/d/forum/tflite) - Discussion and
   peer support for TensorFlow Lite.
+* [tfprobability](https://groups.google.com/a/tensorflow.org/d/forum/tfprobability) - Discussion and
+  peer support for TensorFlow Probability.
 * [tpu-users](https://groups.google.com/a/tensorflow.org/d/forum/tpu-users) - Community discussion
   and support for TPU users.
 

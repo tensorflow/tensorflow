@@ -481,6 +481,9 @@ cc_library(
         ":darwin": [
             ":neon_tensor_utils",
         ],
+        ":darwin_x86_64": [
+            ":neon_tensor_utils",
+        ],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
@@ -493,6 +496,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":types",
+        "//tensorflow/contrib/lite:string",
     ],
 )
 
@@ -573,6 +577,7 @@ cc_test(
         ":quantization_util",
         ":reference_base",
         ":test_util",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -592,6 +597,7 @@ cc_test(
         ":quantization_util",
         ":reference_base",
         ":test_util",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -603,6 +609,7 @@ cc_test(
     deps = [
         ":optimized_base",
         ":reference_base",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )

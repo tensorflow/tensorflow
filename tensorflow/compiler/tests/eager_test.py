@@ -32,6 +32,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -121,6 +122,14 @@ class EagerTest(xla_test.XLATestCase):
   def testIdentity(self):
     with self.test_scope():
       self.assertAllEqual(2, array_ops.identity(2))
+
+  def testRandomOps(self):
+    with self.test_scope():
+      tensor = gen_random_ops.random_uniform((2, 2), dtypes.float32)
+      row0 = tensor[0].numpy()
+      row1 = tensor[1].numpy()
+      # It should be very unlikely to rng to generate two equal rows.
+      self.assertFalse((row0 == row1).all())
 
   def testIdentityOnVariable(self):
     with self.test_scope():
@@ -399,6 +408,21 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
     self.assertEqual(75, y.numpy())
     self.assertEqual(30, dy.numpy())
+
+  def testGradientTapeInDefun(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun
+      def f():
+        x = constant_op.constant(1.0)
+        with backprop.GradientTape() as tape:
+          y = v0 * x
+        dy = tape.gradient(y, v0)
+        return dy
+
+      dy = f()
+      self.assertEqual(1.0, dy.numpy())
 
   def testSliceInDefun(self):
     with self.test_scope():

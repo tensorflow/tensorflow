@@ -877,8 +877,8 @@ Status BufferAssigner::AssignBuffersForComputation(
   // important reuse case where an elementwise instruction reuses one of its
   // operand's buffer. This improves locality.
   std::sort(sorted_buffers.begin(), sorted_buffers.end(),
-            [this, has_sequential_order, &liveness, &post_order_position,
-             assignment](const LogicalBuffer* a, const LogicalBuffer* b) {
+            [has_sequential_order, &liveness, &post_order_position, assignment](
+                const LogicalBuffer* a, const LogicalBuffer* b) {
               // Primary sort is by decreasing buffer size.
               const int64 a_size = assignment->buffer_size_(*a);
               const int64 b_size = assignment->buffer_size_(*b);
@@ -1441,9 +1441,9 @@ void BufferAssigner::BuildColocatedBufferSets(
         const HloInstruction* while_hlo = instruction;
         ShapeUtil::ForEachSubshape(
             while_hlo->shape(),
-            [this, while_hlo, &points_to_analysis, &buffer_liveness,
-             buffer_size, computation, colocated_buffer_sets](
-                const Shape& /*subshape*/, const ShapeIndex& index) {
+            [this, while_hlo, &points_to_analysis, buffer_size,
+             colocated_buffer_sets](const Shape& /*subshape*/,
+                                    const ShapeIndex& index) {
               std::vector<const LogicalBuffer*> colocated_set;
               // Add while.init.
               AddBufferToColocatedSet(while_hlo->operand(0), index,
