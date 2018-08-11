@@ -115,10 +115,9 @@ void ExtendShape(Shape* shape, int new_shape_size);
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void UnextendShape(Shape* shape, int new_shape_size);
 
-// Checks that all dimensions of 'shape' are at least 1.
-bool IsValid(const Shape& shape);
-// Same as above, but reports error using CHECK.
-void CheckShapeDimensions(const Shape& shape);
+// Checks that all dimensions of 'shape' are at least 1. Note that scalars,
+// lacking dimensions, satisfy this condition and are considered non-empty.
+bool IsNonEmpty(const Shape& shape);
 
 // Given two shapes with potentially different dimensionality and dimension
 // arrays d0 and d1. Without loss of generality, assume that shape0 may have

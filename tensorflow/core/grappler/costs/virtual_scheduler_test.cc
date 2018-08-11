@@ -942,7 +942,6 @@ versions {
   // target_node.
   std::unordered_map<string, OpContext> RunScheduler(
       const string& target_node) {
-    Costs zero_costs = Costs::ZeroCosts();
     std::unordered_map<string, OpContext> ops_executed;
     bool more_nodes = true;
     do {
@@ -1632,6 +1631,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostTest) {
   // Misc - 5 * 1us
   // Total: 13000005
   EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(grappler_item_->graph.node_size(), c.num_ops_total);
+  EXPECT_FALSE(c.inaccurate);
+  EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
 }
 
 // Like the above SummaryCostTest, but makes sure the stepstats timeline is
@@ -1645,6 +1647,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   Costs c = scheduler_->Summary(&metadata);
   StepStats stepstats = metadata.step_stats();
   EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(grappler_item_->graph.node_size(), c.num_ops_total);
+  EXPECT_FALSE(c.inaccurate);
+  EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
 
   // Should only be 1 device!
   EXPECT_EQ(1, stepstats.dev_stats().size());

@@ -570,13 +570,24 @@ def weighted_masked_objective(fn):
     # score_array has ndim >= 2
     score_array = fn(y_true, y_pred)
     if mask is not None:
-      # Cast the mask to floatX to avoid float64 upcasting in theano
-      mask = math_ops.cast(mask, K.floatx())
-      # mask should have the same shape as score_array
-      score_array *= mask
-      #  the loss per batch should be proportional
-      #  to the number of unmasked samples.
-      score_array /= K.mean(mask)
+      mask = math_ops.cast(mask, y_pred.dtype)
+      # Update weights with mask.
+      if weights is None:
+        weights = mask
+      else:
+        # Update shape of weights if possible before adding mask.
+        # Update dimensions of weights to match with mask if possible.
+        mask, _, weights = metrics_module.squeeze_or_expand_dimensions(
+            mask, None, weights)
+        try:
+          # Broadcast weights if possible.
+          weights = weights_broadcast_ops.broadcast_weights(weights, mask)
+          weights *= mask
+        except ValueError:
+          score_array *= mask
+          score_array /= K.mean(mask)
+          # TODO(psv): Handle case when mask and weight shapes are not
+          # compatible.
 
     # Apply sample weighting.
     if weights is not None:
@@ -709,43 +720,6 @@ def has_tensors(ls):
   return tensor_util.is_tensor(ls)
 
 
-def populate_metric_names(model):
-  for i in range(len(model.outputs)):
-    metrics = model.nested_metrics[i]
-    for metric in metrics:
-      base_metric_name = get_metric_name(metric)
-      add_metric_name(model, base_metric_name, i)
-
-
-def get_metric_name(metric, weighted=False):
-  """Returns the metric name corresponding to the given metric input.
-
-  Arguments:
-      metric: Metric function name or reference.
-      weighted: Boolean indicating if the given metric is weighted.
-
-  Returns:
-      a metric name.
-  """
-  metric_name_prefix = 'weighted_' if weighted else ''
-  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-    if metric in ('accuracy', 'acc'):
-      suffix = 'acc'
-    elif metric in ('crossentropy', 'ce'):
-      suffix = 'ce'
-    metric_name = metric_name_prefix + suffix
-  else:
-    metric_fn = metrics_module.get(metric)
-    # Get metric name as string
-    if hasattr(metric_fn, 'name'):
-      metric_name = metric_fn.name
-    else:
-      metric_name = metric_fn.__name__
-    metric_name = metric_name_prefix + metric_name
-
-  return metric_name
-
-
 def get_metric_function(metric, output_shape=None, loss_fn=None):
   """Returns the metric function corresponding to the given metric input.
 
@@ -774,33 +748,6 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
     # case: categorical cross-entropy
     return metrics_module.categorical_crossentropy
   return metrics_module.get(metric)
-
-
-def add_metric_name(model, metric_name, index):
-  """Makes the metric name unique and adds it to the model's metric name list.
-
-    If there are multiple outputs for which the metrics are calculated, the
-    metric names have to be made unique by appending an integer.
-
-  Arguments:
-    model: Model to which we are adding metric names.
-    metric_name: Metric name that corresponds to the metric specified by the
-        user. For example: 'acc'
-    index: The index of the model output for which the metric name is being
-        added.
-
-  Returns:
-    string, name of the model's unique metric name
-  """
-  if len(model.output_names) > 1:
-    metric_name = '%s_%s' % (model.output_names[index], metric_name)
-  j = 1
-  base_metric_name = metric_name
-  while metric_name in model.metrics_names:
-    metric_name = '%s_%d' % (base_metric_name, j)
-    j += 1
-  model.metrics_names.append(metric_name)
-  return metric_name
 
 
 def validate_iterator_input(x, y, sample_weight, validation_split=None):

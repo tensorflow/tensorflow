@@ -119,7 +119,7 @@ It is particularly important for variables to be in the correct device in
 distributed settings. Accidentally putting variables on workers instead of
 parameter servers, for example, can severely slow down training or, in the worst
 case, let each worker blithely forge ahead with its own independent copy of each
-variable. For this reason we provide @{tf.train.replica_device_setter}, which
+variable. For this reason we provide `tf.train.replica_device_setter`, which
 can automatically place variables in parameter servers. For example:
 
 ``` python
@@ -211,7 +211,7 @@ sess.run(assignment)  # or assignment.op.run(), or assignment.eval()
 
 Most TensorFlow optimizers have specialized ops that efficiently update the
 values of variables according to some gradient descent-like algorithm. See
-@{tf.train.Optimizer} for an explanation of how to use optimizers.
+`tf.train.Optimizer` for an explanation of how to use optimizers.
 
 Because variables are mutable it's sometimes useful to know what version of a
 variable's value is being used at any point in time. To force a re-read of the

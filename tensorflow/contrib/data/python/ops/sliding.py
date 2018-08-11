@@ -109,7 +109,7 @@ def sliding_window_batch(window_size,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: if invalid arguments are provided.

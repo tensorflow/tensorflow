@@ -320,6 +320,15 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*all_reduce_id=*/all_reduce_id);
       break;
     }
+    case HloOpcode::kAllToAll: {
+      instruction = CreateAllToAll(
+          proto.shape(), all_operands(),
+          /*replica_groups=*/
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()),
+          /*barrier=*/proto.cross_replica_sum_barrier());
+      break;
+    }
     case HloOpcode::kConvolution:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Convolution instruction should have 2 operands but sees "
@@ -669,6 +678,14 @@ HloInstruction::CreateCrossReplicaSum(
   return MakeUnique<HloAllReduceInstruction>(
       shape, operands, reduce_computation, replica_group_ids, barrier,
       all_reduce_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const std::vector<ReplicaGroup>& replica_groups,
+    tensorflow::StringPiece barrier) {
+  return MakeUnique<HloAllToAllInstruction>(shape, operands, replica_groups,
+                                            barrier);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1153,6 +1170,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kConvolution:
@@ -1620,6 +1638,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReduceWindow:
@@ -2265,6 +2284,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleFft(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
+    case HloOpcode::kAllToAll:
+      return visitor->HandleAllToAll(this);
     case HloOpcode::kTuple:
       return visitor->HandleTuple(this);
     case HloOpcode::kMap:
@@ -3139,12 +3160,23 @@ const std::vector<int64>& HloInstruction::replica_group_ids() const {
   return Cast<HloAllReduceInstruction>(this)->replica_group_ids();
 }
 
+const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
+  return Cast<HloAllToAllInstruction>(this)->replica_groups();
+}
+
 string HloInstruction::cross_replica_sum_barrier() const {
-  return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+  if (opcode() == HloOpcode::kCrossReplicaSum) {
+    return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+  }
+  return Cast<HloAllToAllInstruction>(this)->cross_replica_sum_barrier();
 }
 
 void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
-  return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+  if (opcode() == HloOpcode::kCrossReplicaSum) {
+    return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+        barrier);
+  }
+  return Cast<HloAllToAllInstruction>(this)->set_cross_replica_sum_barrier(
       barrier);
 }
 

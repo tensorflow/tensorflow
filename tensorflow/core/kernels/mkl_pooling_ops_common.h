@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::memory;
 using mkldnn::pooling_backward;
@@ -175,8 +175,8 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   // primitive op from reuse perspective.
   // A pooling key is a string which concates key parameters
   // as well as algorithm kind (max versus avg).
-  static std::string CreateKey(const MklPoolingParams& fwdParams) {
-    std::string prefix = "pooling_fwd";
+  static string CreateKey(const MklPoolingParams& fwdParams) {
+    string prefix = "pooling_fwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(fwdParams.src_dims);
@@ -190,12 +190,12 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetPoolingFwd(const MklPoolingParams& fwdParams) {
-    std::string key = CreateKey(fwdParams);
+    string key = CreateKey(fwdParams);
     return this->GetOp(key);
   }
 
   void SetPoolingFwd(const MklPoolingParams& fwdParams, MklPrimitive* op) {
-    std::string key = CreateKey(fwdParams);
+    string key = CreateKey(fwdParams);
     this->SetOp(key, op);
   }
 };
@@ -326,8 +326,8 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   // primitive op from reuse perspective.
   // A pooling key is a string which concates key parameters
   // as well as algorithm kind (max versus avg).
-  static std::string CreateKey(const MklPoolingParams& bwdParams) {
-    std::string prefix = "pooling_bwd";
+  static string CreateKey(const MklPoolingParams& bwdParams) {
+    string prefix = "pooling_bwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(bwdParams.src_dims);
@@ -341,12 +341,12 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetPoolingBwd(const MklPoolingParams& bwdParams) {
-    std::string key = CreateKey(bwdParams);
+    string key = CreateKey(bwdParams);
     return this->GetOp(key);
   }
 
   void SetPoolingBwd(const MklPoolingParams& bwdParams, MklPrimitive* op) {
-    std::string key = CreateKey(bwdParams);
+    string key = CreateKey(bwdParams);
     this->SetOp(key, op);
   }
 };
@@ -405,7 +405,7 @@ struct MklPoolParameters {
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const TensorShape& tensor_in_shape);
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const MklShape* mkl_in_shape);
@@ -422,7 +422,7 @@ struct MklPoolParameters {
             TensorFormat data_format);
 };
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 template <class T>
 class MklPoolingOpBase : public OpKernel {
@@ -674,7 +674,7 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     return grad_reorder_needed ? target_diff_dst_md : original_input_grad_md;
   }
 };
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 //-------------------------------------------------------------------
 // Utility functions

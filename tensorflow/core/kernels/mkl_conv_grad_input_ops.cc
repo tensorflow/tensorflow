@@ -23,7 +23,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #include <algorithm>
 #include <vector>
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 #endif
@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::convolution_backward_data;
@@ -57,7 +57,7 @@ using mkldnn::stream;
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 /// utility classes enabling primitive reuse for backward conv ops.
 struct MklConvBwdInputParams {
@@ -294,7 +294,7 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
 
 #endif
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropInputOp : public OpKernel {
@@ -863,15 +863,16 @@ class MklConvCustomBackpropInputOp
                               .TypeConstraint<T>("T")                 \
                               .Label(mkl_op_registry::kMklOpLabel),   \
                           MklConvCustomBackpropInputOp<CPUDevice, T>);\
-  REGISTER_KERNEL_BUILDER(Name("_MklConv3DBackpropInputV2")             \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv3DBackpropInputV2")           \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<T>("T")                 \
                               .Label(mkl_op_registry::kMklOpLabel),   \
                           MklConvCustomBackpropInputOp<CPUDevice, T>);
+
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);
 #undef REGISTER_MKL_CPU_KERNELS
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

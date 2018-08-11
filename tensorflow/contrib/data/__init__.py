@@ -15,7 +15,7 @@
 """Experimental API for building input pipelines.
 
 This module contains experimental `Dataset` sources and transformations that can
-be used in conjunction with the @{tf.data.Dataset} API. Note that the
+be used in conjunction with the `tf.data.Dataset` API. Note that the
 `tf.contrib.data` API is not subject to the same backwards compatibility
 guarantees as `tf.data`, but we will provide deprecation advice in advance of
 removing existing functionality.

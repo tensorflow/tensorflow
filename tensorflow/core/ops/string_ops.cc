@@ -78,7 +78,9 @@ REGISTER_OP("ReduceJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int8, int16, int32, int64, complex64, float, double, bool}")
+    .Attr(
+        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
+        "bool}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")

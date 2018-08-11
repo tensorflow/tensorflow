@@ -27,6 +27,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import googletest
 
 _DTYPES = set(
@@ -194,6 +195,19 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
            [0.0, 149, 233, 149, 0.0],
            [0.0, 0.0, 87., 0.0, 0.0]])
 
+  def test_rotate_static_shape(self):
+    image = array_ops.diag([1., 2., 3.])
+    result = image_ops.rotate(
+        image, random_ops.random_uniform((), -1, 1), interpolation="BILINEAR")
+    self.assertEqual(image.get_shape(), result.get_shape())
+
+  def test_transform_static_output_shape(self):
+    image = constant_op.constant([[1., 2.], [3., 4.]])
+    result = image_ops.transform(
+        image, random_ops.random_uniform([8], -1, 1),
+        output_shape=constant_op.constant([3, 5]))
+    self.assertAllEqual([3, 5], result.get_shape())
+
   def _test_grad(self, shape_to_test):
     with self.test_session():
       test_image_shape = shape_to_test
@@ -213,10 +227,40 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
           x_init_value=test_image)
       self.assertLess(left_err, 1e-10)
 
+  def _test_grad_different_shape(self, input_shape, output_shape):
+    with self.test_session():
+      test_image_shape = input_shape
+      test_image = np.random.randn(*test_image_shape)
+      test_image_tensor = constant_op.constant(
+          test_image, shape=test_image_shape)
+      test_transform = image_ops.angles_to_projective_transforms(
+          np.pi / 2, 4, 4)
+
+      if len(output_shape) == 2:
+        resize_shape = output_shape
+      elif len(output_shape) == 3:
+        resize_shape = output_shape[0:2]
+      elif len(output_shape) == 4:
+        resize_shape = output_shape[1:3]
+      output = image_ops.transform(
+          images=test_image_tensor,
+          transforms=test_transform,
+          output_shape=resize_shape)
+      left_err = gradient_checker.compute_gradient_error(
+          test_image_tensor,
+          test_image_shape,
+          output,
+          output_shape,
+          x_init_value=test_image)
+      self.assertLess(left_err, 1e-10)
+
   def test_grad(self):
     self._test_grad([16, 16])
     self._test_grad([4, 12, 12])
     self._test_grad([3, 4, 12, 12])
+    self._test_grad_different_shape([16, 16], [8, 8])
+    self._test_grad_different_shape([4, 12, 3], [8, 24, 3])
+    self._test_grad_different_shape([3, 4, 12, 3], [3, 8, 24, 3])
 
 
 class BipartiteMatchTest(test_util.TensorFlowTestCase):

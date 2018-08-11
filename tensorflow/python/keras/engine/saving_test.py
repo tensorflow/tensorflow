@@ -36,6 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
 
 try:
@@ -337,10 +338,18 @@ class TestWholeModelSaving(test.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.RepeatVector(3))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
-      model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
-                    metrics=[keras.metrics.categorical_accuracy],
-                    sample_weight_mode='temporal')
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          weighted_metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          sample_weight_mode='temporal')
       x = np.random.random((1, 3))
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
@@ -435,9 +444,17 @@ class TestWholeModelSaving(test.TestCase):
       output = keras.layers.Dense(3)(x)
 
       model = keras.models.Model(inputs, output)
-      model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
-                    metrics=[keras.metrics.categorical_accuracy])
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          weighted_metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ])
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
@@ -623,9 +640,13 @@ class TestWholeModelSaving(test.TestCase):
       outputs = keras.layers.Dense(3)(x)
 
       model = keras.Model(inputs, outputs)
-      model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.Adam(),
-                    metrics=[keras.metrics.categorical_accuracy])
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.Adam(),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ])
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
@@ -744,7 +765,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model.compile(
           loss='mse',
           optimizer=training_module.RMSPropOptimizer(0.1),
-          metrics=['acc'])
+          metrics=['acc', keras.metrics.CategoricalAccuracy()])
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
       train_x = np.random.random((3, 2))
@@ -781,7 +802,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       load_model.compile(
           loss='mse',
           optimizer=training_module.RMSPropOptimizer(0.1),
-          metrics=['acc'])
+          metrics=['acc', keras.metrics.CategoricalAccuracy()])
       load_model.train_on_batch(train_x, train_y)
       self.assertAllClose(ref_y_after_train, self.evaluate(load_model(x)))
 
@@ -813,6 +834,9 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         session.run([v.initializer for v in model.variables])
       ref_y = self.evaluate(ref_y_tensor)
       model.save_weights(prefix)
+      self.assertEqual(
+          prefix,
+          checkpoint_management.latest_checkpoint(temp_dir))
       for v in model.variables:
         self.evaluate(
             v.assign(random_ops.random_normal(shape=array_ops.shape(v))))

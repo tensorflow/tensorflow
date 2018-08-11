@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -39,6 +40,17 @@ class XlaBuilderTest : public ::testing::Test {
  protected:
   StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder* b) {
     TF_ASSIGN_OR_RETURN(XlaComputation computation, b->Build());
+    const HloModuleProto& proto = computation.proto();
+    TF_ASSIGN_OR_RETURN(const auto& config,
+                        HloModule::CreateModuleConfigFromProto(
+                            proto, legacy_flags::GetDebugOptionsFromFlags()));
+    return HloModule::CreateFromProto(proto, config);
+  }
+
+  // Overload which explicitly specifies the root instruction.
+  StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder* b,
+                                                      XlaOp root) {
+    TF_ASSIGN_OR_RETURN(XlaComputation computation, b->Build(root));
     const HloModuleProto& proto = computation.proto();
     TF_ASSIGN_OR_RETURN(const auto& config,
                         HloModule::CreateModuleConfigFromProto(
@@ -293,6 +305,21 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, AllToAll) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0,
+           /*split_count=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is decomposed into slices -> all-to-all -> gte -> concat.
+  EXPECT_EQ(root->opcode(), HloOpcode::kConcatenate);
+  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kAllToAll);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
+}
+
 TEST_F(XlaBuilderTest, ReportError) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
@@ -318,6 +345,46 @@ TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesErrors) {
   auto statusor = b.Build();
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(), HasSubstr("a test error"));
+}
+
+TEST_F(XlaBuilderTest, BuildWithSpecificRoot) {
+  XlaBuilder b(TestName());
+  XlaOp constant = ConstantR0<float>(&b, 1.0);
+  Add(constant, ConstantR0<float>(&b, 2.0));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, /*root=*/constant));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+}
+
+TEST_F(XlaBuilderTest, BuildWithSpecificRootAndMultipleParameters) {
+  // Specifying a particular root in Build should still include all entry
+  // parameters.
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {42, 123});
+  XlaOp x = Parameter(&b, 0, shape, "x");
+  XlaOp y = Parameter(&b, 1, shape, "y");
+  XlaOp z = Parameter(&b, 2, shape, "z");
+  Add(x, Sub(y, z));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, /*root=*/x));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Parameter());
+  EXPECT_EQ(module->entry_computation()->num_parameters(), 3);
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 5);
+}
+
+TEST_F(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
+  XlaBuilder b(TestName());
+  XlaBuilder other_b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {42, 123});
+
+  Parameter(&b, 0, shape, "param");
+  XlaOp other_param = Parameter(&other_b, 0, shape, "other_param");
+
+  Status status = b.Build(other_param).status();
+  ASSERT_IS_NOT_OK(status);
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr("root operation is not in this computation"));
 }
 
 }  // namespace

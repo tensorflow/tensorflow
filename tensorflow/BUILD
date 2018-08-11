@@ -584,6 +584,7 @@ exports_files(
 gen_api_init_files(
     name = "tensorflow_python_api_gen",
     srcs = ["api_template.__init__.py"],
+    api_version = 1,
     root_init_template = "api_template.__init__.py",
 )
 

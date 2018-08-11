@@ -265,7 +265,7 @@ def random_flip_up_down(image, seed=None):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -287,7 +287,7 @@ def random_flip_left_right(image, seed=None):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -307,7 +307,7 @@ def _random_flip(image, flip_index, seed, scope_name):
       flip_index: The dimension along which to flip the image.
                   Vertical: 0, Horizontal: 1
       seed: A Python integer. Used to create a random seed. See
-        @{tf.set_random_seed}
+        `tf.set_random_seed`
         for behavior.
       scope_name: Name of the scope in which the ops are added.
 
@@ -948,7 +948,7 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  @{tf.image.resize_image_with_pad}.
+  `tf.image.resize_image_with_pad`.
 
   `method` can be one of:
 
@@ -1167,7 +1167,7 @@ def resize_image_with_pad(image,
     _ImageDimensions(padded, rank=4)
 
     if not is_batch:
-      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, axis=[0])
 
     return padded
 
@@ -1227,7 +1227,7 @@ def random_brightness(image, max_delta, seed=None):
     image: An image.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -1255,7 +1255,7 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:

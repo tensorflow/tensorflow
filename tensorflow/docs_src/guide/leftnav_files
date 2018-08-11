@@ -4,9 +4,9 @@ index.md
 keras.md
 eager.md
 datasets.md
+estimators.md: Introduction to Estimators
 
 ### Estimators
-estimators.md: Introduction to Estimators
 premade_estimators.md
 checkpoints.md
 feature_columns.md
