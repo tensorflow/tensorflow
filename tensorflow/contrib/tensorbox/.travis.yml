@@ -1,0 +1,8 @@
+language: c
+dist: trusty
+sudo: required
+env:
+  - LD_PRELOAD="/usr/lib/libtcmalloc_minimal.so.4"
+before_install:
+  - sudo apt-get install python2.7 python-numpy python-pip libtcmalloc-minimal4
+script: ./download_data.sh --travis_tiny_data && pip install tensorflow>=1.0 && pip install -r requirements.txt && cd utils && make && cd .. && python train.py --hypes hypes/overfeat_rezoom.json --gpu -1 --logdir output --max_iter 1
