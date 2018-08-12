@@ -708,4 +708,3 @@ def tf_additional_binary_deps():
           "//third_party/mkl:intel_binary_blob",
       ],
   )
-  
