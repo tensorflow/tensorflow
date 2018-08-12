@@ -38,6 +38,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.util import compat
 
 
 class LabeledTensorMock(object):
@@ -704,6 +705,14 @@ class ExportTest(test_util.TensorFlowTestCase):
     })
 
     self.assertDictEqual(expected_signature_defs, signature_defs)
+
+  def test_get_temp_export_dir(self):
+    # Test case for GitHub issue 21403.
+    export_dir = compat.as_bytes(os.path.join("a", "b", "1533609814"))
+    temp_export_dir = export.get_temp_export_dir(export_dir)
+    self.assertEqual(
+        temp_export_dir,
+        compat.as_bytes(os.path.join("a", "b", "temp-1533609814")))
 
 
 class TensorServingReceiverTest(test_util.TensorFlowTestCase):
