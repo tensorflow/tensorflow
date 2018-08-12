@@ -680,6 +680,20 @@ class KerasCallbacksTest(test.TestCase):
         i += 1
         i %= max_batch_index
 
+
+    class DummyStatefulMetric(keras.layers.Layer):
+
+      def __init__(self, name='dummy_stateful_metric', **kwargs):
+        super(DummyStatefulMetric, self).__init__(name=name, **kwargs)
+        self.stateful = True
+        self.state = keras.backend.variable(value=0, dtype='int32')
+
+      def reset_states(self):
+        pass
+
+      def __call__(self, y_true, y_pred):
+        return self.state
+
     # case: Sequential
     with self.test_session():
       model = keras.models.Sequential()
@@ -692,7 +706,7 @@ class KerasCallbacksTest(test.TestCase):
       model.compile(
           loss='categorical_crossentropy',
           optimizer='sgd',
-          metrics=['accuracy'])
+          metrics=['accuracy', DummyStatefulMetric()])
       tsb = keras.callbacks.TensorBoard(
           log_dir=temp_dir, histogram_freq=1, write_images=True,
           write_grads=True, batch_size=5)
