@@ -68,6 +68,7 @@ cc_library(
         "-I external/ngraph/src",
         "-D NGRAPH_EMBEDDED_IN_TENSORFLOW=1",
     ],
+    alwayslink=1,
     visibility = ["//visibility:public"],
 )
 

@@ -2523,7 +2523,7 @@ tf_cuda_library(
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn",
         ],
-    ), 
+    ),
     alwayslink = 1,
 )
 

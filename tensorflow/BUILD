@@ -23,6 +23,7 @@ load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
 )
+load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
 
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
@@ -440,8 +441,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-
-load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
 
 filegroup(
     name = "intel_binary_blob",

@@ -3809,7 +3809,7 @@ tf_py_wrap_cc(
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
          tf_additional_mpi_deps() +
-         tf_additional_gdr_deps())+ 
+         tf_additional_gdr_deps()) + 
          if_ngraph(["@ngraph_tf//:ngraph_tf"])
 )
 

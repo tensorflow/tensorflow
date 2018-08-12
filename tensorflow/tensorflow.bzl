@@ -29,6 +29,7 @@ load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
 )
+
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
