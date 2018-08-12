@@ -3276,7 +3276,7 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
 
-  For advanced models, please use the full @{tf.nn.rnn_cell.LSTMCell}
+  For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
   that follows.
 
   TODO(gonnet): Write a paper describing this and add a reference here.

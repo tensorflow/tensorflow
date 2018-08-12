@@ -978,6 +978,8 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(sess.run(bvals), [17., 16.])
 
 
+# TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
+# below test cases.
 class PartitionedCallTest(test.TestCase):
 
   def testBasicSingleDevice(self):
@@ -1053,7 +1055,7 @@ class PartitionedCallTest(test.TestCase):
     self.assertEqual(output, 6.)
 
   def testShardsRunOnRequestedDevices(self):
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    config = config_pb2.ConfigProto(device_count={"CPU": 4})
 
     @function.Defun()
     def Body():
@@ -1073,13 +1075,30 @@ class PartitionedCallTest(test.TestCase):
       with ops.device("/cpu:2"):
         s3 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
-      return s1, s2, s3
+      with ops.device(""):
+        # TODO(akshayka): This is unfortunate and brittle. It prevents
+        # `Iterator.from_structure` from assigning the iterator op to 'cpu:0'.
+        #  Remove this hack once we have a way of obtaining metadata about
+        #  function execution.
+        s4 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3, s4
 
-    with self.test_session(config=config):
-      outputs = functional_ops.partitioned_call(args=[], f=Body)
-      self.assertTrue(compat.as_bytes("CPU:0") in outputs[0].eval())
-      self.assertTrue(compat.as_bytes("CPU:1") in outputs[1].eval())
-      self.assertTrue(compat.as_bytes("CPU:2") in outputs[2].eval())
+    with self.test_session(config=config, use_gpu=True) as sess:
+      with ops.device("/cpu:3"):
+        outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
+    self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
+    self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
+    self.assertIn(compat.as_bytes("CPU:3"), outputs[3])
+
+    with self.test_session(config=config, use_gpu=True):
+      with ops.device("/cpu:0"):
+        outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
+    self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
+    self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[3])
 
   def testAssignAddResourceVariable(self):
 

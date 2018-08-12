@@ -119,6 +119,13 @@ TEST(GraphUtilsTest, ContainsFunctionNodeWithName) {
   EXPECT_TRUE(ContainsFunctionNodeWithName("two", function));
 }
 
+TEST(GraphUtilsTest, ContainsFunctionNodeWithOp) {
+  FunctionDef function = test::function::XTimesTwo();
+  EXPECT_FALSE(ContainsFunctionNodeWithOp("weird_op_that_should_not_be_there",
+                                          function));
+  EXPECT_TRUE(ContainsFunctionNodeWithOp("Mul", function));
+}
+
 TEST(GraphUtilsTest, ContainsNodeWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
@@ -143,12 +150,20 @@ TEST(GraphUtilsTest, FindGraphNodeWithName) {
   EXPECT_EQ(FindGraphNodeWithName("A", *graph.GetGraph()), -1);
 }
 
-TEST(GraphUtilsTest, FindFunctionWithName) {
+TEST(GraphUtilsTest, FindFunctionNodeWithName) {
   FunctionDef function = test::function::XTimesTwo();
   EXPECT_EQ(
       FindFunctionNodeWithName("weird_name_that_should_not_be_there", function),
       -1);
   EXPECT_NE(FindFunctionNodeWithName("two", function), -1);
+}
+
+TEST(GraphUtilsTest, FindFunctionNodeWithOp) {
+  FunctionDef function = test::function::XTimesTwo();
+  EXPECT_EQ(
+      FindFunctionNodeWithOp("weird_op_that_should_not_be_there", function),
+      -1);
+  EXPECT_NE(FindFunctionNodeWithOp("Mul", function), -1);
 }
 
 TEST(GraphUtilsTest, FindGraphFunctionWithName) {

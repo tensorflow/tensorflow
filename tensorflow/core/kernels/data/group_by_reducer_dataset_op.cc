@@ -106,14 +106,16 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, init_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func().name()));
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, finalize_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), key_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), init_func().name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), reduce_func().name()));
+      TF_RETURN_IF_ERROR(
+          b->AddFunction(ctx->flib_def(), finalize_func().name()));
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
@@ -261,7 +263,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(
@@ -311,7 +313,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 

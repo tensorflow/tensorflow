@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -102,57 +103,57 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (!cfg_.disable_model_pruning()) {
-    optimizers->emplace_back(new ModelPruner());
+    optimizers->push_back(MakeUnique<ModelPruner>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new FunctionOptimizer(cfg_.function_optimization()));
+    optimizers->push_back(
+        MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
-    optimizers->emplace_back(new DebugStripper());
+    optimizers->push_back(MakeUnique<DebugStripper>());
   }
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new ConstantFolding(cfg_.constant_folding(), cpu_device_));
+    optimizers->push_back(
+        MakeUnique<ConstantFolding>(cfg_.constant_folding(), cpu_device_));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(new ShapeOptimizer());
+    optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->emplace_back(new Remapper(cfg_.remapping()));
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
+    optimizers->push_back(
+        MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
+    optimizers->push_back(
+        MakeUnique<LoopOptimizer>(cfg_.loop_optimization(), cpu_device_));
   }
   if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new DependencyOptimizer(cfg_.dependency_optimization()));
+    optimizers->push_back(
+        MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
   if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->emplace_back(new LayoutOptimizer());
+    optimizers->push_back(MakeUnique<LayoutOptimizer>());
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
-      optimizers->emplace_back(
+      optimizers->push_back(
           // Use the default target node name prefix "gradients/"
-          new MemoryOptimizer(cfg_.memory_optimization()));
+          MakeUnique<MemoryOptimizer>(cfg_.memory_optimization()));
     } else {
-      optimizers->emplace_back(
-          new MemoryOptimizer(cfg_.memory_optimization(),
-                              cfg_.memory_optimizer_target_node_name_scope()));
+      optimizers->push_back(MakeUnique<MemoryOptimizer>(
+          cfg_.memory_optimization(),
+          cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
   if (cfg_.auto_parallel().enable()) {
-    optimizers->emplace_back(
-        new AutoParallel(cfg_.auto_parallel().num_replicas()));
+    optimizers->push_back(
+        MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
   if (cfg_.scoped_allocator_optimization()) {
-    optimizers->emplace_back(new ScopedAllocatorOptimizer(
+    optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
   return Status::OK();
@@ -382,8 +383,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(MakeFunctionDef(func_item, flib, &optimized_func));
 
       // Replace optimized function with a new FunctionDef.
-      TF_RETURN_IF_ERROR(flib.RemoveFunction(func_name));
-      TF_RETURN_IF_ERROR(flib.AddFunctionDef(optimized_func));
+      TF_RETURN_IF_ERROR(flib.ReplaceFunction(func_name, optimized_func));
     }
 
     // If optimized at least one function, update the graph library.

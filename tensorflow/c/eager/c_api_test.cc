@@ -151,7 +151,7 @@ void TestRemoteExecute(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
@@ -239,7 +239,7 @@ void TestRemoteExecuteSilentCopies(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
@@ -371,7 +371,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   const char remote_device_name[] =
@@ -397,7 +397,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   ASSERT_TRUE(s.ok()) << s.error_message();
   ASSERT_TRUE(worker_server->Start().ok());
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Create a new tensor_handle.

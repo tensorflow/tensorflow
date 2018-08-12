@@ -321,6 +321,14 @@ class OneShotPredictionHead(TimeSeriesRegressionHead):
             feature_keys.TrainEvalFeatures.VALUES,
         ]))
 
+  def _evaluate_ops(self, features):
+    """Add ops for evaluation (aka filtering) to the graph."""
+    spec = super(OneShotPredictionHead, self)._evaluate_ops(features)
+    # No state is fed to OneShotPredictionHead, so we don't return it; it being
+    # a tuple can cause issues for downstream infrastructure.
+    del spec.eval_metric_ops[feature_keys.State.STATE_TUPLE]
+    return spec
+
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""
     with variable_scope.variable_scope("model", use_resource=True):

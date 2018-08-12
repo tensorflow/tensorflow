@@ -5,10 +5,10 @@ A TFRecords file represents a sequence of (binary) strings.  The format is not
 random access, so it is suitable for streaming large amounts of data but not
 suitable if fast sharding or other non-sequential access is desired.
 
-*   @{tf.python_io.TFRecordWriter}
-*   @{tf.python_io.tf_record_iterator}
-*   @{tf.python_io.TFRecordCompressionType}
-*   @{tf.python_io.TFRecordOptions}
+*   `tf.python_io.TFRecordWriter`
+*   `tf.python_io.tf_record_iterator`
+*   `tf.python_io.TFRecordCompressionType`
+*   `tf.python_io.TFRecordOptions`
 
 - - -
 

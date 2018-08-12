@@ -204,6 +204,7 @@ py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":converters",
         "//tensorflow/contrib/autograph/core:test_lib",

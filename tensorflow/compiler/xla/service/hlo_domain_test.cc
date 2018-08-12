@@ -490,5 +490,38 @@ TEST_F(HloDomainTest, DumpParseNullSharding) {
   ASSERT_TRUE(ParseModule(hlo_string).status().ok());
 }
 
+TEST_F(HloDomainTest, DomainTuple) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = f32[4] parameter(0), sharding={maximal device=0}
+  cst = u32[] constant(0), sharding={maximal device=1}
+  tpl = (u32[], f32[4]) tuple(cst, p0), sharding={{maximal device=1}, {maximal device=0}}
+  ROOT gte = f32[4] get-tuple-element(tpl), index=1, sharding={maximal device=0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
+
+  HloDomainIsolator isolator(CreateShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
+  EXPECT_TRUE(isolator_changed);
+
+  // Clear sharding of tpl instruction, in order to test domain sharding
+  // application.
+  auto tpl = FindInstruction(module, "tpl");
+  tpl->clear_sharding();
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
+  EXPECT_TRUE(remover_changed);
+
+  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::AssignDevice(1),
+                                              HloSharding::AssignDevice(0)}),
+            tpl->sharding());
+}
+
 }  // namespace
 }  // namespace xla

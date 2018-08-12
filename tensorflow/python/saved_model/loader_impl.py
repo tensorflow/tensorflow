@@ -31,6 +31,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -203,10 +204,7 @@ class SavedModelLoader(object):
         variables to be loaded are located.
     """
     self._export_dir = export_dir
-    self._variables_path = os.path.join(
-        compat.as_bytes(export_dir),
-        compat.as_bytes(constants.VARIABLES_DIRECTORY),
-        compat.as_bytes(constants.VARIABLES_FILENAME))
+    self._variables_path = saved_model_utils.get_variables_path(export_dir)
     self._saved_model = _parse_saved_model(export_dir)
 
   @property

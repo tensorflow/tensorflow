@@ -93,6 +93,10 @@ static uint32 MaskedCrc(const char* data, size_t n) {
 }
 
 Status RecordWriter::WriteRecord(StringPiece data) {
+  if (dest_ == nullptr) {
+    return Status(::tensorflow::error::FAILED_PRECONDITION,
+                  "Writer not initialized or previously closed");
+  }
   // Format of a single record:
   //  uint64    length
   //  uint32    masked crc of length
@@ -111,6 +115,7 @@ Status RecordWriter::WriteRecord(StringPiece data) {
 }
 
 Status RecordWriter::Close() {
+  if (dest_ == nullptr) return Status::OK();
 #if !defined(IS_SLIM_BUILD)
   if (IsZlibCompressed(options_)) {
     Status s = dest_->Close();
@@ -123,6 +128,10 @@ Status RecordWriter::Close() {
 }
 
 Status RecordWriter::Flush() {
+  if (dest_ == nullptr) {
+    return Status(::tensorflow::error::FAILED_PRECONDITION,
+                  "Writer not initialized or previously closed");
+  }
   if (IsZlibCompressed(options_)) {
     return dest_->Flush();
   }

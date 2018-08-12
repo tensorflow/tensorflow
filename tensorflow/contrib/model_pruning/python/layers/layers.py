@@ -139,7 +139,7 @@ def masked_convolution(inputs,
       with "NC".
     num_outputs: Integer, the number of output filters.
     kernel_size: A sequence of N positive integers specifying the spatial
-      dimensions of of the filters.  Can be a single integer to specify the same
+      dimensions of the filters.  Can be a single integer to specify the same
       value for all spatial dimensions.
     stride: A sequence of N positive integers specifying the stride at which to
       compute output.  Can be a single integer to specify the same value for all

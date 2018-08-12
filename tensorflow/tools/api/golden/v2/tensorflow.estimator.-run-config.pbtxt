@@ -1,0 +1,101 @@
+path: "tensorflow.estimator.RunConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.estimator.run_config.RunConfig\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "cluster_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "device_fn"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "evaluation_master"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "global_id_in_cluster"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_chief"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "keep_checkpoint_every_n_hours"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "keep_checkpoint_max"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "log_step_count_steps"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "master"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "model_dir"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_ps_replicas"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_worker_replicas"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "protocol"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "save_checkpoints_secs"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "save_checkpoints_steps"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "save_summary_steps"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "service"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "session_config"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_id"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_type"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "tf_random_seed"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "train_distribute"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'model_dir\', \'tf_random_seed\', \'save_summary_steps\', \'save_checkpoints_steps\', \'save_checkpoints_secs\', \'session_config\', \'keep_checkpoint_max\', \'keep_checkpoint_every_n_hours\', \'log_step_count_steps\', \'train_distribute\', \'device_fn\', \'protocol\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'100\', \'<object object instance>\', \'<object object instance>\', \'None\', \'5\', \'10000\', \'100\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "replace"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+}

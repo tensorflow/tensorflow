@@ -62,6 +62,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
@@ -81,6 +82,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
@@ -187,8 +189,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:util",
     ],
