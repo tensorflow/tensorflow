@@ -32,7 +32,7 @@ perspective.**
 
 ## Running untrusted models
 
-As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
+As a general rule: **Always** execute untrusted models inside a sandbox (e.g.
 [nsjail](https://github.com/google/nsjail)).
 
 There are several ways in which a model could become untrusted. Obviously, if an
