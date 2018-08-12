@@ -221,6 +221,18 @@ class GroupNormTest(test.TestCase):
       normalization.group_norm(inputs, channels_axis=-1,
                                reduction_axes=[-3, -2])
 
+  def testParamsShapeNotFullyDefinedOtherAxes(self):
+    inputs = array_ops.placeholder(dtypes.float32, shape=(None, 3, 4, None, 32))
+    actual_inputs = np.ones(shape=(2, 3, 4, 5, 32))
+    output_op = normalization.group_norm(inputs, channels_axis=-1,
+                                         reduction_axes=[-4, -3])
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      outputs = sess.run(output_op, feed_dict={inputs: actual_inputs})
+      # Make sure that there are no NaNs
+      self.assertFalse(np.isnan(outputs).any())
+
   def testCreateOp(self):
     height, width, groups = 3, 3, 4
     images = random_ops.random_uniform((5, height, width, 2*groups), seed=1)
