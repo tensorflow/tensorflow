@@ -247,7 +247,9 @@ def generated_test_models():
         "local_response_norm",
         "log_softmax",
         "log",
+        "logical_and",
         "logical_or",
+        "logical_xor",
         "lstm",
         "max_pool",
         "maximum",
@@ -263,7 +265,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "reduce_max",
-        #"reduce_prod",  # disabled due to b/111823366
+        "reduce_prod",
         "relu",
         "relu1",
         "relu6",

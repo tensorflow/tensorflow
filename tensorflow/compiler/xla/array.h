@@ -409,7 +409,7 @@ class Array {
 
   // Returns the total number of elements in the array.
   int64 num_elements() const {
-    return std::accumulate(sizes_.begin(), sizes_.end(), 1,
+    return std::accumulate(sizes_.begin(), sizes_.end(), 1LL,
                            std::multiplies<int64>());
   }
 

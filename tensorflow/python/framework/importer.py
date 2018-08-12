@@ -344,9 +344,9 @@ def import_graph_def(graph_def,
   This function provides a way to import a serialized TensorFlow
   [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
-  @{tf.Tensor} and @{tf.Operation} objects. Once extracted,
+  `tf.Tensor` and `tf.Operation` objects. Once extracted,
   these objects are placed into the current default `Graph`. See
-  @{tf.Graph.as_graph_def} for a way to create a `GraphDef`
+  `tf.Graph.as_graph_def` for a way to create a `GraphDef`
   proto.
 
   Args:

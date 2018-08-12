@@ -1756,6 +1756,10 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
+  // TODO(b/112040122): Support variadic reduce.
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return Unimplemented("Variadic reduce is not supported on CPU");
+  }
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
   gtl::ArraySlice<int64> dimensions(reduce->dimensions());

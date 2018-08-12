@@ -70,6 +70,8 @@ class PublicAPIVisitor(object):
         'tf.app': ['flags'],
         # Imported for compatibility between py2/3.
         'tf.test': ['mock'],
+        # Externalized modules of the Keras API.
+        'tf.keras': ['applications', 'preprocessing']
     }
 
   @property

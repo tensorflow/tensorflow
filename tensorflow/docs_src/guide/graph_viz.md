@@ -15,7 +15,7 @@ variable names can be scoped and the visualization uses this information to
 define a hierarchy on the nodes in the graph.  By default, only the top of this
 hierarchy is shown. Here is an example that defines three operations under the
 `hidden` name scope using
-@{tf.name_scope}:
+`tf.name_scope`:
 
 ```python
 import tensorflow as tf

@@ -240,13 +240,9 @@ def _SoftmaxGrad(op, grad_softmax):
      gradient w.r.t the input to the softmax
 
   """
-  # TODO(ilyasu): assert that the tensor has two dimensions at
-  # graph-construction time?  Alternatively: do different things
-  # depending on the dimensionality of the input tensors.
   softmax = op.outputs[0]
-  grad_x = ((grad_softmax - array_ops.reshape(
-      math_ops.reduce_sum(grad_softmax * softmax, [1]), [-1, 1])) * softmax)
-  return grad_x
+  sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
+  return (grad_softmax - sum_channels) * softmax
 
 
 @ops.RegisterGradient("LogSoftmax")
@@ -264,7 +260,7 @@ def _LogSoftmaxGrad(op, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, 1, keepdims=True) * softmax
+  return grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
 
 
 @ops.RegisterGradient("BiasAdd")

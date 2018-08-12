@@ -211,7 +211,8 @@ class AssignVariableOp : public OpKernel {
     OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
                 errors::InvalidArgument(
                     "Variable and value dtypes don't match; respectively, ",
-                    dtype_, " and ", context->input(1).dtype()));
+                    DataTypeString(dtype_), " and ",
+                    DataTypeString(context->input(1).dtype())));
     Var* variable = nullptr;
     const Tensor& value = context->input(1);
     // Note: every resource-variable-manipulating op assumes copy-on-write

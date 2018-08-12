@@ -120,6 +120,7 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
 
       scaled_weight_tensor = math_ops.multiply(
           weights, multiplier_tensor, name='mul_fold')
+
       new_layer_tensor = _CloneWithNewOperands(
           match.layer_op, match.input_tensor, scaled_weight_tensor,
           match.batch_to_space_op)
@@ -368,20 +369,20 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
         lambda: bn_decay_zero,
         lambda: match.bn_decay_mean_tensor,
         name='freeze_moving_mean')
+
     graph_editor.reroute_ts(
         [bn_decay_mean_out], [match.bn_decay_mean_tensor],
         can_modify=bn_decay_mean_consumers)
 
-    if fused_batch_norm is False:
-      bn_decay_var_consumers = list(match.bn_decay_var_tensor.consumers())
-      bn_decay_var_out = utils.smart_cond(
-          use_mv_avg,
-          lambda: bn_decay_zero,
-          lambda: match.bn_decay_var_tensor,
-          name='freeze_moving_var')
-      graph_editor.reroute_ts(
-          [bn_decay_var_out], [match.bn_decay_var_tensor],
-          can_modify=bn_decay_var_consumers)
+    bn_decay_var_consumers = list(match.bn_decay_var_tensor.consumers())
+    bn_decay_var_out = utils.smart_cond(
+        use_mv_avg,
+        lambda: bn_decay_zero,
+        lambda: match.bn_decay_var_tensor,
+        name='freeze_moving_var')
+    graph_editor.reroute_ts(
+        [bn_decay_var_out], [match.bn_decay_var_tensor],
+        can_modify=bn_decay_var_consumers)
 
     correction_recip = utils.smart_cond(
         use_mv_avg,

@@ -441,6 +441,22 @@ Status RealDivGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("RealDiv", RealDivGrad);
 
+Status UnsafeDivGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
+  auto x_1 = ConjugateHelper(scope, op.input(0));
+  auto x_2 = ConjugateHelper(scope, op.input(1));
+  // y = x_1 / x_2
+  // dy/dx_1 = 1/x_2
+  // dy/dx_2 = -x_1/x_2^2
+  auto gx_1 = UnsafeDiv(scope, grad_inputs[0], x_2);
+  auto gx_2 =
+      Mul(scope, grad_inputs[0],
+          UnsafeDiv(scope, UnsafeDiv(scope, Neg(scope, x_1), x_2), x_2));
+  return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
+}
+REGISTER_GRADIENT_OP("UnsafeDiv", UnsafeDivGrad);
+
 Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
                              const std::vector<Output>& grad_inputs,
                              std::vector<Output>* grad_outputs) {
@@ -1006,6 +1022,26 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Prod", ProdGrad);
+
+Status SegmentSumGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
+  // The SegmentSum operation sums segments of the Tensor that have the same
+  // index in the segment_ids parameter.
+  // i.e z = [2, 3, 4, 5], segment_ids [0, 0, 0, 1]
+  // will produce [2 + 3 + 4, 5] = [9, 5]
+  // The gradient that will flow back to the gather operation will look like
+  // [x1, x2], it will have the same shape as the output of the SegmentSum
+  // operation. The differentiation step of the SegmentSum operation just
+  // broadcast the gradient in order to retrieve the z's shape.
+  // dy/dz = [x1, x1, x1, x2]
+  grad_outputs->push_back(Gather(scope, grad_inputs[0], op.input(1)));
+
+  // stop propagation along segment_ids
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("SegmentSum", SegmentSumGrad);
 
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.

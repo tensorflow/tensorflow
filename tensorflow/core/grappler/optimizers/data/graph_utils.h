@@ -32,7 +32,7 @@ namespace grappler {
 namespace graph_utils {
 
 // Adds a node to the graph.
-NodeDef* AddNode(const string& name, const string& op,
+NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
@@ -64,35 +64,42 @@ NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph);
 bool Compare(const GraphDef& g1, const GraphDef& g2);
 
 // Checks whether the graph contains a node with the given name.
-bool ContainsGraphNodeWithName(const string& name, const GraphDef& graph);
+bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph);
 
 // Checks whether the library contains a function with the given name.
-bool ContainsGraphFunctionWithName(const string& name,
+bool ContainsGraphFunctionWithName(StringPiece name,
                                    const FunctionDefLibrary& library);
 
 // Checks whether the function contains a node with the given name.
-bool ContainsFunctionNodeWithName(const string& name,
+bool ContainsFunctionNodeWithName(StringPiece name,
                                   const FunctionDef& function);
 
+// Checks whether the function contains a node with the given op.
+bool ContainsFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
+
 // Checks whether the graph contains a node with the given op.
-bool ContainsNodeWithOp(const string& op, const GraphDef& graph);
+bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph);
 
 // Returns the index of the node with the given name or -1 if the node does
 // not exist.
-int FindGraphNodeWithName(const string& name, const GraphDef& graph);
+int FindGraphNodeWithName(StringPiece name, const GraphDef& graph);
 
 // Returns the index of the function with the given name or -1 if the function
 // does not exist.
-int FindGraphFunctionWithName(const string& name,
+int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library);
 
 // Returns the index of the function node with the given name or -1 if the
 // function node does not exist.
-int FindFunctionNodeWithName(const string& name, const FunctionDef& function);
+int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function);
+
+// Returns the index of the function node with the given op or -1 if the
+// function node does not exist.
+int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
 
 // Returns the index of the first node with the given op or -1 if no such  node
 // exists.
-int FindNodeWithOp(const string& op, const GraphDef& graph);
+int FindNodeWithOp(StringPiece op, const GraphDef& graph);
 
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.
@@ -101,18 +108,16 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 
 // Sets the node name using `prefix` as a prefix while guaranteeing the name
 // is unique across the graph.
-void SetUniqueGraphNodeName(const string& prefix, GraphDef* graph,
-                            NodeDef* node);
+void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 
 // Sets the function node name using the `prefix` as a prefix while guaranteeing
 // the name is unique across the functions nodes.
-void SetUniqueFunctionNodeName(const string& prefix, FunctionDef* function,
+void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
                                NodeDef* node);
 
 // Sets the node name using the `prefix` name as a prefix while guaranteeing the
 // name is unique across the graph.
-void SetUniqueGraphFunctionName(const string& prefix,
-                                FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function);
 
 }  // end namespace graph_utils

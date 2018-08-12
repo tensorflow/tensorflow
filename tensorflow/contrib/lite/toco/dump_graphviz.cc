@@ -167,7 +167,7 @@ NodeProperties GetPropertiesForArray(const Model& model,
     node_properties.label += "]";
 
     int buffer_size = 0;
-    if (IsValid(array.shape())) {
+    if (IsNonEmpty(array.shape())) {
       buffer_size = RequiredBufferSizeForShape(array.shape());
       node_properties.log2_buffer_size =
           std::log2(static_cast<float>(buffer_size));

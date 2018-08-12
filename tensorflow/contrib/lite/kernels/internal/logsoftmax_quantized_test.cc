@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/test_util.h"
+#include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {
 namespace {

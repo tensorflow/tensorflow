@@ -51,6 +51,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import device_setter
 
+
 # Key names for prediction dict.
 ENSEMBLE_STAMP = "ensemble_stamp"
 PREDICTIONS = "predictions"
@@ -898,7 +899,7 @@ class GradientBoostedDecisionTreeModel(object):
 
       reset_ops = []
       for handler in handlers:
-        reset_ops.append(handler.make_splits(stamp_token, next_stamp_token, 0))
+        reset_ops.append(handler.reset(stamp_token, next_stamp_token))
       if self._center_bias:
         reset_ops.append(
             bias_stats_accumulator.flush(stamp_token, next_stamp_token))

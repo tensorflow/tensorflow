@@ -665,7 +665,7 @@ class _FuncGraph(ops.Graph):
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
 
-    Overridden from @{tf.Graph} to update both the init_scope container
+    Overridden from `tf.Graph` to update both the init_scope container
     and the present inner container. This is necessary to make sure setting
     containers applies correctly both to created variables and to stateful
     ops.

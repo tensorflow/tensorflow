@@ -1,6 +1,6 @@
 # Importing Data
 
-The @{tf.data} API enables you to build complex input pipelines from
+The `tf.data` API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
 aggregate data from files in a distributed file system, apply random
 perturbations to each image, and merge randomly selected images into a batch
@@ -51,7 +51,7 @@ Once you have a `Dataset` object, you can *transform* it into a new `Dataset` by
 chaining method calls on the `tf.data.Dataset` object. For example, you
 can apply per-element transformations such as `Dataset.map()` (to apply a
 function to each element), and multi-element transformations such as
-`Dataset.batch()`. See the documentation for @{tf.data.Dataset}
+`Dataset.batch()`. See the documentation for `tf.data.Dataset`
 for a complete list of transformations.
 
 The most common way to consume values from a `Dataset` is to make an
@@ -211,13 +211,13 @@ for _ in range(20):
     sess.run(next_element)
 ```
 
-A **feedable** iterator can be used together with @{tf.placeholder} to select
-what `Iterator` to use in each call to @{tf.Session.run}, via the familiar
+A **feedable** iterator can be used together with `tf.placeholder` to select
+what `Iterator` to use in each call to `tf.Session.run`, via the familiar
 `feed_dict` mechanism. It offers the same functionality as a reinitializable
 iterator, but it does not require you to initialize the iterator from the start
 of a dataset when you switch between iterators. For example, using the same
 training and validation example from above, you can use
-@{tf.data.Iterator.from_string_handle} to define a feedable iterator
+`tf.data.Iterator.from_string_handle` to define a feedable iterator
 that allows you to switch between the two datasets:
 
 ```python
@@ -329,12 +329,12 @@ of an iterator will include all components in a single expression.
 
 ### Saving iterator state
 
-The @{tf.contrib.data.make_saveable_from_iterator} function creates a
+The `tf.contrib.data.make_saveable_from_iterator` function creates a
 `SaveableObject` from an iterator, which can be used to save and
 restore the current state of the iterator (and, effectively, the whole input
-pipeline). A saveable object thus created can be added to @{tf.train.Saver}
+pipeline). A saveable object thus created can be added to `tf.train.Saver`
 variables list or the `tf.GraphKeys.SAVEABLE_OBJECTS` collection for saving and
-restoring in the same manner as a @{tf.Variable}. Refer to
+restoring in the same manner as a `tf.Variable`. Refer to
 @{$saved_model$Saving and Restoring} for details on how to save and restore
 variables.
 
@@ -488,7 +488,7 @@ dataset = dataset.flat_map(
 ### Consuming CSV data
 
 The CSV file format is a popular format for storing tabular data in plain text.
-The @{tf.contrib.data.CsvDataset} class provides a way to extract records from
+The `tf.contrib.data.CsvDataset` class provides a way to extract records from
 one or more CSV files that comply with [RFC 4180](https://tools.ietf.org/html/rfc4180).
 Given one or more filenames and a list of defaults, a `CsvDataset` will produce
 a tuple of elements whose types correspond to the types of the defaults
@@ -757,9 +757,9 @@ dataset = dataset.repeat()
 
 ### Using high-level APIs
 
-The @{tf.train.MonitoredTrainingSession} API simplifies many aspects of running
+The `tf.train.MonitoredTrainingSession` API simplifies many aspects of running
 TensorFlow in a distributed setting. `MonitoredTrainingSession` uses the
-@{tf.errors.OutOfRangeError} to signal that training has completed, so to use it
+`tf.errors.OutOfRangeError` to signal that training has completed, so to use it
 with the `tf.data` API, we recommend using
 `Dataset.make_one_shot_iterator()`. For example:
 
@@ -782,7 +782,7 @@ with tf.train.MonitoredTrainingSession(...) as sess:
     sess.run(training_op)
 ```
 
-To use a `Dataset` in the `input_fn` of a @{tf.estimator.Estimator}, we also
+To use a `Dataset` in the `input_fn` of a `tf.estimator.Estimator`, we also
 recommend using `Dataset.make_one_shot_iterator()`. For example:
 
 ```python

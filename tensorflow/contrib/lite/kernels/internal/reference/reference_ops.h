@@ -546,8 +546,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       if (bias_data) {
         acc += bias_data[Offset(bias_dims, out_c, 0, 0, 0)];
       }
-      acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          acc, output_multiplier, kReverseShift * output_shift);
+      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                          kReverseShift * output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -3156,18 +3156,9 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
   float nudged_min, nudged_max, nudged_scale;
   NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
                          &nudged_max, &nudged_scale);
-  const float inv_nudged_scale = 1.0f / nudged_scale;
-
   const int flat_size = MatchingFlatSize(output_dims, input_dims);
-  for (int i = 0; i < flat_size; i++) {
-    const float src_val = input_data[i];
-    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
-    const float clamped_shifted = clamped - nudged_min;
-    const float dst_val =
-        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
-        nudged_min;
-    output_data[i] = dst_val;
-  }
+  FakeQuantizeArray(nudged_scale, nudged_min, nudged_max, input_data,
+                    output_data, flat_size);
 }
 
 template <typename SrcT, typename DstT>

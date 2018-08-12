@@ -383,7 +383,7 @@ class MultiWorkerCrossTowerOpsTest(multi_worker_test_base.MultiWorkerTestBase,
 class MultiWorkerCollectiveAllReduceTest(
     multi_worker_test_base.MultiWorkerTestBase, parameterized.TestCase):
 
-  collective_key_base = 10000
+  collective_key_base = 100000
 
   @classmethod
   def setUpClass(cls):
@@ -539,13 +539,6 @@ class MultiWorkerCollectiveAllReduceTest(
       return
     self._run_between_graph_clients(self._test_reduction, self._cluster_spec,
                                     num_gpus)
-
-  # Collective ops doesn't support strategy with one device.
-  def testReductionLocal(self, num_gpus=2):
-    if context.num_gpus() < num_gpus:
-      return
-    self._run_between_graph_clients(
-        self._test_reduction, self._cluster_spec, num_gpus, local_mode=True)
 
 
 if __name__ == "__main__":

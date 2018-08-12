@@ -3174,6 +3174,7 @@ cuda_py_test(
         ":partitioned_variables",
         ":variable_scope",
         ":variables",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
     ],
     tags = ["no_windows"],

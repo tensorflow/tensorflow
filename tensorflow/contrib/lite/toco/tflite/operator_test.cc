@@ -129,6 +129,10 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
   CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",
                                          OperatorType::kLogicalOr);
+  CheckSimpleOperator<LogicalAndOperator>("LOGICAL_AND",
+                                          OperatorType::kLogicalAnd);
+  CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
+                                          OperatorType::kLogicalNot);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

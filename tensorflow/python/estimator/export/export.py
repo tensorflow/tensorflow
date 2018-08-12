@@ -288,9 +288,8 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
 
 
 def _placeholder_from_tensor(t, default_batch_size=None):
-  shape_list = t.get_shape().as_list()
-  shape_list[0] = default_batch_size
-  shape = tensor_shape.TensorShape(shape_list)
+  batch_shape = tensor_shape.TensorShape([default_batch_size])
+  shape = batch_shape.concatenate(t.get_shape()[1:])
 
   # Reuse the feature tensor's op name (t.op.name) for the placeholder,
   # excluding the index from the tensor's name (t.name):

@@ -77,16 +77,16 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
 
-  1) Always use @{tf.get_variable} instead of @{tf.Variable} which is not able
+  1) Always use `tf.get_variable` instead of `tf.Variable` which is not able
   to refer to the same variable on different towers.
 
   2) It is generally not recommended to open a device scope under the strategy's
-  scope. A device scope (i.e. calling @{tf.device}) will be merged with or
+  scope. A device scope (i.e. calling `tf.device`) will be merged with or
   override the device for operations but will not change the device for
   variables.
 
   3) It is also not recommended to open a colocation scope (i.e. calling
-  @{tf.colocate_with}) under the strategy's scope. For colocating variables,
+  `tf.colocate_with`) under the strategy's scope. For colocating variables,
   use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
   create conflicts of device assignement.
   """
@@ -311,6 +311,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         return [val.get(device=d) for d in self._compute_devices]
       return [val.get(device=d) for d in sorted(val.devices)]
     return [val]
+
+  def value_container(self, val):
+    return values.value_container(val)
 
   def read_var(self, var):
     # No need to distinguish between normal variables and tower-local variables.

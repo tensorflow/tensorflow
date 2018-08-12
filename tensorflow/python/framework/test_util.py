@@ -659,10 +659,10 @@ def run_in_graph_and_eager_modes(func=None,
   """Execute the decorated test with and without enabling eager execution.
 
   This function returns a decorator intended to be applied to test methods in
-  a @{tf.test.TestCase} class. Doing so will cause the contents of the test
+  a `tf.test.TestCase` class. Doing so will cause the contents of the test
   method to be executed twice - once normally, and once with eager execution
   enabled. This allows unittests to confirm the equivalence between eager
-  and graph execution (see @{tf.enable_eager_execution}).
+  and graph execution (see `tf.enable_eager_execution`).
 
   For example, consider the following unittest:
 

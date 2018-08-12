@@ -43,15 +43,39 @@ TransferManager::GetPlatformTransferManagers() {
 StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
   StatusOr<std::unique_ptr<Literal>> ret;
+
   se::Stream* substream = stream->GetOrCreateSubStream();
   substream->ThenWaitFor(stream);
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
 
   tensorflow::Notification n;
-  TransferLiteralFromDevice(substream, device_buffer,
-                            [&](StatusOr<std::unique_ptr<Literal>> arg) {
-                              ret = std::move(arg);
+  Status s;
+  Literal literal(device_buffer.on_host_shape());
+  TransferLiteralFromDevice(substream, device_buffer, literal,
+                            [&](Status status) {
+                              s = status;
+                              n.Notify();
+                            });
+  n.WaitForNotification();
+  if (!s.ok()) {
+    return s;
+  }
+  return MakeUnique<Literal>(std::move(literal));
+}
+
+Status TransferManager::TransferLiteralFromDevice(
+    se::Stream* stream, const ShapedBuffer& device_buffer,
+    const MutableBorrowingLiteral& literal) {
+  se::Stream* substream = stream->GetOrCreateSubStream();
+  auto cleanup = tensorflow::gtl::MakeCleanup(
+      [&]() { stream->ReturnSubStream(substream); });
+
+  Status ret;
+  tensorflow::Notification n;
+  TransferLiteralFromDevice(substream, device_buffer, literal,
+                            [&](Status status) {
+                              ret = status;
                               n.Notify();
                             });
   n.WaitForNotification();
@@ -76,22 +100,27 @@ Status TransferManager::TransferLiteralToDevice(
 StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape,
     const se::DeviceMemoryBase& source) {
+  StatusOr<std::unique_ptr<Literal>> ret;
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  StatusOr<std::unique_ptr<Literal>> ret;
   se::Stream* substream = stream->GetOrCreateSubStream();
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
 
   tensorflow::Notification n;
-  TransferArrayFromDevice(substream, shape, source,
-                          [&](StatusOr<std::unique_ptr<Literal>> arg) {
-                            ret = std::move(arg);
+  Literal literal(shape);
+  Status s;
+  TransferArrayFromDevice(substream, shape, source, literal,
+                          [&](Status status) {
+                            s = status;
                             n.Notify();
                           });
   n.WaitForNotification();
-  return ret;
+  if (!s.ok()) {
+    return s;
+  }
+  return MakeUnique<Literal>(std::move(literal));
 }
 
 Status TransferManager::TransferArrayToDevice(
@@ -130,7 +159,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
 
 void TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
-    std::function<void(StatusOr<std::unique_ptr<Literal>>)> done) {
+    const MutableBorrowingLiteral& literal, std::function<void(Status)> done) {
   if (!ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape)) {
     auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
                         " has a differently shaped representation on-device: ",
@@ -147,7 +176,8 @@ void TransferManager::TransferArrayFromDevice(
                              stream->parent()->platform(),
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(source, /*index=*/{});
-  return TransferLiteralFromDevice(stream, shaped_buffer, std::move(done));
+  return TransferLiteralFromDevice(stream, shaped_buffer, literal,
+                                   std::move(done));
 }
 
 /* static */ void TransferManager::RegisterTransferManager(
