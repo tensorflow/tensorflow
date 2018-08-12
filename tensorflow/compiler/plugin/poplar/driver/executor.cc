@@ -595,16 +595,18 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
 Status PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   void* buf(static_cast<void*>(tc->data));
   try {
-    if (tc->output_convertor) {
-      current_engine_->readTensor(tc->output_handle, buf);
-      std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
-      memcpy(buf, converted.data(), converted.size());
-    } else {
-      current_engine_->readTensor(tc->output_handle, buf);
-    }
-    if (current_config_.profiling().enable_io_trace()) {
-      AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
-                     tc->output_handle, 0);
+    if (tc->on_device == true && !tc->output_handle.empty()) {
+      if (tc->output_convertor) {
+        current_engine_->readTensor(tc->output_handle, buf);
+        std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
+        memcpy(buf, converted.data(), converted.size());
+      } else {
+        current_engine_->readTensor(tc->output_handle, buf);
+      }
+      if (current_config_.profiling().enable_io_trace()) {
+        AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
+                       tc->output_handle, 0);
+      }
     }
     tc->on_device = false;
     tc->output_handle.clear();
@@ -678,7 +680,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
       // Check that all args are allocated by this executor, and check if
       // the argument list is the same as previous execution
-      bool arguments_changed = engine_changed;
+      bool arguments_changed = false;
       for (const auto& arg : arg_map) {
         auto it = std::find(allocations_.begin(), allocations_.end(),
                             arg.second.tc);
@@ -687,36 +689,34 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
               "Argument isn't allocated on device: ", (void*)arg.second.tc);
         }
 
-        if (arg.second.tc->input_handle != arg.first) {
-          arguments_changed = true;
+        if (!arg.second.streamed) {
+          if (engine_changed || arg.second.tc->input_handle != arg.first) {
+            arguments_changed = true;
+          }
         }
       }
 
-
-      // Pull previous execution output back from device if:
-      // a) it is on the device _and_
+      // Pull previous execution outputs back from device if:
+      // a) one is on the device _and_
       // b)   the engine is changing _or_
       // c)   output buffer isn't an input to the current engine _or_
       // d)   output buffer isn't currently in the right place for the new input
+      bool upload_outputs = false;
       for (const auto& tc : allocations_) {
         if (tc->on_device == true) {
           if (!tc->output_handle.empty()) {
             if (engine_changed ||
                 arg_map.count(tc->input_handle) == 0 ||
                 tc != arg_map.at(tc->input_handle).tc) {
-              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-              if (!arguments_changed) {
-                LOG(INFO) << "**** MISSED ARG CHANGED FOR DEVICE->HOST ****";
-              }
-            }
-          } else {
-            if (arg_map.count(tc->input_handle) > 0 &&
-                tc != arg_map.at(tc->input_handle).tc) {
-              // Mark any old inputs as invalid
-              tc->input_handle.clear();
-              tc->on_device = false;
+              upload_outputs = true;
             }
           }
+        }
+      }
+
+      if (upload_outputs) {
+        for (const auto& tc : allocations_) {
+          TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
         }
       }
 
@@ -757,10 +757,6 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
               }
 
               current_engine_->writeTensor(arg.first, buf);
-
-              if (!arguments_changed) {
-                LOG(INFO) << "**** MISSED ARG CHANGED FOR HOST->DEVICE ****";
-              }
 
               tc->on_device = true;
               tc->input_handle = arg.first;
