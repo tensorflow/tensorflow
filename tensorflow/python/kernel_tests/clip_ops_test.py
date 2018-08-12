@@ -377,9 +377,13 @@ class ClipTest(test.TestCase):
       x1 = constant_op.constant([1.0, -2.0])
       clip_norm = 6.0
 
-      _, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "use_norm"):
+      ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
         norm.eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        ans[0].eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        ans[1].eval()
 
   def testClipByAverageNormClipped(self):
     # Norm clipping when average clip_norm < 0.83333333
