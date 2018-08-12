@@ -18,6 +18,7 @@ py_library(
     deps = [
         ":baseline",
         ":boosted_trees",
+        ":tensor_forest",
         ":dnn",
         ":dnn_linear_combined",
         ":estimator",
@@ -215,6 +216,34 @@ py_test(
     ],
     deps = [
         ":boosted_trees",
+        ":inputs",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+py_library(
+    name = "tensor_forest",
+    srcs = ["canned/tensor_forest.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":head",
+        ":model_fn",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+py_test(
+    name = "tensor_forest_test",
+    size = "medium",
+    srcs = ["canned/tensor_forest_test.py"],
+    shard_count = 2,
+    srcs_version = "PY2AND3",
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":tensor_forest",
         ":inputs",
         "//tensorflow:tensorflow_py_no_contrib",
     ],
