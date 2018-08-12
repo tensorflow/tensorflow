@@ -233,7 +233,6 @@ def group_norm(inputs,
     ValueError: If reduction_axes or channels_axis are out of bounds.
     ValueError: If reduction_axes are not mutually exclusive with channels_axis.
   """
-  # TODO(shlens): Support partially defined shapes for the inputs.
   inputs = ops.convert_to_tensor(inputs)
   original_shape = array_ops.shape(inputs)
 
@@ -275,8 +274,10 @@ def group_norm(inputs,
   # Determine axes before channels. Some examples of common image formats:
   #  'NCHW': before = [N], after = [HW]
   #  'NHWC': before = [NHW], after = []
-  axes_before_channels = inputs.shape.as_list()[:channels_axis]
-  axes_after_channels = inputs.shape.as_list()[channels_axis+1:]
+  axes_before_channels = [array_ops.shape(inputs)[i]
+                          for i in range(0,channels_axis)]
+  axes_after_channels = [array_ops.shape(inputs)[i]
+                         for i in range(channels_axis+1,len(inputs.shape))]
 
   # Manually broadcast the parameters to conform to the number of groups.
   params_shape_broadcast = ([1] * len(axes_before_channels) +
@@ -286,7 +287,6 @@ def group_norm(inputs,
   # Reshape the input by the group within the channel dimension.
   inputs_shape = (axes_before_channels + [groups, channels // groups] +
                   axes_after_channels)
-  inputs_shape = list(map(lambda d: -1 if d is None else d, inputs_shape))
   inputs = array_ops.reshape(inputs, inputs_shape)
 
   # Determine the dimensions across which moments are calculated.
