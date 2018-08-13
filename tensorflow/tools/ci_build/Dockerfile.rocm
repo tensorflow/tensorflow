@@ -48,8 +48,7 @@ RUN cd $HOME/MIOpen && mkdir build && cd build && \
     -DCMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" \
     -DHALF_INCLUDE_DIR=$HOME/half/include \
     -DCMAKE_BUILD_TYPE=Release \
-    ..
-RUN sudo make package -j$(nproc)
+    .. && sudo make package -j$(nproc)
 
 
 
