@@ -46,6 +46,13 @@ class SlicesTest(test.TestCase):
     with self.test_session() as sess:
       self.assertAllEqual(sess.run(t), [3, 4])
 
+  def test_get_item_tensor_string(self):
+    initial_str = constant_op.constant("abcd")
+    t = slices.get_item(initial_str, 1, slices.GetItemOpts(element_dtype=initial_str.dtype))
+
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(t), b"b")
+
 
 if __name__ == '__main__':
   test.main()
