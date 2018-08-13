@@ -46,11 +46,11 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class FileDataset : public GraphDatasetBase {
+  class FileDataset : public DatasetBase {
    public:
     explicit FileDataset(OpKernelContext* ctx, const DatasetBase* input,
                          string filename, Env* env)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           filename_(std::move(filename)),
           env_(env),
@@ -539,10 +539,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     const string tensor_format_string_;
   };  // FileDataset
 
-  class MemoryDataset : public GraphDatasetBase {
+  class MemoryDataset : public DatasetBase {
    public:
     explicit MemoryDataset(OpKernelContext* ctx, const DatasetBase* input)
-        : GraphDatasetBase(ctx), input_(input), cache_(new MemoryCache()) {
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          cache_(new MemoryCache()) {
       input->Ref();
     }
 
