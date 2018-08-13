@@ -201,6 +201,23 @@ def _calculate_num_features(sorted_feature_columns):
   return num_features
 
 
+def _generate_feature_name_for_index(sorted_feature_columns):
+  names = []
+  for column in sorted_feature_columns:
+    if isinstance(column, feature_column_lib._IndicatorColumn):  # pylint:disable=protected-access
+      categorical_column = column.categorical_column
+      if isinstance(categorical_column,
+                    feature_column_lib._VocabularyListCategoricalColumn):  # pylint:disable=protected-access
+        for voc in categorical_column.vocabulary_list:
+          names.append('{}:{}'.format(column.name, voc))
+      else:
+        for num in categorical_column._num_buckets:  # pylint:disable=protected-access
+          names.append('{}:{}'.format(column.name, num))
+    else:
+      names.append(column.name)
+  return names
+
+
 def _cache_transformed_features(features, sorted_feature_columns, batch_size):
   """Transform features and cache, then returns (cached_features, cache_op)."""
   num_features = _calculate_num_features(sorted_feature_columns)
@@ -943,7 +960,9 @@ def _compute_feature_importance_for_tree(tree, num_features, normalize):
   return importances
 
 
-def compute_feature_importances(tree_ensemble, num_features, normalize=True):
+def compute_feature_importances(tree_ensemble,
+                                num_features,
+                                normalize=True):
   tree_importances = [_compute_feature_importance_for_tree(tree,
                                                            num_features,
                                                            normalize)
@@ -957,8 +976,8 @@ def compute_feature_importances(tree_ensemble, num_features, normalize=True):
     if normalizer > 0.0:
       feature_importances /= normalizer
 
-  sorted_feature = np.argsort(feature_importances)[::-1]
-  return sorted_feature, feature_importances[sorted_feature]
+  sorted_feature_idx = np.argsort(feature_importances)[::-1]
+  return sorted_feature_idx, feature_importances[sorted_feature_idx]
 
 
 class _BoostedTrees(estimator.Estimator):
@@ -967,15 +986,18 @@ class _BoostedTrees(estimator.Estimator):
     super(_BoostedTrees, self).__init__(
         model_fn=model_fn, model_dir=model_dir, config=config)
 
-    sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
-    self._num_features = _calculate_num_features(sorted_feature_columns)
+    self._sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
 
   def compute_feature_importances(self, normalize=True):
     tree_ensemble = self._read_tree_ensemble_from_checkpoint()
     if tree_ensemble:
-      return compute_feature_importances(tree_ensemble,
-                                         self._num_features,
-                                         normalize)
+      num_features = _calculate_num_features(self._sorted_feature_columns)
+      names_for_idx = np.array(
+          _generate_feature_name_for_index(self._sorted_feature_columns))
+      idx, importances = compute_feature_importances(tree_ensemble,
+                                                     num_features,
+                                                     normalize)
+      return names_for_idx[idx], importances
     else:
       return [], []
 
