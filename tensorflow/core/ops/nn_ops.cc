@@ -1379,6 +1379,39 @@ REGISTER_OP("QuantizedConv2D")
       return Status::OK();
     });
 
+// This interface is similar to the QuantizedConv2D op's interface:
+// See
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/ops/nn_ops.cc#L2369
+//
+// Some discussions for the output_shape parameter:
+// https://github.com/tensorflow/tensorflow/issues/2118
+REGISTER_OP("QuantizedConv2DTranspose")
+    .Input("output_sizes: int32")
+    .Input("filter: Tfilter")
+    .Input("value: Tinput")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes quantized conv2d_transpose.
+)doc");
+
 REGISTER_OP("QuantizedMaxPool")
     .Input("input: T")
     .Input("min_input: float")

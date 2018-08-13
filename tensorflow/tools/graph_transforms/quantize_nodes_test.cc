@@ -106,8 +106,9 @@ class QuantizeNodesTest : public ::testing::Test {
     // Reshape is not included here because it can be added as part of the
     // quantization process.
     const std::set<string> quantizable_ops = {
-        "Add",   "BiasAdd",        "Concat",  "Conv2D",  "MatMul", "Relu",
-        "Relu6", "ResizeBilinear", "AvgPool", "MaxPool", "Mul"};
+        "Add",     "BiasAdd", "Concat", "Conv2D",         "Conv2DBackpropInput",
+        "MatMul",  "Relu",    "Relu6",  "ResizeBilinear", "AvgPool",
+        "MaxPool", "Mul"};
     for (const NodeDef& node : quantized_graph_def.node()) {
       EXPECT_EQ(0, quantizable_ops.count(node.op()))
           << "Found quantizable node " << node.op() << " for node named "
@@ -339,6 +340,47 @@ class QuantizeNodesTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
 
     TestQuantizedVersusFloatGraph(float_graph_def, {}, {"conv_op"});
+  }
+
+  void TestQuantizeConv2DTranspose(int depth, int input_width, int input_height,
+                                   int input_batch_count, int filter_size,
+                                   int filter_count, int output_height,
+                                   int output_width, int stride,
+                                   const string& padding,
+                                   const std::vector<float>& input_values,
+                                   const std::vector<float>& filter_values) {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Tensor input_tensor(DT_FLOAT, TensorShape({input_batch_count, input_height,
+                                               input_width, depth}));
+    test::FillValues<float>(&input_tensor, input_values);
+    Output input_op =
+        Const(root.WithOpName("input_op"), Input::Initializer(input_tensor));
+
+    // here filter_count is actually the number of channels in the input of the
+    // original convolution.
+    Tensor filter_tensor(
+        DT_FLOAT, TensorShape({filter_size, filter_size, filter_count, depth}));
+    test::FillValues<float>(&filter_tensor, filter_values);
+    Output filter_op =
+        Const(root.WithOpName("filter_op"), Input::Initializer(filter_tensor));
+
+    Tensor input_sizes_tensor(DT_INT32, TensorShape({4}));
+    test::FillValues<int32_t>(
+        &input_sizes_tensor,
+        {input_batch_count, output_height, output_width, filter_count});
+    Output input_sizes_op = Const(root.WithOpName("input_sizes_op"),
+                                  Input::Initializer(input_sizes_tensor));
+
+    Output op = Conv2DBackpropInput(root.WithOpName("conv_grad_op"),
+                                    input_sizes_op, filter_op, input_op,
+                                    {1, stride, stride, 1}, padding);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    TestQuantizedVersusFloatGraph(float_graph_def, {}, {"conv_grad_op"});
   }
 
   void TestQuantizeBiasAdd() {
@@ -1457,6 +1499,22 @@ TEST_F(QuantizeNodesTest, TestQuantizeConv2D) {
   TestQuantizeConv2D(1, 4, 3, 1, 3, 1, 1, "SAME",
                      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
                      {1, 4, 7, 2, 5, 8, 3, 6, 9});
+}
+
+TEST_F(QuantizeNodesTest, TestQuantizeConv2DTranspose) {
+  // NOTE: here is a test case that will fail, mainly due to numerical issues.
+  //
+  // TestQuantizeConv2DTranspose(
+  //     2, 2, 2, 1, 3, 3, 4, 4, 1, "VALID", {1, 2, 3, 4, 5, 6, 7, 8},
+  //     {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17,
+  //     18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 1,  2,  3,  4,  5,  6,  7,  8,
+  //     9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+  //     27});
+  TestQuantizeConv2DTranspose(
+      2, 2, 2, 1, 3, 3, 4, 4, 1, "VALID", {1, 2, 3, 4, 5, 6, 7, 8},
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+       1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+       1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9});
 }
 
 TEST_F(QuantizeNodesTest, TestQuantizeBiasAdd) { TestQuantizeBiasAdd(); }

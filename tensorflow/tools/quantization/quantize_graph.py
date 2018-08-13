@@ -341,6 +341,9 @@ class GraphRewriter(object):
       ValueError: Two nodes with the same name were found in the graph.
     """
     self.input_graph = input_graph
+    self.graph = ops.Graph()
+    with self.graph.as_default():
+      importer.import_graph_def(self.input_graph, input_map={}, name="")
     self.nodes_map = self.create_nodes_map(input_graph)
     self.output_graph = None
     self.mode = mode
@@ -462,7 +465,7 @@ class GraphRewriter(object):
       input_node_name = node_name_from_input(input_node_name)
       input_node = self.nodes_map[input_node_name]
       self.round_nodes_recursively(input_node)
-    nodes_to_quantize = ["Conv2D", "BiasAdd", "MatMul"]
+    nodes_to_quantize = ["Conv2DBackpropInput", "Conv2D", "BiasAdd", "MatMul"]
     if any(current_node.op in s for s in nodes_to_quantize):
       new_node = node_def_pb2.NodeDef()
       new_node.CopyFrom(current_node)
@@ -494,7 +497,7 @@ class GraphRewriter(object):
       input_node_name = node_name_from_input(input_node_name)
       input_node = self.nodes_map[input_node_name]
       self.quantize_nodes_recursively(input_node)
-    nodes_to_quantize = ["Conv2D", "BiasAdd", "MatMul"]
+    nodes_to_quantize = ["Conv2DBackpropInput", "Conv2D", "BiasAdd", "MatMul"]
     if any(current_node.op in s for s in nodes_to_quantize):
       for input_name in current_node.input:
         input_name = node_name_from_input(input_name)
@@ -583,7 +586,7 @@ class GraphRewriter(object):
 
     for i, input_node_name in enumerate(current_node.input):
       quantize_input = False
-      if current_node.op in ("MatMul", "Conv2D", "BiasAdd", "MaxPool",
+      if current_node.op in ("MatMul", "Conv2D", "Conv2DBackpropInput", "BiasAdd", "MaxPool",
                              "AvgPool", "Relu", "Relu6",
                              "BatchNormWithGlobalNormalization"):
         quantize_input = True
@@ -606,6 +609,8 @@ class GraphRewriter(object):
       self.eightbitize_mat_mul_node(current_node)
     elif current_node.op == "Conv2D":
       self.eightbitize_conv_node(current_node)
+    elif current_node.op == "Conv2DBackpropInput":
+      self.eightbitize_deconv_node(current_node)
     elif current_node.op == "BiasAdd":
       self.eightbitize_bias_add_node(current_node)
     elif current_node.op == "MaxPool" or current_node.op == "AvgPool":
@@ -660,17 +665,37 @@ class GraphRewriter(object):
         namespace_prefix)
     input_names = []
     min_max_names = []
+
+    not_quantized_input_names = []
+
     for original_input_name in original_node.input:
-      quantize_input_name, min_input_name, max_input_name = (
-          self.eightbitize_input_to_node(namespace_prefix, original_input_name,
-                                         reshape_dims_name,
-                                         reduction_dims_name))
-      input_names.append(quantize_input_name)
-      min_max_names.append(min_input_name)
-      min_max_names.append(max_input_name)
+      input_node = self.nodes_map[original_input_name]
+      print(input_node.name, input_node.op, input_node.attr['T'].type)
+      if input_node.attr['T'].type is 3:
+        print(input_node)
+        not_quantized_input_names.append(original_input_name)
+      else:
+        quantize_input_name, min_input_name, max_input_name = (
+            self.eightbitize_input_to_node(namespace_prefix, original_input_name,
+                                           reshape_dims_name,
+                                           reduction_dims_name))
+        input_names.append(quantize_input_name)
+        min_max_names.append(min_input_name)
+        min_max_names.append(max_input_name)
     all_input_names = []
-    all_input_names.extend(input_names)
-    all_input_names.extend(min_max_names)
+
+    print(original_node.op)
+    if original_node.op != 'Conv2DBackpropInput':
+      all_input_names.extend(input_names)
+      all_input_names.extend(not_quantized_input_names)
+      all_input_names.extend(min_max_names)
+    else:
+      print('Working on Conv2DBackpropInput ...')
+      all_input_names.extend(input_names[::-1])
+      all_input_names.extend(not_quantized_input_names)
+      all_input_names.extend([min_max_names[-2], min_max_names[-1]])
+      all_input_names.extend([min_max_names[0], min_max_names[1]])
+
     return all_input_names
 
   def add_common_quantization_nodes(self, namespace_prefix):
@@ -810,6 +835,23 @@ class GraphRewriter(object):
     self.add_output_graph_node(quantized_conv_node)
     quantize_down_name = self.add_quantize_down_nodes(original_node,
                                                       quantized_conv_name)
+    self.add_dequantize_result_node(quantize_down_name, original_node.name)
+
+  def eightbitize_deconv_node(self, original_node):
+    """Replaces a deconv node with the eight bit equivalent sub-graph."""
+    all_input_names = self.add_eightbit_prologue_nodes(original_node)
+    print(all_input_names)
+    quantized_deconv_name = original_node.name + "_eightbit_quantized_deconv"
+    quantized_deconv_node = create_node("QuantizedConv2DBackpropInput", quantized_deconv_name,
+                                      all_input_names)
+    copy_attr(quantized_deconv_node, "strides", original_node.attr["strides"])
+    copy_attr(quantized_deconv_node, "padding", original_node.attr["padding"])
+    set_attr_dtype(quantized_deconv_node, "Tinput", dtypes.quint8)
+    set_attr_dtype(quantized_deconv_node, "Tfilter", dtypes.quint8)
+    set_attr_dtype(quantized_deconv_node, "out_type", dtypes.qint32)
+    self.add_output_graph_node(quantized_deconv_node)
+    quantize_down_name = self.add_quantize_down_nodes(original_node,
+                                                      quantized_deconv_name)
     self.add_dequantize_result_node(quantize_down_name, original_node.name)
 
   def eightbitize_bias_add_node(self, original_node):
@@ -1271,6 +1313,9 @@ def main(unused_args):
   graph = ops.Graph()
   with graph.as_default():
     importer.import_graph_def(tf_graph, input_map={}, name="")
+
+  for node in graph.as_graph_def().node:
+    print(node.name, node.op)
 
   quantized_input_range = None
   if FLAGS.quantized_input:

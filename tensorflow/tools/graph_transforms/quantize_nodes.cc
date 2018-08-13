@@ -34,6 +34,9 @@ namespace graph_transforms {
 struct QuantizedOpInfo {
   // The name of the float op.
   string float_name;
+  // The name of the target quantized op; if empty, will follow the default
+  // Quantized* pattern.
+  string target_name;
   // Which attributes to copy directly over.
   std::vector<string> attrs_to_copy;
   // Extra data type attributes we need to set.
@@ -57,6 +60,7 @@ struct QuantizedOpInfo {
 const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
   static const std::vector<QuantizedOpInfo> op_list = {
       {"Add",
+       "",
        {},
        {{"T1", DT_QUINT8}, {"T2", DT_QUINT8}, {"Toutput", DT_QINT32}},
        DT_QUINT8,
@@ -64,6 +68,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"AvgPool",
+       "",
        {"ksize", "strides", "padding"},
        {{"T", DT_QUINT8}},
        DT_QUINT8,
@@ -71,6 +76,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"BiasAdd",
+       "",
        {},
        {{"T1", DT_QUINT8}, {"T2", DT_QUINT8}, {"out_type", DT_QINT32}},
        DT_QUINT8,
@@ -78,6 +84,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"Concat",
+       "",
        {"N"},
        {{"T", DT_QUINT8}},
        DT_QUINT8,
@@ -85,13 +92,23 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {0},
        QuantizedOpInfo::SEPARATE_MIN_MAX},
       {"Conv2D",
+       "",
        {"strides", "padding"},
        {{"Tinput", DT_QUINT8}, {"Tfilter", DT_QUINT8}, {"out_type", DT_QINT32}},
        DT_QUINT8,
        DT_QINT32,
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
+      {"Conv2DBackpropInput",
+       "QuantizedConv2DTranspose",
+       {"strides", "padding"},
+       {{"Tinput", DT_QUINT8}, {"Tfilter", DT_QUINT8}, {"out_type", DT_QINT32}},
+       DT_QUINT8,
+       DT_QINT32,
+       {0},
+       QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"MatMul",
+       "",
        {"transpose_a", "transpose_b"},
        {{"T1", DT_QUINT8}, {"T2", DT_QUINT8}, {"Toutput", DT_QINT32}},
        DT_QUINT8,
@@ -99,6 +116,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"MaxPool",
+       "",
        {"ksize", "strides", "padding"},
        {{"T", DT_QUINT8}},
        DT_QUINT8,
@@ -106,6 +124,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"Mul",
+       "",
        {},
        {{"T1", DT_QUINT8}, {"T2", DT_QUINT8}, {"Toutput", DT_QINT32}},
        DT_QUINT8,
@@ -113,6 +132,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"Relu",
+       "",
        {},
        {{"Tinput", DT_QUINT8}},
        DT_QUINT8,
@@ -120,6 +140,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"ResizeBilinear",
+       "",
        {"align_corners"},
        {{"T", DT_QUINT8}},
        DT_QUINT8,
@@ -127,6 +148,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {1},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"Relu6",
+       "",
        {},
        {{"Tinput", DT_QUINT8}},
        DT_QUINT8,
@@ -134,6 +156,7 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"Reshape",
+       "",
        {},
        {{"T", DT_QUINT8}},
        DT_QUINT8,
@@ -711,6 +734,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
             continue;
           }
           if (input_types[i] != DT_FLOAT) {
+            LOG(INFO) << float_node.name() << " " << i << " " << input_types[i];
             are_all_float = false;
           }
         }
@@ -801,7 +825,9 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
 
         // Set up the quantized version of the current op.
         NodeDef quantized_main_node;
-        quantized_main_node.set_op("Quantized" + float_node.op());
+        quantized_main_node.set_op(op_info.target_name != ""
+                                       ? op_info.target_name
+                                       : ("Quantized" + float_node.op()));
         quantized_main_node.set_name(float_node.name() + "/eightbit");
         for (const string& attr_to_copy : op_info.attrs_to_copy) {
           CopyNodeAttr(float_node, attr_to_copy, attr_to_copy,
