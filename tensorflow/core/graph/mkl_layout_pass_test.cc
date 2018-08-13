@@ -2013,11 +2013,11 @@ TEST_F(MklLayoutPassTest, Basic) {
 }
 
 // Test set 0: Pad + Conv2D; padding is VALID
-// A = input(image), B = input(paddings), C= Pad = input of conv2D, 
+// A = input(image), B = input(paddings), C= Pad = input of conv2D,
 // D=input(filter), E = Conv2D, Z = Zeta
 // C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
 // After layout pass
-// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2) 
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
   CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
@@ -2049,10 +2049,10 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
 }
 
 // Test set 0: Pad + Conv2D; padding is SAME
-// A = input(image), B = input(paddings), C= Pad = input of conv2D, 
+// A = input(image), B = input(paddings), C= Pad = input of conv2D,
 // D=input(filter), E = Conv2D, Z = Zeta
 // C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
-// After layout pass - No merging 
+// After layout pass - No merging
 TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Negative) {
   CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
@@ -2075,11 +2075,12 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Negative) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-           "A(Input);B(Int32Input);C(Pad);D(Input);DMT/_0(Const);DMT/_1(Const);"
-           "E(_MklConv2D);Y(Input);Z(Zeta)|A->C;B->C:1;C->E;"
-           "C:control->DMT/_0:control;C:control->DMT/_1:control;"
-           "D->E:1;DMT/_0->E:2;DMT/_1->E:3;E->Z;Y->Z:1");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Int32Input);C(Pad);D(Input);DMT/_0(Const);DMT/_1(Const);"
+      "E(_MklConv2D);Y(Input);Z(Zeta)|A->C;B->C:1;C->E;"
+      "C:control->DMT/_0:control;C:control->DMT/_1:control;"
+      "D->E:1;DMT/_0->E:2;DMT/_1->E:3;E->Z;Y->Z:1");
 }
 
 // Test set 1: Conv2D + AddBias

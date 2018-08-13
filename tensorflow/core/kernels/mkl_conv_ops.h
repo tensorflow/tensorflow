@@ -230,9 +230,8 @@ class MklDnnConvUtil {
   virtual inline void GetOutputAndPadSizeInMklOrder(
       const TensorShape& input_shape, const TensorShape& filter_shape,
       const memory::dims& strides, const memory::dims& dilations,
-      memory::dims* output_dims_tf_order,
-      memory::dims* output_dims_mkl_order, memory::dims* pad_l,
-      memory::dims* pad_r, bool padEnabled=false) {
+      memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
+      memory::dims* pad_l, memory::dims* pad_r, bool padEnabled = false) {
     CHECK_NOTNULL(output_dims_tf_order);
     CHECK_NOTNULL(output_dims_mkl_order);
     CHECK_NOTNULL(pad_l);
@@ -269,17 +268,17 @@ class MklDnnConvUtil {
                                  dilation_cols, stride_cols, padding_,
                                  &out_cols, &pad_left, &pad_right));
     // If padEnabled, i.e., pad and conv op are fused, then
-    // all pads are already passed from pad op through 
-    // *pad_l and *pad_r 
-    if(padEnabled) { 
-       pad_top = static_cast<int64>((*pad_l)[0]);
-       pad_left = static_cast<int64>((*pad_l)[1]);
-       pad_bottom = static_cast<int64>((*pad_r)[0]);
-       pad_right = static_cast<int64>((*pad_r)[1]);
-       // update the out_rows and out_cols based on all 
-       // sides of the pads coming from pad op. 
-       out_rows = out_rows + (pad_top + pad_bottom ) / stride_rows;  
-       out_cols = out_cols + (pad_left + pad_right ) / stride_cols; 
+    // all pads are already passed from pad op through
+    // *pad_l and *pad_r
+    if (padEnabled) {
+      pad_top = static_cast<int64>((*pad_l)[0]);
+      pad_left = static_cast<int64>((*pad_l)[1]);
+      pad_bottom = static_cast<int64>((*pad_r)[0]);
+      pad_right = static_cast<int64>((*pad_r)[1]);
+      // update the out_rows and out_cols based on all
+      // sides of the pads coming from pad op.
+      out_rows = out_rows + (pad_top + pad_bottom) / stride_rows;
+      out_cols = out_cols + (pad_left + pad_right) / stride_cols;
     }
     // Handle padding. MKL-DNN uses asymetric padding.
     // But, if padEnabled, i.e., pad and conv op are fused,
@@ -342,10 +341,9 @@ class MklDnnConvUtil {
   inline void GetConvFwdSizesInMklOrder(
       const TensorShape& input_shape, const TensorShape& filter_shape,
       memory::dims* input_dims, memory::dims* filter_dims,
-      memory::dims* strides, memory::dims *dilations,
-      memory::dims* output_dims_tf_order,
-      memory::dims* output_dims_mkl_order, memory::dims* pad_l,
-      memory::dims* pad_r, bool padEnabled=false) {
+      memory::dims* strides, memory::dims* dilations,
+      memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
+      memory::dims* pad_l, memory::dims* pad_r, bool padEnabled = false) {
     CHECK_NOTNULL(input_dims);
     CHECK_NOTNULL(filter_dims);
     CHECK_NOTNULL(strides);
@@ -361,14 +359,12 @@ class MklDnnConvUtil {
     if (!context_->status().ok()) return;
     GetStridesInMklOrder(strides);
     GetDilationsInMklOrder(dilations);
-    GetOutputAndPadSizeInMklOrder(input_shape, filter_shape,
-                                  *strides, *dilations,
-                                  output_dims_tf_order, output_dims_mkl_order,
-                                  pad_l, pad_r, padEnabled);
+    GetOutputAndPadSizeInMklOrder(
+        input_shape, filter_shape, *strides, *dilations, output_dims_tf_order,
+        output_dims_mkl_order, pad_l, pad_r, padEnabled);
     if (!context_->status().ok()) return;
   }
 };
-
 
 /////////////////////////////////////////////////////////////////////
 ///  Common class that implements Conv2DBackpropFilter and Input
