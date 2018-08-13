@@ -90,8 +90,10 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSelect);
   transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStridedSlice);
+  transformations->Add(new ResolveConstantTile);
   transformations->Add(new ResolveConstantTranspose);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
