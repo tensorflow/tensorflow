@@ -387,6 +387,7 @@ config_setting(
     define_values = {
         "dynamic_loaded_kernels": "true",
     },
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
