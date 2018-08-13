@@ -208,16 +208,14 @@ class EntryVisitor : public FullVisitor {
         }
       }
 
+      auto fifo = graph_.addHostToDeviceFIFO(
+          GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
+          out.numElements());
+
       if (parameter_streamed[inst->parameter_number()]) {
-        auto fifo = graph_.addHostToDeviceFIFO(
-            GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
-            out.numElements());
-
         sequence.add(poplar::program::Copy(fifo, out));
-
       } else {
-        graph_.createHostWrite(GetInputCopyHandle(inst->parameter_number(), i),
-                               out);
+        host_to_device.add(poplar::program::Copy(fifo, out));
       }
     }
     return Status::OK();

@@ -693,9 +693,11 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       ArgsHandleMap arg_map;
       CreateArgsHandleMap(arg_map, args, executable);
 
-      // Check that all args are allocated by this executor, and check if
-      // the argument list is the same as previous execution
-      bool arguments_changed = false;
+      // Put data on the device if:
+      // a) the engine has changed
+      // b) it is not on the device
+      // c) it is on the device, but in the wrong place
+      bool do_host_to_device = false;
       for (const auto& arg : arg_map) {
         auto it = std::find(allocations_.begin(), allocations_.end(),
                             arg.second.tc);
@@ -705,8 +707,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         }
 
         if (!arg.second.streamed) {
-          if (engine_changed || arg.second.tc->input_handle != arg.first) {
-            arguments_changed = true;
+          if (engine_changed || arg.second.tc->on_device == false ||
+              arg.second.tc->input_handle != arg.first) {
+            do_host_to_device = true;
           }
         }
       }
@@ -716,20 +719,19 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       // b)   the engine is changing _or_
       // c)   output buffer isn't an input to the current engine _or_
       // d)   output buffer isn't currently in the right place for the new input
-      bool upload_outputs = false;
+      bool do_device_to_host = false;
       for (const auto& tc : allocations_) {
-        if (tc->on_device == true) {
-          if (!tc->output_handle.empty()) {
-            if (engine_changed ||
-                arg_map.count(tc->input_handle) == 0 ||
-                tc != arg_map.at(tc->input_handle).tc) {
-              upload_outputs = true;
-            }
+        if (tc->on_device == true &&
+            !tc->output_handle.empty()) {
+          if (engine_changed ||
+              arg_map.count(tc->input_handle) == 0 ||
+              tc != arg_map.at(tc->input_handle).tc) {
+            do_device_to_host = true;
           }
         }
       }
 
-      if (upload_outputs) {
+      if (do_device_to_host) {
         MoveDeviceToHost();
       }
 
@@ -752,24 +754,19 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         }
       }
 
-      // Put data on the device if:
-      // a) the engine has changed
-      // b) it is not on the device
-      // c) it is on the device, but in the wrong place
       try {
-        for (auto arg : arg_map) {
-          TensorControl* tc = arg.second.tc;
-          void* buf(static_cast<void*>(tc->data));
-          if (!arg.second.streamed) {
-            if (tc->on_device == false || tc->input_handle != arg.first ||
-                engine_changed) {
+        if (do_host_to_device) {
+          for (auto arg : arg_map) {
+            TensorControl* tc = arg.second.tc;
+            void* buf(static_cast<void*>(tc->data));
+            if (!arg.second.streamed) {
 
               if (arg.second.fn != nullptr) {
                 tc->converted_data = arg.second.fn(buf, tc->size, 0);
                 buf = tc->converted_data.data();
               }
 
-              current_engine_->writeTensor(arg.first, buf);
+              current_engine_->connectStream(arg.first, buf);
 
               tc->on_device = true;
               tc->input_handle = arg.first;
@@ -782,6 +779,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
               }
             }
           }
+
+          current_engine_->run(1);
         }
       } catch (std::logic_error e) {
         return tensorflow::errors::Internal("Poplar host write error ",
