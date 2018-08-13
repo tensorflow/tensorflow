@@ -47,6 +47,7 @@ RUN ${PIP} --no-cache-dir install \
         scipy \
         sklearn \
         pandas \
+        keras_applications \
         && \
     ${PYTHON} -m ipykernel.kernelspec
 
