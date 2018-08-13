@@ -963,39 +963,38 @@ class MklConv2DOp : public OpKernel {
         errors::Aborted("Operation received an exception:", error_msg));
     }
   }
-  
-  void PadWithConvFusion(OpKernelContext* context, memory::dims &padding_left,
-                         memory::dims &padding_right){
+
+  void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
+                         memory::dims& padding_right) {
     const Tensor& paddings_tf = MklGetInput(context, 2);
     OP_REQUIRES(context, paddings_tf.dims() == 2,
                 errors::InvalidArgument("paddings must be 2-dimensional: ",
                                         paddings_tf.shape().DebugString()));
     Tpadding* paddings = nullptr;
     // To get individual pad, need to flatten the tensor
-    paddings = static_cast<Tpadding*>(const_cast<Tpadding*>
-                                     (paddings_tf.flat<Tpadding>().data())); 
+    paddings = static_cast<Tpadding*>(
+        const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
     // For NHWC format:
-    // paddings[0], paddings[1], paddings[6], paddings[7] should be zero 
+    // paddings[0], paddings[1], paddings[6], paddings[7] should be zero
     // if the paddings_tf is [ [0, 0] [1,2] [3,4] [0,0] ]
     // paddings = {0, 0, 1, 2, 3, 4, 0, 0} ; flat method is row major
     // then, values are: top = 1, bottom =2, left=3, right=4
-    // For NCHW format: 
-    // paddings[0], paddings[1], paddings[2], paddings[3] should be zero 
+    // For NCHW format:
+    // paddings[0], paddings[1], paddings[2], paddings[3] should be zero
     // similar explanation as NHWC format will apply.
-    int64 pad_top, pad_left; 
-    int64 pad_bottom, pad_right; 
+    int64 pad_top, pad_left;
+    int64 pad_bottom, pad_right;
     string data_format = ToString(data_format_);
-    if(data_format == "NHWC"){
-      pad_top = paddings[2]; 
-      pad_bottom = paddings[3]; 
-      pad_left = paddings[4]; 
-      pad_right = paddings[5]; 
-    }
-    else if (data_format == "NCHW"){
-      pad_top = paddings[4]; 
-      pad_bottom = paddings[5]; 
-      pad_left = paddings[6]; 
-      pad_right = paddings[7]; 
+    if (data_format == "NHWC") {
+      pad_top = paddings[2];
+      pad_bottom = paddings[3];
+      pad_left = paddings[4];
+      pad_right = paddings[5];
+    } else if (data_format == "NCHW") {
+      pad_top = paddings[4];
+      pad_bottom = paddings[5];
+      pad_left = paddings[6];
+      pad_right = paddings[7];
     }
     // Create padding arrays for MKL DNN convolutions.
     // MKL-DNN uses asymetric padding.
@@ -1124,13 +1123,13 @@ class MklConv2DOp : public OpKernel {
                               .TypeConstraint<T>("T")               \
                               .TypeConstraint<int32>("Tpaddings")   \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                   MklConv2DOp<CPUDevice, T, int32, false, true>);  \
+                          MklConv2DOp<CPUDevice, T, int32, false, true>);  \
   REGISTER_KERNEL_BUILDER(Name("_MklPadWithConv2D")                 \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .TypeConstraint<int64>("Tpaddings")   \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                   MklConv2DOp<CPUDevice, T, int64, false, true>);  \
+                          MklConv2DOp<CPUDevice, T, int64, false, true>);  \
   REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")           \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
@@ -1139,7 +1138,7 @@ class MklConv2DOp : public OpKernel {
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
-#endif // INTEL_MKL_ML
+#endif // INTEL_MKL_ML_ONLY
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

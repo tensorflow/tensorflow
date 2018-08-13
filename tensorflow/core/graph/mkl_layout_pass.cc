@@ -2551,10 +2551,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
                       csinfo_.conv2d_grad_filter_with_bias,
                       GetConv2DBackpropFilterOrBiasAddGrad});
-    minfo_.push_back({csinfo_.pad, csinfo_.conv2d,
-                      csinfo_.pad_with_conv2d, GetPadOrConv2D});
-    //TODO : Need to check if pad is with zero or not
-    // if is zero then replace, if not then do not replace
+    minfo_.push_back(
+        {csinfo_.pad, csinfo_.conv2d, csinfo_.pad_with_conv2d, GetPadOrConv2D});
+    // Merge Pad and Conv2d, only if the pad op is "Pad"
+    // Doesn't merge if pad op is "PadV2" or "MirrorPad"
   }
 
   // Standard interface to run pass
@@ -2792,42 +2792,39 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     CHECK_NOTNULL(m);
     Node* n = nullptr;
 
-    const Node* conv_node; 
+    const Node* conv_node;
     if (m->type_string() == csinfo_.pad) {
       // If m is Pad, then Conv2D is the output of Pad.
       for (const Edge* e : m->out_edges()) {
-        if (!e->IsControlEdge() &&
-            e->dst()->type_string() == csinfo_.conv2d) {
+        if (!e->IsControlEdge() && e->dst()->type_string() == csinfo_.conv2d) {
           n = e->dst();
-          conv_node = n; 
+          conv_node = n;
           break;
         }
       }
     } else {
       CHECK_EQ(m->type_string(), csinfo_.conv2d);
-      // If m is conv2D, Go over all input edges 
+      // If m is conv2D, Go over all input edges
       // and search for Pad  Node.
       for (const Edge* e : m->in_edges()) {
-        if (!e->IsControlEdge() &&
-            e->src()->type_string() == csinfo_.pad) {
+        if (!e->IsControlEdge() && e->src()->type_string() == csinfo_.pad) {
           n = e->src();
-          conv_node = m; 
+          conv_node = m;
           break;
         }
       }
     }
-    // Check if only VALID type of padding is used 
-    // or not. 
+    // Check if only VALID type of padding is used
+    // or not.
     if (n != nullptr) {
       string padding;
       TF_CHECK_OK(GetNodeAttr(conv_node->def(), "padding", &padding));
-      if (padding != "VALID") 
-        // Then do not merge. 
-        // Only VALID type of padding in conv op can be 
+      if (padding != "VALID")
+        // Then do not merge.
+        // Only VALID type of padding in conv op can be
         // merged with Pad op.
         n = nullptr;
-    }
-    else {
+    } else {
       VLOG(1) << "MklLayoutRewritePass: Could not find matching "
               << "Pad and Conv2D node for merging. Input node: "
               << m->DebugString();
@@ -3155,7 +3152,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPadWithConv2D(const Node* orig_node, NodeBuilder* nb);
-  static void CopyAttrsFromPadAndConv2D(const Node* orig_node1, const Node* orig_node2, 
+  static void CopyAttrsFromPadAndConv2D(const Node* orig_node1,
+                                        const Node* orig_node2,
                                         NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
@@ -3356,7 +3354,7 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // 2nd input (slot 1) of _MklConv2D and _MklConv2DWithBias.
     for (const Edge* e : filter_node->out_edges()) {
       if ((e->dst()->type_string() == csinfo_.mkl_conv2d ||
-           // add check for mkl_pad_with_conv2d  
+           // add check for mkl_pad_with_conv2d
            e->dst()->type_string() == csinfo_.mkl_pad_with_conv2d ||
            e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias) &&
           e->dst_input() == kConv2DFilterInputSlotIdx
@@ -3669,7 +3667,7 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
 
 // Used in rinfo when replacing __MklDummyPadWithConv2D by _MklPadWithConv2D
 void MklLayoutRewritePass::CopyAttrsPadWithConv2D(const Node* orig_node,
-          NodeBuilder* nb) {
+                                                  NodeBuilder* nb) {
   DataType Tpaddings;
   DataType T;
   string data_format;
@@ -3700,7 +3698,8 @@ void MklLayoutRewritePass::CopyAttrsPadWithConv2D(const Node* orig_node,
 
 // Used with MergePadWithConv2D
 void MklLayoutRewritePass::CopyAttrsFromPadAndConv2D(const Node* orig_node1,
-          const Node* orig_node2, NodeBuilder* nb) {
+                                                     const Node* orig_node2,
+                                                     NodeBuilder* nb) {
   DataType Tpaddings;
   DataType T;
   string data_format;
@@ -4095,12 +4094,12 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 }
 
 Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
-                                                    Node* m, Node* n) {
+                                                Node* m, Node* n) {
   CHECK(((m->type_string() == csinfo_.pad &&
-             n->type_string() == csinfo_.conv2d)) ||
-               ((n->type_string() == csinfo_.pad &&
-                 m->type_string() == csinfo_.conv2d)));
-      
+          n->type_string() == csinfo_.conv2d)) ||
+        ((n->type_string() == csinfo_.pad &&
+          m->type_string() == csinfo_.conv2d)));
+
   // Conv2D is successor node, and Pad predecessor node.
   Node* pred = m->type_string() == csinfo_.pad ? m : n;
   Node* succ = m->type_string() == csinfo_.pad ? n : m;
@@ -4158,7 +4157,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // 2. Get inputs from both the nodes.
 
   // Pad must have 2 inputs: "input" and paddings.
-  CHECK_EQ(pred->in_edges().size(), 2); 
+  CHECK_EQ(pred->in_edges().size(), 2);
   // Conv2D must have 2 inputs: pad output and Filter
   CHECK_EQ(succ->in_edges().size(), 2);
 
@@ -4174,8 +4173,8 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
 
   // Copy attributes from Pad and conv2D to PadWithConv2D.
-  CopyAttrsFromPadAndConv2D(const_cast<const Node*>(succ), const_cast<const Node*>(pred),
-                            &nb);
+  CopyAttrsFromPadAndConv2D(const_cast<const Node*>(succ),
+                            const_cast<const Node*>(pred), &nb);
 
   // Copy the device assigned to old node to new node.
   nb.Device(succ->def().device());
@@ -4186,7 +4185,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
-  // node are already copied in BuildNode. 
+  // node are already copied in BuildNode.
   // We handle control edges now.
   for (const Edge* e : pred->in_edges()) {
     if (e->IsControlEdge()) {
@@ -4493,10 +4492,10 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   }
 
   // We make an exception for __MklDummyConv2DWithBias,
-  // __MklConv2DBackpropFilterWithBias, and __MklDummyPadWithConv2D since their names 
-  // do not match Mkl node names.
+  // __MklConv2DBackpropFilterWithBias, and __MklDummyPadWithConv2D since their
+  // names do not match Mkl node names.
   if (n->type_string() != csinfo_.conv2d_with_bias &&
-      n->type_string() != csinfo_.pad_with_conv2d && 
+      n->type_string() != csinfo_.pad_with_conv2d &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
