@@ -152,3 +152,11 @@ void MLFunction::destroy() {
   this->~MLFunction();
   free(this);
 }
+
+const OperationStmt *MLFunction::getReturnStmt() const {
+  return cast<OperationStmt>(&back());
+}
+
+OperationStmt *MLFunction::getReturnStmt() {
+  return cast<OperationStmt>(&back());
+}

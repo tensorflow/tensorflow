@@ -80,6 +80,10 @@ public:
 
   ~MLFunction();
 
+  // Return the 'return' statement of this MLFunction.
+  const OperationStmt *getReturnStmt() const;
+  OperationStmt *getReturnStmt();
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {
     return func->getKind() == Function::Kind::MLFunc;
