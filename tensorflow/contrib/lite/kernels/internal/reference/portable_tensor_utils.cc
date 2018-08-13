@@ -73,10 +73,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
   for (int b = 0; b < n_batch; b++) {
     const float* matrix_ptr = matrix;
     for (int r = 0; r < m_rows; r++) {
+      float dot_prod = 0.0f;
       const float* vector_in_batch = vector + b * m_cols;
       for (int c = 0; c < m_cols; c++) {
-        *result_in_batch += *matrix_ptr++ * *vector_in_batch++;
+        dot_prod += *matrix_ptr++ * *vector_in_batch++;
       }
+      *result_in_batch += dot_prod;
       result_in_batch += result_stride;
     }
   }

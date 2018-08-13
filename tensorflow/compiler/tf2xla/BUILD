@@ -95,6 +95,10 @@ cc_library(
     name = "cpu_function_runtime",
     srcs = ["cpu_function_runtime.cc"],
     hdrs = ["cpu_function_runtime.h"],
+    visibility = [
+        "//tensorflow/compiler/aot:__pkg__",
+        "//tensorflow/compiler/xla/service/cpu:__pkg__",
+    ],
     deps = [
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
@@ -144,6 +148,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service/cpu:buffer_info_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

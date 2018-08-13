@@ -396,7 +396,7 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
       loss = model.total_loss
 
       if model.metrics:
-        # TODO(fchollet): support stateful metrics
+        # TODO(psv/fchollet): support stateful metrics
         eval_metric_ops = {}
         # When each metric maps to an output
         if isinstance(model.metrics, dict):

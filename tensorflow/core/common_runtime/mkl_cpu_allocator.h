@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 
-#ifndef DO_NOT_USE_ML
+#ifndef INTEL_MKL_DNN_ONLY
 #include "i_malloc.h"
 #endif
 
@@ -98,7 +98,7 @@ class MklCPUAllocator : public VisitableAllocator {
     VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
     allocator_ = new BFCAllocator(new MklSubAllocator, max_mem_bytes,
                                   kAllowGrowth, kName);
-#ifndef DO_NOT_USE_ML
+#ifndef INTEL_MKL_DNN_ONLY
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
     i_malloc = MallocHook;

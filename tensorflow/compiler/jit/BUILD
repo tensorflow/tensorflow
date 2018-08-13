@@ -160,6 +160,7 @@ cc_library(
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:util",
@@ -178,6 +179,7 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:fifo_queue",
+        "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:no_op",
@@ -186,6 +188,9 @@ cc_library(
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/kernels/data:generator_dataset_op",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        "//tensorflow/core/kernels/data:prefetch_dataset_op",
     ],
 )
 

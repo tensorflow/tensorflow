@@ -232,11 +232,16 @@ class _InternalTPUContext(object):
     if tpu_system_metadata is not None:
       return tpu_system_metadata
 
+    cluster_def = None
+    if (self._config.session_config and
+        self._config.session_config.cluster_def.job):
+      cluster_def = self._config.session_config.cluster_def
+
     # pylint: disable=protected-access
     tpu_system_metadata = (
         tpu_system_metadata_lib._query_tpu_system_metadata(
             master,
-            run_config=self._config,
+            cluster_def=cluster_def,
             query_topology=self.model_parallelism_enabled))
 
     self._lazy_tpu_system_metadata_dict[master] = tpu_system_metadata

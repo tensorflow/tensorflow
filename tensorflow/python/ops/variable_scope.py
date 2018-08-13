@@ -314,13 +314,13 @@ class _VariableStore(object):
         use when doing asynchronous distributed training.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
 
     Returns:
       The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -1484,7 +1484,7 @@ Args:
     unless validate_shape is False.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
+    `tf.GraphKeys.REGULARIZATION_LOSSES` and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the
@@ -2445,13 +2445,13 @@ def variable_creator_scope(variable_creator):
       use_resource: if True, a ResourceVariable is always created.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
 
   This set may grow over time, so it's important the signature of creators is as
   mentioned above.

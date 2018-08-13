@@ -28,6 +28,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":doc_generator_visitor",
+        ":generate_lib",
         "//tensorflow/python:platform_test",
     ],
 )

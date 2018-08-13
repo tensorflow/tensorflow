@@ -18,7 +18,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import copy
 import numpy as np
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
@@ -38,7 +37,6 @@ def fit_loop(
     callbacks=None,
     val_inputs=None,
     val_targets=None,
-    callback_metrics=None,
     initial_epoch=0,
     steps_per_epoch=None,
     validation_steps=None):
@@ -53,10 +51,6 @@ def fit_loop(
       callbacks: List of callbacks to be called during training
       val_inputs: List of input arrays.
       val_targets: List of target arrays.
-      callback_metrics: List of strings, the display names of the metrics
-          passed to the callbacks. They should be the
-          concatenation of list the display names of the outputs of
-           `f` and the list of display names of the outputs of `f_val`.
       initial_epoch: Epoch at which to start training
           (useful for resuming a previous training run)
       steps_per_epoch: Total number of steps (batches of samples)
@@ -126,50 +120,6 @@ def fit_loop(
                        'when doing step-wise '
                        'training, i.e. `steps_per_epoch` '
                        'must be set.')
-  out_labels = model.metrics_names
-  if do_validation:
-    callback_metrics = copy.copy(out_labels) + [
-        'val_' + n for n in out_labels
-    ]
-  else:
-    callback_metrics = copy.copy(out_labels)
-
-  model.history = cbks.History()
-  all_callbacks = [cbks.BaseLogger(
-      stateful_metrics=model.stateful_metric_names)]
-  if verbose:
-    # We assume that `steps_per_epoch` is always set since we have to use
-    # Datasets.
-    count_mode = 'steps'
-
-    all_callbacks.append(
-        cbks.ProgbarLogger(
-            count_mode, stateful_metrics=model.stateful_metric_names))
-  all_callbacks += (callbacks or []) + [model.history]
-  callbacks = cbks.CallbackList(all_callbacks)
-  out_labels = out_labels or []
-
-  # We set the callback model to an instance of the `DistributedModel` that we
-  # create in the  `compile` call. The `DistributedModel` is initialized with
-  # the first replicated model. We need to set the callback model to a
-  # DistributedModel to allow us to override saving and loading weights when
-  # we checkpoint the model during training.
-  callback_model = model._replicated_model
-
-  callbacks.set_model(callback_model)
-
-  callbacks.set_params({
-      'epochs': epochs,
-      'steps': steps_per_epoch,
-      'samples': None,
-      'verbose': verbose,
-      'do_validation': do_validation,
-      'metrics': callback_metrics or [],
-  })
-  callbacks.on_train_begin()
-  callback_model.stop_training = False
-
-  out_labels = out_labels or []
 
   # Copy the weights from the original model to each of the replicated models.
   orig_model_weights = model.get_weights()
@@ -178,6 +128,17 @@ def fit_loop(
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
+  callbacks = cbks.configure_callbacks(
+      callbacks,
+      model,
+      do_validation=do_validation,
+      val_inputs=None,
+      val_targets=None,
+      epochs=epochs,
+      steps_per_epoch=steps_per_epoch,
+      verbose=verbose)
+  out_labels = model.metrics_names or []
+  callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
     callbacks.on_epoch_begin(epoch)
     if steps_per_epoch is not None:
@@ -203,7 +164,7 @@ def fit_loop(
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         callbacks.on_batch_end(step_index, batch_logs)
-        if callback_model.stop_training:
+        if callbacks.model.stop_training:
           break
       if do_validation:
         val_outs = test_loop(
@@ -219,7 +180,7 @@ def fit_loop(
           epoch_logs['val_' + l] = o
 
     callbacks.on_epoch_end(epoch, epoch_logs)
-    if callback_model.stop_training:
+    if callbacks.model.stop_training:
       break
   callbacks.on_train_end()
 

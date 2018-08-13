@@ -223,7 +223,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
   Init(context, ksize, stride, padding, data_format);
 }
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 // Initialization for MKL format
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -253,7 +253,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
 
   Init(context, ksize, stride, padding, data_format);
 }
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 // Common Initialization for TensorFlow and MKL formats
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -288,7 +288,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 tensor_in_cols, window_cols, col_stride,
                                 padding, &out_width, &pad_left, &pad_right));
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
     // TF can work with int64, but mkldnn only supports int32
     // Fail if the height or width are greater than MAX_INT
 

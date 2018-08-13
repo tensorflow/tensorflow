@@ -495,6 +495,19 @@ Status RealDivGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("RealDiv", RealDivGrad);
 
+Status UnsafeDivGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"gx"}, "UnsafeDiv", {"dz", "y"}},
+      {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dz"}},
+      {{"nx_y2"}, "UnsafeDiv", {"nx", "y2"}},
+      {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("UnsafeDiv", UnsafeDivGrad);
+
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   std::vector<FDH::Node> nodes = {

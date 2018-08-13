@@ -77,7 +77,8 @@ class RandomDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* seed = nullptr;
       Node* seed2 = nullptr;

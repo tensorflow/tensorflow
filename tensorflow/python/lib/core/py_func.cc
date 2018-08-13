@@ -507,6 +507,17 @@ class PyFuncOp : public OpKernel {
       call.ins.push_back(ctx->input(i));
     }
 
+    // NOTE(mrry): There is a potential time-of-check-to-time-of-use race here.
+    // because it is possible that `Py_Finalize()` could be called in another
+    // thread between this check and the  call to `PyGILState_Ensure()`, which
+    // will abort the process if `Py_Finalize()` has been called. A more robust
+    // solution would be welcome, but it is not obvious how to make this work
+    // using the current Python C API.
+    OP_REQUIRES(ctx, Py_IsInitialized(),
+                errors::FailedPrecondition(
+                    "Python interpreter state is not initialized. "
+                    "The process may be terminated."));
+
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();
     bool log_on_error;

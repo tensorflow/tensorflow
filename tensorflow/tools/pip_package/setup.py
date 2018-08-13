@@ -45,7 +45,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.10.0-rc1'
+_VERSION = '1.10.0'
 
 if '--version' in sys.argv:
   version_idx = sys.argv.index('--version')
@@ -58,6 +58,8 @@ REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
+    'keras_applications == 1.0.4',
+    'keras_preprocessing == 1.0.2',
     'numpy >= 1.13.3, <= 1.14.5',
     'six >= 1.10.0',
     'protobuf >= 3.6.0',

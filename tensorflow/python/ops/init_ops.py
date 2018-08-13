@@ -238,7 +238,7 @@ class RandomUniform(Initializer):
     maxval: A python scalar or a scalar tensor. Upper bound of the range
       of random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type.
   """
@@ -276,7 +276,7 @@ class RandomNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -319,7 +319,7 @@ class TruncatedNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -369,7 +369,7 @@ class UniformUnitScaling(Initializer):
   Args:
     factor: Float.  A multiplicative factor by which the values will be scaled.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -427,7 +427,7 @@ class VarianceScaling(Initializer):
     mode: One of "fan_in", "fan_out", "fan_avg".
     distribution: Random distribution to use. One of "normal", "uniform".
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -517,7 +517,7 @@ class Orthogonal(Initializer):
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type.
   """
@@ -572,7 +572,7 @@ class ConvolutionDeltaOrthogonal(Initializer):
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -628,7 +628,7 @@ class ConvolutionOrthogonal(Initializer):
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -693,7 +693,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       This has the effect of scaling the output 2-norm by a factor of
       `sqrt(gain)`.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -829,7 +829,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type.
   """
@@ -946,7 +946,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -1150,7 +1150,7 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -1175,7 +1175,7 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
