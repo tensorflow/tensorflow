@@ -270,7 +270,7 @@ the graph need to be executed, and what values need feeding. For example:
 ```c++
 Scope root = Scope::NewRootScope();
 auto c = Const(root, { {1, 1} });
-auto m = MatMul(root, c, { {42}, {1} });
+auto m = MatMul(root, c, { {41}, {1} });
 
 ClientSession session(root);
 std::vector<Tensor> outputs;
