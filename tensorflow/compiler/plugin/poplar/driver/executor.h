@@ -326,7 +326,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
       xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
       const int64 n, const std::vector<std::unique_ptr<Literal>>& constant);
 
-  Status MoveDeviceToHost(TensorControl *tc);
+  Status MoveDeviceToHost();
 
   int ordinal_;
 

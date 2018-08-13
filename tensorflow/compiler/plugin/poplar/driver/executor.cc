@@ -197,7 +197,7 @@ Status PoplarExecutor::SynchronousMemcpy(void* host_dst,
   {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     if (tc->on_device == true && !tc->output_handle.empty()) {
-      TF_RETURN_IF_ERROR(MoveDeviceToHost(const_cast<TensorControl*>(tc)));
+      TF_RETURN_IF_ERROR(MoveDeviceToHost());
     }
   }
   memcpy(host_dst, tc->data, size);
@@ -592,29 +592,44 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
   }
 }
 
-Status PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
-  void* buf(static_cast<void*>(tc->data));
+Status PoplarExecutor::MoveDeviceToHost() {
+  for (const auto& tc : allocations_) {
+    // Set up streams
+    if (tc->on_device == true && !tc->output_handle.empty()) {
+      void *buf(static_cast<void *>(tc->data));
+      current_engine_->connectStream(tc->output_handle, buf);
+    }
+  }
+
+  // perform device -> host read
   try {
+    current_engine_->run(2);
+  } catch (std::logic_error& e) {
+    return tensorflow::errors::Internal("Poplar host read error: ", e.what());
+  }
+
+  // Post process upload
+  for (const auto& tc : allocations_) {
+
     if (tc->on_device == true && !tc->output_handle.empty()) {
       if (tc->output_convertor) {
-        current_engine_->readTensor(tc->output_handle, buf);
+        void* buf(static_cast<void*>(tc->data));
         std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
         memcpy(buf, converted.data(), converted.size());
-      } else {
-        current_engine_->readTensor(tc->output_handle, buf);
       }
+
       if (current_config_.profiling().enable_io_trace()) {
         AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
                        tc->output_handle, 0);
       }
     }
+
     tc->on_device = false;
     tc->output_handle.clear();
     tc->input_handle.clear();
-    return Status::OK();
-  } catch (std::logic_error& e) {
-    return tensorflow::errors::Internal("Poplar host read error: ", e.what());
   }
+
+  return Status::OK();
 }
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::GetTupleBufferByIndex(
@@ -715,9 +730,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       if (upload_outputs) {
-        for (const auto& tc : allocations_) {
-          TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-        }
+        MoveDeviceToHost();
       }
 
       if (engine_changed) {

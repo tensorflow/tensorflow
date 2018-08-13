@@ -247,7 +247,11 @@ class EntryVisitor : public FullVisitor {
 
       if (!output_streamed[o]) {
         poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-        graph_.createHostRead(GetOutputCopyHandle(o), out);
+
+        auto fifo = graph_.addDeviceToHostFIFO(
+          GetOutputCopyHandle(o), out.elementType(), out.numElements());
+
+        device_to_host.add(poplar::program::Copy(out, fifo));
       }
     }
 
@@ -308,6 +312,9 @@ class EntryVisitor : public FullVisitor {
   std::vector<bool> output_streamed;
 
   bool all_outputs_are_parameters;
+
+  poplar::program::Sequence host_to_device;
+  poplar::program::Sequence device_to_host;
 
  private:
   std::set<HloInstruction*> non_standard_parameter_layout;
@@ -474,6 +481,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
 
     progs.push_back(visitor.sequence);
+    progs.push_back(visitor.host_to_device);
+    progs.push_back(visitor.device_to_host);
 
     if (visitor.all_outputs_are_parameters) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";
