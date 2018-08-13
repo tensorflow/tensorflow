@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::memory;
 using mkldnn::pooling_backward;
@@ -405,7 +405,7 @@ struct MklPoolParameters {
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const TensorShape& tensor_in_shape);
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const MklShape* mkl_in_shape);
@@ -422,7 +422,7 @@ struct MklPoolParameters {
             TensorFormat data_format);
 };
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 template <class T>
 class MklPoolingOpBase : public OpKernel {
@@ -674,7 +674,7 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     return grad_reorder_needed ? target_diff_dst_md : original_input_grad_md;
   }
 };
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 //-------------------------------------------------------------------
 // Utility functions

@@ -175,17 +175,13 @@ class XlaCompiledCpuFunction {
   // ------------------------------
   // Arg methods for managing input buffers. Buffers are in row-major order.
 
-  // Returns the underlying array of argument buffers, where args()[I] is the
-  // buffer for the positional argument at index I.
-  //
-  // TODO(sanjoy): We should retire this in favor of explicit accessors.  That
-  // would let us elide the args_ array.
-  void** args() { return args_; }
-  const void* const* args() const { return args_; }
-
   // Returns the buffer for the positional argument at the given `index`.
-  void* arg_data(size_t index) { return args_[index]; }
-  const void* arg_data(size_t index) const { return args_[index]; }
+  void* arg_data(size_t index) {
+    return buffer_table_[arg_index_table_[index]];
+  }
+  const void* arg_data(size_t index) const {
+    return buffer_table_[arg_index_table_[index]];
+  }
 
   int num_args() const { return num_args_; }
 
@@ -210,7 +206,9 @@ class XlaCompiledCpuFunction {
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
-  void set_arg_data(size_t index, void* data) { args_[index] = data; }
+  void set_arg_data(size_t index, void* data) {
+    buffer_table_[arg_index_table_[index]] = data;
+  }
 
   // ------------------------------
   // Result methods for managing output buffers. Buffers are in row-major order.
@@ -279,9 +277,6 @@ class XlaCompiledCpuFunction {
  private:
   const RawFunction raw_function_;
   const size_t result_index_;
-
-  // Array of argument buffers; entries in args_ may be overwritten by the user.
-  void** const args_;
 
   // Array containing pointers to argument and temp buffers (slots corresponding
   // to constant and on-stack buffers are null).

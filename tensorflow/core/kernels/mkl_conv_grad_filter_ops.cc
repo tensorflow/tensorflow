@@ -38,8 +38,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::convolution_backward_weights;
@@ -56,7 +55,7 @@ using mkldnn::stream;
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 struct MklConvBwdFilterParams {
   memory::dims src_dims;
@@ -358,7 +357,7 @@ class MklConv2DBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
 
 #endif
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropFilterOp : public OpKernel {
@@ -1050,7 +1049,7 @@ class MklConv2DCustomBackpropFilterOp
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 }  // namespace tensorflow
 

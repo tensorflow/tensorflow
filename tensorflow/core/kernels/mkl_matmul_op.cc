@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 
 // This header file is part of MKL ML, need equivalent file in MKL DNN
-#ifndef DO_NOT_USE_ML
+#ifndef INTEL_MKL_DNN_ONLY
 #include "mkl_cblas.h"
 #else
 #include "mkldnn.h"
@@ -155,7 +155,7 @@ class MklMatMulOp : public OpKernel {
     // 1.0 and 0.0 respectively.
     const float alpha = 1.0f;
     const float beta = 0.0f;
-#if defined(DO_NOT_USE_ML)
+#if defined(INTEL_MKL_DNN_ONLY)
     const char* const ftrans[] = {"N", "T", "C"};
     int index_transa = transa ? 1 : 0;
     int index_transb = transb ? 1 : 0;
@@ -173,7 +173,7 @@ class MklMatMulOp : public OpKernel {
   }
 
   // MKLDNN only supports SGEMM
-#ifndef DO_NOT_USE_ML
+#ifndef INTEL_MKL_DNN_ONLY
 
   // Matrix-Matrix Multiplication with FP64 tensors. For detailed info about
   // parameters, look at FP32 function description.
@@ -229,7 +229,7 @@ class MklMatMulOp : public OpKernel {
 // additional types
 TF_CALL_float(REGISTER_CPU);
 
-#ifndef DO_NOT_USE_ML
+#ifndef INTEL_MKL_DNN_ONLY
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);

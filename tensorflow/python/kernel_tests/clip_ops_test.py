@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -368,6 +369,21 @@ class ClipTest(test.TestCase):
     self.assertAllClose(tf_norm, 0.0)
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
+
+  def testClipByGlobalNormInf(self):
+    with self.test_session(use_gpu=True):
+      x0 = constant_op.constant([-2.0, 0.0, np.inf, 4.0, 0.0, 0.0],
+                                shape=[2, 3])
+      x1 = constant_op.constant([1.0, -2.0])
+      clip_norm = 6.0
+
+      ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        norm.eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        ans[0].eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        ans[1].eval()
 
   def testClipByAverageNormClipped(self):
     # Norm clipping when average clip_norm < 0.83333333
