@@ -180,7 +180,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
   llvm_ir::SetTargetOptions(
       /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_enable_fast_math(),
+          .xla_gpu_enable_fast_math(),
       &target_options);
 
   // Enable FMA synthesis.

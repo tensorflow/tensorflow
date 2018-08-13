@@ -210,11 +210,14 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     return make_sqrt();
   }
 
-  if (hlo_module_config_.debug_options().xla_enable_fast_math() &&
+  if (hlo_module_config_.debug_options().xla_gpu_enable_fast_math() &&
       IsFPLiteralWithValue(rhs, -.5)) {
     VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
     // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
     // rsqrt.approx instruction.
+    //
+    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
+    // we force-enable it?
     TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
     return b_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
   }
@@ -276,7 +279,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) const {
   // If we don't care much about precision, emit a fast approximation of
   // tanh.
-  if (hlo_module_config_.debug_options().xla_enable_fast_math()) {
+  if (hlo_module_config_.debug_options().xla_gpu_enable_fast_math()) {
     // Upcast F16 to F32 if necessary.
     llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
     llvm::Value* input = b_->CreateFPCast(value, type);
