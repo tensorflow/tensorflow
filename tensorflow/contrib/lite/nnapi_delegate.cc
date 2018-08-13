@@ -571,8 +571,14 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_L2_NORMALIZATION;
         if (reinterpret_cast<TfLiteL2NormParams*>(node.builtin_data)
                 ->activation != kTfLiteActNone) {
-          FATAL(
+          logError(
               "NNAPI does not support L2Normalization with fused activations");
+          return kTfLiteError;
+        }
+        if ((node.inputs->size > 0) &&
+            (interpreter->tensor(node.inputs->data[0])->dims->size != 4)) {
+          logError("NNAPI only supports input rank 4 for L2Normalization");
+          return kTfLiteError;
         }
         break;
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
