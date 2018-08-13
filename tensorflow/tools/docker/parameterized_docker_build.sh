@@ -19,8 +19,8 @@
 #   parameterized_docker_build.sh
 #
 # The script obeys the following environment variables:
-#   TF_DOCKER_BUILD_TYPE: (CPU | GPU | MKL)
-#     CPU, GPU, or MKL image
+#   TF_DOCKER_BUILD_TYPE: (CPU | GPU | MKL | MKL-HOROVOD)
+#     CPU, GPU, MKL or MKL-HOROVOD image
 #
 #   TF_DOCKER_BUILD_IS_DEVEL: (NO | YES)
 #     Is this developer image
@@ -169,6 +169,15 @@ elif [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
   else
     ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.mkl"
   fi
+elif [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+  DOCKER_BINARY="docker"
+  FINAL_TAG="${FINAL_TAG}-mkl-horovod"
+  if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
+    # There is already a dot in the tag, use "-"
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}-mkl-horovod"
+  else
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.mkl-horovod"
+  fi
 elif   [[ ${TF_DOCKER_BUILD_TYPE} == "gpu" ]]; then
   DOCKER_BINARY="nvidia-docker"
 
@@ -227,6 +236,10 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
       die "FAIL: Non-development MKL builds require a pre-built pip whl."
     fi
 
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "mkl-horovod" ]]; then
+      die "FAIL: Non-development MKL-HOROVOD builds require a pre-built pip whl."
+    fi
+
     if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
       export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
   "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
@@ -279,7 +292,8 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     # Use string replacement to put the correct file name into the Dockerfile
     PIP_WHL=$(basename "${PIP_WHL}")
 
-    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+        [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
       TF_DOCKER_BUILD_ARGS+=("--build-arg TF_WHL_URL=${PIP_WHL}" )
       cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
     else
@@ -295,7 +309,8 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     echo
   else
     echo "Downloading pip wheel from: ${TF_DOCKER_BUILD_CENTRAL_PIP}"
-    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+        [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
       pushd "${TMP_DIR}/"
       curl -O ${TF_DOCKER_BUILD_CENTRAL_PIP}
       popd
@@ -319,7 +334,8 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+          [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${TF_DOCKER_BUILD_PYTHON_VERSION}")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON_DEV=python3-dev")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
@@ -340,8 +356,9 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
   DOCKERFILE="${TMP_DIR}/Dockerfile"
 
-  # Set up Dockerfile ARGS for mkl build
-  if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+  # Set up Dockerfile ARGS for mkl and mkl-horovod build
+  if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+      [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
     if [[ -z "${TF_BAZEL_BUILD_OPTIONS// }" ]]; then
       TF_BAZEL_BUILD_OPTIONS=("--config=mkl --copt=-mavx --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0")
     else
@@ -361,7 +378,8 @@ else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
 
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
+        [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${TF_DOCKER_BUILD_PYTHON_VERSION}")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON3_DEV=python3-dev")
         TF_DOCKER_BUILD_ARGS+=("--build-arg WHL_DIR=/tmp/pip3")
