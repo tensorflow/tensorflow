@@ -78,12 +78,12 @@ class TextLineDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<string> filenames,
             const string& compression_type,
             const io::ZlibCompressionOptions& options)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           compression_type_(compression_type),
           use_compression_(!compression_type.empty()),
@@ -312,12 +312,12 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
                      int64 header_bytes, int64 record_bytes, int64 footer_bytes,
                      int64 buffer_size)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_bytes_(header_bytes),
           record_bytes_(record_bytes),
@@ -531,11 +531,11 @@ class TFRecordDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
                      const string& compression_type, int64 buffer_size)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           compression_type_(compression_type),
           options_(io::RecordReaderOptions::CreateRecordReaderOptions(
