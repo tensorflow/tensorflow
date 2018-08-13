@@ -12,6 +12,8 @@ load(
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
     "tf_py_test",
+    "if_not_windows",
+    "if_windows"
 )
 
 py_library(
@@ -39,16 +41,20 @@ cc_library(
         "kernels/ignite_dataset_ops.cc",
         "kernels/ignite_client.h",
         "kernels/ignite_plain_client.h",
-        "kernels/ignite_plain_client_unix.cc",
         "kernels/ignite_ssl_client.h",
-        "kernels/ignite_ssl_client_unix.cc",
         "kernels/ignite_binary_object_parser.h",
         "kernels/ignite_binary_object_parser.cc",
         "kernels/ignite_dataset.h",
         "kernels/ignite_dataset.cc",
         "kernels/ignite_dataset_iterator.h",
         "kernels/ignite_dataset_iterator.cc",
-    ],
+    ] + if_not_windows([
+        "kernels/ignite_plain_client_unix.cc",
+        "kernels/ignite_ssl_client_unix.cc",
+    ]) + if_windows([
+        "kernels/ignite_plain_client_windows.cc",
+        "kernels/ignite_ssl_client_windows.cc",
+    ]),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

@@ -43,6 +43,8 @@ tensorflow::Status PlainClient::Connect() {
       return tensorflow::errors::Internal("Failed not create socket");
   }
 
+  struct sockaddr_in server;
+
   if (inet_addr(host.c_str()) == -1) {
     struct hostent *he;
     struct in_addr **addr_list;

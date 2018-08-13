@@ -20,6 +20,8 @@ limitations under the License.
 #include "ignite_client.h"
 #endif
 
+#include <string>
+
 namespace ignite {
 
 class SslClient: public Client {
@@ -50,7 +52,6 @@ class SslClient: public Client {
   std::string keyfile;
   std::string cert_password;
   int sock;
-  struct sockaddr_in server;
   SSL_CTX *ctx;
   SSL *ssl;
   tensorflow::Status InitSslContext();

@@ -18,6 +18,8 @@ limitations under the License.
 #include "ignite_client.h"
 #endif
 
+#include <string>
+
 namespace ignite {
 
 class PlainClient: public Client {
@@ -44,7 +46,6 @@ class PlainClient: public Client {
   std::string host;
   int port;
   int sock;
-  struct sockaddr_in server;
 };
 
 }  // namespace ignite
