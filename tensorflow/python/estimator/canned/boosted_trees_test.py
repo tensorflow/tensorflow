@@ -165,7 +165,6 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     predictions = list(est.predict(input_fn=predict_input_fn))
     self.assertAllClose([[0], [0], [0], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
-    self.assertEqual(3, est._num_features)  # pylint:disable=protected-access
     sorted_features, importances = est.compute_feature_importances()
     self.assertAllEqual([], sorted_features)
     self.assertAllEqual([], importances)
@@ -568,7 +567,6 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         n_trees=1,
         max_depth=5)
 
-    self.assertEqual(3, est._num_features)  # pylint:disable=protected-access
     # It will stop after 5 steps because of the max depth and num trees.
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
@@ -624,17 +622,97 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     # tree_weights: 1.0
     # tree_weights: 1.0
     # ......
-    sorted_features_expected = [0, 2, 1]
+    feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
     feature_gains = [[0.133481562138 + 0.400360047817, 0.426666676998, 0.0],  # 1st tree.
                      [0.0, 0.0, 0.0]]                                         # 2nd tree.
 
     sorted_features, importances = est.compute_feature_importances(normalize=False)
-    self.assertAllEqual(sorted_features_expected, sorted_features)
+    self.assertAllEqual(feature_names_expected, sorted_features)
     self.assertAllClose(_compute_feature_importances_np(feature_gains, False),
                         importances)
 
     sorted_features1, importances1 = est.compute_feature_importances(normalize=True)
-    self.assertAllEqual(sorted_features_expected, sorted_features1)
+    self.assertAllEqual(feature_names_expected, sorted_features1)
+    self.assertAllClose(_compute_feature_importances_np(feature_gains, True),
+                        importances1)
+
+  def testCalculateFeatureImportancesWithIndicatorColumn(self):
+    categorical = feature_column.categorical_column_with_vocabulary_list(
+        key='categorical', vocabulary_list=('bad', 'good', 'ok'))
+    feature_indicator = feature_column.indicator_column(categorical)
+    bucketized_col = feature_column.bucketized_column(
+        feature_column.numeric_column(
+            'an_uninformative_feature', dtype=dtypes.float32),
+        BUCKET_BOUNDARIES)
+
+    labels = np.array([[0.], [5.7], [5.7], [0.], [0.]], dtype=np.float32)
+    # Our categorical feature defines the labels perfectly
+    input_fn = numpy_io.numpy_input_fn(
+        x={
+          'an_uninformative_feature': np.array([1, 1, 1, 1, 1]),
+          'categorical': np.array(['bad', 'good', 'good', 'ok', 'bad']),
+        },
+        y=labels,
+        batch_size=5,
+        shuffle=False)
+
+    # Train depth 1 tree.
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=[bucketized_col, feature_indicator],
+        n_batches_per_layer=1,
+        n_trees=1,
+        learning_rate=1.0,
+        max_depth=1)
+
+    num_steps = 1
+    est.train(input_fn, steps=num_steps)
+
+    # TreeEnsemble Proto:
+    # trees {
+    #   nodes {
+    #     bucketized_split {
+    #       feature_id: 2
+    #       left_id: 1
+    #       right_id: 2
+    #     }
+    #     metadata {
+    #       gain: 15.5952005386
+    #     }
+    #   }
+    #   nodes {
+    #     leaf {
+    #     }
+    #   }
+    #   nodes {
+    #     leaf {
+    #       scalar: 5.7000002861
+    #     }
+    #   }
+    # }
+    # trees {
+    #   nodes {
+    #     leaf {
+    #     }
+    #   }
+    # }
+    # tree_weights: 1.0
+    # tree_weights: 1.0
+    feature_names_expected = ['categorical_indicator:good',
+                              # Reverse order because feature importances
+                              # are sorted by np.argsort(f)[::-1]
+                              'categorical_indicator:ok',
+                              'categorical_indicator:bad',
+                              'an_uninformative_feature_bucketized']
+    feature_gains = [[15.5952005386, 0.0, 0.0, 0.0],  # 1st tree.
+                     [0.0, 0.0, 0.0, 0.0]]            # 2nd tree.
+
+    sorted_features, importances = est.compute_feature_importances(normalize=False)
+    self.assertAllEqual(feature_names_expected, sorted_features)
+    self.assertAllClose(_compute_feature_importances_np(feature_gains, False),
+                        importances)
+
+    sorted_features1, importances1 = est.compute_feature_importances(normalize=True)
+    self.assertAllEqual(feature_names_expected, sorted_features1)
     self.assertAllClose(_compute_feature_importances_np(feature_gains, True),
                         importances1)
 
