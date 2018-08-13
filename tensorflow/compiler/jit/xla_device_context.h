@@ -47,12 +47,10 @@ class XlaDeviceAllocator : public Allocator {
 class XlaTransferManager {
  public:
   explicit XlaTransferManager(
-      std::shared_ptr<se::Stream> compute_stream,
-      std::shared_ptr<se::Stream> host_to_device_stream,
-      std::shared_ptr<se::Stream> device_to_host_stream,
-      xla::LocalClient* client, bool transfer_as_literal,
-      XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      thread::ThreadPool* thread_pool);
+      se::Stream* compute_stream, se::Stream* host_to_device_stream,
+      se::Stream* device_to_host_stream, xla::LocalClient* client,
+      bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
@@ -63,7 +61,7 @@ class XlaTransferManager {
   void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
                                 const StatusCallback& done);
 
-  se::Stream* stream() const { return stream_.get(); }
+  se::Stream* stream() const { return stream_; }
 
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
@@ -75,13 +73,13 @@ class XlaTransferManager {
 
   // The main compute stream of the device, used to synchronize the transfer
   // streams if they are set.
-  std::shared_ptr<se::Stream> stream_;
+  se::Stream* stream_;
   // The stream to use for transferring data from host to device. Can be
   // idential to stream_, but must not be nullptr.
-  std::shared_ptr<se::Stream> host_to_device_stream_;
+  se::Stream* host_to_device_stream_;
   // The stream to use for transferring data from device to host. Can be
   // idential to stream_, but must not be nullptr.
-  std::shared_ptr<se::Stream> device_to_host_stream_;
+  se::Stream* device_to_host_stream_;
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
@@ -89,9 +87,6 @@ class XlaTransferManager {
   // True if we must use XLA's TransferManager for correct device transfers.
   const bool transfer_as_literal_;
   XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
-
-  // Thread pool used for running closures
-  thread::ThreadPool* thread_pool_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -100,12 +95,10 @@ class XlaTransferManager {
 class XlaDeviceContext : public DeviceContext {
  public:
   explicit XlaDeviceContext(
-      std::shared_ptr<se::Stream> compute_stream,
-      std::shared_ptr<se::Stream> host_to_device_stream,
-      std::shared_ptr<se::Stream> device_to_host_stream,
-      xla::LocalClient* client, bool transfer_as_literal,
-      XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      thread::ThreadPool* thread_pool);
+      se::Stream* compute_stream, se::Stream* host_to_device_stream,
+      se::Stream* device_to_host_stream, xla::LocalClient* client,
+      bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,

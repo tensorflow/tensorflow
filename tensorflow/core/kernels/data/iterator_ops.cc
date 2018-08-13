@@ -116,7 +116,7 @@ class IteratorResource : public ResourceBase {
     }
   }
 
-  Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
     if (captured_iterator) {
       return captured_iterator->Save(ctx, writer);
@@ -386,10 +386,13 @@ class IteratorStateVariant {
   // that it can be written on the next call to Encode().
   Status InitializeFromIterator(OpKernelContext* ctx,
                                 IteratorResource* iterator_resource) {
+    SerializationContext::Params params;
+    params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+    SerializationContext serialization_ctx(params);
     data_.reset(new VariantTensorData());
     data_->set_type_name(TypeName());
     VariantTensorDataWriter writer(data_.get());
-    TF_RETURN_IF_ERROR(iterator_resource->Save(ctx, &writer));
+    TF_RETURN_IF_ERROR(iterator_resource->Save(&serialization_ctx, &writer));
     TF_RETURN_IF_ERROR(writer.Flush());
     return Status::OK();
   }

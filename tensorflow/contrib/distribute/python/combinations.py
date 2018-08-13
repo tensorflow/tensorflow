@@ -326,7 +326,8 @@ one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
 tpu_strategy = NamedDistribution(
-    "TPU", lambda: tpu_lib.TPUStrategy(TPUClusterResolver("")),
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=5),
     required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.
@@ -373,12 +374,14 @@ adam_optimizer_v1_fn = NamedObject(
     "AdamV1", lambda: adam.AdamOptimizer(0.2, epsilon=1))
 gradient_descent_optimizer_v1_fn = NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
+optimizers_v1 = [adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn]
 
 adam_optimizer_v2_fn = NamedObject(
     "AdamV2", lambda: adam_v2.AdamOptimizer(0.2, epsilon=1))
 gradient_descent_optimizer_v2_fn = NamedObject(
     "GradientDescentV2",
     lambda: gradient_descent_v2.GradientDescentOptimizer(0.2))
+optimizers_v2 = [adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn]
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -390,7 +393,7 @@ def distributions_and_v1_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn])
+      optimizer_fn=optimizers_v1)
 
 
 def distributions_and_v2_optimizers():
@@ -400,4 +403,4 @@ def distributions_and_v2_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn])
+      optimizer_fn=optimizers_v2)

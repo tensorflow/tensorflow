@@ -383,8 +383,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(MakeFunctionDef(func_item, flib, &optimized_func));
 
       // Replace optimized function with a new FunctionDef.
-      TF_RETURN_IF_ERROR(flib.RemoveFunction(func_name));
-      TF_RETURN_IF_ERROR(flib.AddFunctionDef(optimized_func));
+      TF_RETURN_IF_ERROR(flib.ReplaceFunction(func_name, optimized_func));
     }
 
     // If optimized at least one function, update the graph library.

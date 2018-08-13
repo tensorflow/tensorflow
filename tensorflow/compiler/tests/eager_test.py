@@ -32,6 +32,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -121,6 +122,14 @@ class EagerTest(xla_test.XLATestCase):
   def testIdentity(self):
     with self.test_scope():
       self.assertAllEqual(2, array_ops.identity(2))
+
+  def testRandomOps(self):
+    with self.test_scope():
+      tensor = gen_random_ops.random_uniform((2, 2), dtypes.float32)
+      row0 = tensor[0].numpy()
+      row1 = tensor[1].numpy()
+      # It should be very unlikely to rng to generate two equal rows.
+      self.assertFalse((row0 == row1).all())
 
   def testIdentityOnVariable(self):
     with self.test_scope():

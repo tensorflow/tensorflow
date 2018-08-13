@@ -570,7 +570,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",

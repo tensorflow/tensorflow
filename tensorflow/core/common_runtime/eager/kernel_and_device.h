@@ -49,13 +49,6 @@ class KernelAndDevice {
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  //
-  // TODO(ashankar): Figure out thread-safety concerns around
-  // FunctionLibraryRuntime (in particular, how the underlying
-  // FunctionLibraryDefinition might be mutated by another thread as new
-  // functions are registered with it).  Conservatively, thread-safe usage of
-  // the FunctionLibraryRuntime is pushed on to the caller (see locking in
-  // c_api.cc).
   static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
                      std::function<void(std::function<void()>)>* runner,
                      KernelAndDevice* out);

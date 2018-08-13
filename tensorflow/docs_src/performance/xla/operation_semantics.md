@@ -22,7 +22,7 @@ Alltoall is a collective operation that sends data from all cores to all cores.
 It has two phases:
 
 1.  the scatter phase. On each core, the operand is split into `split_count`
-    number of blocks along the `split_dimensions`, and the blocks are scatterd
+    number of blocks along the `split_dimensions`, and the blocks are scattered
     to all cores, e.g., the ith block is send to the ith core.
 2.  the gather phase. Each core concatenates the received blocks along the
     `concat_dimension`.
@@ -1877,19 +1877,19 @@ See also
 [`XlaBuilder::RngNormal`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
-the $$N(\mu, \sigma)$$ normal distribution. The parameters `mu` and `sigma`, and
-output shape have to have elemental type F32. The parameters furthermore have to
-be scalar valued.
+the $$N(\mu, \sigma)$$ normal distribution. The parameters $$\mu$$ and
+$$\sigma$$, and output shape have to have a floating point elemental type. The
+parameters furthermore have to be scalar valued.
 
-<b>`RngNormal(mean, sigma, shape)`</b>
+<b>`RngNormal(mu, sigma, shape)`</b>
 
 | Arguments | Type    | Semantics                                           |
 | --------- | ------- | --------------------------------------------------- |
-| `mu`      | `XlaOp` | Scalar of type F32 specifying mean of generated     |
-:           :         : numbers                                             :
-| `sigma`   | `XlaOp` | Scalar of type F32 specifying standard deviation of |
+| `mu`      | `XlaOp` | Scalar of type T specifying mean of generated       |
+:           :         : numbers                                   :
+| `sigma`   | `XlaOp` | Scalar of type T specifying standard deviation of   |
 :           :         : generated numbers                                   :
-| `shape`   | `Shape` | Output shape of type F32                            |
+| `shape`   | `Shape` | Output shape of type T                              |
 
 ## RngUniform
 
@@ -1898,9 +1898,11 @@ See also
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $$[a,b)$$. The parameters and output
-shape may be either F32, S32 or U32, but the types have to be consistent.
-Furthermore, the parameters need to be scalar valued. If $$b <= a$$ the result
-is implementation-defined.
+element type have to be a boolean type, an integral type or a floating point
+types, and the types have to be consistent. The CPU and GPU backends currently
+only support F64, F32, F16, BF16, S64, U64, S32 and U32. Furthermore, the
+parameters need to be scalar valued. If $$b <= a$$ the result is
+implementation-defined.
 
 <b>`RngUniform(a, b, shape)`</b>
 
@@ -2383,8 +2385,6 @@ restrictions listed below.
     last execution of the `body`.
 *   The shape of the type `T` is statically determined and must be the same
     across all iterations.
-*   `While` nodes are not allowed to be nested. (This restriction may be lifted
-    in the future on some targets.)
 
 The T parameters of the computations are initialized with the `init` value in
 the first iteration and are automatically updated to the new result from `body`

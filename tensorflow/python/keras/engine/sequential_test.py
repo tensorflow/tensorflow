@@ -95,7 +95,10 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     num_classes = 2
 
     model = _get_small_mlp(num_hidden, num_classes)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertEqual(len(model.layers), 2)
     self.assertEqual(len(model.weights), 0)
     self.assertFalse(model.built)
@@ -116,7 +119,10 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     steps_per_epoch = 10
 
     model = _get_small_mlp(num_hidden, num_classes)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertEqual(len(model.layers), 2)
     self.assertEqual(len(model.weights), 0)
     self.assertFalse(model.built)
@@ -257,7 +263,10 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     num_classes = 2
 
     model = _get_small_mlp(num_hidden, num_classes)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
@@ -336,6 +345,18 @@ class TestSequentialEagerIntegration(test.TestCase):
     model.add(keras.layers.Dense(5, activation='softmax'))
 
     model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+
+    x = np.random.random((2, 6))
+    y = np.random.random((2, 5))
+    model.fit(x, y, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_build_before_fit(self):
+    # Fix for b/112433577
+    model = _get_small_mlp(4, 5)
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+
+    model.build((None, 6))
 
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))

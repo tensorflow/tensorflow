@@ -32,7 +32,11 @@ class DatasetToGraphOp : public OpKernel {
     GraphDefBuilder b;
     DatasetBase::DatasetGraphDefBuilder db(&b);
     Node* input_node = nullptr;
-    OP_REQUIRES_OK(ctx, db.AddParentDataset(ctx, dataset, &input_node));
+    SerializationContext::Params params;
+    params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+    SerializationContext serialization_ctx(params);
+    OP_REQUIRES_OK(
+        ctx, db.AddInputDataset(&serialization_ctx, dataset, &input_node));
     GraphDef graph_def;
     OP_REQUIRES_OK(ctx, b.ToGraphDef(&graph_def));
     Tensor* result;

@@ -54,7 +54,7 @@ with content from the TensorFlow team and the best articles from the community.
 
 ### YouTube
 
-Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learing
+Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learning
 and AI with TensorFlow. On it we have a number of new shows, including:
 
 - TensorFlow Meets: meet with community contributors to learn and share what they're doing

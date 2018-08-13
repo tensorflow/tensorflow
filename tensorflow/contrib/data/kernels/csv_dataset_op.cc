@@ -168,7 +168,8 @@ class CSVDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       Node* compression_type = nullptr;

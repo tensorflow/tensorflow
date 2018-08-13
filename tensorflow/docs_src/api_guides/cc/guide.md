@@ -7,6 +7,12 @@ You should, as a result, be sure you are following the
 [`master` version of this doc](https://www.tensorflow.org/versions/master/api_guides/cc/guide),
 in case there have been any changes.
 
+Note: The C++ API is only designed to work with TensorFlow `bazel build`.
+If you need a stand-alone option use the [C-api](../../install/install_c.md).
+See [these instructions](https://docs.bazel.build/versions/master/external.html)
+for details on how to include TensorFlow as a subproject (instead of building
+your project from inside TensorFlow, as in this example).
+
 [TOC]
 
 TensorFlow's C++ API provides mechanisms for constructing and executing a data

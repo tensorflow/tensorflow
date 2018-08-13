@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import functools
+from multiprocessing.pool import ThreadPool
 import sys
 
 from tensorflow.core.protobuf import config_pb2
@@ -142,6 +143,61 @@ class FunctionTest(test.TestCase):
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def testExecutingStatelessDefunConcurrently(self):
+
+    @function.defun
+    def stateless(x):
+      return math_ops.multiply(2.0, x)
+
+    pool = ThreadPool()
+    inputs = [constant_op.constant(1.0 * x) for x in range(100)]
+    outputs = [float(out) for out in pool.map(stateless, inputs)]
+    expected = [float(2.0 * x) for x in inputs]
+    self.assertSequenceEqual(outputs, expected)
+
+  def testExecutingManyStatelessDefunsConcurrently(self):
+
+    @function.defun
+    def stateless(x):
+      del x
+      return math_ops.multiply(2.0, 2.0)
+
+    pool = ThreadPool()
+    # `pool.map` below instantiates 100 functions, one for each object.
+    outputs = [
+        float(out)
+        for out in pool.map(stateless, [object() for _ in range(100)])
+    ]
+    expected = [4.0] * 100
+    self.assertSequenceEqual(outputs, expected)
+
+  def testExecutingStatefulDefunConcurrently(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def stateful(x):
+      v.assign(x)
+
+    pool = ThreadPool()
+    inputs = [constant_op.constant(0.0)] * 100
+    pool.map(stateful, inputs)
+    self.assertEqual(float(v.read_value()), 0.0)
+
+  def testExecutingManyStatefulDefunsConcurrently(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def stateful(x):
+      del x
+      return v.assign(0.0)
+
+    pool = ThreadPool()
+    # `pool.map` below instantiates 100 functions, one for each object.
+    pool.map(stateful, [object() for _ in range(100)])
+    self.assertEqual(float(v.read_value()), 0.0)
 
   def disabled_testRandomSeed(self):
 
@@ -876,9 +932,12 @@ class FunctionTest(test.TestCase):
     y = model(x)
     self.assertAllEqual([[[[4.0]]]], y.numpy())
 
+  # Note: The ConfigProto below unfortunately only configures graph
+  # construction. Eager's configuration is controlled in `__main__`.
   @test_util.run_in_graph_and_eager_modes(
-      config=config_pb2.ConfigProto(device_count={'CPU': 3}))
+      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
   def testDeviceAnnotationsRespected(self):
+
     @function.defun
     def multi_device_fn():
       with ops.device('/cpu:0'):
@@ -890,12 +949,28 @@ class FunctionTest(test.TestCase):
       with ops.device('/cpu:2'):
         s3 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
-      return s1, s2, s3
+      with ops.device(''):
+        # TODO(akshayka): This is unfortunate and brittle. It prevents
+        # `Iterator.from_structure` from assigning the iterator op to 'cpu:0'.
+        #  Remove this hack once we have a way of obtaining metadata about
+        #  function execution.
+        s4 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3, s4
 
-    outputs = multi_device_fn()
-    self.assertTrue(compat.as_bytes('CPU:0') in self.evaluate(outputs[0]))
-    self.assertTrue(compat.as_bytes('CPU:1') in self.evaluate(outputs[1]))
-    self.assertTrue(compat.as_bytes('CPU:2') in self.evaluate(outputs[2]))
+    with ops.device('/cpu:3'):
+      outputs = self.evaluate(multi_device_fn())
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
+
+    with ops.device('/cpu:0'):
+      outputs = self.evaluate(multi_device_fn())
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
   def testVariablesAreTracked(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1677,5 +1752,5 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={'CPU': 3}))
+      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
   test.main()

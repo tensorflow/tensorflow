@@ -65,20 +65,27 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     caller_colocation_stack = ops.get_default_graph()._colocation_stack
     caller_container = ops.get_default_graph()._container
     caller_collection_ref = ops.get_default_graph()._collections
+
+    with ops.name_scope(None):
+      # Find the outer most graph for uniquing function names.
+      # TODO(jpienaar): Make this work in eager mode.
+      graph = ops.get_default_graph()
+      while isinstance(graph, _function._FuncGraph):
+        graph = graph._outer_graph
+
+      true_name = graph.unique_name(("%strue" % scope).replace("/", "_"))
+      false_name = graph.unique_name(("%sfalse" % scope).replace("/", "_"))
     # pylint: enable=protected-access
-
-    func_name_prefix = scope.replace("/", "_")
-
     true_graph = _function.func_graph_from_py_func(
         true_fn, [], [],
-        name="%strue" % func_name_prefix,
+        name=true_name,
         device=caller_device,
         colocation_stack=caller_colocation_stack,
         collections_ref=caller_collection_ref,
         container=caller_container)
     false_graph = _function.func_graph_from_py_func(
         false_fn, [], [],
-        name="%sfalse" % func_name_prefix,
+        name=false_name,
         device=caller_device,
         colocation_stack=caller_colocation_stack,
         collections_ref=caller_collection_ref,

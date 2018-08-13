@@ -300,12 +300,6 @@ Status EagerLocalExecute(EagerOperation* op,
                 << device->name();
     }
     kernel = new KernelAndDevice(ctx->GetRendezvous());
-    // Knowledge of the implementation of Init (and in-turn
-    // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
-    // will be accessed, so grab on to the lock.
-    // See WARNING comment in Execute (before kernel->Run) - would be nice to
-    // rework to avoid this subtlety.
-    tf_shared_lock l(*ctx->FunctionsMu());
     auto* flr = ctx->func_lib(device);
 
     if (flr == nullptr) {
@@ -646,15 +640,8 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     TF_RETURN_IF_ERROR(op_inputs[i]->Tensor(&input_tensor));
     inputs[i] = *input_tensor;
   }
-  // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
-  // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def.
-  // But knowledge of the implementation
-  // of FunctionLibraryRuntime tells us that func_lib_def is not accessed by
-  // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
-  // This is quite subtle. Re-work things to make this better?  (Would it make
-  // sense for FunctionLibraryRuntime to ensure thread-safe access to
-  // FunctionLibraryDefinition?).  TODO(apassos) figure out how to record stats
-  // for ops which are a part of functions.
+  //  TODO(apassos) figure out how to record stats for ops which are a part of
+  //  functions.
   // TODO(agarwal): change Run to take vector of handles ?
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
