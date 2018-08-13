@@ -48,7 +48,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     for (const auto& rnn_state : model->flags.rnn_states()) {
       if (output == rnn_state.state_array()) {
         CHECK(op->type == OperatorType::kFill ||
-              op->type == OperatorType::kTensorFlowIdentity);
+              op->type == OperatorType::kIdentity);
         found_output_as_rnn_state_array = true;
         break;
       }
@@ -88,13 +88,11 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
   // At that point we know that none of the outputs is used, so we will
   // definitely remove the node and all its outputs.
 
-  // Remove any input array that is not used by anything else,
-  // and that is not the output of some other operator.
+  // Remove any input array that not the output of another op, and only used by
+  // this op.
   for (const auto& input : op->inputs) {
-    if (IsDiscardableArray(*model, input) &&
-        CountOpsWithInput(*model, input) == 1 &&
-        !GetOpWithOutput(*model, input)) {
-      model->EraseArray(input);
+    if (!GetOpWithOutput(*model, input)) {
+      DeleteArrayIfUsedOnce(input, model);
     }
   }
 
@@ -102,22 +100,9 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
   for (const auto& output : op->outputs) {
     // If the output array is the model's input array, don't remove that.
     // That's the case when cropping a model at a given --input_array.
-    if (!IsDiscardableArray(*model, output)) {
-      continue;
+    if (IsDiscardableArray(*model, output)) {
+      model->EraseArray(output);
     }
-    // Likewise, if the output array is a RNN state array, don't remove that.
-    bool found_output_as_rnn_state_array = false;
-    for (const auto& rnn_state : model->flags.rnn_states()) {
-      if (output == rnn_state.state_array()) {
-        found_output_as_rnn_state_array = true;
-        break;
-      }
-    }
-    if (found_output_as_rnn_state_array) {
-      continue;
-    }
-    // Generic case: do delete this output array.
-    model->EraseArray(output);
   }
   model->operators.erase(it);
   return true;

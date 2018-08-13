@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/utils.h"
+
 #include <memory>
+#include <queue>
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -21,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -354,15 +356,56 @@ void DedupControlInputs(NodeDef* node) {
 }
 
 namespace {
+
+template <typename UniqueContainer>
+void EraseNodesFromGraphImpl(const UniqueContainer& nodes_to_delete,
+                             GraphDef* graph) {
+  static_assert(std::is_same<typename UniqueContainer::value_type, int>::value,
+                "Need to pass container of ints");
+
+  int last = graph->node_size() - 1;
+  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
+    const int index = *it;
+    graph->mutable_node()->SwapElements(index, last);
+    last--;
+  }
+  graph->mutable_node()->DeleteSubrange(last + 1, nodes_to_delete.size());
+}
+
 template <typename T>
 inline void STLSortAndRemoveDuplicates(T* v) {
   std::sort(v->begin(), v->end());
   v->erase(std::unique(v->begin(), v->end()), v->end());
 }
+
 }  // namespace
 
-Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
-                                   bool dedup_outputs) {
+void EraseNodesFromGraph(const std::set<int>& nodes_to_delete,
+                         GraphDef* graph) {
+  EraseNodesFromGraphImpl(nodes_to_delete, graph);
+}
+
+void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph) {
+  STLSortAndRemoveDuplicates(&nodes_to_delete);
+  EraseNodesFromGraphImpl(nodes_to_delete, graph);
+}
+
+void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
+                         GraphDef* graph) {
+  std::vector<int> nodes_idx_to_delete;
+  nodes_idx_to_delete.reserve(nodes_to_delete.size());
+  for (int i = 0; i < graph->node_size(); ++i) {
+    if (nodes_to_delete.count(graph->node(i).name()))
+      nodes_idx_to_delete.push_back(i);
+  }
+  EraseNodesFromGraphImpl(nodes_idx_to_delete, graph);
+}
+
+Status SimpleGraphView::Initialize(
+    const GraphDef& graph,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies,
+    bool dedup_inputs, bool dedup_outputs) {
   graph_ = &graph;
   const int num_nodes = graph.node_size();
   inputs_.clear();
@@ -379,6 +422,23 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
     const NodeDef& node = graph.node(node_idx);
     name_to_index_.emplace(node.name(), node_idx);
     index_to_name_.push_back(node.name());
+  }
+
+  if (extra_dependencies) {
+    for (const auto& dep : *extra_dependencies) {
+      auto itr_src = name_to_index_.find(dep.first->name());
+      if (itr_src == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent src ", dep.first->name());
+      }
+      auto itr_tgt = name_to_index_.find(dep.second->name());
+      if (itr_tgt == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent tgt ", dep.second->name());
+      }
+      const int src_idx = itr_src->second;
+      const int tgt_idx = itr_tgt->second;
+      inputs_[tgt_idx].push_back(src_idx);
+      outputs_[src_idx].push_back(tgt_idx);
+    }
   }
 
   // Build forward and reverse adjacency lists.
@@ -415,7 +475,8 @@ void SimpleGraphView::DepthFirstSearch(
     std::set<int>* nodes_found) const {
   nodes_found->clear();
   const string& op_type = graph_->node(root_node).op();
-  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
+  if (!op_types_to_traverse.empty() &&
+      op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
   std::vector<int> stack;
@@ -426,7 +487,8 @@ void SimpleGraphView::DepthFirstSearch(
     stack.pop_back();
     nodes_found->insert(node_idx);
     const string& op_type = graph_->node(node_idx).op();
-    if (op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+    if (op_types_to_traverse.empty() ||
+        op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
       for (auto output_idx : this->outputs(node_idx)) {
         if (nodes_found->find(output_idx) == nodes_found->end()) {
           stack.push_back(output_idx);

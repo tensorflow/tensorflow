@@ -67,7 +67,7 @@ Status SessionMgr::CreateSession(const string& session,
     worker_name = WorkerNameFromServerDef(server_def);
   }
 
-  if (worker_cache != nullptr & default_worker_cache_.get() != nullptr) {
+  if (worker_cache != nullptr && default_worker_cache_ != nullptr) {
     worker_cache->SetLogging(this->is_logging_active_);
   }
 

@@ -16,45 +16,47 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
 #include <cassert>
-#include "tensorflow/compiler/aot/runtime.h"
 
 namespace tensorflow {
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
-    : raw_function_(static_data.raw_function),
-      result_index_(static_data.result_index),
-      args_(new void*[static_data.num_args]),
-      temps_(new void*[static_data.num_temps]),
-      arg_names_(static_data.arg_names),
-      result_names_(static_data.result_names),
-      program_shape_(static_data.program_shape),
-      hlo_profile_printer_data_(static_data.hlo_profile_printer_data) {
+    : raw_function_(static_data.raw_function_),
+      result_index_(static_data.result_index_),
+      buffer_table_(new void*[static_data.num_buffers_]),
+      buffer_infos_(static_data.buffer_infos_),
+      arg_index_table_(static_data.arg_index_table_),
+      num_args_(static_data.num_args_),
+      arg_names_(static_data.arg_names_),
+      result_names_(static_data.result_names_),
+      program_shape_(static_data.program_shape_),
+      hlo_profile_printer_data_(static_data.hlo_profile_printer_data_) {
+  bool allocate_entry_params =
+      alloc_mode == AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS;
   // Allocate arg and temp buffers.
-  if (alloc_mode == AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS) {
-    alloc_args_ = tensorflow::tfcompile::runtime::MallocContiguousBuffers(
-        static_data.arg_sizes, static_data.num_args, args_,
-        /*annotate_initialized=*/false);
-  }
-  alloc_temps_ = tensorflow::tfcompile::runtime::MallocContiguousBuffers(
-      static_data.temp_sizes, static_data.num_temps, temps_,
+  alloc_buffer_table_ = cpu_function_runtime::MallocContiguousBuffers(
+      static_data.buffer_infos_, static_data.num_buffers_,
+      /*allocate_entry_params=*/allocate_entry_params, buffer_table_,
       /*annotate_initialized=*/true);
-
   // If Hlo profiling is enabled the generated code expects an appropriately
   // sized buffer to be passed in as the last argument.  If Hlo profiling is
   // disabled the last function argument is still present in the function
   // signature, but it is ignored by the generated code and we pass in null for
   // it.
   if (hlo_profiling_enabled()) {
-    profile_counters_ = new int64[static_data.profile_counters_size]();
+    profile_counters_ = new int64[static_data.profile_counters_size_]();
   }
 }
 
+bool XlaCompiledCpuFunction::Run() {
+  raw_function_(buffer_table_[result_index_], &run_options_, nullptr,
+                buffer_table_, profile_counters_);
+  return true;
+}
+
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
-  tensorflow::tfcompile::runtime::FreeContiguous(alloc_args_);
-  tensorflow::tfcompile::runtime::FreeContiguous(alloc_temps_);
-  delete[] args_;
-  delete[] temps_;
+  cpu_function_runtime::FreeContiguous(alloc_buffer_table_);
+  delete[] buffer_table_;
   delete[] profile_counters_;
 }
 

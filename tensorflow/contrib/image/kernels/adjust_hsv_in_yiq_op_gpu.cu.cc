@@ -59,7 +59,7 @@ void AdjustHsvInYiqGPU::operator()(OpKernelContext* ctx, int channel_count,
       delta_h, scale_s, scale_v, tranformation_matrix.flat<float>().data(),
       tranformation_matrix.flat<float>().size());
   // Call cuBlas C = A * B directly.
-  auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+  auto no_transpose = se::blas::Transpose::kNoTranspose;
   auto a_ptr =
       AsDeviceMemory(input->flat<float>().data(), input->flat<float>().size());
   auto b_ptr = AsDeviceMemory(tranformation_matrix.flat<float>().data(),

@@ -29,6 +29,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 
@@ -219,6 +220,56 @@ def compute_cdf(values, value_range, **kwargs):
         loop_cond, loop_body, [i, cdf], maximum_iterations=nbins)
 
     return math_ops.div(cdf, math_ops.reduce_max(cdf))
+
+
+def factorized_pool(input_tensor,
+                    window_shape,
+                    pooling_type,
+                    strides,
+                    padding,
+                    name=None):
+  """Performs m x n pooling through a combination of 1xm and 1xn pooling.
+
+  Args:
+    input_tensor: Input tensor. Must be rank 2
+    window_shape: Pooling window shape
+    pooling_type: Either 'MAX' or 'AVG'
+    strides: The stride of the pooling window
+    padding: 'SAME' or 'VALID'.
+    name: Name of the op
+
+  Returns:
+    A rank 2 tensor containing the pooled output
+
+  Raises:
+    ValueError: if the input tensor is not rank 2
+  """
+  if input_tensor.get_shape().ndims != 2:
+    raise ValueError('factorized_pool() accepts tensors of rank 2 only')
+
+  [height, width] = input_tensor.get_shape()
+  with ops.name_scope(name, 'factorized_pool'):
+    input_tensor_aligned = array_ops.reshape(
+        input_tensor, [1, 1, height, width],
+        name=input_tensor.op.name + '_aligned')
+
+    height_pooling = nn_ops.pool(
+        input_tensor_aligned,
+        window_shape=[1, window_shape[0]],
+        pooling_type=pooling_type,
+        strides=[1, strides[0]],
+        padding=padding)
+    swap_height_width = array_ops.transpose(height_pooling, perm=[0, 1, 3, 2])
+
+    width_pooling = nn_ops.pool(
+        swap_height_width,
+        window_shape=[1, window_shape[1]],
+        pooling_type=pooling_type,
+        strides=[1, strides[1]],
+        padding=padding)
+
+  return array_ops.squeeze(
+      array_ops.transpose(width_pooling, perm=[0, 1, 3, 2]))
 
 
 def determine_partitioned_axis(partitioned_variable):

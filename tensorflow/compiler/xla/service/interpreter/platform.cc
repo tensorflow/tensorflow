@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
-#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
@@ -31,13 +30,13 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-XlaInterpreterPlatform::XlaInterpreterPlatform() : name_("Interpreter") {}
+XlaInterpreterPlatform::XlaInterpreterPlatform(const string& name,
+                                               const Platform::Id& id)
+    : name_(name), id_(id) {}
 
 XlaInterpreterPlatform::~XlaInterpreterPlatform() {}
 
-Platform::Id XlaInterpreterPlatform::id() const {
-  return kXlaInterpreterPlatformId;
-}
+Platform::Id XlaInterpreterPlatform::id() const { return id_; }
 
 int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
@@ -71,8 +70,8 @@ port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
+  auto executor = MakeUnique<StreamExecutor>(
+      this, MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -105,8 +104,6 @@ static void InitializeXlaInterpreterPlatform() {
 REGISTER_MODULE_INITIALIZER(
     interpreter_platform,
     stream_executor::interpreter::InitializeXlaInterpreterPlatform());
-
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.

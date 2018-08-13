@@ -370,14 +370,14 @@ Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
 BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
     : env_(env),
       options_(options),
-      prefix_(prefix.ToString()),
+      prefix_(std::string(prefix)),
       tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
                                          random::New64())),
       tmp_data_path_(strings::StrCat(DataFilename(prefix_, 0, 1), ".tempstate",
                                      random::New64())),
       out_(nullptr),
       size_(0) {
-  status_ = env_->CreateDir(io::Dirname(prefix_).ToString());
+  status_ = env_->CreateDir(std::string(io::Dirname(prefix_)));
   if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
     return;
   }
@@ -394,7 +394,7 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
   if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);
-  const string key_string = key.ToString();
+  const string key_string = std::string(key);
   if (entries_.find(key_string) != entries_.end()) {
     status_ = errors::InvalidArgument("Adding duplicate key: ", key);
     return status_;
@@ -445,7 +445,7 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
   // In the case of a sharded save, MergeBundles() is responsible for merging
   // the "slices" field of multiple metadata entries corresponding to the same
   // full tensor.
-  const string full_tensor_key_string = full_tensor_key.ToString();
+  const string full_tensor_key_string = std::string(full_tensor_key);
   BundleEntryProto* full_entry = &entries_[full_tensor_key_string];
   if (full_entry->dtype() != DT_INVALID) {
     CHECK_EQ(full_entry->dtype(), slice_tensor.dtype());
@@ -600,7 +600,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Loops through the non-header to-merge entries.
   BundleEntryProto to_merge_entry;
   for (; iter->Valid(); iter->Next()) {
-    const string key = iter->key().ToString();
+    const string key = std::string(iter->key());
     const auto entry_iter = merge_state->entries.find(key);
 
     // Illegal: the duplicated entry is a non-slice tensor.
@@ -649,7 +649,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
-  Status status = env->CreateDir(io::Dirname(merged_prefix).ToString());
+  Status status = env->CreateDir(std::string(io::Dirname(merged_prefix)));
   if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
   for (int i = 0; i < prefixes.size(); ++i) {
     TF_RETURN_IF_ERROR(MergeOneBundle(env, prefixes[i], &merge));
@@ -697,7 +697,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
 
 BundleReader::BundleReader(Env* env, StringPiece prefix)
     : env_(env),
-      prefix_(prefix.ToString()),
+      prefix_(std::string(prefix)),
       metadata_(nullptr),
       table_(nullptr),
       iter_(nullptr) {
@@ -919,7 +919,7 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));
   std::vector<std::pair<TensorSlice, string>> details;
-  const string full_tensor_key_string = full_tensor_key.ToString();
+  const string full_tensor_key_string = std::string(full_tensor_key);
   const TensorSliceSet* tss =
       gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
 

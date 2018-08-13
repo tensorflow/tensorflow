@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "mkldnn.h"
-#include "mkldnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 #include "mkldnn.hpp"
@@ -155,5 +153,5 @@ TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 #endif  // INTEL_MKL

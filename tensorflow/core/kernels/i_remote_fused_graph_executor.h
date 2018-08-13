@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
 #define TENSORFLOW_CORE_KERNELS_I_REMOTE_GRAPH_EXECUTOR_H_
 
-#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+class GraphDef;
+class RemoteFusedGraphExecuteInfo;
 
 class IRemoteFusedGraphExecutor {
  public:

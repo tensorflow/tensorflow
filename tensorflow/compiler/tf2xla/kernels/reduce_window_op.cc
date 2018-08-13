@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -65,7 +66,7 @@ class ReduceWindowOp : public XlaOpKernel {
                     "rank (",
                     padding_high_.size(), " vs. ", rank, ")"));
 
-    xla::ComputationBuilder* builder = context->builder();
+    xla::XlaBuilder* builder = context->builder();
 
     // Build the reducer function.
     XlaCompiler::Argument reducer_arg;
@@ -95,15 +96,15 @@ class ReduceWindowOp : public XlaOpKernel {
                     xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
 
     // Wraps the reducer in a computation that unpacks the output tuple.
-    xla::Computation wrapper;
+    xla::XlaComputation wrapper;
     {
-      std::unique_ptr<xla::ComputationBuilder> cb =
+      std::unique_ptr<xla::XlaBuilder> cb =
           builder->CreateSubBuilder("wrapper");
-      auto x = cb->Parameter(0, scalar_shape, "x");
-      auto y = cb->Parameter(1, scalar_shape, "y");
-      auto outputs = cb->Call(*reducer.computation, {x, y});
-      cb->GetTupleElement(outputs, 0);
-      xla::StatusOr<xla::Computation> result = cb->Build();
+      auto x = xla::Parameter(cb.get(), 0, scalar_shape, "x");
+      auto y = xla::Parameter(cb.get(), 1, scalar_shape, "y");
+      auto outputs = xla::Call(cb.get(), *reducer.computation, {x, y});
+      xla::GetTupleElement(outputs, 0);
+      xla::StatusOr<xla::XlaComputation> result = cb->Build();
       OP_REQUIRES_OK(context, result.status());
       wrapper = std::move(result.ValueOrDie());
     }
@@ -113,7 +114,7 @@ class ReduceWindowOp : public XlaOpKernel {
       padding[i] = {padding_low_[i], padding_high_[i]};
     }
 
-    xla::ComputationDataHandle output = builder->ReduceWindowWithGeneralPadding(
+    xla::XlaOp output = xla::ReduceWindowWithGeneralPadding(
         context->Input(0), context->Input(1), wrapper, window_dimensions_,
         window_strides_, padding);
     context->SetOutput(0, output);

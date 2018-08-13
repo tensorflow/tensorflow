@@ -19,19 +19,6 @@ See the @{$python/test} guide.
 
 Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
 depending on the python version.
-
-@@main
-@@TestCase
-@@test_src_dir_path
-@@assert_equal_graph_def
-@@get_temp_dir
-@@is_built_with_cuda
-@@is_gpu_available
-@@gpu_device_name
-@@compute_gradient
-@@compute_gradient_error
-@@create_local_cluster
-
 """
 
 from __future__ import absolute_import
@@ -42,7 +29,6 @@ from __future__ import print_function
 # pylint: disable=g-bad-import-order
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
-from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
@@ -108,13 +94,3 @@ def test_src_dir_path(relative_path):
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
-
-
-_allowed_symbols = [
-    # We piggy-back googletest documentation.
-    'Benchmark',
-    'mock',
-    'StubOutForTesting',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

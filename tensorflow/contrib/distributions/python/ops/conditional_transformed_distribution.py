@@ -20,7 +20,6 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import conditional_distribution
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import transformed_distribution
@@ -106,7 +105,7 @@ class ConditionalTransformedDistribution(
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
-    event_ndims = self._maybe_get_event_ndims_statically()
+    event_ndims = self._maybe_get_static_event_ndims()
     ildj = self.bijector.inverse_log_det_jacobian(
         y, event_ndims=event_ndims, **bijector_kwargs)
     if self.bijector._is_injective:  # pylint: disable=protected-access
@@ -131,7 +130,7 @@ class ConditionalTransformedDistribution(
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
-    event_ndims = self._maybe_get_event_ndims_statically()
+    event_ndims = self._maybe_get_static_event_ndims()
     ildj = self.bijector.inverse_log_det_jacobian(
         y, event_ndims=event_ndims, **bijector_kwargs)
     if self.bijector._is_injective:  # pylint: disable=protected-access
@@ -220,14 +219,14 @@ class ConditionalTransformedDistribution(
     inv_cdf = self.distribution.quantile(value, **distribution_kwargs)
     return self.bijector.forward(inv_cdf, **bijector_kwargs)
 
-  def _maybe_get_event_ndims_statically(self):
+  def _maybe_get_static_event_ndims(self):
     if self.event_shape.ndims is not None:
       return self.event_shape.ndims
 
     event_ndims = array_ops.size(self.event_shape_tensor())
-    static_event_ndims = tensor_util.constant_value(event_ndims)
+    event_ndims_ = distribution_util.maybe_get_static_value(event_ndims)
 
-    if static_event_ndims is not None:
-      return static_event_ndims
+    if event_ndims_ is not None:
+      return event_ndims_
 
     return event_ndims

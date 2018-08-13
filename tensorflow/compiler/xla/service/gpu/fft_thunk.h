@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -39,8 +40,6 @@ class FftScratchAllocator : public se::ScratchAllocator {
   FftScratchAllocator(int device_ordinal,
                       DeviceMemoryAllocator* memory_allocator);
 
-  ~FftScratchAllocator() override;
-
   int64 GetMemoryLimitInBytes(se::Stream* stream) override;
 
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
@@ -51,7 +50,7 @@ class FftScratchAllocator : public se::ScratchAllocator {
  private:
   const int device_ordinal_;
   DeviceMemoryAllocator* memory_allocator_;
-  std::vector<se::DeviceMemoryBase> allocated_buffers_;
+  std::vector<OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
@@ -73,8 +72,9 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
   const se::fft::Type fft_type_;

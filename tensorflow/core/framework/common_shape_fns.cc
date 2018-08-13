@@ -40,8 +40,8 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
       const int64 padding_needed =
-          std::max(0LL, (*output_size - 1) * stride + effective_filter_size -
-                            input_size);
+          std::max(int64{0}, (*output_size - 1) * stride +
+                                 effective_filter_size - input_size);
       // For odd values of total padding, add more padding at the 'right'
       // side of the given dimension.
       *padding_before = padding_needed / 2;
@@ -302,6 +302,9 @@ Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
   dims_actual[outer_c_index] = context->MakeDim(C);
   if (format == FORMAT_NCHW_VECT_C) {
     dims_actual[GetTensorInnerFeatureDimIndex(num_dims, format)] =
+        context->MakeDim(4);
+  } else if (format == FORMAT_NHWC_VECT_W) {
+    dims_actual[GetTensorInnerWidthDimIndex(num_dims, format)] =
         context->MakeDim(4);
   }
   for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
@@ -718,10 +721,15 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
   bool is_training;
   TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
   int number_inputs = (is_training) ? 3 : 5;
-  string data_format;
-  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-  DimensionHandle channel_dim =
-      (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+  string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
+  }
+  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+  DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
 
   // covers scale, offset, and if is_training is false, mean, variance
   for (int i = 1; i < number_inputs; ++i) {
@@ -731,11 +739,7 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
   }
 
   ShapeHandle y;
-  if (data_format == "NHWC") {
-    TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
-  } else {
-    TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
-  }
+  TF_RETURN_IF_ERROR(c->ReplaceDim(x, channel_dim_index, channel_dim, &y));
   c->set_output(0, y);
   ShapeHandle vector_shape = c->Vector(channel_dim);
   c->set_output(1, vector_shape);
@@ -752,16 +756,18 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
 
   bool is_training;
-  string data_format;
   TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-  DimensionHandle channel_dim =
-      (data_format == "NHWC") ? c->Dim(y_backprop, 3) : c->Dim(y_backprop, 1);
-  if (data_format == "NHWC") {
-    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
-  } else {
-    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
+  string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
   }
+  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+  DimensionHandle channel_dim = c->Dim(y_backprop, channel_dim_index);
+  TF_RETURN_IF_ERROR(
+      c->Merge(channel_dim, c->Dim(x, channel_dim_index), &channel_dim));
 
   // covers scale, mean (reserve_space_1), variance (reserve_space_2)
   for (int i = 2; i < 5; ++i) {
@@ -771,11 +777,8 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
   }
 
   ShapeHandle x_backprop;
-  if (data_format == "NHWC") {
-    TF_RETURN_IF_ERROR(c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
-  } else {
-    TF_RETURN_IF_ERROR(c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
-  }
+  TF_RETURN_IF_ERROR(
+      c->ReplaceDim(y_backprop, channel_dim_index, channel_dim, &x_backprop));
   c->set_output(0, x_backprop);
   c->set_output(1, c->Vector(channel_dim));
   c->set_output(2, c->Vector(channel_dim));
@@ -1228,11 +1231,13 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
-Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
-  ShapeHandle shape_x = c->input(0);
-  ShapeHandle shape_y = c->input(1);
+Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
+                                            ShapeHandle shape_x,
+                                            ShapeHandle shape_y,
+                                            ShapeHandle* out) {
+  CHECK_NOTNULL(out);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
-    c->set_output(0, c->UnknownShape());
+    *out = c->UnknownShape();
     return Status::OK();
   }
   const int32 rank_x = c->Rank(shape_x);
@@ -1290,7 +1295,7 @@ Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
     }
   }
 
-  c->set_output(output_index, c->MakeShape(dims));
+  *out = c->MakeShape(dims);
   return Status::OK();
 }
 
@@ -1414,6 +1419,21 @@ Status ExplicitShape(InferenceContext* c) {
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output_shape));
   c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status ExplicitShapes(InferenceContext* c) {
+  std::vector<PartialTensorShape> shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+  if (shapes.empty()) {
+    return errors::Internal("shapes attribute is empty");
+  }
+  for (int i = 0; i < shapes.size(); ++i) {
+    ShapeHandle output_shape;
+    TF_RETURN_IF_ERROR(
+        c->MakeShapeFromPartialTensorShape(shapes[i], &output_shape));
+    c->set_output(i, output_shape);
+  }
   return Status::OK();
 }
 

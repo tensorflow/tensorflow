@@ -30,14 +30,12 @@ if [ ! -f $BZL_FILE_PATH ]; then
 fi
 
 EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.bazel | head -n1)"
-# TODO (yongtang): Replace the following with 'https://mirror.bazel.build/github.com/google/gemmlowp/.*zip' once
-# the archive has been propagated in mirror.bazel.build.
-GEMMLOWP_URL="$(grep -o 'https://github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
+GEMMLOWP_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
 ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
 NEON_2_SSE_URL="https://github.com/intel/ARM_NEON_2_x86_SSE/archive/master.zip"
 FARMHASH_URL="https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
-FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/master.zip"
+FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/v1.8.0.zip"
 FFT2D_URL="https://mirror.bazel.build/www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz"
 
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,

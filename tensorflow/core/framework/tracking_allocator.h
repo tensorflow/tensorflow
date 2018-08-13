@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <unordered_map>
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"

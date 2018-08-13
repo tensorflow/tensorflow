@@ -5,7 +5,7 @@ evaluating the result of the HLO graph directly with HloEvaluator, without
 lowering it further (to LLVM IR for example) before execution as other backends
 (CPU and GPU for example) do.
 
-Its key componenets are:
+Its key components are:
 
 *   [`InterpreterCompiler`] despite the inherited naming of "compiler", all
     `InterpreterCompiler` really does is the following:

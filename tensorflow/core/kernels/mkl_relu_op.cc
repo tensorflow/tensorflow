@@ -23,11 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::algorithm;
@@ -38,7 +34,11 @@ using mkldnn::prop_kind;
 using mkldnn::relu_backward;
 using mkldnn::relu_forward;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -57,7 +57,7 @@ struct MklReluHelpers {
   }
 };
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklReluOp : public OpKernel {
@@ -367,10 +367,7 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
   mkl_context.MklCleanup();
 }
 
-
-
-#else  // INTEL_MKL_ML
-
+#else  // INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T, algorithm alg_kind>
 class MklReluOpBase : public OpKernel {
@@ -873,7 +870,7 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
                           MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 // register dnn kernels for supported operations and supported types
 #define REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES(type)              \

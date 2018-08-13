@@ -31,6 +31,9 @@ struct BuildGraphOptions {
   // TODO(mrry): Remove this when the distributed runtime supports Arg/Retval.
   bool use_function_convention = false;
 
+  static const int64 kNoCollectiveGraphKey = 0;
+  int64 collective_graph_key = kNoCollectiveGraphKey;
+
   string DebugString() const;
 };
 

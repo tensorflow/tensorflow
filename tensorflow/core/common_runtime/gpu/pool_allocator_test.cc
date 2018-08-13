@@ -15,23 +15,22 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
 
+#include "tensorflow/core/common_runtime/gpu/cuda_host_allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
-
-namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 namespace {
 
 TEST(PoolAllocatorTest, ZeroSizeBuffers) {
-  gpu::Platform* platform =
-      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new CUDAHostAllocator(
-          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie()),
       new NoopRounder, "pool");
 
@@ -44,12 +43,12 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
 }
 
 TEST(PoolAllocatorTest, ZeroSizePool) {
-  gpu::Platform* platform =
-      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
       new CUDAHostAllocator(
-          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie()),
       new NoopRounder, "pool");
 
@@ -77,12 +76,12 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
 }
 
 TEST(PoolAllocatorTest, Alignment) {
-  gpu::Platform* platform =
-      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
       new CUDAHostAllocator(
-          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie()),
       new NoopRounder, "pool");
   for (int i = 0; i < 16; ++i) {
@@ -98,7 +97,8 @@ TEST(PoolAllocatorTest, Alignment) {
 
 TEST(PoolAllocatorTest, AutoResize) {
   PoolAllocator pool(2 /*pool_size_limit*/, true /*auto_resize*/,
-                     new BasicCPUAllocator, new NoopRounder, "pool");
+                     new BasicCPUAllocator(0 /*numa_node*/), new NoopRounder,
+                     "pool");
 
   // Alloc/dealloc 10 sizes just a few times, confirming pool size
   // stays at 2.
@@ -123,12 +123,12 @@ TEST(PoolAllocatorTest, AutoResize) {
 }
 
 TEST(PoolAllocatorTest, CudaHostAllocator) {
-  gpu::Platform* platform =
-      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new CUDAHostAllocator(
-          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie()),
       new NoopRounder, "pool");
 
@@ -200,12 +200,12 @@ TEST(PoolAllocatorTest, Pow2Rounder) {
 }
 
 TEST(PoolAllocatorTest, Name) {
-  gpu::Platform* platform =
-      gpu::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new CUDAHostAllocator(
-          platform->GetExecutor(gpu::StreamExecutorConfig(/*ordinal=*/0))
+          platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie()),
       new NoopRounder, "pool");
   EXPECT_EQ("pool", pool.Name());

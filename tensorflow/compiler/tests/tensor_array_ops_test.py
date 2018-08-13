@@ -472,7 +472,9 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(c([[-2.0, -10.0]]), grad_vals[1])
 
   def testTensorArrayGradientWriteRead(self):
-    for dtype in self.numeric_types:
+    for dtype in self.float_types:
+      self._testTensorArrayGradientWriteReadType(dtype)
+    for dtype in self.complex_types:
       self._testTensorArrayGradientWriteReadType(dtype)
 
   def _testTensorArrayGradientWritePackConcatAndRead(self):

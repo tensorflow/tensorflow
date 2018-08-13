@@ -26,6 +26,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.exp import Exp
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import SoftmaxCentered
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import Softplus
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.ops.distributions.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.platform import test
@@ -187,6 +188,15 @@ class ChainBijectorTest(test.TestCase):
     self.assertAllClose(
         -np.log(6, dtype=np.float32) - np.sum(x),
         self.evaluate(chain.inverse_log_det_jacobian(y, event_ndims=1)))
+
+  def testChainIldjWithPlaceholder(self):
+    chain = Chain((Exp(), Exp()))
+    samples = array_ops.placeholder(
+        dtype=np.float32, shape=[None, 10], name="samples")
+    ildj = chain.inverse_log_det_jacobian(samples, event_ndims=0)
+    self.assertTrue(ildj is not None)
+    with self.test_session():
+      ildj.eval({samples: np.zeros([2, 10], np.float32)})
 
 
 if __name__ == "__main__":

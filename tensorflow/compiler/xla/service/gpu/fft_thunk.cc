@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -31,23 +32,12 @@ FftScratchAllocator::FftScratchAllocator(
     int device_ordinal, DeviceMemoryAllocator* memory_allocator)
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
-FftScratchAllocator::~FftScratchAllocator() {
-  for (auto& allocated_buffer : allocated_buffers_) {
-    if (!memory_allocator_->Deallocate(device_ordinal_, &allocated_buffer)
-             .ok()) {
-      // The program can still continue with failed deallocation.
-      LOG(ERROR) << "Failed to deallocate the allocated buffer: "
-                 << allocated_buffer.opaque();
-    }
-  }
-}
-
 int64 FftScratchAllocator::GetMemoryLimitInBytes(se::Stream* stream) {
   constexpr int64 kFftScratchSize = 1LL << 32;  // 4GB by default.
   return kFftScratchSize;
 }
 
-se::port::StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
+StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
     se::Stream* stream, int64 byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes(stream)) {
@@ -58,18 +48,14 @@ se::port::StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
-  auto status_or_memory =
-      memory_allocator_->Allocate(device_ordinal_, byte_size,
-                                  /*retry_on_failure=*/false);
-  if (!status_or_memory.ok()) {
-    return tensorflow::errors::ResourceExhausted(
-        "Failed to allocate %lld bytes on device %d.", byte_size,
-        device_ordinal_);
-  }
-  se::DeviceMemoryBase allocated_buffer = status_or_memory.ValueOrDie();
-  allocated_buffers_.push_back(allocated_buffer);
+  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
-  return se::DeviceMemory<uint8>(allocated_buffer);
+
+  se::DeviceMemoryBase buffer_addr = allocated_buffer.AsDeviceMemoryBase();
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8>(buffer_addr);
 }
 
 namespace {
@@ -121,8 +107,9 @@ FftThunk::FftThunk(FftType fft_type,
       input_shape_(input_shape),
       output_shape_(output_shape) {}
 
-tensorflow::Status FftThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                 se::Stream* stream,
+                                 HloExecutionProfiler* profiler) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type_);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape_);
   VLOG(3) << "Output shape: "
@@ -131,6 +118,7 @@ tensorflow::Status FftThunk::ExecuteOnStream(
   FftScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
                                         buffer_allocations.memory_allocator());
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (fft_plan_ == nullptr) {
     const int64 fft_rank = fft_length_.size();
     CHECK_LE(fft_rank, 3);
@@ -222,7 +210,7 @@ tensorflow::Status FftThunk::ExecuteOnStream(
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
   return InternalError("Unable to launch fft for thunk %p with type %s", this,
                        FftTypeToString(fft_type_).c_str());

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
-#include "src-cpp/rdkafkacpp.h"
+#include "rdkafkacpp.h"
 
 namespace tensorflow {
 
@@ -64,7 +64,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
           eof_(eof),
           timeout_(timeout) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Kafka")}));
@@ -81,10 +81,11 @@ class KafkaDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "KafkaDatasetOp::Dataset"; }
+    string DebugString() const override { return "KafkaDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* topics = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(topics_, &topics));

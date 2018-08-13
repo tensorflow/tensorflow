@@ -18,78 +18,114 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph import utils
-from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.contrib.autograph.converters import lists
+from tensorflow.contrib.autograph.core import converter_testing
+from tensorflow.contrib.autograph.lang import directives
+from tensorflow.contrib.autograph.lang import special_functions
+from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import test
 
 
-class ListTest(converter_test_base.TestCase):
+tf = None  # Will be replaced by a mock.
 
-  def test_empty_annotated_list(self):
+
+class ListTest(converter_testing.TestCase):
+
+  def test_empty_list(self):
 
     def test_fn():
-      l = []
-      utils.set_element_type(l, dtypes.int32)
-      l.append(1)
+      return []
+
+    with self.converted(test_fn, lists, {}) as result:
+      tl = result.test_fn()
+      # Empty tensor lists cannot be evaluated or stacked.
+      self.assertTrue(isinstance(tl, ops.Tensor))
+      self.assertEqual(tl.dtype, dtypes.variant)
+
+  def test_initialized_list(self):
+
+    def test_fn():
+      return [1, 2, 3]
+
+    with self.converted(test_fn, lists, {}) as result:
+      self.assertAllEqual(result.test_fn(), [1, 2, 3])
+
+  def test_list_append(self):
+
+    def test_fn():
+      l = special_functions.tensor_list([1])
+      l.append(2)
+      l.append(3)
       return l
 
-    node = self.parse_and_analyze(test_fn, {'dtypes': dtypes, 'utils': utils})
-    node = lists.transform(node, self.ctx)
-
-    with self.compiled(node, tensor_array_ops.TensorArray,
-                       dtypes.int32) as result:
-      # TODO(mdan): Attach these additional modules automatically.
-      result.utils = utils
-      result.dtypes = dtypes
+    ns = {'special_functions': special_functions}
+    with self.converted(test_fn, lists, ns) as result:
       with self.test_session() as sess:
-        self.assertAllEqual([1], sess.run(result.test_fn().stack()))
+        tl = result.test_fn()
+        r = list_ops.tensor_list_stack(tl, dtypes.int32)
+        self.assertAllEqual(sess.run(r), [1, 2, 3])
 
-  def test_empty_annotated_lists_unpacked(self):
+  def test_list_pop(self):
 
     def test_fn():
-      l, m = [], []
-      utils.set_element_type(l, dtypes.int32)
-      utils.set_element_type(m, dtypes.int32)
-      l.append(1)
-      m.append(2)
-      return l, m
+      l = special_functions.tensor_list([1, 2, 3])
+      s = l.pop()
+      return s, l
 
-    node = self.parse_and_analyze(test_fn, {'dtypes': dtypes, 'utils': utils})
-    node = lists.transform(node, self.ctx)
+    ns = {'special_functions': special_functions}
+    node, ctx = self.prepare(test_fn, ns)
+    def_, = anno.getanno(node.body[0].targets[0],
+                         anno.Static.ORIG_DEFINITIONS)
+    def_.directives[directives.set_element_type] = {
+        'dtype': parser.parse_expression('tf.int32'),
+        'shape': parser.parse_expression('()'),
+    }
+    node = lists.transform(node, ctx)
 
-    with self.compiled(node, tensor_array_ops.TensorArray,
-                       dtypes.int32) as result:
-      result.utils = utils
-      result.dtypes = dtypes
+    with self.compiled(node, ns, dtypes.int32) as result:
       with self.test_session() as sess:
-        res_l, res_m = result.test_fn()
-        self.assertEqual([1], sess.run(res_l.stack()))
-        self.assertEqual([2], sess.run(res_m.stack()))
+        ts, tl = result.test_fn()
+        r = list_ops.tensor_list_stack(tl, dtypes.int32)
+        self.assertAllEqual(sess.run(r), [1, 2])
+        self.assertAllEqual(sess.run(ts), 3)
 
-  def test_empty_annotated_lists_list_unpacked(self):
+  def test_double_list_pop(self):
+
+    def test_fn(l):
+      s = l.pop().pop()
+      return s
+
+    with self.converted(test_fn, lists, {}) as result:
+      test_input = [1, 2, [1, 2, 3]]
+      # TODO(mdan): Pass a list of lists of tensor when we fully support that.
+      # For now, we just pass a regular Python list of lists just to verify that
+      # the two pop calls are sequenced properly.
+      self.assertAllEqual(result.test_fn(test_input), 3)
+
+  def test_list_stack(self):
 
     def test_fn():
-      [l, m] = [], []
-      utils.set_element_type(l, dtypes.int32)
-      utils.set_element_type(m, dtypes.int32)
-      l.append(1)
-      m.append(2)
-      return l, m
+      l = [1, 2, 3]
+      return tf.stack(l)
 
-    node = self.parse_and_analyze(test_fn, {'dtypes': dtypes, 'utils': utils})
-    node = lists.transform(node, self.ctx)
+    node, ctx = self.prepare(test_fn, {})
+    def_, = anno.getanno(node.body[0].targets[0],
+                         anno.Static.ORIG_DEFINITIONS)
+    def_.directives[directives.set_element_type] = {
+        'dtype': parser.parse_expression('tf.int32')
+    }
+    node = lists.transform(node, ctx)
 
-    with self.compiled(node, tensor_array_ops.TensorArray,
-                       dtypes.int32) as result:
-      result.utils = utils
-      result.dtypes = dtypes
+    with self.compiled(node, {}, array_ops.stack, dtypes.int32) as result:
       with self.test_session() as sess:
-        res_l, res_m = result.test_fn()
-        self.assertEqual([1], sess.run(res_l.stack()))
-        self.assertEqual([2], sess.run(res_m.stack()))
+        self.assertAllEqual(sess.run(result.test_fn()), [1, 2, 3])
+
+  # TODO(mdan): Add a test with tf.stack with axis kwarg.
 
 
 if __name__ == '__main__':

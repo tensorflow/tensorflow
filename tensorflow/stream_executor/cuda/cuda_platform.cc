@@ -124,9 +124,9 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
     }
   }
 
-  return port::Status{
+  return port::Status(
       port::error::NOT_FOUND,
-      port::Printf("Executor for bus %d not found.", bus_ordinal)};
+      port::Printf("Executor for bus %d not found.", bus_ordinal));
 }
 
 Platform::Id CudaPlatform::id() const { return kCudaPlatformId; }
@@ -168,15 +168,15 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<CUDAExecutor>(config.plugin_config));
+  auto executor = MakeUnique<StreamExecutor>(
+      this, MakeUnique<CUDAExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
+            config.ordinal, init_status.ToString().c_str()));
   }
 
   return std::move(executor);
@@ -206,7 +206,6 @@ static void InitializeCudaPlatform() {
 REGISTER_MODULE_INITIALIZER(cuda_platform,
                             stream_executor::InitializeCudaPlatform());
 
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(cuda_platform, multi_platform_manager);

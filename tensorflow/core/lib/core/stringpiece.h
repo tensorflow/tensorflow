@@ -92,6 +92,7 @@ class StringPiece {
   StringPiece substr(size_t pos, size_t n = npos) const;
 
   // Return a string that contains the copy of the referenced data.
+  // DEPRECATED: use std::string(sv) instead.
   std::string ToString() const { return std::string(data_, size_); }
 
   // Three-way comparison.  Returns value:
@@ -99,6 +100,13 @@ class StringPiece {
   //   == 0 iff "*this" == "b",
   //   >  0 iff "*this" >  "b"
   int compare(StringPiece b) const;
+
+  // Converts to `std::basic_string`.
+  template <typename A>
+  explicit operator std::basic_string<char, std::char_traits<char>, A>() const {
+    if (!data()) return {};
+    return std::basic_string<char, std::char_traits<char>, A>(data(), size());
+  }
 
  private:
   const char* data_;

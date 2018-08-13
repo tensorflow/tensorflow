@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -95,24 +96,19 @@ Backend::CreateDefaultBackend() {
   return CreateBackend(backend_options);
 }
 
-StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(auto exec, stream_executor(device_ordinal));
-  return BorrowStream(exec);
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  return BorrowStream(executor);
 }
 
-StatusOr<Backend::StreamPtr> Backend::BorrowStream(
-    se::StreamExecutor* executor) {
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   tensorflow::mutex_lock l(mu_);
   if (0 == stream_pools_.count(executor)) {
     stream_pools_.emplace(std::piecewise_construct,
                           std::forward_as_tuple(executor),
-                          std::forward_as_tuple([executor]() {
-                            auto stream = MakeUnique<se::Stream>(executor);
-                            stream->Init();
-                            return stream;
-                          }));
+                          std::forward_as_tuple());
   }
-  return stream_pools_.at(executor).Allocate();
+  return stream_pools_.at(executor).BorrowStream(executor);
 }
 
 Backend::Backend(
@@ -137,9 +133,6 @@ Backend::Backend(
       << "Service found no devices for backend " << platform_->Name() << '.';
 
   if (platform->id() == se::host::kHostPlatformId) {
-    inter_op_thread_pool_.reset(new tensorflow::thread::ThreadPool(
-        tensorflow::Env::Default(), "xla_inter_op",
-        tensorflow::port::NumSchedulableCPUs()));
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tensorflow::port::NumSchedulableCPUs();
@@ -152,10 +145,6 @@ Backend::~Backend() {}
 
 int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();
-}
-
-tensorflow::thread::ThreadPool* Backend::inter_op_thread_pool() const {
-  return inter_op_thread_pool_.get();
 }
 
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()

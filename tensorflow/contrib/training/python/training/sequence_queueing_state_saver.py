@@ -988,14 +988,14 @@ class SequenceQueueingStateSaver(object):
     assert isinstance(sequences, dict)
     assert isinstance(context, dict)
     assert isinstance(states, dict)
-    self._name_to_index = dict(
-        (name, ix)
+    self._name_to_index = {
+        name: ix
         for (ix, name) in enumerate([
             "__length", "__total_length", "__next_key", "__sequence",
             "__sequence_count"
         ] + ["__sequence__%s" % k for k in sequences.keys()] + [
             "__context__%s" % k for k in context.keys()
-        ] + ["__state__%s" % k for k in states.keys()]))
+        ] + ["__state__%s" % k for k in states.keys()])}
     self._index_to_name = [
         name
         for (name, _) in sorted(

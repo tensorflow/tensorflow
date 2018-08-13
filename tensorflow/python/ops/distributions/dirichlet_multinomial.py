@@ -191,7 +191,7 @@ class DirichletMultinomial(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[total_count, concentration]) as name:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and

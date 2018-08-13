@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import itertools
 import math
-import sys
 
 import numpy as np
 
@@ -31,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import init_ops
@@ -691,11 +691,12 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
       index += num_val
     return grouped_vals
 
+  @test_util.enable_c_shapes
   def testEmbeddingLookupSparse(self):
     vocab_size = 13
     batch_size = 10
     param_shape = [2, 5]
-    expected_lookup_result_shape = [None] + param_shape
+    expected_lookup_result_shape = param_shape
 
     sp_ids, sp_weights, ids, weights, vals_per_batch_entry = (
         self._RandomIdsAndWeights(batch_size, vocab_size))
@@ -719,7 +720,7 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
                 None if ignore_weights else sp_weights,
                 combiner=combiner)
 
-        self.assertEqual(embedding_sum.get_shape().as_list(),
+        self.assertEqual(embedding_sum.get_shape().as_list()[1:],
                          expected_lookup_result_shape)
 
         tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)

@@ -47,27 +47,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 ```
 
-* At the end of every BUILD file, should contain:
 
-```
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-```
-
-* When adding new BUILD file, add this line to `tensorflow/BUILD` file into `all_opensource_files` target.
-
-```
-"//tensorflow/<directory>:all_files",
-```
 
 * For all Python BUILD targets (libraries and tests) add next line:
 
@@ -80,6 +60,9 @@ srcs_version = "PY2AND3",
 
 * Operations that deal with batches may assume that the first dimension of a Tensor is the batch dimension.
 
+* In most models the *last dimension* is the number of channels.
+
+* Dimensions excluding the first and last usually make up the "space" dimensions: Sequence-length or Image-size.
 
 ## Python operations
 
@@ -148,37 +131,6 @@ Usage:
 
 ## Layers
 
-A *Layer* is a Python operation that combines variable creation and/or one or many
-other graph operations. Follow the same requirements as for regular Python
-operation.
+Use `tf.keras.layers`, not `tf.layers`.
 
-* If a layer creates one or more variables, the layer function
- should take next arguments also following order:
-  - `initializers`: Optionally allow to specify initializers for the variables.
-  - `regularizers`: Optionally allow to specify regularizers for the variables.
-  - `trainable`: which control if their variables are trainable or not.
-  - `scope`: `VariableScope` object that variable will be put under.
-  - `reuse`: `bool` indicator if the variable should be reused if
-             it's present in the scope.
-
-* Layers that behave differently during training should take:
-  - `is_training`: `bool` indicator to conditionally choose different
-                   computation paths (e.g. using `tf.cond`) during execution.
-
-Example:
-
-    def conv2d(inputs,
-               num_filters_out,
-               kernel_size,
-               stride=1,
-               padding='SAME',
-               activation_fn=tf.nn.relu,
-               normalization_fn=add_bias,
-               normalization_params=None,
-               initializers=None,
-               regularizers=None,
-               trainable=True,
-               scope=None,
-               reuse=None):
-      ... see implementation at tensorflow/contrib/layers/python/layers/layers.py ...
-
+See `tf.keras.layers` and [the Keras guide](../guide/keras.md#custom_layers) for details on how to sub-class layers.

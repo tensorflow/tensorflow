@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(INTEL_MKL)
+#if !defined(INTEL_MKL) || defined(INTEL_MKL_DNN_ONLY)
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_CPU);
 #endif

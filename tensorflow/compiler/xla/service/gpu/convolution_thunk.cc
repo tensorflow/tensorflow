@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -29,11 +30,6 @@ namespace xla {
 namespace gpu {
 
 using se::dnn::AlgorithmDesc;
-using se::dnn::BatchDescriptor;
-using se::dnn::ConvolutionDescriptor;
-using se::dnn::DataLayout;
-using se::dnn::FilterDescriptor;
-using se::dnn::FilterLayout;
 
 ConvolutionThunk::ConvolutionThunk(
     CudnnConvKind convolution_kind, const BufferAllocation::Slice& input_buffer,
@@ -60,7 +56,8 @@ ConvolutionThunk::ConvolutionThunk(
       tensor_ops_enabled_(tensor_ops_enabled) {}
 
 Status ConvolutionThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase input_data =
       buffer_allocations.GetDeviceAddress(input_buffer_);
   se::DeviceMemoryBase filter_data =
@@ -73,6 +70,7 @@ Status ConvolutionThunk::ExecuteOnStream(
   se::dnn::AlgorithmConfig algorithm_config(
       se::dnn::AlgorithmDesc(algorithm_, tensor_ops_enabled_));
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   TF_RETURN_IF_ERROR(RunCudnnConvolution(
       convolution_kind_, input_shape_, filter_shape_, output_shape_, input_data,
       filter_data, output_data, scratch, window_, dim_nums_, algorithm_config,

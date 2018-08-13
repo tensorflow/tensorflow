@@ -177,6 +177,30 @@ class HashTable : public InitializableLookupTable {
     return table_ ? table_->size() : 0;
   }
 
+  Status ExportValues(OpKernelContext* context) override {
+    if (!is_initialized_) {
+      return errors::Aborted("HashTable is not initialized.");
+    }
+
+    const int64 size = table_->size();
+
+    Tensor* keys;
+    Tensor* values;
+    TF_RETURN_IF_ERROR(
+        context->allocate_output("keys", TensorShape({size}), &keys));
+    TF_RETURN_IF_ERROR(
+        context->allocate_output("values", TensorShape({size}), &values));
+
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->flat<V>();
+    int64 i = 0;
+    for (auto it = table_->begin(); it != table_->end(); ++it, ++i) {
+      keys_data(i) = it->first;
+      values_data(i) = it->second;
+    }
+    return Status::OK();
+  }
+
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
 
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }

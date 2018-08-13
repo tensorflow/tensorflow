@@ -17,19 +17,48 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+namespace {
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
+
+int64 GetTotalGPUMemory(CudaGpuId gpu_id) {
+  se::StreamExecutor* se =
+      GpuIdUtil::ExecutorForCudaGpuId(GPUMachineManager(), gpu_id).ValueOrDie();
+
+  int64 total_memory, available_memory;
+  CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
+  return total_memory;
+}
+
+Status GetComputeCapability(CudaGpuId gpu_id, int* cc_major, int* cc_minor) {
+  se::StreamExecutor* se =
+      GpuIdUtil::ExecutorForCudaGpuId(GPUMachineManager(), gpu_id).ValueOrDie();
+  if (!se->GetDeviceDescription().cuda_compute_capability(cc_major, cc_minor)) {
+    *cc_major = 0;
+    *cc_minor = 0;
+    return errors::Internal("Failed to get compute capability for device.");
+  }
+  return Status::OK();
+}
+
+void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+      << s << ", expected substring " << substr;
+}
+}  // namespace
 
 class GPUDeviceTest : public ::testing::Test {
  public:
-  void TearDown() { ProcessState::singleton()->TestOnlyReset(); }
+  void TearDown() override { GPUProcessState::singleton()->TestOnlyReset(); }
 
  protected:
   static SessionOptions MakeSessionOptions(
@@ -52,11 +81,6 @@ class GPUDeviceTest : public ::testing::Test {
     }
     return options;
   }
-
-  static bool StartsWith(const string& lhs, const string& rhs) {
-    if (rhs.length() > lhs.length()) return false;
-    return lhs.substr(0, rhs.length()) == rhs;
-  }
 };
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
@@ -65,8 +89,7 @@ TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(StartsWith(status.error_message(), "Could not parse entry"))
-      << status;
+  ExpectErrorMessageSubstr(status, "Could not parse entry");
 }
 
 TEST_F(GPUDeviceTest, InvalidGpuId) {
@@ -75,9 +98,8 @@ TEST_F(GPUDeviceTest, InvalidGpuId) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(StartsWith(status.error_message(),
-                         "'visible_device_list' listed an invalid GPU id"))
-      << status;
+  ExpectErrorMessageSubstr(status,
+                           "'visible_device_list' listed an invalid GPU id");
 }
 
 TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
@@ -86,9 +108,8 @@ TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(StartsWith(status.error_message(),
-                         "visible_device_list contained a duplicate entry"))
-      << status;
+  ExpectErrorMessageSubstr(status,
+                           "visible_device_list contained a duplicate entry");
 }
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithMemoryFractionSettings) {
@@ -97,9 +118,8 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithMemoryFractionSettings) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(StartsWith(status.error_message(),
-                         "It's invalid to set per_process_gpu_memory_fraction"))
-      << status;
+  ExpectErrorMessageSubstr(
+      status, "It's invalid to set per_process_gpu_memory_fraction");
 }
 
 TEST_F(GPUDeviceTest, GpuDeviceCountTooSmall) {
@@ -110,9 +130,8 @@ TEST_F(GPUDeviceTest, GpuDeviceCountTooSmall) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
-  EXPECT_TRUE(StartsWith(status.error_message(),
-                         "Not enough GPUs to create virtual devices."))
-      << status;
+  ExpectErrorMessageSubstr(status,
+                           "Not enough GPUs to create virtual devices.");
 }
 
 TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
@@ -123,9 +142,8 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
-  EXPECT_TRUE(StartsWith(status.error_message(),
-                         "Not enough GPUs to create virtual devices."))
-      << status;
+  ExpectErrorMessageSubstr(status,
+                           "Not enough GPUs to create virtual devices.");
 }
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
@@ -138,11 +156,11 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(StartsWith(status.error_message(),
-                         "The number of GPUs in visible_device_list doesn't "
-                         "match the number of elements in the virtual_devices "
-                         "list."))
-      << status;
+  ExpectErrorMessageSubstr(
+      status,
+      "The number of GPUs in visible_device_list doesn't "
+      "match the number of elements in the virtual_devices "
+      "list.");
 }
 
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
@@ -153,7 +171,7 @@ TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
-  for (auto d : devices) delete d;
+  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithNoMemoryLimit) {
@@ -165,7 +183,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithNoMemoryLimit) {
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
-  for (auto d : devices) delete d;
+  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithMemoryLimit) {
@@ -175,7 +193,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithMemoryLimit) {
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
-  for (auto d : devices) delete d;
+  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
@@ -198,7 +216,67 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
             devices[1]->attributes().locality().links().link(0).type());
   EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
             devices[1]->attributes().locality().links().link(0).strength());
-  for (auto d : devices) delete d;
+  gtl::STLDeleteElements(&devices);
+}
+
+// Enabling unified memory on pre-Pascal GPUs results in an initialization
+// error.
+TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
+  int cc_major, cc_minor;
+  TF_ASSERT_OK(GetComputeCapability(CudaGpuId(0), &cc_major, &cc_minor));
+  // Exit early while running on Pascal or later GPUs.
+  if (cc_major >= 6) {
+    return;
+  }
+
+  SessionOptions opts = MakeSessionOptions("0", /*memory_fraction=*/1.2);
+  opts.config.mutable_gpu_options()
+      ->mutable_experimental()
+      ->set_use_unified_memory(true);
+  std::vector<tensorflow::Device*> devices;
+  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices);
+  EXPECT_EQ(status.code(), error::INTERNAL);
+  ExpectErrorMessageSubstr(status, "does not support oversubscription.");
+}
+
+// Enabling unified memory on Pascal or later GPUs makes it possible to allocate
+// more memory than what is available on the device.
+TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
+  static constexpr double kGpuMemoryFraction = 1.2;
+  static constexpr CudaGpuId kCudaGpuId(0);
+
+  int cc_major, cc_minor;
+  TF_ASSERT_OK(GetComputeCapability(kCudaGpuId, &cc_major, &cc_minor));
+  // Exit early if running on pre-Pascal GPUs.
+  if (cc_major < 6) {
+    LOG(INFO)
+        << "Unified memory allocation is not supported with pre-Pascal GPUs.";
+    return;
+  }
+
+  SessionOptions opts = MakeSessionOptions("0", kGpuMemoryFraction);
+  std::vector<tensorflow::Device*> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  ASSERT_EQ(1, devices.size());
+
+  int64 memory_limit = devices[0]->attributes().memory_limit();
+  ASSERT_EQ(memory_limit, static_cast<int64>(GetTotalGPUMemory(kCudaGpuId) *
+                                             kGpuMemoryFraction));
+
+  AllocatorAttributes allocator_attributes = AllocatorAttributes();
+  allocator_attributes.set_gpu_compatible(true);
+  Allocator* allocator = devices[0]->GetAllocator(allocator_attributes);
+
+  // Try to allocate all the available memory after rounding down to the nearest
+  // multiple of MB.
+  void* ptr = allocator->AllocateRaw(Allocator::kAllocatorAlignment,
+                                     (memory_limit >> 20) << 20);
+  EXPECT_NE(ptr, nullptr);
+  allocator->DeallocateRaw(ptr);
+
+  gtl::STLDeleteElements(&devices);
 }
 
 }  // namespace tensorflow

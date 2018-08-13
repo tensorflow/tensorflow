@@ -34,14 +34,37 @@ struct BroadcastTo {
                   const TensorShape &input_shape) {
 #define BROADCAST_SHAPE(broadcast, reshape, NDIMS, input_shape, output_shape) \
   for (int i = 0; i < NDIMS; i++) {                                           \
-    OP_REQUIRES(ctx, (broadcast[i] % reshape[i] == 0),                        \
-                errors::InvalidArgument("invalid shape to broadcast from ",   \
-                                        input_shape.DebugString(), " to ",    \
-                                        output_shape.DebugString()));         \
-    broadcast[i] = broadcast[i] / reshape[i];                                 \
+    if (reshape[i] != broadcast[i]) {                                         \
+      OP_REQUIRES(ctx,                                                        \
+                  ((reshape[i] != 0) && (broadcast[i] % reshape[i] == 0)),    \
+                  errors::InvalidArgument("invalid shape to broadcast from ", \
+                                          input_shape.DebugString(), " to ",  \
+                                          output_shape.DebugString()));       \
+      broadcast[i] = broadcast[i] / reshape[i];                               \
+    } else {                                                                  \
+      broadcast[i] = 1;                                                       \
+    }                                                                         \
   }
 
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
+    if (output_shape == input_shape) {
+      output_tensor.flat<T>().device(d) = input_tensor.flat<T>();
+      return;
+    }
+
     switch (output_shape.dims()) {
+      case 0: {
+        if (input_shape.dims() > 0) {
+          ctx->CtxFailure(errors::InvalidArgument(
+              "invalid shape to broadcast from ", input_shape.DebugString(),
+              " to ", output_shape.DebugString()));
+          break;
+        }
+        output_tensor.scalar<T>().device(d) = input_tensor.scalar<T>();
+        break;
+      }
       case 1: {
         auto reshape = AsEigenDSizesWithPrefix<1>(input_shape);
         auto broadcast = output_shape.AsEigenDSizes<1>();
@@ -125,7 +148,6 @@ struct BroadcastTo {
         auto broadcast = output_shape.AsEigenDSizes<4>();
 
         BROADCAST_SHAPE(broadcast, reshape, 4, input_shape, output_shape);
-
         auto output = output_tensor.tensor<T, 4>();
         switch (input_shape.dims()) {
           case 0: {

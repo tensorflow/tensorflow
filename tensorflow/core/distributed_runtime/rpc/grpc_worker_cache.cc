@@ -36,7 +36,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
   // TODO(ncteisen): consider adding a config var or flag for this
   static constexpr const size_t kGrpcWorkerCacheThreadCount = 8;
 
-  explicit GrpcWorkerCache(GrpcChannelCache* channel_cache,
+  explicit GrpcWorkerCache(std::shared_ptr<GrpcChannelCache> channel_cache,
                            WorkerInterface* local_worker,
                            const string& local_target)
       : local_target_(local_target),
@@ -48,7 +48,6 @@ class GrpcWorkerCache : public WorkerCachePartial {
   // Explicit destructor to control destruction order.
   ~GrpcWorkerCache() override {
     threads_.clear();  // Blocks until threads exit.
-    delete channel_cache_;
   }
 
   void ListWorkers(std::vector<string>* workers) const override {
@@ -116,7 +115,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   size_t AssignWorkerToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {
@@ -130,7 +129,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   const string local_target_;
   WorkerInterface* const local_worker_;  // Not owned.
-  GrpcChannelCache* channel_cache_;      // Owned.
+  std::shared_ptr<GrpcChannelCache> channel_cache_;
   WorkerCacheLogger logger_;
   std::vector<GrpcWorkerCacheThread> threads_;
 
@@ -142,12 +141,12 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
 }  // namespace
 
-WorkerCacheInterface* NewGrpcWorkerCache(GrpcChannelCache* cc) {
+WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc) {
   return new GrpcWorkerCache(cc, nullptr, "");
 }
 
 WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
-    GrpcChannelCache* cc, WorkerInterface* local_worker,
+    std::shared_ptr<GrpcChannelCache> cc, WorkerInterface* local_worker,
     const string& local_target) {
   return new GrpcWorkerCache(cc, local_worker, local_target);
 }

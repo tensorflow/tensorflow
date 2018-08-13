@@ -30,4 +30,3 @@ from tensorflow.contrib.autograph.utils.py_func import wrap_py_func
 from tensorflow.contrib.autograph.utils.tensor_list import dynamic_list_append
 from tensorflow.contrib.autograph.utils.testing import fake_tf
 from tensorflow.contrib.autograph.utils.type_check import is_tensor
-from tensorflow.contrib.autograph.utils.type_hints import set_element_type

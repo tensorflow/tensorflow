@@ -55,41 +55,34 @@ class NcclManager {
   // is also the stream that will use the produced data; <done_callback> is
   // not called until the next kernel launched on <stream> would see the data.
   void AddToAllReduce(int num_devices, const string& key,
-                      ncclRedOp_t reduction_op,
-                      perftools::gputools::StreamExecutor* executor,
+                      ncclRedOp_t reduction_op, se::StreamExecutor* executor,
                       int gpu_device_id, EventMgr* event_mgr,
-                      perftools::gputools::Stream* tensor_stream,
-                      const Tensor* in_t, Tensor* out_t,
-                      const DoneCallback& done_callback);
+                      se::Stream* tensor_stream, const Tensor* in_t,
+                      Tensor* out_t, const DoneCallback& done_callback);
 
   // AddBroadcastSend and AddBroadcastRecv combine to sent data from one sender
   // to all receivers.
   void AddBroadcastSend(int num_devices, const string& key,
-                        perftools::gputools::StreamExecutor* executor,
-                        int gpu_device_id, EventMgr* event_mgr,
-                        perftools::gputools::Stream* tensor_stream,
+                        se::StreamExecutor* executor, int gpu_device_id,
+                        EventMgr* event_mgr, se::Stream* tensor_stream,
                         const Tensor* in_t, DoneCallback done_callback);
   void AddBroadcastRecv(int num_devices, const string& key,
-                        perftools::gputools::StreamExecutor* executor,
-                        int gpu_device_id, EventMgr* event_mgr,
-                        perftools::gputools::Stream* tensor_stream,
+                        se::StreamExecutor* executor, int gpu_device_id,
+                        EventMgr* event_mgr, se::Stream* tensor_stream,
                         Tensor* out_t, DoneCallback done_callback);
 
   // AddReduceSend and AddReduceRecv combine to sent data from all senders
   // to one receiver.
   void AddReduceSend(int num_devices, const string& key,
-                     ncclRedOp_t reduction_op,
-                     perftools::gputools::StreamExecutor* executor,
+                     ncclRedOp_t reduction_op, se::StreamExecutor* executor,
                      int gpu_device_id, EventMgr* event_mgr,
-                     perftools::gputools::Stream* tensor_stream,
-                     const Tensor* in_t, DoneCallback done_callback);
-  void AddReduceRecv(int num_devices, const string& key,
-                     ncclRedOp_t reduction_op,
-                     perftools::gputools::StreamExecutor* executor,
-                     int gpu_device_id, EventMgr* event_mgr,
-                     perftools::gputools::Stream* tensor_stream,
-                     const Tensor* in_t, Tensor* out_t,
+                     se::Stream* tensor_stream, const Tensor* in_t,
                      DoneCallback done_callback);
+  void AddReduceRecv(int num_devices, const string& key,
+                     ncclRedOp_t reduction_op, se::StreamExecutor* executor,
+                     int gpu_device_id, EventMgr* event_mgr,
+                     se::Stream* tensor_stream, const Tensor* in_t,
+                     Tensor* out_t, DoneCallback done_callback);
 
  private:
   enum CollectiveType {
@@ -123,8 +116,7 @@ class NcclManager {
   // Maps a device to the communication streams that make up its collective.
   // This is used to share the stream across different communicators that
   // include the same device.
-  std::map<perftools::gputools::StreamExecutor*,
-           std::vector<std::unique_ptr<NcclStream>>>
+  std::map<se::StreamExecutor*, std::vector<std::unique_ptr<NcclStream>>>
       device_to_comm_streams_ GUARDED_BY(mu_);
 
   std::vector<std::unique_ptr<Communicator>> communicators_;

@@ -35,7 +35,7 @@ from tensorflow.python.util import nest
 
 # pylint: disable=protected-access
 class _PrefetchToDeviceIterator(object):
-  """A replacement for @{tf.data.Iterator} that prefetches to another device.
+  """A replacement for `tf.data.Iterator` that prefetches to another device.
 
   Args:
     input_dataset: The input dataset.
@@ -89,6 +89,9 @@ class _PrefetchToDeviceIterator(object):
       with ops.device(device):
         buffer_resource_handle = prefetching_ops.function_buffering_resource(
             f=_prefetch_fn,
+            output_types=data_nest.flatten(
+                sparse.as_dense_types(self._input_dataset.output_types,
+                                      self._input_dataset.output_classes)),
             target_device=target_device,
             string_arg=input_iterator_handle,
             buffer_size=buffer_size,
@@ -105,7 +108,7 @@ class _PrefetchToDeviceIterator(object):
             self._input_dataset)
 
   def get_next(self, name=None):
-    """See @{tf.data.Iterator.get_next}."""
+    """See `tf.data.Iterator.get_next`."""
     self._get_next_call_count += 1
     if self._get_next_call_count > iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE)
@@ -206,7 +209,7 @@ class _PrefetchToDeviceDataset(dataset_ops.Dataset):
 def prefetch_to_devices(devices, buffer_size=None):
   """A transformation that prefetches dataset values to the given `devices`.
 
-  NOTE: Although the transformation creates a @{tf.data.Dataset}, the
+  NOTE: Although the transformation creates a `tf.data.Dataset`, the
   transformation must be the final `Dataset` in the input pipeline.
 
   Args:
@@ -217,7 +220,7 @@ def prefetch_to_devices(devices, buffer_size=None):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
     return _PrefetchToDeviceDataset(dataset, devices, buffer_size)

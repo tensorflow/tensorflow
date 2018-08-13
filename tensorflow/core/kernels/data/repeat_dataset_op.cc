@@ -48,7 +48,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
         return std::unique_ptr<IteratorBase>(new ForeverIterator(
@@ -69,13 +69,14 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "RepeatDatasetOp::Dataset"; }
+    string DebugString() const override { return "RepeatDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* count = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
       TF_RETURN_IF_ERROR(
@@ -108,9 +109,11 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
       explicit FiniteIterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params), i_(0) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -127,7 +130,8 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
           ++i_;
-          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         }
         *end_of_sequence = true;
         input_impl_.reset();
@@ -142,7 +146,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         }
         return Status::OK();
       }
@@ -152,7 +156,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -178,7 +182,8 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           bool first_call = false;
           if (!input_impl_) {
             first_call = true;
-            input_impl_ = dataset()->input_->MakeIterator(prefix());
+            TF_RETURN_IF_ERROR(
+                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -201,7 +206,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("uninitialized"), ""));
@@ -214,8 +219,9 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         if (reader->Contains(full_name("uninitialized"))) {
           input_impl_.reset();
         } else {
-          input_impl_ = dataset()->input_->MakeIterator(prefix());
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         }
         return Status::OK();
       }

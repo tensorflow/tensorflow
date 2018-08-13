@@ -28,6 +28,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":doc_generator_visitor",
+        ":generate_lib",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -37,7 +38,11 @@ py_library(
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["@astor_archive//:astor"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "@astor_archive//:astor",
+    ],
 )
 
 py_test(
@@ -92,6 +97,7 @@ py_binary(
     deps = [
         ":generate_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:util",
         "//tensorflow/python/debug:debug_py",
     ],
 )
@@ -100,7 +106,7 @@ py_test(
     name = "build_docs_test",
     size = "small",
     srcs = ["build_docs_test.py"],
-    data = ["//tensorflow:docs_src"],
+    data = ["//tensorflow/docs_src"],
     srcs_version = "PY2AND3",
     tags = [
         # No reason to run sanitizers or fastbuild for this test.

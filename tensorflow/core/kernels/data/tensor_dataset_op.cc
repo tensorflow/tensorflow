@@ -53,7 +53,7 @@ class TensorDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::FromTensor")}));
@@ -64,10 +64,11 @@ class TensorDatasetOp : public DatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "TensorDatasetOp::Dataset"; }
+    string DebugString() const override { return "TensorDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> components;
       components.reserve(tensors_.size());

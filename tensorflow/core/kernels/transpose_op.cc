@@ -218,7 +218,7 @@ Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             perm, out);
 }
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 #define REGISTER(T)                                   \
   REGISTER_KERNEL_BUILDER(Name("Transpose")           \
                               .Device(DEVICE_CPU)     \

@@ -21,13 +21,13 @@ import itertools
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -35,15 +35,19 @@ from tensorflow.python.platform import test
 
 class ScanDatasetTest(test.TestCase):
 
-  def _count(self, start, step):
-    return dataset_ops.Dataset.from_tensors(0).repeat(None).apply(
-        scan_ops.scan(start, lambda state, _: (state + step, state)))
+  def _counting_dataset(self, start, scan_fn):
+    return dataset_ops.Dataset.from_tensors(0).repeat().apply(
+        scan_ops.scan(start, scan_fn))
 
   def testCount(self):
+    def make_scan_fn(step):
+      return lambda state, _: (state + step, state)
+
     start = array_ops.placeholder(dtypes.int32, shape=[])
     step = array_ops.placeholder(dtypes.int32, shape=[])
     take = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = self._count(start, step).take(take).make_initializable_iterator()
+    iterator = self._counting_dataset(
+        start, make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
     with self.test_session() as sess:
@@ -59,7 +63,7 @@ class ScanDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFibonacci(self):
     iterator = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
         scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))
@@ -77,6 +81,37 @@ class ScanDatasetTest(test.TestCase):
     self.assertEqual(3, self.evaluate(next_element()))
     self.assertEqual(5, self.evaluate(next_element()))
     self.assertEqual(8, self.evaluate(next_element()))
+
+  def testSparseCount(self):
+    def _sparse(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1]))
+
+    def make_scan_fn(step):
+      return lambda state, _: (_sparse(state.values[0] + step), state)
+
+    start = array_ops.placeholder(dtypes.int32, shape=[])
+    step = array_ops.placeholder(dtypes.int32, shape=[])
+    take = array_ops.placeholder(dtypes.int64, shape=[])
+    iterator = self._counting_dataset(
+        _sparse(start),
+        make_scan_fn(step)).take(take).make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+
+      for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
+                                            (10, 2, 10), (10, -1, 10),
+                                            (10, -2, 10)]:
+        sess.run(iterator.initializer,
+                 feed_dict={start: start_val, step: step_val, take: take_val})
+        for expected, _ in zip(
+            itertools.count(start_val, step_val), range(take_val)):
+          self.assertEqual(expected, sess.run(next_element).values[0])
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(next_element)
 
   def testChangingStateShape(self):
     # Test the fixed-point shape invariant calculations: start with
@@ -130,19 +165,6 @@ class ScanDatasetTest(test.TestCase):
         "output value."):
       dataset.apply(
           scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
-
-
-class ScanDatasetSerialzationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_dataset(self, num_elements):
-    return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
-
-  def testScanCore(self):
-    num_output = 5
-    self.run_core_tests(lambda: self._build_dataset(num_output),
-                        lambda: self._build_dataset(2), num_output)
 
 
 if __name__ == "__main__":

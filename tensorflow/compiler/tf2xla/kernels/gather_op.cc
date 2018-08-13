@@ -21,18 +21,17 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
-Status XlaGather(const xla::ComputationDataHandle& input,
-                 const TensorShape& input_shape,
-                 const xla::ComputationDataHandle& indices,
-                 const TensorShape& indices_shape, int64 axis,
-                 bool indices_are_nd, DataType dtype, DataType index_type,
-                 xla::ComputationBuilder* builder,
-                 xla::ComputationDataHandle* gather_output) {
+Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
+                 const xla::XlaOp& indices, const TensorShape& indices_shape,
+                 int64 axis, bool indices_are_nd, DataType dtype,
+                 DataType index_type, xla::XlaBuilder* builder,
+                 xla::XlaOp* gather_output) {
   // There is no deep reason why we need this precondition, but this is the only
   // combination that is used and tested today.
   CHECK(!indices_are_nd || axis == 0);
@@ -77,8 +76,8 @@ Status XlaGather(const xla::ComputationDataHandle& input,
     out_shape.AppendShape(indices_shape_no_index_vectors);
     out_shape.AppendShape(input_shape_post_axis);
 
-    *gather_output = builder->Broadcast(XlaHelpers::Zero(builder, dtype),
-                                        out_shape.dim_sizes());
+    *gather_output =
+        xla::Broadcast(XlaHelpers::Zero(builder, dtype), out_shape.dim_sizes());
     return Status::OK();
   }
 
@@ -144,7 +143,7 @@ Status XlaGather(const xla::ComputationDataHandle& input,
     dim_numbers.add_gather_dims_to_operand_dims(i);
   }
 
-  *gather_output = builder->Gather(input, indices, dim_numbers, window_bounds);
+  *gather_output = xla::Gather(input, indices, dim_numbers, window_bounds);
   return Status::OK();
 }
 
@@ -153,7 +152,7 @@ class GatherOp : public XlaOpKernel {
   explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
 
   void Compile(XlaOpKernelContext* context) override {
-    xla::ComputationBuilder* builder = context->builder();
+    xla::XlaBuilder* builder = context->builder();
     auto input = context->Input(0);
     auto input_shape = context->InputShape(0);
     auto indices = context->Input(1);
@@ -182,7 +181,7 @@ class GatherOp : public XlaOpKernel {
     OP_REQUIRES(context, index_type == DT_INT32 || index_type == DT_INT64,
                 errors::InvalidArgument("indices must be int32 or int64"));
 
-    xla::ComputationDataHandle gather;
+    xla::XlaOp gather;
     OP_REQUIRES_OK(
         context, XlaGather(input, input_shape, indices, indices_shape, axis,
                            /*indices_are_nd=*/false, input_type(0), index_type,
@@ -220,10 +219,10 @@ class GatherNdOp : public XlaOpKernel {
             indices_shape.dim_size(indices_shape.dims() - 1), " vs. ",
             params_shape.dims()));
 
-    xla::ComputationBuilder* builder = context->builder();
+    xla::XlaBuilder* builder = context->builder();
     auto params = context->Input(0);
     auto indices = context->Input(1);
-    xla::ComputationDataHandle gather;
+    xla::XlaOp gather;
     OP_REQUIRES_OK(context, XlaGather(params, params_shape, indices,
                                       indices_shape, /*axis=*/0,
                                       /*indices_are_nd=*/true, params_type,

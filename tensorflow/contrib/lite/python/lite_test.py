@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,160 +12,923 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorFlow Lite Python Interface: Sanity check."""
+"""Tests for lite.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+import numpy as np
+
 from tensorflow.contrib.lite.python import lite
-from tensorflow.contrib.lite.python.op_hint import _tensor_name_base as _tensor_name_base
+from tensorflow.contrib.lite.python import lite_constants
+from tensorflow.contrib.lite.python.interpreter import Interpreter
+from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
-from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import saved_model
+from tensorflow.python.training.training_util import write_graph
 
 
-class LiteTest(test_util.TensorFlowTestCase):
+class FromSessionTest(test_util.TensorFlowTestCase):
 
-  def testBasic(self):
-    in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
-                                      dtype=dtypes.float32)
+  def testFloat(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
-    # Try running on valid graph
-    result = lite.toco_convert(sess.graph_def, [in_tensor], [out_tensor])
-    self.assertTrue(result)
-    # TODO(aselle): remove tests that fail (we must get TOCO to not fatal
-    # all the time).
-    # Try running on identity graph (known fail)
-    # with self.assertRaisesRegexp(RuntimeError, "!model->operators.empty()"):
-    #   result = lite.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testQuantization(self):
-    in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
-                                      dtype=dtypes.float32)
-    out_tensor = array_ops.fake_quant_with_min_max_args(in_tensor + in_tensor,
-                                                        min=0., max=1.)
+    in_tensor_1 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+    out_tensor = array_ops.fake_quant_with_min_max_args(
+        in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
     sess = session.Session()
-    result = lite.toco_convert(sess.graph_def, [in_tensor], [out_tensor],
-                               inference_type=lite.QUANTIZED_UINT8,
-                               quantized_input_stats=[(0., 1.)])
-    self.assertTrue(result)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(
+        sess, [in_tensor_1, in_tensor_2], [out_tensor])
+    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.quantized_input_stats = {
+        'inputA': (0., 1.),
+        'inputB': (0., 1.)
+    }  # mean, std_dev
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(2, len(input_details))
+    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertEqual(np.uint8, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((1., 0.),
+                     input_details[0]['quantization'])  # scale, zero_point
+
+    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertEqual(np.uint8, input_details[1]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
+    self.assertEqual((1., 0.),
+                     input_details[1]['quantization'])  # scale, zero_point
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output', output_details[0]['name'])
+    self.assertEqual(np.uint8, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
+
+  def testQuantizationInvalid(self):
+    in_tensor_1 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+    out_tensor = array_ops.fake_quant_with_min_max_args(
+        in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(
+        sess, [in_tensor_1, in_tensor_2], [out_tensor])
+    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.quantized_input_stats = {'inputA': (0., 1.)}  # mean, std_dev
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual(
+        'Quantization input stats are not available for input tensors '
+        '\'inputB\'.', str(error.exception))
+
+  def testSizeNoneInvalid(self):
+    in_tensor = array_ops.placeholder(dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test invalid shape. None after 1st dimension.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
+                     str(error.exception))
+
+  def testBatchSizeInvalid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, None, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test invalid shape. None after 1st dimension.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual(
+        'None is only supported in the 1st dimension. Tensor '
+        '\'Placeholder\' has invalid shape \'[1, None, 16, 3]\'.',
+        str(error.exception))
+
+  def testBatchSizeValid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[None, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testFreezeGraph(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    var = variable_scope.get_variable(
+        'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + var
+    sess = session.Session()
+    sess.run(_global_variables_initializer())
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  # TODO(nupurgarg): Verify value of contents in GraphViz.
+  def testGraphviz(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter.output_format = lite_constants.GRAPHVIZ_DOT
+    graphviz_output = converter.convert()
+    self.assertTrue(graphviz_output)
+
+  # TODO(nupurgarg): Verify value of contents in GraphViz.
+  def testDumpGraphviz(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    graphviz_dir = self.get_temp_dir()
+    converter.dump_graphviz_dir = graphviz_dir
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure interpreter is able to allocate and check graphviz data.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    num_items_graphviz = len(os.listdir(graphviz_dir))
+    self.assertTrue(num_items_graphviz)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    graphviz_dir = self.get_temp_dir()
+    converter.dump_graphviz_dir = graphviz_dir
+    converter.dump_graphviz_video = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure graphviz folder has more data after using video flag.
+    num_items_graphviz_video = len(os.listdir(graphviz_dir))
+    self.assertTrue(num_items_graphviz_video > num_items_graphviz)
+
+  def testInferenceInputType(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter.inference_input_type = lite_constants.QUANTIZED_UINT8
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.uint8, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+
+  def testDefaultRangesStats(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
+    converter.default_ranges_stats = (0, 6)  # min, max
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.uint8, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.uint8, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
+
+  def testQuantizeWeights(self):
+    np.random.seed(0)
+    # We need the tensor to have more than 1024 elements for quantize_weights
+    # to kick in. Thus, the [33, 33] shape.
+    in_tensor_1 = array_ops.placeholder(
+        shape=[33, 33], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = constant_op.constant(
+        np.random.uniform(low=-10., high=10., size=(33, 33)),
+        shape=[33, 33],
+        dtype=dtypes.float32,
+        name='inputB')
+    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TocoConverter.from_session(sess, [in_tensor_1],
+                                                      [out_tensor])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized weights model.
+    quantized_weights_converter = lite.TocoConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    quantized_weights_converter.quantize_weights = True
+    quantized_weights_tflite = quantized_weights_converter.convert()
+    self.assertTrue(quantized_weights_tflite)
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertTrue(len(quantized_weights_tflite) < len(float_tflite))
 
 
-class LiteTestOpHint(test_util.TensorFlowTestCase):
-  """Test the hint to stub functionality."""
+class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
-  def _getGraphOpTypes(self, graphdef, output_nodes):
-    """Returns used op types in `graphdef` reachable from `output_nodes`.
+  def testFloat(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
 
-    This is used to check that after the stub transformation the expected
-    nodes are there. Typically use this with self.assertCountEqual(...).
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
 
-    NOTE: this is not a exact test that the graph is the correct output, but
-      it balances compact expressibility of test with sanity checking.
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
-    Args:
-      graphdef: TensorFlow proto graphdef.
-      output_nodes: A list of output node names that we need to reach.
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
-    Returns:
-      A set of node types reachable from `output_nodes`.
-    """
-    name_to_input_name, name_to_node, _ = (
-        _extract_graph_summary(graphdef))
-    # Find all nodes that are needed by the outputs
-    used_node_names = _bfs_for_reachable_nodes(output_nodes, name_to_input_name)
-    return set([name_to_node[node_name].op for node_name in used_node_names])
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-  def _countIdentities(self, nodes):
-    """Count the number of "Identity" op types in the list of proto nodes.
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
 
-    Args:
-      nodes: NodeDefs of the graph.
+  def testFloatWithShapesArray(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
 
-    Returns:
-      The number of nodes with op type "Identity" found.
-    """
-    return len([x for x in nodes if x.op == "Identity"])
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
 
-  def testSwishLiteHint(self):
-    """Makes a custom op swish and makes sure it gets converted as a unit."""
-    image = array_ops.constant([1., 2., 3., 4.])
-    swish_scale = array_ops.constant(1.0)
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(
+        graph_def_file, ['Placeholder'], ['add'],
+        input_shapes={'Placeholder': [1, 16, 16, 3]})
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
-    def _swish(input_tensor, scale):
-      custom = lite.OpHint("cool_activation")
-      input_tensor, scale = custom.add_inputs(input_tensor, scale)
-      output = math_ops.sigmoid(input_tensor) * input_tensor * scale
-      output, = custom.add_outputs(output)
-      return output
-    output = array_ops.identity(_swish(image, swish_scale), name="ModelOutput")
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
-    with self.test_session() as sess:
-      # check if identities have been put into the graph (2 input, 1 output,
-      # and 1 final output).
-      self.assertEqual(self._countIdentities(sess.graph_def.node), 4)
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
 
-      stubbed_graphdef = lite.convert_op_hints_to_stubs(sess)
+  def testFreezeGraph(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    var = variable_scope.get_variable(
+        'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + var
+    sess = session.Session()
 
-      self.assertCountEqual(
-          self._getGraphOpTypes(
-              stubbed_graphdef, output_nodes=[_tensor_name_base(output)]),
-          ["cool_activation", "Const", "Identity"])
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
 
-  def testScaleAndBiasAndIdentity(self):
-    """This tests a scaled add which has 3 inputs and 2 outputs."""
-    a = array_ops.constant(1.)
-    x = array_ops.constant([2., 3.])
-    b = array_ops.constant([4., 5.])
+    # Ensure the graph with variables cannot be converted.
+    with self.assertRaises(ValueError) as error:
+      lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
+                                           ['add'])
+    self.assertEqual('Please freeze the graph using freeze_graph.py.',
+                     str(error.exception))
 
-    def _scaled_and_bias_and_identity(a, x, b):
-      custom = lite.OpHint("scale_and_bias_and_identity")
-      a, x, b = custom.add_inputs(a, x, b)
-      return custom.add_outputs(a * x + b, x)
-    output = array_ops.identity(_scaled_and_bias_and_identity(a, x, b),
-                                name="ModelOutput")
+  def testPbtxt(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
 
-    with self.test_session() as sess:
-      # make sure one identity for each input (3) and output (2) => 3 + 2 = 5
-      # +1 for the final output
-      self.assertEqual(self._countIdentities(sess.graph_def.node), 6)
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pbtxt')
+    write_graph(sess.graph_def, '', graph_def_file, True)
 
-      stubbed_graphdef = lite.convert_op_hints_to_stubs(sess)
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
-      self.assertCountEqual(
-          self._getGraphOpTypes(
-              stubbed_graphdef, output_nodes=[_tensor_name_base(output)]),
-          ["scale_and_bias_and_identity", "Const", "Identity", "Pack"])
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
-  def testTwoFunctions(self):
-    """Tests if two functions are converted correctly."""
-    a = array_ops.constant([1.])
-    b = array_ops.constant([1.])
-    def _double_values(x):
-      custom = lite.OpHint("add_test")
-      x = custom.add_inputs(x)
-      output = math_ops.multiply(x, x)
-      output, = custom.add_outputs(output)
-      return output
-    output = array_ops.identity(
-        math_ops.add(_double_values(a), _double_values(b)), name="ModelOutput")
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    with self.test_session() as sess:
-      # make sure one identity for each input (2) and output (2) => 2 + 2
-      # +1 for the final output
-      self.assertEqual(self._countIdentities(sess.graph_def.node), 5)
-      stubbed_graphdef = lite.convert_op_hints_to_stubs(sess)
-      self.assertCountEqual(
-          self._getGraphOpTypes(
-              stubbed_graphdef, output_nodes=[_tensor_name_base(output)]),
-          ["add_test", "Const", "Identity", "Add"])
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testInvalidFile(self):
+    graph_def_file = os.path.join(self.get_temp_dir(), 'invalid_file')
+    with gfile.Open(graph_def_file, 'wb') as temp_file:
+      temp_file.write('bad data')
+      temp_file.flush()
+
+    # Attempts to convert the invalid model.
+    with self.assertRaises(ValueError) as error:
+      lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
+                                           ['add'])
+    self.assertEqual(
+        'Unable to parse input file \'{}\'.'.format(graph_def_file),
+        str(error.exception))
 
 
-if __name__ == "__main__":
+class FromSavedModelTest(test_util.TensorFlowTestCase):
+
+  def _createSavedModel(self, shape):
+    """Create a simple SavedModel."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
+    with session.Session() as sess:
+      in_tensor_1 = array_ops.placeholder(
+          shape=shape, dtype=dtypes.float32, name='inputB')
+      in_tensor_2 = array_ops.placeholder(
+          shape=shape, dtype=dtypes.float32, name='inputA')
+      out_tensor = in_tensor_1 + in_tensor_2
+      inputs = {'x': in_tensor_1, 'y': in_tensor_2}
+      outputs = {'z': out_tensor}
+      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  def testSimpleModel(self):
+    """Test a SavedModel."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(2, len(input_details))
+    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testNoneBatchSize(self):
+    """Test a SavedModel, with None in input tensor's shape."""
+    saved_model_dir = self._createSavedModel(shape=[None, 16, 16, 3])
+
+    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(2, len(input_details))
+    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testOrderInputArrays(self):
+    """Test a SavedModel ordering of input arrays."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+
+    converter = lite.TocoConverter.from_saved_model(
+        saved_model_dir, input_arrays=['inputB', 'inputA'])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(2, len(input_details))
+    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testSubsetInputArrays(self):
+    """Test a SavedModel with a subset of the input array names of the model."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+
+    # Check case where input shape is given.
+    converter = lite.TocoConverter.from_saved_model(
+        saved_model_dir,
+        input_arrays=['inputA'],
+        input_shapes={'inputA': [1, 16, 16, 3]})
+
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check case where input shape is None.
+    converter = lite.TocoConverter.from_saved_model(
+        saved_model_dir, input_arrays=['inputA'], input_shapes={'inputA': None})
+
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+
+class FromKerasFile(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    keras.backend.clear_session()
+
+  def _getSequentialModel(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_shape=(3,)))
+    model.add(keras.layers.RepeatVector(3))
+    model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(),
+        metrics=[keras.metrics.categorical_accuracy],
+        sample_weight_mode='temporal')
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3, 3))
+    model.train_on_batch(x, y)
+    model.predict(x)
+
+    try:
+      fd, keras_file = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, keras_file)
+    finally:
+      os.close(fd)
+    return keras_file
+
+  def testSequentialModel(self):
+    """Test a Sequential tf.keras model with default inputs."""
+    keras_file = self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check tensor details of converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('time_distributed/Reshape_1', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
+
+  def testSequentialModelInputArray(self):
+    """Test a Sequential tf.keras model testing input arrays argument."""
+    keras_file = self._getSequentialModel()
+
+    # Invalid input array raises error.
+    with self.assertRaises(ValueError) as error:
+      lite.TocoConverter.from_keras_model_file(
+          keras_file, input_arrays=['invalid-input'])
+    self.assertEqual("Invalid tensors 'invalid-input' were found.",
+                     str(error.exception))
+
+    # Valid input array.
+    converter = lite.TocoConverter.from_keras_model_file(
+        keras_file, input_arrays=['dense_input'])
+    tflite_model = converter.convert()
+    os.remove(keras_file)
+    self.assertTrue(tflite_model)
+
+  def testSequentialModelInputShape(self):
+    """Test a Sequential tf.keras model testing input shapes argument."""
+    keras_file = self._getSequentialModel()
+
+    # Passing in shape of invalid input array has no impact as long as all input
+    # arrays have a shape.
+    converter = lite.TocoConverter.from_keras_model_file(
+        keras_file, input_shapes={'invalid-input': [2, 3]})
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Passing in shape of valid input array.
+    converter = lite.TocoConverter.from_keras_model_file(
+        keras_file, input_shapes={'dense_input': [2, 3]})
+    tflite_model = converter.convert()
+    os.remove(keras_file)
+    self.assertTrue(tflite_model)
+
+    # Check input shape from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertTrue(([2, 3] == input_details[0]['shape']).all())
+
+  def testSequentialModelOutputArray(self):
+    """Test a Sequential tf.keras model testing output arrays argument."""
+    keras_file = self._getSequentialModel()
+
+    # Invalid output array raises error.
+    with self.assertRaises(ValueError) as error:
+      lite.TocoConverter.from_keras_model_file(
+          keras_file, output_arrays=['invalid-output'])
+    self.assertEqual("Invalid tensors 'invalid-output' were found.",
+                     str(error.exception))
+
+    # Valid output array.
+    converter = lite.TocoConverter.from_keras_model_file(
+        keras_file, output_arrays=['time_distributed/Reshape_1'])
+    tflite_model = converter.convert()
+    os.remove(keras_file)
+    self.assertTrue(tflite_model)
+
+  def testFunctionalModel(self):
+    """Test a Functional tf.keras model with default inputs."""
+    inputs = keras.layers.Input(shape=(3,), name='input')
+    x = keras.layers.Dense(2)(inputs)
+    output = keras.layers.Dense(3)(x)
+
+    model = keras.models.Model(inputs, output)
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(),
+        metrics=[keras.metrics.categorical_accuracy])
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3))
+    model.train_on_batch(x, y)
+
+    model.predict(x)
+    fd, keras_file = tempfile.mkstemp('.h5')
+    try:
+      keras.models.save_model(model, keras_file)
+    finally:
+      os.close(fd)
+
+    # Convert to TFLite model.
+    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check tensor details of converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('input', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('dense_1/BiasAdd', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
+
+  def testFunctionalModelMultipleInputs(self):
+    """Test a Functional tf.keras model with multiple inputs and outputs."""
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+    model = keras.models.Model([a, b], [d, e])
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(),
+        metrics=[keras.metrics.mae],
+        loss_weights=[1., 0.5])
+
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+    model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
+
+    model.predict([input_a_np, input_b_np], batch_size=5)
+    fd, keras_file = tempfile.mkstemp('.h5')
+    keras.models.save_model(model, keras_file)
+
+    # Convert to TFLite model.
+    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    os.close(fd)
+    os.remove(keras_file)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(2, len(input_details))
+    self.assertEqual('input_a', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertEqual('input_b', input_details[1]['name'])
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertTrue(([1, 3] == input_details[1]['shape']).all())
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(2, len(output_details))
+    self.assertEqual('dense_1/BiasAdd', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    self.assertEqual('dropout/Identity', output_details[1]['name'])
+    self.assertEqual(np.float32, output_details[1]['dtype'])
+    self.assertTrue(([1, 4] == output_details[1]['shape']).all())
+    self.assertEqual((0., 0.), output_details[1]['quantization'])
+
+  def testFunctionalSequentialModel(self):
+    """Test a Functional tf.keras model containing a Sequential model."""
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_shape=(3,)))
+    model.add(keras.layers.RepeatVector(3))
+    model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+    model = keras.models.Model(model.input, model.output)
+
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(),
+        metrics=[keras.metrics.categorical_accuracy],
+        sample_weight_mode='temporal')
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3, 3))
+    model.train_on_batch(x, y)
+    model.predict(x)
+
+    model.predict(x)
+    fd, keras_file = tempfile.mkstemp('.h5')
+    try:
+      keras.models.save_model(model, keras_file)
+    finally:
+      os.close(fd)
+
+    # Convert to TFLite model.
+    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check tensor details of converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('dense_input', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('time_distributed/Reshape_1', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    # Check inference of converted model.
+    input_data = np.array([[1, 2, 3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    tflite_result = interpreter.get_tensor(output_details[0]['index'])
+
+    keras_model = keras.models.load_model(keras_file)
+    keras_result = keras_model.predict(input_data)
+
+    np.testing.assert_almost_equal(tflite_result, keras_result, 5)
+    os.remove(keras_file)
+
+
+if __name__ == '__main__':
   test.main()

@@ -10,8 +10,8 @@ incorporated into high-level APIs.
 ## Input Pipeline
 
 The @{$performance_guide$Performance Guide} explains how to identify possible
-input pipeline issues and best practices. We found that using @{tf.FIFOQueue}
-and @{tf.train.queue_runner} could not saturate multiple current generation GPUs
+input pipeline issues and best practices. We found that using `tf.FIFOQueue`
+and `tf.train.queue_runner` could not saturate multiple current generation GPUs
 when using large inputs and processing with higher samples per second, such
 as training ImageNet with [AlexNet](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf).
 This is due to the use of Python threads as its underlying implementation. The
@@ -29,7 +29,7 @@ implementation is made up of 3 stages:
 
 The dominant part of each stage is executed in parallel with the other stages
 using `data_flow_ops.StagingArea`. `StagingArea` is a queue-like operator
-similar to @{tf.FIFOQueue}. The difference is that `StagingArea`  does not
+similar to `tf.FIFOQueue`. The difference is that `StagingArea`  does not
 guarantee FIFO ordering, but offers simpler functionality and can be executed
 on both CPU and GPU in parallel with other stages. Breaking the input pipeline
 into 3 stages that operate independently in parallel is scalable and takes full
@@ -62,10 +62,10 @@ and executed in parallel. The image preprocessing ops include operations such as
 image decoding, distortion, and resizing.
 
 Once the images are through preprocessing, they are concatenated together into 8
-tensors each with a batch-size of 32. Rather than using @{tf.concat} for this
+tensors each with a batch-size of 32. Rather than using `tf.concat` for this
 purpose, which is implemented as a single op that waits for all the inputs to be
-ready before concatenating them together, @{tf.parallel_stack} is used.
-@{tf.parallel_stack} allocates an uninitialized tensor as an output, and each
+ready before concatenating them together, `tf.parallel_stack` is used.
+`tf.parallel_stack` allocates an uninitialized tensor as an output, and each
 input tensor is written to its designated portion of the output tensor as soon
 as the input is available.
 
@@ -94,7 +94,7 @@ the GPU, all the tensors are already available.
 
 With all the stages capable of being driven by different processors,
 `data_flow_ops.StagingArea` is used between them so they run in parallel.
-`StagingArea` is a queue-like operator similar to @{tf.FIFOQueue} that offers
+`StagingArea` is a queue-like operator similar to `tf.FIFOQueue` that offers
 simpler functionalities that can be executed on both CPU and GPU.
 
 Before the model starts running all the stages, the input pipeline stages are
@@ -153,7 +153,7 @@ weights obtained from training.
 The default batch-normalization in TensorFlow is implemented as composite
 operations. This is very general, but often leads to suboptimal performance. An
 alternative is to use fused batch-normalization which often has much better
-performance on GPU. Below is an example of using @{tf.contrib.layers.batch_norm}
+performance on GPU. Below is an example of using `tf.contrib.layers.batch_norm`
 to implement fused batch-normalization.
 
 ```python
@@ -301,7 +301,7 @@ In order to broadcast variables and aggregate gradients across different GPUs
 within the same host machine, we can use the default TensorFlow implicit copy
 mechanism.
 
-However, we can instead use the optional NCCL (@{tf.contrib.nccl}) support. NCCL
+However, we can instead use the optional NCCL (`tf.contrib.nccl`) support. NCCL
 is an NVIDIA® library that can efficiently broadcast and aggregate data across
 different GPUs. It schedules a cooperating kernel on each GPU that knows how to
 best utilize the underlying hardware topology; this kernel uses a single SM of

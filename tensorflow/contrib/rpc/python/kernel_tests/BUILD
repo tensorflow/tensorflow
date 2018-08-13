@@ -1,5 +1,3 @@
-# TODO(b/76425722): Port everything in here to OS (currently excluded).
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -17,7 +15,6 @@ tf_proto_library(
     srcs = ["test_example.proto"],
     has_services = 1,
     cc_api_version = 2,
-    protodeps = ["//tensorflow/core:protos_all"],
 )
 
 py_library(
@@ -28,7 +25,6 @@ py_library(
 py_library(
     name = "rpc_op_test_base",
     srcs = ["rpc_op_test_base.py"],
-    tags = ["notsan"],
     deps = [
         ":test_example_proto_py",
         "//tensorflow/contrib/proto",

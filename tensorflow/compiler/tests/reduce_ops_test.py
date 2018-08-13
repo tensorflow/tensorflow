@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import itertools
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
@@ -29,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class ReduceOpsTest(XLATestCase):
+class ReduceOpsTest(xla_test.XLATestCase):
 
   def _testReduction(self,
                      tf_reduce_fn,
@@ -153,6 +154,69 @@ class ReduceOpsTest(XLATestCase):
 
   def testReduceAny(self):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA)
+
+
+class ReduceOpPrecisionTest(xla_test.XLATestCase):
+
+  def _testReduceSum(self,
+                     expected_result,
+                     dtype,
+                     test_inputs,
+                     rtol=1e-3,
+                     atol=1e-4):
+    """Tests reduce sum on a list of input arrays.
+
+    For each array in test_inputs, check that performing reduce sum on the array
+    produces a value that is close to the expected result.
+
+    Args:
+      expected_result: the expected result.
+      dtype: the data type of the reduce sum operation.
+      test_inputs: a list of input arrays for the reduce sum operation.
+      rtol: the relative error.
+      atol: the absolute error.
+    """
+
+    for test_input in test_inputs:
+      with self.test_session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype)
+          index = array_ops.placeholder(dtypes.int32)
+          out = math_ops.reduce_sum(a, index)
+        result = sess.run(out, {
+            a: np.array(test_input, dtype=dtype),
+            index: [0]
+        })
+        # Compare the results using float32 type.
+        self.assertAllClose(
+            np.float32(result),
+            np.float32(expected_result),
+            rtol=rtol,
+            atol=atol)
+
+  def testReduceSumF16(self):
+    """Tests the reduce sum of float16 doesn't lose too much precision."""
+
+    if np.float16 not in self.all_types:
+      return
+
+    f16_max = np.finfo(np.float16).max
+    self._testReduceSum(
+        f16_max, np.float16,
+        itertools.permutations([f16_max, f16_max, f16_max * (-1.0)], 3))
+
+  def testReduceSumBF16(self):
+    """Tests the reduce sum of bfloat16 doesn't lose too much precision."""
+
+    if dtypes.bfloat16.as_numpy_dtype not in self.all_types:
+      return
+
+    bf16_max = np.float32(dtypes.bfloat16.max)
+    f32_max = dtypes.float32.max
+    value = min(bf16_max, f32_max - bf16_max)
+    self._testReduceSum(
+        dtypes.bfloat16.as_numpy_dtype(value), dtypes.bfloat16.as_numpy_dtype,
+        itertools.permutations([bf16_max, value, bf16_max * (-1.0)], 3))
 
 
 if __name__ == '__main__':

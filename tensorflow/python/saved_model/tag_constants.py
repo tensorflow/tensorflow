@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -33,6 +32,9 @@ TRAINING = "train"
 tf_export("saved_model.tag_constants.TRAINING").export_constant(
     __name__, "TRAINING")
 
+# Tag for the `eval` graph. Not exported while the export logic is in contrib.
+EVAL = "eval"
+
 # Tag for the `gpu` graph.
 GPU = "gpu"
 tf_export("saved_model.tag_constants.GPU").export_constant(__name__, "GPU")
@@ -41,10 +43,4 @@ tf_export("saved_model.tag_constants.GPU").export_constant(__name__, "GPU")
 TPU = "tpu"
 tf_export("saved_model.tag_constants.TPU").export_constant(__name__, "TPU")
 
-_allowed_symbols = [
-    "SERVING",
-    "TRAINING",
-    "GPU",
-    "TPU"
-]
-remove_undocumented(__name__, _allowed_symbols)
+

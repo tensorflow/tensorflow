@@ -94,7 +94,7 @@ KernelCacheConfig KernelBase::GetPreferredCacheConfig() const {
 static const char *kStubPrefix = "__device_stub_";
 
 void KernelBase::set_name(port::StringPiece name) {
-  name_ = name.ToString();
+  name_ = std::string(name);
   port::StringPiece stubless_name = name;
   if (tensorflow::str_util::StartsWith(name, kStubPrefix)) {
     stubless_name.remove_prefix(strlen(kStubPrefix));

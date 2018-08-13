@@ -25,7 +25,8 @@ import numpy as np
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,7 +42,7 @@ def GenerateNumpyRandomRGB(shape):
   return np.random.randint(0, 256, shape) / 256.
 
 
-class RGBToHSVTest(XLATestCase):
+class RGBToHSVTest(xla_test.XLATestCase):
 
   def testBatch(self):
     # Build an arbitrary RGB image
@@ -65,9 +66,7 @@ class RGBToHSVTest(XLATestCase):
         join1 = array_ops.stack(split1)
         join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2],
-                                                {
-                                                    batch0: inp
-                                                })
+                                                {batch0: inp})
 
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
@@ -106,7 +105,7 @@ class RGBToHSVTest(XLATestCase):
       self.assertAllCloseAccordingToType(hsv_tf, hsv_np)
 
 
-class AdjustContrastTest(XLATestCase):
+class AdjustContrastTest(xla_test.XLATestCase):
 
   def _testContrast(self, x_np, y_np, contrast_factor):
     with self.test_session():
@@ -170,7 +169,7 @@ class AdjustContrastTest(XLATestCase):
       self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
 
-class AdjustHueTest(XLATestCase):
+class AdjustHueTest(xla_test.XLATestCase):
 
   def testAdjustNegativeHue(self):
     x_shape = [2, 2, 3]
@@ -305,7 +304,7 @@ class AdjustHueTest(XLATestCase):
       self._adjustHueTf(x_np, delta_h)
 
 
-class AdjustSaturationTest(XLATestCase):
+class AdjustSaturationTest(xla_test.XLATestCase):
 
   def _adjust_saturation(self, image, saturation_factor):
     image = ops.convert_to_tensor(image, name="image")
@@ -401,18 +400,17 @@ class AdjustSaturationTest(XLATestCase):
           x = array_ops.placeholder(dtypes.float32, shape=x_shape)
           with self.test_scope():
             y_fused = self._adjust_saturation(x,
-                                              scale).eval(feed_dict={
-                                                  x: x_np
-                                              })
+                                              scale).eval(feed_dict={x: x_np})
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
-class ResizeBilinearTest(XLATestCase):
+class ResizeBilinearTest(xla_test.XLATestCase):
 
   def _assertForwardOpMatchesExpected(self,
                                       image_np,
                                       target_shape,
-                                      expected=None):
+                                      expected=None,
+                                      large_tolerance=False):
     if expected is None:
       self.fail("expected must be specified")
     with self.test_session() as sess, self.test_scope():
@@ -420,7 +418,11 @@ class ResizeBilinearTest(XLATestCase):
       resized = gen_image_ops.resize_bilinear(
           image, target_shape, align_corners=True)
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
-      self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.03, atol=0.1)
+      else:
+        self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
 
   def _assertBackwardOpMatchesExpected(self,
                                        grads_np,
@@ -554,6 +556,163 @@ class ResizeBilinearTest(XLATestCase):
           expected=np.array(
               [[12.5, 27.5, 21.875], [42.5, 80.0, 57.5], [40.625, 72.5, 50]],
               dtype=np.float32))
+
+  def testAlignCorners4x4To8x8(self):
+    self._assertForwardOpMatchesExpected(
+        (np.array([[0, 1, 2, 3]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3]], dtype=np.float32)) * 7.0, [8, 8],
+        expected=3 *
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)),
+        large_tolerance=True)
+
+  def testAlignCorners8x8To16x16(self):
+    self._assertForwardOpMatchesExpected(
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)) * 15.0,
+        [16, 16],
+        expected=7 * (np.array(
+            [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+            dtype=np.float32) + np.array(
+                [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11],
+                 [12], [13], [14], [15]],
+                dtype=np.float32)),
+        large_tolerance=True)
+
+
+class NonMaxSuppressionTest(xla_test.XLATestCase):
+
+  def testNMS128From1024(self):
+    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
+    if self.device in ["XLA_CPU", "XLA_GPU"]:
+      return
+
+    with compat.forward_compatibility_horizon(2018, 8, 8):
+      num_boxes = 1024
+      boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
+      scores_np = np.random.normal(0.5, 0.1, (num_boxes,)).astype("f4")
+
+      max_output_size = 128
+      iou_threshold_np = np.array(0.5, dtype=np.float32)
+      score_threshold_np = np.array(0.0, dtype=np.float32)
+
+      with self.test_session() as sess:
+        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                              iou_threshold_np.shape)
+        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                                score_threshold_np.shape)
+        with self.test_scope():
+          selected_indices = image_ops.non_max_suppression_padded(
+              boxes=boxes,
+              scores=scores,
+              max_output_size=max_output_size,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold,
+              pad_to_max_output_size=True)
+        inputs_feed = {
+            boxes: boxes_np,
+            scores: scores_np,
+            score_threshold: score_threshold_np,
+            iou_threshold: iou_threshold_np
+        }
+        (indices_tf, _) = sess.run(selected_indices, feed_dict=inputs_feed)
+
+        self.assertEqual(indices_tf.size, max_output_size)
+
+  def testNMS3From6Boxes(self):
+    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
+    if self.device in ["XLA_CPU", "XLA_GPU"]:
+      return
+
+    with compat.forward_compatibility_horizon(2018, 8, 8):
+      # Three boxes are selected based on IOU.
+      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+      boxes_np = np.array(boxes_data, dtype=np.float32)
+
+      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+      scores_np = np.array(scores_data, dtype=np.float32)
+
+      max_output_size = 3
+      iou_threshold_np = np.array(0.5, dtype=np.float32)
+      score_threshold_np = np.array(0.0, dtype=np.float32)
+
+      with self.test_session() as sess:
+        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                              iou_threshold_np.shape)
+        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                                score_threshold_np.shape)
+        with self.test_scope():
+          selected_indices = image_ops.non_max_suppression_padded(
+              boxes=boxes,
+              scores=scores,
+              max_output_size=max_output_size,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold,
+              pad_to_max_output_size=True)
+        inputs_feed = {
+            boxes: boxes_np,
+            scores: scores_np,
+            score_threshold: score_threshold_np,
+            iou_threshold: iou_threshold_np
+        }
+        (indices_tf, num_valid) = sess.run(
+            selected_indices, feed_dict=inputs_feed)
+
+        self.assertEqual(indices_tf.size, max_output_size)
+        self.assertEqual(num_valid, 3)
+        self.assertAllClose(indices_tf[:num_valid], [3, 0, 5])
+
+  def testNMS3Then2WithScoreThresh(self):
+    # Three boxes are selected based on IOU.
+    # One is filtered out by score threshold.
+
+    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
+    if self.device in ["XLA_CPU", "XLA_GPU"]:
+      return
+
+    with compat.forward_compatibility_horizon(2018, 8, 8):
+      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+      boxes_np = np.array(boxes_data, dtype=np.float32)
+
+      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+      scores_np = np.array(scores_data, dtype=np.float32)
+      max_output_size = 3
+      iou_threshold_np = np.array(0.5, dtype=np.float32)
+      score_threshold_np = np.array(0.4, dtype=np.float32)
+
+      with self.test_session() as sess:
+        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                              iou_threshold_np.shape)
+        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                                score_threshold_np.shape)
+        with self.test_scope():
+          selected_indices = image_ops.non_max_suppression_padded(
+              boxes=boxes,
+              scores=scores,
+              max_output_size=max_output_size,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold,
+              pad_to_max_output_size=True)
+        inputs_feed = {
+            boxes: boxes_np,
+            scores: scores_np,
+            iou_threshold: iou_threshold_np,
+            score_threshold: score_threshold_np
+        }
+        (indices_tf, num_valid) = sess.run(
+            selected_indices, feed_dict=inputs_feed)
+
+        self.assertEqual(indices_tf.size, max_output_size)
+        self.assertEqual(num_valid, 2)
+        self.assertAllClose(indices_tf[:num_valid], [3, 0])
 
 
 if __name__ == "__main__":

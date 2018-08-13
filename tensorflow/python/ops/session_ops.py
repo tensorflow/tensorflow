@@ -13,12 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor Handle Operations. See the @{$python/session_ops} guide.
-
-@@get_session_handle
-@@get_session_tensor
-@@delete_session_tensor
-"""
+"""Tensor Handle Operations. See the @{$python/session_ops} guide."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import

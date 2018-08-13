@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// EXPERIMENTAL: tfdbg debugger-inserted ops.
+// TensorFlow Debugger-inserted ops.
 // These ops are used only internally by tfdbg. There is no API for users to
 // direct create them. Users can create them indirectly by using
 // RunOptions.debug_options during Session::Run() call. See tfdbg documentation

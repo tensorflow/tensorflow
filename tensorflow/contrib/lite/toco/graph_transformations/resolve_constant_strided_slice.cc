@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -22,88 +23,6 @@ limitations under the License.
 namespace toco {
 
 namespace {
-
-// These StridedSlice utility functions are essentially a COPY of those in
-// reference_ops.h. See comments there.
-
-// Use until std::clamp() is available from C++17.
-int Clamp(const int v, const int lo, const int hi) {
-  if (hi < v) return hi;
-  if (v < lo) return lo;
-  return v;
-}
-
-int StartForAxis(StridedSliceOperator const& op, Shape const& input_shape,
-                 int axis) {
-  // Begin with the specified index
-  int start = op.start_indices[axis];
-
-  // begin_mask override
-  if (op.begin_mask & 1 << axis) {
-    if (op.strides[axis] > 0) {
-      // Forward iteration - use the first element. These values will get
-      // clamped below (Note: We could have set them to 0 and axis_size-1, but
-      // use lowest() and max() to maintain symmetry with StopForAxis())
-      start = std::numeric_limits<int>::lowest();
-    } else {
-      // Backward iteration - use the last element.
-      start = std::numeric_limits<int>::max();
-    }
-  }
-
-  // Handle negative indices
-  int axis_size = input_shape.dims(axis);
-  if (start < 0) {
-    start += axis_size;
-  }
-
-  // Clamping
-  start = Clamp(start, 0, axis_size - 1);
-
-  return start;
-}
-
-int StopForAxis(StridedSliceOperator const& op, Shape const& input_shape,
-                int axis) {
-  // Begin with the specified index
-  int stop = op.stop_indices[axis];
-
-  // end_mask override
-  if (op.end_mask & (1 << axis)) {
-    if (op.strides[axis] > 0) {
-      // Forward iteration - use the last element. These values will get
-      // clamped below
-      stop = std::numeric_limits<int>::max();
-    } else {
-      // Backward iteration - use the first element.
-      stop = std::numeric_limits<int>::lowest();
-    }
-  }
-
-  // Handle negative indices
-  int axis_size = input_shape.dims(axis);
-  if (stop < 0) {
-    stop += axis_size;
-  }
-
-  // Clamping
-  // Because the end index points one past the last element, we need slightly
-  // different clamping ranges depending on the direction.
-  if (op.strides[axis] > 0) {
-    // Forward iteration
-    stop = Clamp(stop, 0, axis_size);
-  } else {
-    // Backward iteration
-    stop = Clamp(stop, -1, axis_size - 1);
-  }
-
-  return stop;
-}
-
-bool LoopCondition(int index, int stop, int stride) {
-  // True when we have reached the end of an axis and should loop.
-  return stride > 0 ? index >= stop : index <= stop;
-}
 
 template <ArrayDataType Type>
 void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
@@ -119,6 +38,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   CHECK_EQ(op.new_axis_mask, 0);
 
   int num_input_axes = op.start_indices.size();
+  CHECK_EQ(num_input_axes, op.start_indices.size());
   CHECK_EQ(num_input_axes, op.stop_indices.size());
   CHECK_EQ(num_input_axes, op.strides.size());
 
@@ -130,9 +50,16 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   // Initialize source coordinate
   Shape const& input_shape = input_array.shape();
   Buffer<Type> const& input_buffer = input_array.GetBuffer<Type>();
-  std::vector<int> src_coord(op.start_indices.size());
+  std::vector<int> src_coord(num_input_axes);
+  std::vector<int> stop_for_axis(num_input_axes);
   for (int axis = 0; axis < num_input_axes; axis++) {
-    src_coord[axis] = StartForAxis(op, input_shape, axis);
+    int start = tflite::strided_slice::StartForAxis(
+        op.begin_mask, op.start_indices, op.strides, input_shape.dims().data(),
+        axis);
+    src_coord[axis] = start;
+    stop_for_axis[axis] = tflite::strided_slice::StopForAxis(
+        op.end_mask, op.shrink_axis_mask, op.stop_indices, op.strides,
+        input_shape.dims().data(), axis, start);
   }
 
   // In order to handle any number (N) of dimensions, we copy elements one by
@@ -155,10 +82,12 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
       }
 
       // Check if we've overflowed.
-      int stop = StopForAxis(op, input_shape, axis);
-      if (LoopCondition(src_coord[axis], stop, stride)) {
+      int stop = stop_for_axis[axis];
+      if (tflite::strided_slice::LoopCondition(src_coord[axis], stop, stride)) {
         // Reset axis and set carry
-        src_coord[axis] = StartForAxis(op, input_shape, axis);
+        src_coord[axis] = tflite::strided_slice::StartForAxis(
+            op.begin_mask, op.start_indices, op.strides,
+            input_shape.dims().data(), axis);
         carry = true;
       } else {
         carry = false;
@@ -230,14 +159,7 @@ bool ResolveConstantStridedSlice::Run(Model* model, std::size_t op_index) {
       break;
   }
 
-  // Erase input array if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-
-  // Erase the operator
-  model->operators.erase(it);
+  DeleteOpAndArraysIfUnused(model, it->get());
 
   return true;
 }
