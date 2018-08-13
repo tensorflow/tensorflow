@@ -19,14 +19,4 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from keras_applications import mobilenet_v2
-
-from tensorflow.python.util.tf_export import tf_export
-
-MobileNetV2 = mobilenet_v2.MobileNetV2
-decode_predictions = mobilenet_v2.decode_predictions
-preprocess_input = mobilenet_v2.preprocess_input
-
-tf_export('keras.applications.mobilenet_v2.MobileNetV2',
-          'keras.applications.MobileNetV2')(MobileNetV2)
-tf_export('keras.applications.mobilenet_v2.preprocess_input')(preprocess_input)
+# TODO(fchollet): export MobileNetV2 as part of the public API in next version.
