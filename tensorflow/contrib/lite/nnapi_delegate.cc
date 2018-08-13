@@ -24,20 +24,27 @@ limitations under the License.
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
 #ifdef __ANDROID__
+#include <android/log.h>
 #include <sys/system_properties.h>
 #endif
 
 namespace tflite {
 
 void logError(const char* format, ...) {
-  // TODO(mikie): use android logging, stderr is not captured for Java
-  // applications
-  va_list args;
-  va_start(args, format);
-  vfprintf(stderr, format, args);
-  va_end(args);
+  // stderr is convenient for native tests, but is not captured for apps
+  va_list args_for_stderr;
+  va_start(args_for_stderr, format);
+  vfprintf(stderr, format, args_for_stderr);
+  va_end(args_for_stderr);
   fprintf(stderr, "\n");
   fflush(stderr);
+#ifdef __ANDROID__
+  // produce logcat output for general consumption
+  va_list args_for_log;
+  va_start(args_for_log, format);
+  __android_log_vprint(ANDROID_LOG_ERROR, "tflite", format, args_for_log);
+  va_end(args_for_log);
+#endif
 }
 
 #define FATAL(...)       \
