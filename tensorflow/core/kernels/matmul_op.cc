@@ -598,11 +598,11 @@ TF_CALL_float(REGISTER_CPU_EIGEN);
 // to use only opensource MKL DNN then use default implementation for these
 // types otherwise use GEMM from MKL ML binary
 
-#if defined(DO_NOT_USE_ML)
+#if defined(INTEL_MKL_DNN_ONLY)
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
-#else  // DO_NOT_USE_ML
+#else  // INTEL_MKL_DNN_ONLY
 TF_CALL_complex64(REGISTER_CPU_EIGEN);
 TF_CALL_complex128(REGISTER_CPU_EIGEN);
 TF_CALL_double(REGISTER_CPU_EIGEN);

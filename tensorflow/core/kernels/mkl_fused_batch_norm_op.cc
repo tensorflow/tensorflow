@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -41,7 +40,7 @@ using mkldnn::use_scale_shift;
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklFusedBatchNormOp : public OpKernel {
@@ -684,7 +683,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 };
 #endif
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 struct MklBatchNormFwdParams {
   memory::dims src_dims;

@@ -1449,14 +1449,17 @@ def ZerosLikeOutsideLoop(op, index):
       pred = op_ctxt.pred
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
+      # A op is created along the branch taken as control dependencies are on
+      # the whole op and not on the tensor output.
+      pivot = array_ops.identity(switch_val)
       if val.dtype == dtypes.resource:
-        with ops.control_dependencies([switch_val]):
+        with ops.control_dependencies([pivot]):
           return array_ops.zeros(
               gen_resource_variable_ops.variable_shape(switch_val))
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
       # Ensure ops created within array_ops.zeros are dominated by switch in
       # cond context.
-      with ops.control_dependencies([switch_val]):
+      with ops.control_dependencies([pivot]):
         return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
@@ -2065,21 +2068,25 @@ def cond(pred,
 
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
-    context_t.Enter()
-    orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
-    if orig_res_t is None:
-      raise ValueError("true_fn must have a return value.")
-    context_t.ExitResult(res_t)
-    context_t.Exit()
+    try:
+      context_t.Enter()
+      orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
+      if orig_res_t is None:
+        raise ValueError("true_fn must have a return value.")
+      context_t.ExitResult(res_t)
+    finally:
+      context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
-    context_f.Enter()
-    orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
-    if orig_res_f is None:
-      raise ValueError("false_fn must have a return value.")
-    context_f.ExitResult(res_f)
-    context_f.Exit()
+    try:
+      context_f.Enter()
+      orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
+      if orig_res_f is None:
+        raise ValueError("false_fn must have a return value.")
+      context_f.ExitResult(res_f)
+    finally:
+      context_f.Exit()
 
     if not strict:
       orig_res_t = _UnpackIfSingleton(orig_res_t)

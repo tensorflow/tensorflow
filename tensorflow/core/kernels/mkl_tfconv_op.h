@@ -32,13 +32,13 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 #endif
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 using mkldnn::stream;
 #endif
 
@@ -64,7 +64,7 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {

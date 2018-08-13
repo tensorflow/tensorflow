@@ -2683,6 +2683,7 @@ class EstimatorExportTest(test.TestCase):
       _, _ = features, labels
       my_int = variables.Variable(1, name='my_int',
                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      _ = training.get_or_create_steps_per_run_variable()
       scores = constant_op.constant([3.])
       with ops.control_dependencies([
           variables.local_variables_initializer(),
