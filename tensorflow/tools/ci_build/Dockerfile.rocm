@@ -30,22 +30,26 @@ RUN cd $HOME && git clone -b roc-1.8.x-pr457-altfix https://github.com/deven-amd
 RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && sudo make package -j$(nproc) && sudo dpkg -i *.deb
 
 # Workaround : build MIOpen from source using fork of the public repo with the temporary fix for issue #1061 ($HOME env not set)
-RUN apt-get install -y wget unzip libssl-dev libboost-dev libboost-system-dev libboost-filesystem-dev
+RUN sudo apt-get install -y wget unzip libssl-dev libboost-dev libboost-system-dev libboost-filesystem-dev
+
 RUN cd $HOME && git clone https://github.com/RadeonOpenCompute/rocm-cmake.git
-RUN cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
+RUN cd $HOME/rocm-cmake && mkdir build && cd build && cmake .. && sudo make package -j$(nproc) && sudo dpkg -i ./rocm-cmake*.deb
+
 RUN cd $HOME && git clone https://github.com/ROCmSoftwarePlatform/MIOpenGEMM.git
-RUN cd $HOME/MIOpenGEMM && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./miopengemm*.deb
-RUN cd $HOME && mkdir half && cd half && wget https://downloads.sourceforge.net/project/half/half/1.12.0/half-1.12.0.zip && unzip *.zip
-RUN cd $HOME && git -b pr1061-fix clone https://github.com/deven-amd/MIOpen.git
-RUN cd $HOME/MIOpen && rm -rf build && mkdir build && cd build && \
+RUN cd $HOME/MIOpenGEMM && mkdir build && cd build && cmake .. && sudo make package -j$(nproc) && sudo dpkg -i ./miopengemm*.deb
+
+RUN cd $HOME && mkdir half && cd half && sudo wget https://downloads.sourceforge.net/project/half/half/1.12.0/half-1.12.0.zip && sudo unzip *.zip
+
+RUN cd $HOME && git clone -b pr1061-fix https://github.com/deven-amd/MIOpen.git
+RUN cd $HOME/MIOpen && mkdir build && cd build && \
   CXX=/opt/rocm/bin/hcc cmake \
     -DMIOPEN_BACKEND=HIP \
     -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" \
     -DCMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" \
     -DHALF_INCLUDE_DIR=$HOME/half/include \
-    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_BUILD_TYPE=Release \
     ..
-RUN make package -j$(nproc)
+RUN sudo make package -j$(nproc)
 
 
 
