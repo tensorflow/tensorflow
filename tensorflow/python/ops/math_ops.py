@@ -856,10 +856,12 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
           # If the RHS is not a tensor, it might be a tensor aware object
           # that can implement the operator with knowledge of itself
           # and the tensor.
-          if hasattr(type(y), "__r%s__" % op_name):
-            return NotImplemented
-          else:
-            raise
+          rop_name = "__r%s__" % op_name
+          if hasattr(type(y), rop_name):
+            ret = getattr(y, rop_name)(x)
+            if ret != NotImplemented:
+              return ret
+          raise
       return func(x, y, name=name)
 
   def binary_op_wrapper_sparse(sp_x, y):
