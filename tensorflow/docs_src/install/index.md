@@ -18,6 +18,7 @@ The following guides explain how to install a version of TensorFlow
 that enables you to write applications in Python:
 
   * @{$install_linux$Install TensorFlow on Ubuntu}
+  * @{$install_pop-os$Install TensorFlow on Pop!_OS}
   * @{$install_mac$Install TensorFlow on macOS}
   * @{$install_windows$Install TensorFlow on Windows}
   * @{$install_raspbian$Install TensorFlow on a Raspberry Pi}
@@ -36,4 +37,3 @@ models in applications and are not as extensive as the Python APIs.
   * @{$install_java$Install TensorFlow for Java}
   * @{$install_c$Install TensorFlow for C}
   * @{$install_go$Install TensorFlow for Go}
-
