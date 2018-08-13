@@ -482,7 +482,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     additional_deps = [

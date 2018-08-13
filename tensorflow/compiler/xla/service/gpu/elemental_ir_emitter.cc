@@ -286,7 +286,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
     llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
     return b_->CreateFPCast(fast_tanh, value->getType());
   }
-  return EmitLibdeviceMathCall("__nv_tanh", {value}, {prim_type}, prim_type);
+  return EmitROCDLMathCall("__ocml_tanh", {value}, {prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() const {
