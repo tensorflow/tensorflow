@@ -143,6 +143,8 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleIota(HloInstruction* inst) override;
 
+  Status HandleAllToAll(HloInstruction* hlo) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;

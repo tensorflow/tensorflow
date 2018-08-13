@@ -424,5 +424,9 @@ Status BaseVisitor::HandleScatter(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleAllToAll(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
