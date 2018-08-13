@@ -623,7 +623,6 @@ TfLiteStatus Interpreter::Invoke() {
     return kTfLiteError;
   }
 
-  TfLiteStatus status = kTfLiteOk;
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -676,7 +675,8 @@ TfLiteStatus Interpreter::Invoke() {
 
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
-    if (OpInvoke(registration, &node) == kTfLiteError) {
+    TfLiteStatus status = OpInvoke(registration, &node);
+    if (status == kTfLiteError) {
       status = ReportOpError(&context_, node, registration, node_index,
                              "failed to invoke");
     }
