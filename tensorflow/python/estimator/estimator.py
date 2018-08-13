@@ -86,14 +86,15 @@ class Estimator(object):
   subdirectory thereof. If `model_dir` is not set, a temporary directory is
   used.
 
-  The `config` argument can be passed `RunConfig` object containing information
-  about the execution environment. It is passed on to the `model_fn`, if the
-  `model_fn` has a parameter named "config" (and input functions in the same
-  manner). If the `config` parameter is not passed, it is instantiated by the
-  `Estimator`. Not passing config means that defaults useful for local execution
-  are used. `Estimator` makes config available to the model (for instance, to
-  allow specialization based on the number of workers available), and also uses
-  some of its fields to control internals, especially regarding checkpointing.
+  The `config` argument can be passed `tf.estimator.RunConfig` object containing
+  information about the execution environment. It is passed on to the
+  `model_fn`, if the `model_fn` has a parameter named "config" (and input
+  functions in the same manner). If the `config` parameter is not passed, it is
+  instantiated by the `Estimator`. Not passing config means that defaults useful
+  for local execution are used. `Estimator` makes config available to the model
+  (for instance, to allow specialization based on the number of workers
+  available), and also uses some of its fields to control internals, especially
+  regarding checkpointing.
 
   The `params` argument contains hyperparameters. It is passed to the
   `model_fn`, if the `model_fn` has a parameter named "params", and to the input
@@ -138,15 +139,16 @@ class Estimator(object):
 
           * `features`: This is the first item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
-                 single `Tensor` or `dict` of same.
+                 single `tf.Tensor` or `dict` of same.
           * `labels`: This is the second item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
-                 single `Tensor` or `dict` of same (for multi-head models). If
-                 mode is `ModeKeys.PREDICT`, `labels=None` will be passed. If
-                 the `model_fn`'s signature does not accept `mode`, the
-                 `model_fn` must still be able to handle `labels=None`.
+                 single `tf.Tensor` or `dict` of same (for multi-head models).
+                 If mode is @{tf.estimator.ModeKeys.PREDICT}, `labels=None` will
+                 be passed. If the `model_fn`'s signature does not accept
+                 `mode`, the `model_fn` must still be able to handle
+                 `labels=None`.
           * `mode`: Optional. Specifies if this training, evaluation or
-                 prediction. See `ModeKeys`.
+                 prediction. See `tf.estimator.ModeKeys`.
           * `params`: Optional `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
@@ -156,10 +158,10 @@ class Estimator(object):
                  configuration such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
-          `EstimatorSpec`
+          `tf.estimator.EstimatorSpec`
 
       model_dir: Directory to save model parameters, graph and etc. This can
-        also be used to load checkpoints from the directory into a estimator to
+        also be used to load checkpoints from the directory into an estimator to
         continue training a previously saved model. If `PathLike` object, the
         path will be resolved. If `None`, the model_dir in `config` will be used
         if set. If both are set, they must be same. If both are `None`, a
@@ -170,9 +172,10 @@ class Estimator(object):
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
                        warm-start from, or a `tf.estimator.WarmStartSettings`
                        object to fully configure warm-starting.  If the string
-                       filepath is provided instead of a `WarmStartSettings`,
-                       then all variables are warm-started, and it is assumed
-                       that vocabularies and Tensor names are unchanged.
+                       filepath is provided instead of a
+                       `tf.estimator.WarmStartSettings`, then all variables are
+                       warm-started, and it is assumed that vocabularies
+                       and `tf.Tensor` names are unchanged.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -220,10 +223,10 @@ class Estimator(object):
 
   @property
   def model_fn(self):
-    """Returns the model_fn which is bound to self.params.
+    """Returns the `model_fn` which is bound to `self.params`.
 
     Returns:
-      The model_fn with following signature:
+      The `model_fn` with following signature:
         `def model_fn(features, labels, mode, config)`
     """
 
@@ -243,7 +246,7 @@ class Estimator(object):
       Numpy array - value of the tensor.
 
     Raises:
-      ValueError: If the Estimator has not produced a checkpoint yet.
+      ValueError: If the `Estimator` has not produced a checkpoint yet.
     """
     _check_checkpoint_available(self.model_dir)
     with context.graph_mode():
@@ -256,14 +259,14 @@ class Estimator(object):
       List of names.
 
     Raises:
-      ValueError: If the Estimator has not produced a checkpoint yet.
+      ValueError: If the `Estimator` has not produced a checkpoint yet.
     """
     _check_checkpoint_available(self.model_dir)
     with context.graph_mode():
       return [name for name, _ in training.list_variables(self.model_dir)]
 
   def latest_checkpoint(self):
-    """Finds the filename of latest saved checkpoint file in `model_dir`.
+    """Finds the filename of the latest saved checkpoint file in `model_dir`.
 
     Returns:
       The full path to the latest checkpoint or `None` if no checkpoint was
@@ -278,40 +281,36 @@ class Estimator(object):
             steps=None,
             max_steps=None,
             saving_listeners=None):
-    """Trains a model given training data input_fn.
+    """Trains a model given training data `input_fn`.
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
-        the following:
-
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where `features` is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and `labels` is a
-            `Tensor` or a dictionary of string label name to `Tensor`. Both
-            `features` and `labels` are consumed by `model_fn`. They should
-            satisfy the expectation of `model_fn` from inputs.
-
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the training loop.
-      steps: Number of steps for which to train model. If `None`, train forever
-        or train until input_fn generates the `OutOfRange` error or
-        `StopIteration` exception. 'steps' works incrementally. If you call two
-        times train(steps=10) then training occurs in total 20 steps. If
-        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        See @{$premade_estimators#create_input_functions} for more information.
+        The function should construct and return one of the following:  * A
+        `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
+        `(features, labels)` with same constraints as below. * A tuple
+        `(features, labels)`: Where `features` is a `tf.Tensor` or a dictionary
+        of string feature name to `Tensor` and `labels` is a `Tensor` or a
+        dictionary of string label name to `Tensor`. Both `features` and
+        `labels` are consumed by `model_fn`. They should satisfy the expectation
+        of `model_fn` from inputs.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the training loop.
+      steps: Number of steps for which to train the model. If `None`, train
+        forever or train until `input_fn` generates the `tf.errors.OutOfRange`
+        error or `StopIteration` exception. `steps` works incrementally. If you
+        call two times `train(steps=10)` then training occurs in total 20 steps.
+        If `OutOfRange` or `StopIteration` occurs in the middle, training stops
         before 20 steps. If you don't want to have incremental behavior please
         set `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
-        train forever or train until input_fn generates the `OutOfRange` error
-        or `StopIteration` exception. If set, `steps` must be `None`. If
-        `OutOfRange` or `StopIteration` occurs in the middle, training stops
-        before `max_steps` steps.
-        Two calls to `train(steps=100)` means 200 training
-        iterations. On the other hand, two calls to `train(max_steps=100)` means
-        that the second call will not do any iteration since first call did
-        all 100 steps.
+        train forever or train until `input_fn` generates the
+        `tf.errors.OutOfRange` error or `StopIteration` exception. If set,
+        `steps` must be `None`. If `OutOfRange` or `StopIteration` occurs in the
+        middle, training stops before `max_steps` steps. Two calls to
+        `train(steps=100)` means 200 training iterations. On the other hand, two
+        calls to `train(max_steps=100)` means that the second call will not do
+        any iteration since first call did all 100 steps.
       saving_listeners: list of `CheckpointSaverListener` objects. Used for
         callbacks that run immediately before or after checkpoint savings.
 
@@ -320,7 +319,7 @@ class Estimator(object):
 
     Raises:
       ValueError: If both `steps` and `max_steps` are not `None`.
-      ValueError: If either `steps` or `max_steps` is <= 0.
+      ValueError: If either `steps` or `max_steps <= 0`.
     """
     with context.graph_mode():
       if (steps is not None) and (max_steps is not None):
@@ -368,7 +367,7 @@ class Estimator(object):
       return []
 
   def eval_dir(self, name=None):
-    """Shows directory name where evaluation metrics are dumped.
+    """Shows the directory name where evaluation metrics are dumped.
 
     Args:
       name: Name of the evaluation if user needs to run multiple evaluations on
@@ -384,36 +383,34 @@ class Estimator(object):
 
   def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
                name=None):
-    """Evaluates the model given evaluation data input_fn.
+    """Evaluates the model given evaluation data `input_fn`.
 
     For each step, calls `input_fn`, which returns one batch of data.
     Evaluates until:
     - `steps` batches are processed, or
-    - `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+    - `input_fn` raises an end-of-input exception (`tf.errors.OutOfRangeError`
+    or
     `StopIteration`).
 
     Args:
-      input_fn: A function that constructs the input data for evaluation.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
-        the following:
-
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where `features` is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and `labels` is a
-            `Tensor` or a dictionary of string label name to `Tensor`. Both
-            `features` and `labels` are consumed by `model_fn`. They should
-            satisfy the expectation of `model_fn` from inputs.
-
+      input_fn: A function that constructs the input data for evaluation. See
+        @{$premade_estimators#create_input_functions} for more information. The
+        function should construct and return one of the following:  * A
+        `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
+        `(features, labels)` with same constraints as below. * A tuple
+        `(features, labels)`: Where `features` is a `tf.Tensor` or a dictionary
+        of string feature name to `Tensor` and `labels` is a `Tensor` or a
+        dictionary of string label name to `Tensor`. Both `features` and
+        `labels` are consumed by `model_fn`. They should satisfy the expectation
+        of `model_fn` from inputs.
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until `input_fn` raises an end-of-input exception.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the evaluation call.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the evaluation call.
       checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
         latest checkpoint in `model_dir` is used.  If there are no checkpoints
         in `model_dir`, evaluation is run with newly initialized `Variables`
-        instead of restored from checkpoint.
+        instead of ones restored from checkpoint.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data. Metrics for
         different evaluations are saved in separate folders, and appear
@@ -479,33 +476,33 @@ class Estimator(object):
 
     Args:
       input_fn: A function that constructs the features. Prediction continues
-        until `input_fn` raises an end-of-input exception (`OutOfRangeError` or
-        `StopIteration`).
+        until `input_fn` raises an end-of-input exception
+        (`tf.errors.OutOfRangeError` or `StopIteration`).
         See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must have
+          * A `tf.data.Dataset` object: Outputs of `Dataset` object must have
             same constraints as below.
-          * features: A `Tensor` or a dictionary of string feature name to
+          * features: A `tf.Tensor` or a dictionary of string feature name to
             `Tensor`. features are consumed by `model_fn`. They should satisfy
             the expectation of `model_fn` from inputs.
           * A tuple, in which case the first item is extracted as features.
 
       predict_keys: list of `str`, name of the keys to predict. It is used if
-        the `EstimatorSpec.predictions` is a `dict`. If `predict_keys` is used
-        then rest of the predictions will be filtered from the dictionary. If
-        `None`, returns all.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the prediction call.
+        the `tf.estimator.EstimatorSpec.predictions` is a `dict`. If
+        `predict_keys` is used then rest of the predictions will be filtered
+        from the dictionary. If `None`, returns all.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.  If there are no checkpoints
         in `model_dir`, prediction is run with newly initialized `Variables`
-        instead of restored from checkpoint.
-      yield_single_examples: If False, yield the whole batch as returned by the
-        `model_fn` instead of decomposing the batch into individual elements.
-        This is useful if `model_fn` returns some tensors whose first dimension
-        is not equal to the batch size.
+        instead of ones restored from checkpoint.
+      yield_single_examples: If `False`, yields the whole batch as returned by
+        the `model_fn` instead of decomposing the batch into individual
+        elements. This is useful if `model_fn` returns some tensors whose first
+        dimension is not equal to the batch size.
 
     Yields:
       Evaluated values of `predictions` tensors.
@@ -513,10 +510,10 @@ class Estimator(object):
     Raises:
       ValueError: Could not find a trained model in `model_dir`.
       ValueError: If batch length of predictions is not the same and
-        `yield_single_examples` is True.
+        `yield_single_examples` is `True`.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
-        `EstimatorSpec.predictions` is not a `dict`.
+        `tf.estimator.EstimatorSpec.predictions` is not a `dict`.
     """
     with context.graph_mode():
       hooks = _check_hooks_type(hooks)
@@ -599,30 +596,34 @@ class Estimator(object):
       checkpoint_path=None,
       strip_default_attrs=False):
     # pylint: disable=line-too-long
-    """Exports inference graph as a SavedModel into given dir.
+    """Exports inference graph as a `SavedModel` into the given dir.
 
     For a detailed guide, see
-    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
+    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with
+    Estimators}.
 
     This method builds a new graph by first calling the
-    serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
-    this `Estimator`'s model_fn to generate the model graph based on those
+    `serving_input_receiver_fn` to obtain feature `Tensor`s, and then calling
+    this `Estimator`'s `model_fn` to generate the model graph based on those
     features. It restores the given checkpoint (or, lacking that, the most
     recent checkpoint) into this graph in a fresh session.  Finally it creates
-    a timestamped export directory below the given export_dir_base, and writes
-    a `SavedModel` into it containing a single `MetaGraphDef` saved from this
+    a timestamped export directory below the given `export_dir_base`, and writes
+    a `SavedModel` into it containing a single `tf.MetaGraphDef` saved from this
     session.
 
     The exported `MetaGraphDef` will provide one `SignatureDef` for each
-    element of the export_outputs dict returned from the model_fn, named using
+    element of the `export_outputs` dict returned from the `model_fn`, named
+    using
     the same keys.  One of these keys is always
-    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
+    `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`,
+    indicating which
     signature will be served when a serving request does not specify one.
     For each signature, the outputs are provided by the corresponding
-    `ExportOutput`s, and the inputs are always the input receivers provided by
-    the serving_input_receiver_fn.
+    `tf.estimator.export.ExportOutput`s, and the inputs are always the input
+    receivers provided by
+    the `serving_input_receiver_fn`.
 
-    Extra assets may be written into the SavedModel via the assets_extra
+    Extra assets may be written into the `SavedModel` via the `assets_extra`
     argument.  This should be a dict, where each key gives a destination path
     (including the filename) relative to the assets.extra directory.  The
     corresponding value gives the full path of the source file to be copied.
@@ -631,23 +632,27 @@ class Estimator(object):
 
     Args:
       export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      serving_input_receiver_fn: A function that takes no argument and
-        returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
+        timestamped subdirectories containing exported `SavedModel`s.
+      serving_input_receiver_fn: A function that takes no argument and returns a
+        `tf.estimator.export.ServingInputReceiver` or
+        `tf.estimator.export.TensorServingInputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
+        within the exported `SavedModel`, or `None` if no extra assets are
+        needed.
+      as_text: whether to write the `SavedModel` proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
 
     Raises:
-      ValueError: if no serving_input_receiver_fn is provided, no export_outputs
+      ValueError: if no `serving_input_receiver_fn` is provided, no
+      `export_outputs`
           are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
@@ -668,35 +673,37 @@ class Estimator(object):
       strip_default_attrs=False,
       mode=model_fn_lib.ModeKeys.PREDICT):
     # pylint: disable=line-too-long
-    """Exports a single train/eval/predict graph as a SavedModel.
+    """Exports a single train/eval/predict graph as a `SavedModel`.
 
-    This method is a wrapper for _export_all_saved_models, and wraps a raw
-    input_receiver_fn in a dictionary to pass in to that function.
-    See _export_all_saved_models for full docs.
+    This method is a wrapper for `_export_all_saved_models`, and wraps a raw
+    `input_receiver_fn` in a dictionary to pass in to that function.
+    See `_export_all_saved_models` for full docs.
 
-    See tf.contrib.estimator.export_saved_model_for_mode for the currently
+    See `tf.contrib.estimator.export_saved_model_for_mode` for the currently
     exposed version of this function.
 
     Args:
       export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      input_receiver_fn: a function that takes no argument and
-        returns the appropriate subclass of `InputReceiver`.
+        timestamped subdirectories containing exported `SavedModel`s.
+      input_receiver_fn: a function that takes no argument and returns the
+        appropriate subclass of `InputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
+        within the exported `SavedModel`, or `None` if no extra assets are
+        needed.
+      as_text: whether to write the `SavedModel` proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      mode: tf.estimator.ModeKeys value indicating with mode will be exported.
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      mode: `tf.estimator.ModeKeys` value indicating with mode will be exported.
 
     Returns:
       The string path to the exported directory.
 
     Raises:
-      ValueError: if input_receiver_fn is None, no export_outputs
+      ValueError: if `input_receiver_fn` is `None`, no `export_outputs`
         are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
@@ -720,40 +727,46 @@ class Estimator(object):
       checkpoint_path=None,
       strip_default_attrs=False):
     # pylint: disable=line-too-long
-    """Exports a SavedModel containing MetaGraphDefs for each requested mode.
+    """Exports a `SavedModel` containing `tf.MetaGraphDefs` for each requested mode.
 
-    See tf.contrib.estimator.export_all_saved_models for the currently
+    See `tf.contrib.estimator.export_all_saved_models` for the currently
     exposed version of this function.
 
-    For each mode passed in via the input_receiver_fn_map,
-    this method builds a new graph by calling the input_receiver_fn to obtain
+    For each mode passed in via the `input_receiver_fn_map`,
+    this method builds a new graph by calling the `input_receiver_fn` to obtain
     feature and label `Tensor`s. Next, this method calls the `Estimator`'s
-    model_fn in the passed mode to generate the model graph based on
+    `model_fn` in the passed mode to generate the model graph based on
     those features and labels, and restores the given checkpoint
     (or, lacking that, the most recent checkpoint) into the graph.
-    Only one of the modes is used for saving variables to the SavedModel
-    (order of preference: TRAIN, EVAL, then PREDICT), such that up to three
-    MetaGraphDefs are saved with a single set of variables in a single
-    SavedModel directory.
+    Only one of the modes is used for saving variables to the `SavedModel`
+    (order of preference: @{tf.estimator.ModeKeys#TRAIN$TRAIN},
+    @{tf.estimator.ModeKeys#EVAL$EVAL}, then
+    @{tf.estimator.ModeKeys#PREDICT$PREDICT}), such that up to three
+    `tf.MetaGraphDefs` are saved with a single set of variables in a single
+    `SavedModel` directory.
 
-    For the variables and MetaGraphDefs, a timestamped export directory below
-    export_dir_base, and writes a `SavedModel` into it containing
-    the `MetaGraphDef` for the given mode and its associated signatures.
+    For the variables and `tf.MetaGraphDefs`, a timestamped export directory
+    below
+    `export_dir_base`, and writes a `SavedModel` into it containing
+    the `tf.MetaGraphDef` for the given mode and its associated signatures.
 
     For prediction, the exported `MetaGraphDef` will provide one `SignatureDef`
-    for each element of the export_outputs dict returned from the model_fn,
+    for each element of the `export_outputs` dict returned from the `model_fn`,
     named using the same keys.  One of these keys is always
-    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
+    `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`,
+    indicating which
     signature will be served when a serving request does not specify one.
     For each signature, the outputs are provided by the corresponding
-    `ExportOutput`s, and the inputs are always the input receivers provided by
-    the serving_input_receiver_fn.
+    `tf.estimator.export.ExportOutput`s, and the inputs are always the input
+    receivers provided by
+    the `serving_input_receiver_fn`.
 
-    For training and evaluation, the train_op is stored in an extra collection,
-    and loss, metrics, and predictions are included in a SignatureDef for the
+    For training and evaluation, the `train_op` is stored in an extra
+    collection,
+    and loss, metrics, and predictions are included in a `SignatureDef` for the
     mode in question.
 
-    Extra assets may be written into the SavedModel via the assets_extra
+    Extra assets may be written into the `SavedModel` via the `assets_extra`
     argument.  This should be a dict, where each key gives a destination path
     (including the filename) relative to the assets.extra directory.  The
     corresponding value gives the full path of the source file to be copied.
@@ -762,25 +775,28 @@ class Estimator(object):
 
     Args:
       export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
-        mappings, where the input_receiver_fn is a function that takes no
-        argument and returns the appropriate subclass of `InputReceiver`.
+        timestamped subdirectories containing exported `SavedModel`s.
+      input_receiver_fn_map: dict of `tf.estimator.ModeKeys` to
+        `input_receiver_fn` mappings, where the `input_receiver_fn` is a
+        function that takes no arguments and returns the appropriate subclass of
+        `InputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
+        within the exported `SavedModel`, or `None` if no extra assets are
+        needed.
+      as_text: whether to write the `SavedModel` proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
-      A dict of tf.estimator.ModeKeys value to string path for each exported
+      A dict of `tf.estimator.ModeKeys` value to string path for each exported
       directory.
 
     Raises:
-      ValueError: if any input_receiver_fn is None, no export_outputs
+      ValueError: if any `input_receiver_fn` is `None`, no `export_outputs`
         are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
@@ -853,25 +869,29 @@ class Estimator(object):
                                export_tags=None,
                                check_variables=True):
     # pylint: disable=line-too-long
-    """Loads variables and adds them along with a MetaGraphDef for saving.
+    """Loads variables and adds them along with a `tf.MetaGraphDef` for saving.
 
     Args:
-      builder: instance of SavedModelBuilder that will be used for saving.
-      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
-        mappings, where the input_receiver_fn is a function that takes no
-        argument and returns the appropriate subclass of `InputReceiver`.
+      builder: instance of `tf.saved_modle.builder.SavedModelBuilder` that will
+        be used for saving.
+      input_receiver_fn_map: dict of `tf.estimator.ModeKeys` to
+        `input_receiver_fn` mappings, where the `input_receiver_fn` is a
+        function that takes no argument and returns the appropriate subclass of
+        `InputReceiver`.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      save_variables: bool, whether variables should be saved. If False, just
-        the MetaGraphDef will be saved. Note that save_variables should only be
-        True for the first call to this function, and the SavedModelBuilder will
-        raise an error if that is not the case.
-      mode: tf.estimator.ModeKeys value indicating which mode will be exported.
-      export_tags: The set of tags with which to save `MetaGraphDef`. If None,
-        a default set will be selected to matched the passed mode.
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      save_variables: bool, whether variables should be saved. If `False`, just
+        the `tf.MetaGraphDef` will be saved. Note that `save_variables` should
+        only be `True` for the first call to this function, and the
+        `SavedModelBuilder` will raise an error if that is not the case.
+      mode: `tf.estimator.ModeKeys` value indicating which mode will be
+        exported.
+      export_tags: The set of tags with which to save `tf.MetaGraphDef`. If
+        `None`, a default set will be selected to matched the passed mode.
       check_variables: bool, whether to check the checkpoint has all variables.
 
     Raises:
@@ -953,21 +973,23 @@ class Estimator(object):
           builder.add_meta_graph(**meta_graph_kwargs)
 
   def _get_export_outputs_for_spec(self, estimator_spec):
-    """Given an EstimatorSpec, determine what our export outputs should be.
+    """Given an `EstimatorSpec`, determine what our export outputs should be.
 
-    EstimatorSpecs contain export_outputs that are used for serving, but for
+    `EstimatorSpecs` contains `export_outputs` that are used for serving, but
+    for
     training and eval graphs, we must wrap the tensors of interest in
-    appropriate ExportOutput objects.
+    appropriate `tf.estimator.export.ExportOutput` objects.
 
     Args:
-      estimator_spec: EstimatorSpec object that will be exported.
+      estimator_spec: `tf.estimator.EstimatorSpec` object that will be exported.
 
     Returns:
-      a dict mapping export_output_name to ExportOutput object.
+      a dict mapping `export_output_name` to `tf.estimator.export.ExportOutput`
+      object.
 
     Raises:
-      ValueError: if an appropriate ExportOutput cannot be found for the
-        passed EstimatorSpec.mode
+      ValueError: if an appropriate `ExportOutput` cannot be found for the
+        passed `EstimatorSpec.mode`
     """
     mode = estimator_spec.mode
     if mode == model_fn_lib.ModeKeys.PREDICT:
@@ -1044,13 +1066,13 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
+    be added to the collection @{tf.GraphKeys#GLOBAL_STEP$GLOBAL_STEP}.
 
     Args:
       graph: The graph in which to create the global step tensor.
 
     Returns:
-      The global step `Tensor`.
+      The global step `tf.Tensor`.
     """
     return training.create_global_step(graph)
 
@@ -1061,7 +1083,7 @@ class Estimator(object):
       graph: The graph in which to create the global step tensor.
 
     Returns:
-      The global step `Tensor`.
+      The global step `tf.Tensor`.
     """
     step = self._create_global_step(graph)
     assert step == training.get_global_step()
@@ -1073,21 +1095,21 @@ class Estimator(object):
 
     Args:
       input_fn: The input function.
-      mode: ModeKeys
+      mode: `tf.estimator.ModeKeys`
 
     Returns:
-      The return value of the passed input_fn, which should be one of:
+      The return value of the passed `input_fn`, which should be one of:
 
         * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-        * A tuple (features, labels): Where `features` is a `Tensor` or a
+            tuple `(features, labels)` with same constraints as below.
+        * A tuple `(features, labels)`: Where `features` is a `Tensor` or a
           dictionary of string feature name to `Tensor` and `labels` is a
           `Tensor` or a dictionary of string label name to `Tensor`. Both
           `features` and `labels` are consumed by `model_fn`. They should
           satisfy the expectation of `model_fn` from inputs.
 
     Raises:
-      ValueError: if input_fn takes invalid arguments.
+      ValueError: if `input_fn` takes invalid arguments.
     """
     input_fn_args = function_utils.fn_args(input_fn)
     kwargs = {}
@@ -1106,14 +1128,14 @@ class Estimator(object):
     Args:
       features: features dict.
       labels: labels dict.
-      mode: ModeKeys
-      config: RunConfig
+      mode: `tf.estimator.ModeKeys`
+      config: `tf.estimator.RunConfig`
 
     Returns:
-      An `EstimatorSpec` object.
+      An `tf.estimator.EstimatorSpec` object.
 
     Raises:
-      ValueError: if model_fn returns invalid objects.
+      ValueError: if `model_fn` returns invalid objects.
     """
     model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
@@ -1146,14 +1168,14 @@ class Estimator(object):
       return self._train_model_default(input_fn, hooks, saving_listeners)
 
   def _train_model_default(self, input_fn, hooks, saving_listeners):
-    """Initiate training with input_fn, without DistributionStrategies.
+    """Initiate training with `input_fn`, without `DistributionStrategies`.
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the training loop.
-      saving_listeners: list of `CheckpointSaverListener` objects. Used for
-        callbacks that run immediately before or after checkpoint savings.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the training loop.
+      saving_listeners: list of `tf.train.CheckpointSaverListener` objects. Used
+        for callbacks that run immediately before or after checkpoint savings.
 
     Returns:
       Loss from training
@@ -1180,14 +1202,14 @@ class Estimator(object):
                                              saving_listeners)
 
   def _train_model_distributed(self, input_fn, hooks, saving_listeners):
-    """Initiate training with input_fn, using DistributionStrategies.
+    """Initiate training with `input_fn`, using `DistributionStrategies`.
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the training loop.
-      saving_listeners: list of `CheckpointSaverListener` objects. Used for
-        callbacks that run immediately before or after checkpoint savings.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the training loop.
+      saving_listeners: list of `tf.train.CheckpointSaverListener` objects. Used
+        for callbacks that run immediately before or after checkpoint savings.
 
     Returns:
       Loss from training
@@ -1535,9 +1557,9 @@ def maybe_overwrite_model_dir_and_session_config(config, model_dir):
           "`model_dir` are set both in constructor and `RunConfig`, but with "
           "different values. In constructor: '{}', in `RunConfig`: "
           "'{}' ".format(model_dir, config.model_dir))
-    if model_dir:
-      config = run_config.RunConfig.replace(config, model_dir=model_dir)
-  if getattr(config, 'model_dir', None) is None:
+  if model_dir:
+    config = run_config.RunConfig.replace(config, model_dir=model_dir)
+  elif getattr(config, 'model_dir', None) is None:
     model_dir = tempfile.mkdtemp()
     logging.warning('Using temporary folder as model directory: %s', model_dir)
     config = run_config.RunConfig.replace(config, model_dir=model_dir)
@@ -1546,7 +1568,7 @@ def maybe_overwrite_model_dir_and_session_config(config, model_dir):
 
 
 def create_per_tower_ready_op(scaffold):
-  """Create a Scaffold.ready_op inside a tower."""
+  """Create a `tf.train.Scaffold.ready_op` inside a tower."""
   if scaffold.ready_op:
     return scaffold.ready_op
 
@@ -1561,7 +1583,7 @@ def create_per_tower_ready_op(scaffold):
 
 
 def create_per_tower_ready_for_local_init_op(scaffold):
-  """Create a Scaffold.ready_for_local_init_op inside a tower."""
+  """Create a `tf.train.Scaffold.ready_for_local_init_op` inside a tower."""
   if scaffold.ready_for_local_init_op:
     return scaffold.ready_for_local_init_op
 
@@ -1659,7 +1681,7 @@ def _check_checkpoint_available(model_dir):
 
 
 def _check_hooks_type(hooks):
-  """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
+  """Returns hooks if all are `SessionRunHook`, raises TypeError otherwise."""
   hooks = list(hooks or [])
   for h in hooks:
     if not isinstance(h, training.SessionRunHook):
@@ -1679,17 +1701,18 @@ def _check_listeners_type(saving_listeners):
 
 
 def _get_replica_device_setter(config):
-  """Creates a replica device setter if required as a default device_fn.
+  """Creates a replica device setter if required as a default `device_fn`.
 
-  `Estimator` uses ReplicaDeviceSetter as a default device placer. It sets the
-  distributed related arguments such as number of ps_replicas based on given
-  config.
+  `Estimator` uses `tf.train.ReplicaDeviceSetter` as a default device placer. It
+  sets the
+  distributed related arguments such as number of `ps_replicas` based on given
+  `config`.
 
   Args:
-    config: A `RunConfig` instance.
+    config: A `tf.estimator.RunConfig` instance.
 
   Returns:
-    A replica device setter, or None.
+    A replica device setter, or `None`.
   """
   if config.task_type:
     worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
@@ -1708,7 +1731,7 @@ def _get_replica_device_setter(config):
 
 
 def _verify_model_fn_args(model_fn, params):
-  """Verifies model fn arguments."""
+  """Verifies `model_fn` arguments."""
   args = set(function_utils.fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
@@ -1853,7 +1876,7 @@ def _write_checkpoint_path_to_summary(output_dir, checkpoint_path,
 
 
 def _has_dataset_or_queue_runner(maybe_tensor):
-  """Returns True if TF dataset or QueueRunner has been used."""
+  """Returns `True` if `Dataset` or `QueueRunner` has been used."""
   # Check TF dataset first. Here, we use a simple algorithm to check the top
   # level Tensors only, which should be sufficient for most users.
   tensors = [x for x in nest.flatten(maybe_tensor) if isinstance(x, ops.Tensor)]
@@ -1876,9 +1899,9 @@ class WarmStartSettings(
         'var_name_to_vocab_info',
         'var_name_to_prev_var_name',
     ])):
-  """Settings for warm-starting in Estimators.
+  """Settings for warm-starting in `tf.estimator.Estimators`.
 
-  Example Use with canned `DNNEstimator`:
+  Example Use with canned `tf.estimator.DNNEstimator`:
 
   ```
   emb_vocab_file = tf.feature_column.embedding_column(
@@ -1995,23 +2018,19 @@ class WarmStartSettings(
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    vars_to_warm_start: [Optional] One of the following:
-
-      - A regular expression (string) that captures which variables to
-        warm-start (see tf.get_collection).  This expression will only consider
-        variables in the TRAINABLE_VARIABLES collection.
-      - A list of Variables to warm-start.
-      - A list of strings, each representing a full variable name to warm-start.
-      - `None`, in which case only variables specified in
-        `var_name_to_vocab_info` will be warm-started.
-
-      Defaults to `'.*'`, which warm-starts all variables in the
-      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
-      accumulators and moving statistics from batch norm.
+    vars_to_warm_start: [Optional] One of the following:  - A regular expression
+      (string) that captures which variables to warm-start (see
+      `tf.get_collection`).  This expression will only consider variables in the
+      `TRAINABLE_VARIABLES` collection. - A list of Variables to warm-start. - A
+      list of strings, each representing a full variable name to warm-start. -
+      `None`, in which case only variables specified in `var_name_to_vocab_info`
+      will be warm-started.  Defaults to `'.*'`, which warm-starts all variables
+      in the `TRAINABLE_VARIABLES` collection.  Note that this excludes
+      variables such as accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
-      VocabInfo. The variable names should be "full" variables, not the names
-      of the partitions.  If not explicitly provided, the variable is assumed to
-      have no vocabulary.
+      `tf.estimator.VocabInfo`. The variable names should be "full" variables,
+      not the names of the partitions.  If not explicitly provided, the variable
+      is assumed to have no vocabulary.
     var_name_to_prev_var_name: [Optional] Dict of variable names (strings) to
       name of the previously-trained variable in `ckpt_to_initialize_from`. If
       not explicitly provided, the name of the variable is assumed to be same
@@ -2036,7 +2055,7 @@ class WarmStartSettings(
 
 
 def _get_saved_model_ckpt(saved_model_dir):
-  """Return path to variables checkpoint in a SavedModel directory."""
+  """Return path to variables checkpoint in a `SavedModel` directory."""
   if not gfile.Exists(
       os.path.join(saved_model_utils.get_variables_dir(saved_model_dir),
                    compat.as_text('variables.index'))):
@@ -2046,18 +2065,20 @@ def _get_saved_model_ckpt(saved_model_dir):
 
 
 def _get_default_warm_start_settings(warm_start_from):
-  """Returns default WarmStartSettings.
+  """Returns default `tf.estimator.WarmStartSettings`.
 
   Args:
     warm_start_from: Either a string representing the filepath of a checkpoint
-      or SavedModel to initialize from, or an instance of WarmStartSettings.
+      or `SavedModel` to initialize from, or an instance of
+      `tf.estimator.WarmStartSettings`.
 
   Returns:
-    Either None or an instance of WarmStartSettings.
+    Either None or an instance of `WarmStartSettings`.
 
   Raises:
-    ValueError: If warm_start_from is not None but is neither a string nor an
-      instance of WarmStartSettings.
+    ValueError: If `warm_start_from` is not `None` but is neither a string nor
+    an
+      instance of `WarmStartSettings`.
   """
   if warm_start_from is None:
     return None
