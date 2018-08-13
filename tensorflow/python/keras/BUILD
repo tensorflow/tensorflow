@@ -25,6 +25,7 @@ py_library(
         "applications/inception_resnet_v2.py",
         "applications/inception_v3.py",
         "applications/mobilenet.py",
+        "applications/mobilenet_v2.py",
         "applications/nasnet.py",
         "applications/resnet50.py",
         "applications/vgg16.py",
@@ -860,13 +861,14 @@ py_test(
 
 py_test(
     name = "sequential_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/sequential_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

@@ -6,6 +6,7 @@ install_mac.md: MacOS
 install_windows.md: Windows
 install_raspbian.md: Raspbian
 install_sources.md: From source
+install_sources_windows.md: From source on Windows
 >>>
 migration.md
 

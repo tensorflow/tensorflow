@@ -152,6 +152,28 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     writer_cache.FileWriterCache.clear()
     gfile.DeleteRecursively(self._config.model_dir)
 
+  def test_keras_optimizer_with_distribution_strategy(self):
+    dist = mirrored_strategy.MirroredStrategy(
+        devices=['/device:GPU:0', '/device:GPU:1'])
+    keras_model = simple_sequential_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizers.rmsprop(lr=0.01))
+
+    config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
+                                      model_dir=self._base_dir,
+                                      train_distribute=dist)
+    with self.test_session():
+      est_keras = keras_lib.model_to_estimator(keras_model=keras_model,
+                                               config=config)
+      with self.assertRaisesRegexp(ValueError,
+                                   'Only TensorFlow native optimizers are '
+                                   'supported with DistributionStrategy.'):
+        est_keras.train(input_fn=get_ds_train_input_fn, steps=_TRAIN_SIZE / 16)
+
+    writer_cache.FileWriterCache.clear()
+    gfile.DeleteRecursively(self._config.model_dir)
+
 
 class TestWithDistributionStrategy(test.TestCase):
 
@@ -219,6 +241,47 @@ class TestWithDistributionStrategy(test.TestCase):
                 validation_data=dataset, validation_steps=2)
       model.predict(dataset, steps=2)
 
+  def test_fit_with_tuple_and_dict_dataset_inputs(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
+
+      dense = keras.layers.Dense(4, name='dense')
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+      model = keras.models.Model([a, b], [d, e])
+
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0'])
+      model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
+
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 3))
+      output_d_np = np.random.random((10, 4))
+      output_e_np = np.random.random((10, 4))
+
+      # Test with tuples
+      dataset_tuple = dataset_ops.Dataset.from_tensor_slices((
+          (input_a_np, input_b_np), (output_d_np, output_e_np)))
+      dataset_tuple = dataset_tuple.repeat(100)
+      dataset_tuple = dataset_tuple.batch(10)
+
+      model.fit(dataset_tuple, epochs=1, steps_per_epoch=2, verbose=1)
+
+      # Test with dict
+      dataset_dict = dataset_ops.Dataset.from_tensor_slices((
+          {'input_a': input_a_np, 'input_b': input_b_np},
+          (output_d_np, output_e_np)))
+      dataset_dict = dataset_dict.repeat(100)
+      dataset_dict = dataset_dict.batch(10)
+
+      model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
+
   def test_fit_eval_and_predict_methods_on_dataset(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -246,6 +309,32 @@ class TestWithDistributionStrategy(test.TestCase):
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=dataset, validation_steps=2)
 
+  def test_raise_error_for_stateful_metrics(self):
+
+    class ExampleStatefulMetric(keras.layers.Layer):
+
+      def __init__(self, name='true_positives', **kwargs):
+        super(ExampleStatefulMetric, self).__init__(name=name, **kwargs)
+        self.stateful = True
+
+      def __call__(self, y_true, y_pred):
+        return y_pred - y_true
+
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae', ExampleStatefulMetric()]
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
+                                                     '/device:GPU:0'])
+      with self.assertRaisesRegexp(
+          NotImplementedError, 'Stateful metrics are not supported with '
+                               'DistributionStrategy.'):
+        model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
+
   def test_unsupported_features(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -268,8 +357,9 @@ class TestWithDistributionStrategy(test.TestCase):
 
       # Test with validation split
       with self.assertRaisesRegexp(
-          ValueError, '`validation_split` argument is not supported '
-                      'when input `x` is a dataset or a dataset iterator'):
+          ValueError, '`validation_split` argument is not '
+                      'supported when input `x` is a dataset or a '
+                      'dataset iterator.+'):
         model.fit(dataset,
                   epochs=1, steps_per_epoch=2, verbose=0,
                   validation_split=0.5, validation_steps=2)
@@ -277,8 +367,8 @@ class TestWithDistributionStrategy(test.TestCase):
       # Test with sample weight.
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
-          ValueError, 'sample_weight is currently not supported when using '
-                      'DistributionStrategy.'):
+          NotImplementedError, 'sample_weight is currently not supported when '
+                               'using DistributionStrategy.'):
         model.fit(
             dataset,
             epochs=1,

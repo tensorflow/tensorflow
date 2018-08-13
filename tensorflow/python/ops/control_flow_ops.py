@@ -1449,14 +1449,17 @@ def ZerosLikeOutsideLoop(op, index):
       pred = op_ctxt.pred
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
+      # A op is created along the branch taken as control dependencies are on
+      # the whole op and not on the tensor output.
+      pivot = array_ops.identity(switch_val)
       if val.dtype == dtypes.resource:
-        with ops.control_dependencies([switch_val]):
+        with ops.control_dependencies([pivot]):
           return array_ops.zeros(
               gen_resource_variable_ops.variable_shape(switch_val))
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
       # Ensure ops created within array_ops.zeros are dominated by switch in
       # cond context.
-      with ops.control_dependencies([switch_val]):
+      with ops.control_dependencies([pivot]):
         return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
@@ -2065,21 +2068,25 @@ def cond(pred,
 
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
-    context_t.Enter()
-    orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
-    if orig_res_t is None:
-      raise ValueError("true_fn must have a return value.")
-    context_t.ExitResult(res_t)
-    context_t.Exit()
+    try:
+      context_t.Enter()
+      orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
+      if orig_res_t is None:
+        raise ValueError("true_fn must have a return value.")
+      context_t.ExitResult(res_t)
+    finally:
+      context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
-    context_f.Enter()
-    orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
-    if orig_res_f is None:
-      raise ValueError("false_fn must have a return value.")
-    context_f.ExitResult(res_f)
-    context_f.Exit()
+    try:
+      context_f.Enter()
+      orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
+      if orig_res_f is None:
+        raise ValueError("false_fn must have a return value.")
+      context_f.ExitResult(res_f)
+    finally:
+      context_f.Exit()
 
     if not strict:
       orig_res_t = _UnpackIfSingleton(orig_res_t)
@@ -3069,7 +3076,7 @@ def while_loop(cond,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  @{tf.Tensor.set_shape}
+  `tf.Tensor.set_shape`
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
@@ -3320,7 +3327,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   no guarantee that `output_tensor` will be evaluated after any `dependencies`
   have run.
 
-  See also @{tf.tuple$tuple} and @{tf.group$group}.
+  See also `tf.tuple` and `tf.group`.
 
   Args:
     dependencies: Iterable of operations to run before this op finishes.
@@ -3365,8 +3372,8 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
-  See also @{tf.tuple$tuple} and
-  @{tf.control_dependencies$control_dependencies}.
+  See also `tf.tuple` and
+  `tf.control_dependencies`.
 
   Args:
     *inputs: Zero or more tensors to group.
@@ -3435,8 +3442,8 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
   returned by `tuple` are only available after all the parallel computations
   are done.
 
-  See also @{tf.group$group} and
-  @{tf.control_dependencies$control_dependencies}.
+  See also `tf.group` and
+  `tf.control_dependencies`.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.

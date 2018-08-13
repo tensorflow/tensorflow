@@ -124,7 +124,7 @@ gpu_py_test(
 
 gpu_py_test(
     name = "conditional_distribution_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "python/kernel_tests/conditional_distribution_test.py",
         "python/kernel_tests/distribution_test.py",

@@ -1584,7 +1584,7 @@ def dropout(inputs,
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -2660,7 +2660,7 @@ def separable_convolution2d(
     inputs,
     num_outputs,
     kernel_size,
-    depth_multiplier,
+    depth_multiplier=1,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,

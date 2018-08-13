@@ -363,6 +363,30 @@ class KerasMetricsTest(test.TestCase):
     self.assertAlmostEqual(result, 0.5, 2)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_categorical_accuracy(self):
+    acc_obj = metrics.CategoricalAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[0, 0, 1], [0, 1, 0]],
+                                     [[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[0, 0, 1], [0, 1, 0]],
+                       [[0.1, 0.1, 0.8], [0.05, 0, 0.95]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
+
+  @test_util.run_in_graph_and_eager_modes
   def test_invalid_result(self):
 
     class InvalidResult(metrics.Metric):

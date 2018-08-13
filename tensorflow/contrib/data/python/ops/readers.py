@@ -234,7 +234,7 @@ def make_tf_record_dataset(
 
   Args:
     file_pattern: List of files or patterns of TFRecord file paths.
-      See @{tf.gfile.Glob} for pattern rules.
+      See `tf.gfile.Glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     parser_fn: (Optional.) A function accepting string input to parse
@@ -340,7 +340,7 @@ def make_csv_dataset(
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
-      records. See @{tf.gfile.Glob} for pattern rules.
+      records. See `tf.gfile.Glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     column_names: An optional list of strings that corresponds to the CSV

@@ -80,6 +80,7 @@ class MapDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testReadFileIgnoreError(self):
+
     def write_string_to_file(value, filename):
       with open(filename, "w") as f:
         f.write(value)
@@ -305,6 +306,51 @@ class MapDatasetBenchmark(test.Benchmark):
             iters=1000,
             wall_time=median_wall_time,
             name="benchmark_map_dataset_chain_latency_{}_{}".format(
+                opt_mark, chain_length))
+
+
+class MapAndFilterBenchmark(test.Benchmark):
+
+  # This benchmark compares the performance of pipeline with multiple chained
+  # map + filter with and without map fusion.
+  def benchmarkMapAndFilter(self):
+    chain_lengths = [0, 1, 2, 5, 10, 20, 50]
+    for chain_length in chain_lengths:
+      self._benchmarkMapAndFilter(chain_length, False)
+      self._benchmarkMapAndFilter(chain_length, True)
+
+  def _benchmarkMapAndFilter(self, chain_length, optimize_dataset):
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+      for _ in range(chain_length):
+        dataset = dataset.map(lambda x: x + 5).filter(
+            lambda x: math_ops.greater_equal(x - 5, 0))
+      if optimize_dataset:
+        dataset = dataset.apply(
+            optimization.optimize(["map_and_filter_fusion"]))
+
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
+
+      with session.Session() as sess:
+        for _ in range(10):
+          sess.run(next_element.op)
+        deltas = []
+        for _ in range(100):
+          start = time.time()
+          for _ in range(100):
+            sess.run(next_element.op)
+          end = time.time()
+          deltas.append(end - start)
+
+        median_wall_time = np.median(deltas) / 100
+        opt_mark = "opt" if optimize_dataset else "no-opt"
+        print("Map and filter dataset {} chain length: {} Median wall time: {}".
+              format(opt_mark, chain_length, median_wall_time))
+        self.report_benchmark(
+            iters=1000,
+            wall_time=median_wall_time,
+            name="benchmark_map_and_filter_dataset_chain_latency_{}_{}".format(
                 opt_mark, chain_length))
 
 

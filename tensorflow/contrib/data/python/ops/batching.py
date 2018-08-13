@@ -185,7 +185,7 @@ def dense_to_sparse_batch(batch_size, row_shape):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -401,7 +401,7 @@ def unbatch():
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -443,7 +443,7 @@ def unbatch():
 def batch_and_drop_remainder(batch_size):
   """A batching transformation that omits the final small batch (if present).
 
-  Like @{tf.data.Dataset.batch}, this transformation combines
+  Like `tf.data.Dataset.batch`, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
@@ -467,7 +467,7 @@ def batch_and_drop_remainder(batch_size):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _apply_fn(dataset):
@@ -484,25 +484,25 @@ def padded_batch_and_drop_remainder(batch_size,
                                     padding_values=None):
   """A batching and padding transformation that omits the final small batch.
 
-  Like @{tf.data.Dataset.padded_batch}, this transformation combines
+  Like `tf.data.Dataset.padded_batch`, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
 
-  See `@{tf.contrib.data.batch_and_drop_remainder}` for more details.
+  See `tf.contrib.data.batch_and_drop_remainder` for more details.
 
   Args:
     batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements of this dataset to combine in a single batch.
     padded_shapes: A nested structure of `tf.TensorShape` or
       `tf.int64` vector tensor-like objects. See
-      @{tf.data.Dataset.padded_batch} for details.
+      `tf.data.Dataset.padded_batch` for details.
     padding_values: (Optional.) A nested structure of scalar-shaped
-      `tf.Tensor`. See @{tf.data.Dataset.padded_batch} for details.
+      `tf.Tensor`. See `tf.data.Dataset.padded_batch` for details.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _apply_fn(dataset):
@@ -661,7 +661,7 @@ def assert_element_shape(expected_shapes):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _check_shape(*elements):
@@ -760,7 +760,7 @@ def map_and_batch(map_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: If both `num_parallel_batches` and `num_parallel_calls` are

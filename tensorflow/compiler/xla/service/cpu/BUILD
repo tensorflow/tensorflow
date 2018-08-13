@@ -55,11 +55,23 @@ cc_library(
 )
 
 cc_library(
+    name = "buffer_info_util",
+    srcs = ["buffer_info_util.cc"],
+    hdrs = ["buffer_info_util.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "cpu_compiler",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
     deps = [
         ":compiler_functor",
+        ":buffer_info_util",
         ":conv_canonicalization",
         ":cpu_copy_insertion",
         ":cpu_executable",
@@ -73,6 +85,7 @@ cc_library(
         ":ir_emitter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
+        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",

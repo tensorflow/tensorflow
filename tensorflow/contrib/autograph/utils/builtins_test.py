@@ -44,6 +44,23 @@ class BuiltinsTest(test.TestCase):
     with self.test_session() as sess:
       self.assertEqual(3, sess.run(builtins.dynamic_builtin(len, a)))
 
+  def test_dynamic_abs_tf_scalar(self):
+    a = constant_op.constant(-1)
+
+    with self.test_session() as sess:
+      self.assertEqual(1, sess.run(builtins.dynamic_builtin(abs, a)))
+
+  def test_dynamic_abs_tf_array(self):
+    a = constant_op.constant([-1, 2, -3])
+
+    with self.test_session() as sess:
+      self.assertListEqual([1, 2, 3],
+                           list(sess.run(builtins.dynamic_builtin(abs, a))))
+
+  def test_dynamic_abs_py_scalar(self):
+    a = -1
+    self.assertEqual(1, builtins.dynamic_builtin(abs, a))
+
   def test_dynamic_len_tf_matrix(self):
     a = constant_op.constant([[1, 2], [3, 4]])
 

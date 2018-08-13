@@ -47,9 +47,11 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
   result.execution_time += right.execution_time;
   result.compute_time += right.compute_time;
   result.memory_time += right.memory_time;
-  if (right.inaccurate) {
-    result.inaccurate = true;
-  }
+
+  result.num_ops_total += right.num_ops_total;
+  if (right.inaccurate) result.inaccurate = true;
+  result.num_ops_with_unknown_shapes += right.num_ops_with_unknown_shapes;
+
   if (right.max_memory != kMemoryUnknown) {
     result.max_memory += right.max_memory;
   }
@@ -283,6 +285,7 @@ VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
       grappler_item_(grappler_item),
       use_static_shapes_(use_static_shapes),
       placer_(cluster) {
+  graph_costs_.num_ops_total = 0;
   initialized_ = false;
 }
 
@@ -845,6 +848,11 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
 }
 
 Costs VirtualScheduler::Summary() const {
+  // Overall statement about accuracy
+  VLOG(1) << graph_costs_.num_ops_total << " ops processed in total, with "
+          << graph_costs_.num_ops_with_unknown_shapes
+          << " having unknown shapes";
+
   // Print out basic execution summary.
   VLOG(1) << "Expected execution time: " << graph_costs_.execution_time.count();
   VLOG(1) << "Expected compute time: " << graph_costs_.compute_time.count();
@@ -905,6 +913,12 @@ Costs VirtualScheduler::Summary() const {
             << ", total = " << strings::HumanReadableNumBytes(max_memory_usage)
             << ", at the end: "
             << strings::HumanReadableNumBytes(state.memory_usage);
+
+    // Overall statement about accuracy
+    VLOG(1) << state.device_costs.num_ops_total
+            << " ops processed in total, with "
+            << state.device_costs.num_ops_with_unknown_shapes
+            << " having unknown shapes";
 
     VLOG(1) << "Per-op execution time / compute time / memory time "
                "(and memory usage at peak memory usage):";

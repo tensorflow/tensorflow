@@ -647,7 +647,8 @@ class ControlFlowTest(test.TestCase):
     # feeding into the fill is dominated by a Switch.
     zero = graph.get_operation_by_name("gradients/zeros/Const")
     self.assertEqual(len(zero.control_inputs), 1)
-    self.assertEqual(zero.control_inputs[0].type, "Switch")
+    self.assertEqual(zero.control_inputs[0].type, "Identity")
+    self.assertEqual(zero.control_inputs[0].inputs[0].op.type, "Switch")
 
   def testCondGrad_2(self):
     with self.test_session():

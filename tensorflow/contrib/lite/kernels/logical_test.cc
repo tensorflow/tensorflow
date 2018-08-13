@@ -52,6 +52,11 @@ class LogicalOpModel : public SingleOpModel {
                      CreateLogicalOrOptions(builder_).Union());
         break;
       }
+      case BuiltinOperator_LOGICAL_AND: {
+        SetBuiltinOp(op, BuiltinOptions_LogicalAndOptions,
+                     CreateLogicalAndOptions(builder_).Union());
+        break;
+      }
       default: { FAIL() << "We shouldn't get here."; }
     }
   }
@@ -71,6 +76,26 @@ TEST(LogicalTest, BroadcastLogicalOr) {
   LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, BuiltinOperator_LOGICAL_OR);
   model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
   model.PopulateTensor<bool>(model.input2(), {false});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(LogicalTest, LogicalAnd) {
+  LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, BuiltinOperator_LOGICAL_AND);
+  model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
+  model.PopulateTensor<bool>(model.input2(), {true, false, true, false});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(LogicalTest, BroadcastLogicalAnd) {
+  LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, BuiltinOperator_LOGICAL_AND);
+  model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
+  model.PopulateTensor<bool>(model.input2(), {true});
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));

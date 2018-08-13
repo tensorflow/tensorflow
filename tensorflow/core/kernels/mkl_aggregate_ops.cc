@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::stream;
 using mkldnn::sum;
@@ -38,7 +37,7 @@ using mkldnn::sum;
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
@@ -286,7 +285,7 @@ class MklAddNOp : public OpKernel {
   } MklAddNOpContext;
 };
 
-#else  // INTEL_MKL_ML
+#else  // INTEL_MKL_ML_ONLY
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
  public:

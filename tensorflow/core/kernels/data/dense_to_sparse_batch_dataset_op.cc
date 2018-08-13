@@ -115,10 +115,11 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* batch_size_node;
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size_node));
       Node* row_shape_node;
@@ -273,14 +274,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(Iterator::SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(Iterator::SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(Iterator::RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(Iterator::RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 

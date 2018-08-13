@@ -1341,7 +1341,7 @@ INSTANTIATE_TEST_CASE_P(
 // results on the interpreter backend.
 class ReduceWindowTextTest : public HloTestBase {};
 
-TEST_F(ReduceWindowTextTest, R2General256x384) {
+XLA_TEST_F(ReduceWindowTextTest, R2General256x384) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1358,7 +1358,7 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R2General256x384Layout01) {
+XLA_TEST_F(ReduceWindowTextTest, R2General256x384Layout01) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1375,7 +1375,7 @@ ROOT reduce-window = f32[256,384]{0,1} reduce-window(operand, constant), window=
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R2General2x5) {
+XLA_TEST_F(ReduceWindowTextTest, R2General2x5) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1392,7 +1392,7 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R2EffectiveScalar) {
+XLA_TEST_F(ReduceWindowTextTest, R2EffectiveScalar) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1410,7 +1410,7 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R3EffectiveScalar) {
+XLA_TEST_F(ReduceWindowTextTest, R3EffectiveScalar) {
   const string hlo_string = R"(
 HloModule R3Window
 mul {
@@ -1428,7 +1428,7 @@ ENTRY R3Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(HloTestBase, ReduceWindowIdentity) {
+XLA_TEST_F(HloTestBase, ReduceWindowIdentity) {
   const string hlo_string = R"(
 HloModule ReduceWindowIdentity
 identity.pad_to_reduce_window {
@@ -1445,7 +1445,7 @@ ENTRY reduce-window-identity {
   EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
 }
 
-TEST_F(HloTestBase, ReduceWindowS32) {
+XLA_TEST_F(HloTestBase, ReduceWindowS32) {
   const string hlo_string = R"(
 HloModule reduce-window
 

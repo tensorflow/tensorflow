@@ -648,7 +648,7 @@ def variable(value, dtype=None, name=None, constraint=None):
       constraint=constraint)
   if isinstance(value, np.ndarray):
     v._keras_shape = value.shape
-  elif hasattr(value, 'get_shape'):
+  elif hasattr(value, 'shape'):
     v._keras_shape = int_shape(value)
   v._uses_learning_phase = False
   return v
@@ -854,7 +854,10 @@ def int_shape(x):
   ```
   """
   try:
-    return tuple(x.get_shape().as_list())
+    shape = x.shape
+    if not isinstance(shape, tuple):
+      shape = tuple(shape.as_list())
+    return shape
   except ValueError:
     return None
 
@@ -881,7 +884,7 @@ def ndim(x):
       2
   ```
   """
-  dims = x.get_shape()._dims
+  dims = x.shape._dims
   if dims is not None:
     return len(dims)
   return None
@@ -969,7 +972,7 @@ def zeros(shape, dtype=None, name=None):
       dtype = floatx()
     tf_dtype = dtypes_module.as_dtype(dtype)
     v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
-    if py_all(v.get_shape().as_list()):
+    if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
     return v
 
@@ -1003,7 +1006,7 @@ def ones(shape, dtype=None, name=None):
       dtype = floatx()
     tf_dtype = dtypes_module.as_dtype(dtype)
     v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
-    if py_all(v.get_shape().as_list()):
+    if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
     return v
 
@@ -1197,7 +1200,7 @@ def count_params(x):
              [ 0.,  0.,  0.]], dtype=float32)
   ```
   """
-  return np.prod(x.get_shape().as_list())
+  return np.prod(x.shape.as_list())
 
 
 @tf_export('keras.backend.cast')
@@ -2116,10 +2119,10 @@ def _fused_normalize_batch_in_training(x,
 
   if gamma is None:
     gamma = constant_op.constant(
-        1.0, dtype=x.dtype, shape=[x.get_shape()[normalization_axis]])
+        1.0, dtype=x.dtype, shape=[x.shape[normalization_axis]])
   if beta is None:
     beta = constant_op.constant(
-        0.0, dtype=x.dtype, shape=[x.get_shape()[normalization_axis]])
+        0.0, dtype=x.dtype, shape=[x.shape[normalization_axis]])
 
   return nn.fused_batch_norm(
       x, gamma, beta, epsilon=epsilon, data_format=tf_data_format)
@@ -2324,7 +2327,7 @@ def repeat_elements(x, rep, axis):
   Returns:
       A tensor.
   """
-  x_shape = x.get_shape().as_list()
+  x_shape = x.shape.as_list()
   # For static axis
   if x_shape[axis] is not None:
     # slices along the repeat axis
@@ -2344,7 +2347,7 @@ def repeat_elements(x, rep, axis):
   auxiliary_axis = axis + 1
   x_shape = array_ops.shape(x)
   x_rep = array_ops.expand_dims(x, axis=auxiliary_axis)
-  reps = np.ones(len(x.get_shape()) + 1)
+  reps = np.ones(len(x.shape) + 1)
   reps[auxiliary_axis] = rep
   x_rep = array_ops.tile(x_rep, reps)
 
@@ -2356,7 +2359,7 @@ def repeat_elements(x, rep, axis):
   x_rep = array_ops.reshape(x_rep, x_shape)
 
   # Fix shape representation
-  x_shape = x.get_shape().as_list()
+  x_shape = x.shape.as_list()
   x_rep.set_shape(x_shape)
   x_rep._keras_shape = tuple(x_shape)
   return x_rep
@@ -3033,17 +3036,17 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
-  ndim = len(inputs.get_shape())
+  ndim = len(inputs.shape)
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
-  inputs_shape = inputs.get_shape()
+  inputs_shape = inputs.shape
   axes = [1, 0] + list(range(2, ndim))
   inputs = array_ops.transpose(inputs, (axes))
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
-    if len(mask.get_shape()) == ndim - 1:
+    if len(mask.shape) == ndim - 1:
       mask = expand_dims(mask)
     mask = array_ops.transpose(mask, axes)
 
@@ -3054,7 +3057,7 @@ def rnn(step_function,
   uses_learning_phase = False
 
   if unroll:
-    if not inputs.get_shape()[0]:
+    if not inputs.shape[0]:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
     states = initial_states
     successive_states = []
@@ -3171,7 +3174,7 @@ def rnn(step_function,
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
         for state, new_state in zip(states, new_states):
-          new_state.set_shape(state.get_shape())
+          new_state.set_shape(state.shape)
         tiled_mask_t = array_ops.tile(mask_t,
                                       array_ops.stack(
                                           [1, array_ops.shape(output)[1]]))
@@ -3208,7 +3211,7 @@ def rnn(step_function,
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
         for state, new_state in zip(states, new_states):
-          new_state.set_shape(state.get_shape())
+          new_state.set_shape(state.shape)
         output_ta_t = output_ta_t.write(time, output)
         return (time + 1, output_ta_t) + tuple(new_states)
 
@@ -3226,11 +3229,11 @@ def rnn(step_function,
     outputs = output_ta.stack()
     last_output = output_ta.read(last_time - 1)
 
-  axes = [1, 0] + list(range(2, len(outputs.get_shape())))
+  axes = [1, 0] + list(range(2, len(outputs.shape)))
   outputs = array_ops.transpose(outputs, axes)
 
   # Static shape inference: (samples, time, ...)
-  outputs_shape = outputs.get_shape().as_list()
+  outputs_shape = outputs.shape.as_list()
   outputs_shape[0] = inputs_shape[0]
   outputs_shape[1] = inputs_shape[1]
   outputs.set_shape(outputs_shape)
@@ -3501,7 +3504,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  rank = len(output.get_shape())
+  rank = len(output.shape)
   axis = axis % rank
   # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
@@ -3537,7 +3540,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  rank = len(output.get_shape())
+  rank = len(output.shape)
   axis = axis % rank
   if axis != rank - 1:
     permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
@@ -3550,7 +3553,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
     output = math_ops.log(output)
 
-  output_shape = output.get_shape()
+  output_shape = output.shape
   targets = cast(flatten(target), 'int64')
   logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
   res = nn.sparse_softmax_cross_entropy_with_logits(
@@ -3797,7 +3800,7 @@ def conv1d(x,
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
 
-  kernel_shape = kernel.get_shape().as_list()
+  kernel_shape = kernel.shape.as_list()
   if padding == 'causal':
     # causal (dilated) convolution:
     left_pad = dilation_rate * (kernel_shape[0] - 1)

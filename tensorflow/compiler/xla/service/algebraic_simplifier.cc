@@ -1803,6 +1803,12 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
 }
 
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
+  // TODO(b/112040122): Most of those optimizations can be done for multi-output
+  // reduces.
+  if (ShapeUtil::IsTuple(reduce->shape())) {
+    return Status::OK();
+  }
+
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
   tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());

@@ -1223,11 +1223,10 @@ tensorflow::Status ConvertGatherOperator(
   return tensorflow::Status::OK();
 }
 
-template <typename Op, const char* op_name>
+template <typename Op>
 tensorflow::Status ConvertArgMinMaxOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  CHECK_EQ(node.op(), op_name);
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
   const auto axis_data_type =
       HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
@@ -1243,6 +1242,20 @@ tensorflow::Status ConvertArgMinMaxOperator(
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertArgMaxOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ArgMax");
+  return ConvertArgMinMaxOperator<ArgMaxOperator>(node, tf_import_flags, model);
+}
+
+tensorflow::Status ConvertArgMinOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ArgMin");
+  return ConvertArgMinMaxOperator<ArgMinOperator>(node, tf_import_flags, model);
 }
 
 tensorflow::Status ConvertResizeBilinearOperator(
@@ -1899,17 +1912,14 @@ using ConverterType = tensorflow::Status (*)(
     Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
-constexpr char kArgMax[] = "ArgMax";
-constexpr char kArgMin[] = "ArgMin";
-
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperator<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
       {"Any", ConvertAnyOperator},
-      {"ArgMax", ConvertArgMinMaxOperator<ArgMaxOperator, kArgMax>},
-      {"ArgMin", ConvertArgMinMaxOperator<ArgMinOperator, kArgMin>},
+      {"ArgMax", ConvertArgMaxOperator},
+      {"ArgMin", ConvertArgMinOperator},
       {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},

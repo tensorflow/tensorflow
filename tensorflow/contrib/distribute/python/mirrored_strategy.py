@@ -27,13 +27,17 @@ from tensorflow.contrib.distribute.python import values
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.util import nest
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
@@ -186,12 +190,20 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
     raise ValueError("You are passing a `DistributedValue` to "
                      "`_reduce_non_distributed_value`, which is not allowed.")
 
+  # If the same value is present on all towers then the PerDevice value will
+  # be a single value. We also handle the case when `value` is a single value
+  # and equal to 0.
   if value == 0:
     return 0
+  # If the aggregation type is MEAN, then this essentially means that the same
+  # value should be on all destinations.
   if aggregation == variable_scope.VariableAggregation.MEAN:
     return distribution.broadcast(value, destinations)
 
   cross_tower_ops_lib.validate_destinations(destinations)
+  # We do not support an aggregation type of SUM if the value is the same across
+  # all towers. We call this as part of assign functions for MirroredVariables
+  # and summing up identical values across towers is not clearly defined.
   if (len(distribution.worker_devices) != 1 or
       not cross_tower_ops_lib.check_destinations(destinations)):
     raise ValueError("A non-DistributedValues value cannot be reduced with the "
@@ -305,7 +317,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     self._devices = [device_util.resolve(d) for d in devices]
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerDevice(
-        dict((d, i) for i, d in enumerate(devices)))
+        {d: i for i, d in enumerate(devices)})
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
     # TODO(yuefengz): consider setting the default device.
@@ -349,6 +361,54 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         self._call_dataset_fn(dataset_fn), self._devices,
         self._prefetch_on_device)
 
+  # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
+  def _run_steps_on_dataset(self, fn, iterator, iterations,
+                            initial_loop_values=None):
+    if initial_loop_values is None:
+      initial_loop_values = {}
+    initial_loop_values = nest.flatten(initial_loop_values)
+
+    ctx = values.MultiStepContext()
+    def body(i, *args):
+      """A wrapper around `fn` to create the while loop body."""
+      del args
+      fn_result = fn(ctx, iterator.get_next())
+      for (name, output) in ctx.last_step_outputs.items():
+        # Convert all outputs to tensors, potentially from `DistributedValues`.
+        ctx.last_step_outputs[name] = self.unwrap(output)
+      flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
+      with ops.control_dependencies([fn_result]):
+        return [i + 1] + flat_last_step_outputs
+
+    cond = lambda i, *args: i < iterations
+    i = constant_op.constant(0)
+    loop_result = control_flow_ops.while_loop(
+        cond, body, [i] + initial_loop_values, name="",
+        parallel_iterations=1, back_prop=False, swap_memory=False,
+        return_same_structure=True)
+
+    ctx.run_op = control_flow_ops.group(loop_result)
+
+    # Convert the last_step_outputs from a list to the original dict structure
+    # of last_step_outputs.
+    last_step_tensor_outputs = loop_result[1:]
+    last_step_tensor_outputs_dict = nest.pack_sequence_as(
+        ctx.last_step_outputs, last_step_tensor_outputs)
+
+    for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
+      output = last_step_tensor_outputs_dict[name]
+      # For outputs that have already been aggregated, wrap them in a Mirrored
+      # container, else in a PerDevice container.
+      if aggregation is variables_lib.VariableAggregation.NONE:
+        last_step_tensor_outputs_dict[name] = values.regroup(
+            {d: t for d, t in zip(self._devices, output)}, values.PerDevice)
+      else:
+        assert len(output) == 1
+        last_step_tensor_outputs_dict[name] = output[0]
+
+    ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
+    return ctx
+
   def _broadcast(self, tensor, destinations):
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
     return self._get_cross_tower_ops().broadcast(tensor, destinations or
@@ -386,6 +446,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def _reduce(self, aggregation, value, destinations):
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
+      # This function handles reducing values that are not PerDevice or Mirrored
+      # values. For example, the same value could be present on all towers in
+      # which case `value` would be a single value or value could be 0.
       return _reduce_non_distributed_value(self, aggregation, value,
                                            destinations)
     return self._get_cross_tower_ops().reduce(
@@ -433,6 +496,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         return [val.get(device=d) for d in self._devices]
       return [val.get(device=d) for d in sorted(val.devices)]
     return [val]
+
+  def value_container(self, val):
+    return values.value_container(val)
 
   @property
   def is_single_tower(self):
