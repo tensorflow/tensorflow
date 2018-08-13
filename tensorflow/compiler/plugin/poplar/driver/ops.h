@@ -179,10 +179,6 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateReductionNoConvert(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map);
-
 StatusOr<poplar::program::Program> CreateBwdMaxPool(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
@@ -314,12 +310,6 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(poplar::Graph& graph,
                                                    const HloInstruction* inst,
                                                    const xla::Shape& output,
                                                    TensorMap& tensor_map);
-
-StatusOr<poplar::program::Program> ConvertWithoutUse(poplar::Graph& graph,
-                                                     CompilerResources& res,
-                                                     const HloInstruction* inst,
-                                                     const xla::Shape& output,
-                                                     TensorMap& tensor_map);
 
 /* Optimization tests */
 

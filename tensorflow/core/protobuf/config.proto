@@ -189,6 +189,9 @@ message IPUOptions {
 
       // Set to enable execution trace
       bool enable_execution_trace = 4;
+
+      // Report every N'th execution (0=once only)
+      int64 report_every_nth_execution = 5;
     };
     Profiling profiling = 3;
 

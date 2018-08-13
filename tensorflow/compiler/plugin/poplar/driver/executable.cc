@@ -38,7 +38,7 @@ PoplarExecutable::PoplarExecutable(
       literal_output_(std::move(literal_output)),
       parameter_streamed_(std::move(parameter_streamed)),
       output_streamed_(std::move(output_streamed)),
-      first_execution_(true) {}
+      execution_count_(0) {}
 
 PoplarExecutable::~PoplarExecutable() {}
 
@@ -73,7 +73,11 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
       result, poplarExecutor->ExecuteEngine(executor, *this, memory_allocator,
                                             argument_buffers));
 
-  first_execution_ = false;
+  execution_count_++;
+  if (poplarExecutor->ReportEventNthExecution() > 0 &&
+      execution_count_ >= poplarExecutor->ReportEventNthExecution()) {
+    execution_count_ = 0;
+  }
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 

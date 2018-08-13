@@ -21,7 +21,8 @@ from tensorflow.core.protobuf import config_pb2
 import time
 
 def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
-                      use_poplar_text_report=False, type='IPU_MODEL'):
+                      use_poplar_text_report=False,
+                      report_every_nth_execution=0, type='IPU_MODEL'):
   """Create the IPU options for an IPU model device.
 
   Args:
@@ -29,6 +30,8 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
     num_ipus: Number of IPUs in the model
     tiles_per_ipu: Number of tiles per IPU in the model
     use_poplar_text_report: Enable the poplar textual report summary
+    report_every_nth_execution: Only produce an execution report on every Nth
+                                execution.  0=One report only.
     type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
 
   Returns:
@@ -58,6 +61,7 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
   dev.profiling.enable_io_trace = profiling
   dev.profiling.enable_execution_trace = profiling
   dev.profiling.enable_poplar_reports_text = use_poplar_text_report
+  dev.profiling.report_every_nth_execution = report_every_nth_execution
 
   if num_ipus:
     dev.ipu_model_config.num_ipus = num_ipus

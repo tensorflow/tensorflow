@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/casts_elimination.h"
 #include "tensorflow/compiler/plugin/poplar/driver/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
@@ -207,16 +208,14 @@ class EntryVisitor : public FullVisitor {
         }
       }
 
+      auto fifo = graph_.addHostToDeviceFIFO(
+          GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
+          out.numElements());
+
       if (parameter_streamed[inst->parameter_number()]) {
-        auto fifo = graph_.addHostToDeviceFIFO(
-            GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
-            out.numElements());
-
         sequence.add(poplar::program::Copy(fifo, out));
-
       } else {
-        graph_.createHostWrite(GetInputCopyHandle(inst->parameter_number(), i),
-                               out);
+        host_to_device.add(poplar::program::Copy(fifo, out));
       }
     }
     return Status::OK();
@@ -246,14 +245,11 @@ class EntryVisitor : public FullVisitor {
 
       if (!output_streamed[o]) {
         poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-        graph_.createHostRead(GetOutputCopyHandle(o), out);
-      }
-    }
 
-    for (size_t o = 0; o < outputs.size(); o++) {
-      if (!output_streamed[o] && output_map.count(o) == 0) {
-        LOG(WARNING) << "Warning: Output " << GetOutputCopyHandle(o)
-                     << " is not streamed, but not an alias of an input.";
+        auto fifo = graph_.addDeviceToHostFIFO(
+          GetOutputCopyHandle(o), out.elementType(), out.numElements());
+
+        device_to_host.add(poplar::program::Copy(out, fifo));
       }
     }
 
@@ -314,6 +310,9 @@ class EntryVisitor : public FullVisitor {
   std::vector<bool> output_streamed;
 
   bool all_outputs_are_parameters;
+
+  poplar::program::Sequence host_to_device;
+  poplar::program::Sequence device_to_host;
 
  private:
   std::set<HloInstruction*> non_standard_parameter_layout;
@@ -418,6 +417,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     // pipeline.AddPass<WhileLoopSimplifier>();
     // pass.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<HloPassFix<CastsElimination>>(resources.annotations);
     pipeline.AddPass<HloCSE>(true);
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<CommutativeInstructionReorderOperands>();
@@ -479,6 +479,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
 
     progs.push_back(visitor.sequence);
+    progs.push_back(visitor.host_to_device);
+    progs.push_back(visitor.device_to_host);
 
     if (visitor.all_outputs_are_parameters) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";

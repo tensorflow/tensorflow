@@ -546,9 +546,10 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(list(filter(lambda x:x[1]==b2_dl, host_to_device))), 0)
 
       # Weights should be uploaded once (explicitly fetched)
+      # Note all weights are fetched as a group
       self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
       self.assertEqual(len(list(filter(lambda x:x[1]==w1_ul, device_to_host))), 1)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 1)
 
 if __name__ == "__main__":
     googletest.main()

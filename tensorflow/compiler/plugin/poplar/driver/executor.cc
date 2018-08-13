@@ -127,6 +127,7 @@ void* PoplarExecutor::Allocate(uint64 size) {
   allocated->input_handle.clear();
   allocated->output_handle.clear();
   allocated->output_convertor = nullptr;
+  allocated->converted_data.clear();
   {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
@@ -196,7 +197,7 @@ Status PoplarExecutor::SynchronousMemcpy(void* host_dst,
   {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     if (tc->on_device == true && !tc->output_handle.empty()) {
-      TF_RETURN_IF_ERROR(MoveDeviceToHost(const_cast<TensorControl*>(tc)));
+      TF_RETURN_IF_ERROR(MoveDeviceToHost());
     }
   }
   memcpy(host_dst, tc->data, size);
@@ -591,27 +592,44 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
   }
 }
 
-Status PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
-  void* buf(static_cast<void*>(tc->data));
+Status PoplarExecutor::MoveDeviceToHost() {
+  for (const auto& tc : allocations_) {
+    // Set up streams
+    if (tc->on_device == true && !tc->output_handle.empty()) {
+      void *buf(static_cast<void *>(tc->data));
+      current_engine_->connectStream(tc->output_handle, buf);
+    }
+  }
+
+  // perform device -> host read
   try {
-    if (tc->output_convertor) {
-      current_engine_->readTensor(tc->output_handle, buf);
-      std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
-      memcpy(buf, converted.data(), converted.size());
-    } else {
-      current_engine_->readTensor(tc->output_handle, buf);
-    }
-    if (current_config_.profiling().enable_io_trace()) {
-      AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
-                     tc->output_handle, 0);
-    }
-    tc->on_device = false;
-    tc->output_handle.clear();
-    tc->input_handle.clear();
-    return Status::OK();
+    current_engine_->run(2);
   } catch (std::logic_error& e) {
     return tensorflow::errors::Internal("Poplar host read error: ", e.what());
   }
+
+  // Post process upload
+  for (const auto& tc : allocations_) {
+
+    if (tc->on_device == true && !tc->output_handle.empty()) {
+      if (tc->output_convertor) {
+        void* buf(static_cast<void*>(tc->data));
+        std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
+        memcpy(buf, converted.data(), converted.size());
+      }
+
+      if (current_config_.profiling().enable_io_trace()) {
+        AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
+                       tc->output_handle, 0);
+      }
+    }
+
+    tc->on_device = false;
+    tc->output_handle.clear();
+    tc->input_handle.clear();
+  }
+
+  return Status::OK();
 }
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::GetTupleBufferByIndex(
@@ -643,7 +661,7 @@ void PoplarExecutor::FlattenedOutputDeviceMemoryList(std::vector<void*>& list,
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
-    const xla::poplarplugin::PoplarExecutable& executable,
+    xla::poplarplugin::PoplarExecutable& executable,
     xla::DeviceMemoryAllocator* allocator, const Args& args) {
   const auto& output_map = executable.OutputMapping();
   const auto& output_shape = executable.result_shape();
@@ -675,78 +693,94 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       ArgsHandleMap arg_map;
       CreateArgsHandleMap(arg_map, args, executable);
 
-      // Pull previous execution output back from device if:
-      // a) it is on the device _and_
+      // Put data on the device if:
+      // a) the engine has changed
+      // b) it is not on the device
+      // c) it is on the device, but in the wrong place
+      bool do_host_to_device = false;
+      for (const auto& arg : arg_map) {
+        auto it = std::find(allocations_.begin(), allocations_.end(),
+                            arg.second.tc);
+        if (it == allocations_.end()) {
+          return tensorflow::errors::InvalidArgument(
+              "Argument isn't allocated on device: ", (void*)arg.second.tc);
+        }
+
+        if (!arg.second.streamed) {
+          if (engine_changed || arg.second.tc->on_device == false ||
+              arg.second.tc->input_handle != arg.first) {
+            do_host_to_device = true;
+          }
+        }
+      }
+
+      // Pull previous execution outputs back from device if:
+      // a) one is on the device _and_
       // b)   the engine is changing _or_
       // c)   output buffer isn't an input to the current engine _or_
       // d)   output buffer isn't currently in the right place for the new input
+      bool do_device_to_host = false;
       for (const auto& tc : allocations_) {
-        if (tc->on_device == true) {
-          if (!tc->output_handle.empty()) {
-            if (engine_changed) {
-              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-            } else if (tc->input_handle.empty()) {
-              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-            } else if (arg_map.count(tc->input_handle) > 0 &&
-                       tc != arg_map.at(tc->input_handle).tc) {
-              TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-            }
-          } else {
-            if (arg_map.count(tc->input_handle) > 0 &&
-                tc != arg_map.at(tc->input_handle).tc) {
-              // Mark any old inputs as invalid
-              tc->input_handle.clear();
-              tc->on_device = false;
-            }
+        if (tc->on_device == true &&
+            !tc->output_handle.empty()) {
+          if (engine_changed ||
+              arg_map.count(tc->input_handle) == 0 ||
+              tc != arg_map.at(tc->input_handle).tc) {
+            do_device_to_host = true;
           }
         }
+      }
+
+      if (do_device_to_host) {
+        MoveDeviceToHost();
       }
 
       if (engine_changed) {
         try {
           engine->load(poplar_device_);
+
+          if (current_config_.profiling().enable_io_trace()) {
+            AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
+                           executable.module().name(), "", 0);
+          }
+
+          executable.OnEngineLoaded();
+
+          current_engine_ = engine;
+
         } catch (std::logic_error e) {
           return tensorflow::errors::Internal("Poplar engine load error ",
                                               e.what());
         }
-
-        if (current_config_.profiling().enable_io_trace()) {
-          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
-                         executable.module().name(), "", 0);
-        }
       }
 
-      current_engine_ = engine;
-
-      // Put data on the device if:
-      // a) the engine has changed
-      // b) it is not on the device
-      // c) it is on the device, but in the wrong place
       try {
-        for (auto mem : arg_map) {
-          TensorControl* tc = mem.second.tc;
-          void* buf(static_cast<void*>(tc->data));
-          if (mem.second.streamed) {
-            current_engine_->connectStream(mem.first, buf);
-          } else {
-            if (tc->on_device == false || tc->input_handle != mem.first ||
-                engine_changed) {
-              ConversionFn fn = mem.second.fn;
-              if (fn != nullptr) {
-                std::vector<char> converted = fn(buf, tc->size, 0);
-                current_engine_->writeTensor(mem.first, converted.data());
-              } else {
-                current_engine_->writeTensor(mem.first, buf);
+        if (do_host_to_device) {
+          for (auto arg : arg_map) {
+            TensorControl* tc = arg.second.tc;
+            void* buf(static_cast<void*>(tc->data));
+            if (!arg.second.streamed) {
+
+              if (arg.second.fn != nullptr) {
+                tc->converted_data = arg.second.fn(buf, tc->size, 0);
+                buf = tc->converted_data.data();
               }
+
+              current_engine_->connectStream(arg.first, buf);
+
               tc->on_device = true;
-              tc->input_handle = mem.first;
+              tc->input_handle = arg.first;
+              tc->converted_data.clear();
+
               if (current_config_.profiling().enable_io_trace()) {
                 AddEventRecord(
                     tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
-                    mem.first, 0);
+                    arg.first, 0);
               }
             }
           }
+
+          current_engine_->run(1);
         }
       } catch (std::logic_error e) {
         return tensorflow::errors::Internal("Poplar host write error ",
@@ -760,6 +794,16 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       VLOG(1) << "Executing on poplar device type " << GetDeviceTargetName();
 
       try {
+        // Input streams
+        for (auto arg : arg_map) {
+          TensorControl *tc = arg.second.tc;
+          void *buf(static_cast<void *>(tc->data));
+          if (arg.second.streamed) {
+            current_engine_->connectStream(arg.first, buf);
+          }
+        }
+
+        // Output streams
         const auto& streamed = executable.OutputStreamed();
         std::vector<void*> bufs;
         FlattenedOutputDeviceMemoryList(bufs, output_shape, retbuf.opaque());
@@ -776,16 +820,22 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       try {
-        if (current_config_.profiling().enable_execution_trace()) {
+        if (current_config_.profiling().enable_execution_trace() > 0) {
           poplar::OptionFlags opts;
           opts.set("doLayerWiseBreakdown", "true");
-          // opts.set("doLayerWisePerIPUBreakdown", "true");
-          // opts.set("doLayerWisePerTileBreakdown", "true");
+          if (!CompilerReportingTextFormat()) {
+            opts.set("doLayerWisePerIPUBreakdown", "true");
+            opts.set("doLayerWisePerTileBreakdown", "true");
+          }
 
           std::stringstream stream;
-          if (executable.DumpReport()) {
+          if (executable.ExecutionCount() == 0) {
             auto rep = current_engine_->getExecutionReport(opts);
-            rep.printSummary(stream);
+            if (CompilerReportingTextFormat()) {
+              rep.printSummary(stream);
+            } else {
+              rep.serialize(stream, poplar::SerializationFormat::JSON);
+            }
 
             current_engine_->reportIntervals(stream);
           }

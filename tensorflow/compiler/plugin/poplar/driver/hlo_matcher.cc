@@ -34,9 +34,7 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
                        bool root_computation_only)
     : root_computation_only_(root_computation_only),
       annotations_(annotations),
-      patterns_(std::move(patterns)) {
-  matches_.resize(patterns.size());
-}
+      patterns_(std::move(patterns)) {}
 
 bool HloMatcher::MatchPattern(HloInstruction* root,
                               const HloMatcherPattern& pattern,
@@ -174,6 +172,10 @@ void HloMatcher::MatchPatternStart(HloComputation* computation,
 }
 
 StatusOr<bool> HloMatcher::Run(HloModule* module) {
+  matches_.clear();
+  matches_.resize(patterns_.size());
+  match_map_.clear();
+
   if (root_computation_only_) {
     HloComputation* comp = module->entry_computation();
     MatchPatternStart(comp, comp->root_instruction());
@@ -192,7 +194,6 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
 
   unsigned int replacement_count = ReplaceNodes();
 
-  patterns_.clear();
   matches_.clear();
   match_map_.clear();
 
