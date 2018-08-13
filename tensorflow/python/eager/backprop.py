@@ -646,7 +646,7 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.Variable` or @{tf.get_variable},
+  Trainable variables (created by `tf.Variable` or `tf.get_variable`,
   trainable=True is default in both cases) are automatically watched. Tensors
   can be manually watched by invoking the `watch` method on this context
   manager.
@@ -705,6 +705,7 @@ class GradientTape(object):
     self._tape = None
     self._persistent = persistent
     self._recording = False
+    context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -732,6 +733,9 @@ class GradientTape(object):
       raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
     self._recording = False
+
+  def __del__(self):
+    context.context().end_step()
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.

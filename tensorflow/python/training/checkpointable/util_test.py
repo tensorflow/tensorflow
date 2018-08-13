@@ -550,6 +550,20 @@ class CheckpointingTests(test.TestCase):
         self.assertEqual(training_continuation + 1,
                          self.evaluate(root.save_counter))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomNumbering(self):
+    directory = self.get_temp_dir()
+    prefix = os.path.join(directory, "ckpt")
+    step = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
+    checkpoint = checkpointable_utils.Checkpoint(step=step)
+    self.evaluate(step.initializer)
+    for i in range(5):
+      path = checkpoint.write("%s-%d" % (prefix, self.evaluate(step)))
+      expected_suffix = "-%d" % (2 * i,)
+      if not path.endswith(expected_suffix):
+        self.fail("%s should have suffix %s" % (path, expected_suffix))
+      self.evaluate(step.assign_add(2))
+
   # pylint: disable=cell-var-from-loop
   @test_util.run_in_graph_and_eager_modes
   def testWithDefun(self):
@@ -996,7 +1010,8 @@ class CheckpointingTests(test.TestCase):
         self.assertEqual(before_ops, graph.get_operations())
 
   @test_util.run_in_graph_and_eager_modes
-  def testCheckpointCleanup(self):
+  def testCheckpointState(self):
+    # No checkpoints are deleted by default
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     obj = tracking.Checkpointable()
@@ -1006,7 +1021,7 @@ class CheckpointingTests(test.TestCase):
     for _ in range(10):
       saver.save(checkpoint_prefix)
     expected_filenames = ["checkpoint"]
-    for checkpoint_number in range(6, 11):
+    for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
       expected_filenames.append(
           "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
@@ -1016,7 +1031,7 @@ class CheckpointingTests(test.TestCase):
         os.listdir(checkpoint_directory))
 
   @test_util.run_in_graph_and_eager_modes
-  def testCheckpointCleanupChangingVarList(self):
+  def testCheckpointStateChangingVarList(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     obj = tracking.Checkpointable()
@@ -1032,8 +1047,8 @@ class CheckpointingTests(test.TestCase):
       looped_variables.append(new_variable)
     expected_filenames = ["checkpoint"]
     # We've copied the saver each time, but checkpoint management should still
-    # be consistent.
-    for checkpoint_number in range(6, 11):
+    # be consistent. Nothing gets deleted.
+    for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
       expected_filenames.append(
           "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
@@ -1041,6 +1056,15 @@ class CheckpointingTests(test.TestCase):
         self,
         expected_filenames,
         os.listdir(checkpoint_directory))
+    self.assertEqual(
+        checkpoint_prefix + "-10",
+        checkpoint_management.latest_checkpoint(checkpoint_directory))
+    # The checkpoint list only contains the most recent checkpoint, but they're
+    # all on disk. This means we won't eventually run into proto size limits.
+    self.assertEqual(
+        [checkpoint_prefix + "-10"],
+        (checkpoint_management.get_checkpoint_state(checkpoint_directory)
+         .all_model_checkpoint_paths))
     for v in looped_variables:
       self.evaluate(v.assign(314))
     checkpoint.restore(checkpoint_prefix + "-6").run_restore_ops()

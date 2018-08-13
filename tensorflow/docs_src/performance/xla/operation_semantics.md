@@ -13,6 +13,79 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## AllToAll
+
+See also
+[`XlaBuilder::AllToAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Alltoall is a collective operation that sends data from all cores to all cores.
+It has two phases:
+
+1.  the scatter phase. On each core, the operand is split into `split_count`
+    number of blocks along the `split_dimensions`, and the blocks are scattered
+    to all cores, e.g., the ith block is send to the ith core.
+2.  the gather phase. Each core concatenates the received blocks along the
+    `concat_dimension`.
+
+The participating cores can be configured by:
+
+-   `replica_groups`: each ReplicaGroup contains a list of replica id. If empty,
+    all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
+    applied within subgroups in the specified order. For example, replica
+    groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
+    1, 2, 3, and in the gather phase, the received blocks will be concatenated
+    in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
+    5, 0, and the concatenation order is 4, 5, 0.
+
+Prerequisites:
+
+-   The dimension size of the operand on the split_dimension is divisible by
+    split_count.
+-   The operand's shape is not tuple.
+
+<b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
+replica_groups)` </b>
+
+
+| Arguments          | Type                  | Semantics                       |
+| ------------------ | --------------------- | ------------------------------- |
+| `operand`          | `XlaOp`               | n dimensional input array       |
+| `split_dimension`  | `int64`               | A value in the interval `[0,    |
+:                    :                       : n)` that names the dimension    :
+:                    :                       : along which the operand is      :
+:                    :                       : split                           :
+| `concat_dimension` | `int64`               | a value in the interval `[0,    |
+:                    :                       : n)` that names the dimension    :
+:                    :                       : along which the split blocks    :
+:                    :                       : are concatenated                :
+| `split_count`      | `int64`               | the number of cores that        |
+:                    :                       : participate this operation. If  :
+:                    :                       : `replica_groups` is empty, this :
+:                    :                       : should be the number of         :
+:                    :                       : replicas; otherwise, this       :
+:                    :                       : should be equal to the number   :
+:                    :                       : of replicas in each group.      :
+| `replica_groups`   | `ReplicaGroup` vector | each group contains a list of   |
+:                    :                       : replica id.                     :
+
+Below shows an example of Alltoall.
+
+```
+XlaBuilder b("alltoall");
+auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
+```
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/xla/ops_alltoall.png">
+</div>
+
+In this example, there are 4 cores participating the Alltoall. On each core, the
+operand is split into 4 parts along dimension 0, so each part has shape
+f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
+the received parts along dimension 1, in the order or core 0-4. So the output on
+each core has shape f32[16,4].
+
 ## BatchNormGrad
 
 See also
@@ -1804,19 +1877,19 @@ See also
 [`XlaBuilder::RngNormal`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
-the $$N(\mu, \sigma)$$ normal distribution. The parameters `mu` and `sigma`, and
-output shape have to have elemental type F32. The parameters furthermore have to
-be scalar valued.
+the $$N(\mu, \sigma)$$ normal distribution. The parameters $$\mu$$ and
+$$\sigma$$, and output shape have to have a floating point elemental type. The
+parameters furthermore have to be scalar valued.
 
-<b>`RngNormal(mean, sigma, shape)`</b>
+<b>`RngNormal(mu, sigma, shape)`</b>
 
 | Arguments | Type    | Semantics                                           |
 | --------- | ------- | --------------------------------------------------- |
-| `mu`      | `XlaOp` | Scalar of type F32 specifying mean of generated     |
-:           :         : numbers                                             :
-| `sigma`   | `XlaOp` | Scalar of type F32 specifying standard deviation of |
+| `mu`      | `XlaOp` | Scalar of type T specifying mean of generated       |
+:           :         : numbers                                   :
+| `sigma`   | `XlaOp` | Scalar of type T specifying standard deviation of   |
 :           :         : generated numbers                                   :
-| `shape`   | `Shape` | Output shape of type F32                            |
+| `shape`   | `Shape` | Output shape of type T                              |
 
 ## RngUniform
 
@@ -1825,9 +1898,11 @@ See also
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $$[a,b)$$. The parameters and output
-shape may be either F32, S32 or U32, but the types have to be consistent.
-Furthermore, the parameters need to be scalar valued. If $$b <= a$$ the result
-is implementation-defined.
+element type have to be a boolean type, an integral type or a floating point
+types, and the types have to be consistent. The CPU and GPU backends currently
+only support F64, F32, F16, BF16, S64, U64, S32 and U32. Furthermore, the
+parameters need to be scalar valued. If $$b <= a$$ the result is
+implementation-defined.
 
 <b>`RngUniform(a, b, shape)`</b>
 
@@ -2310,8 +2385,6 @@ restrictions listed below.
     last execution of the `body`.
 *   The shape of the type `T` is statically determined and must be the same
     across all iterations.
-*   `While` nodes are not allowed to be nested. (This restriction may be lifted
-    in the future on some targets.)
 
 The T parameters of the computations are initialized with the `init` value in
 the first iteration and are automatically updated to the new result from `body`

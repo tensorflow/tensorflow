@@ -34,7 +34,17 @@ namespace {
 
 using ::testing::HasSubstr;
 
-using HloVerifierTest = HloTestBase;
+class HloVerifierTest : public HloTestBase {
+ public:
+  HloVerifierTest()
+      : HloTestBase(/*allow_mixed_precision_in_hlo_verifier=*/false) {}
+};
+
+class HloVerifierTestAllowMixedPrecision : public HloTestBase {
+ public:
+  HloVerifierTestAllowMixedPrecision()
+      : HloTestBase(/*allow_mixed_precision_in_hlo_verifier=*/true) {}
+};
 
 TEST_F(HloVerifierTest, NullInstructionParent) {
   HloComputation::Builder builder(TestName());
@@ -172,6 +182,97 @@ ENTRY entry {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("shape does not match parameter"));
+}
+
+TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngOpnd0NotScalar {
+   constant.0 = f32[] constant(0)
+   constant.1 = f16[2] constant({1, 3})
+   ROOT rng.0 = f32[10]{0} rng(f32[] constant.0, f16[2] constant.1),
+    distribution=rng_uniform
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("Expected scalar type"));
+}
+
+TEST_F(HloVerifierTest, RngOperandElementTypesDoNotMatch) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngOperandElementTypesNotMatch {
+   constant.0 = f32[] constant(0)
+   constant.1 = f16[] constant(1)
+   ROOT rng.0 = f32[10]{0} rng(f32[] constant.0, f16[] constant.1),
+    distribution=rng_normal
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected compatible element types"));
+}
+
+TEST_F(HloVerifierTest, RngMixedPrecisionNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngResultElementTypeNotMatch {
+   constant.0 = f32[] constant(0)
+   constant.1 = f32[] constant(1)
+   ROOT rng.0 = f16[10]{0} rng(f32[] constant.0, f32[] constant.1),
+    distribution=rng_normal
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected compatible element types"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, RngMixedPrecisionAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngResultElementTypeNotMatch {
+   constant.0 = f32[] constant(0)
+   constant.1 = f32[] constant(1)
+   ROOT rng.0 = f16[10]{0} rng(f32[] constant.0, f32[] constant.1),
+    distribution=rng_normal
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, RngElementTypeNotSupported) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngElementTypeNotSupported {
+   constant.0 = s32[] constant(0)
+   constant.1 = s32[] constant(1)
+   ROOT rng.0 = s32[10]{0} rng(s32[] constant.0, s32[] constant.1),
+    distribution=rng_normal
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), HasSubstr("Element type not supported"));
 }
 
 }  // namespace

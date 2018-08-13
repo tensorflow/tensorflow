@@ -157,7 +157,8 @@ class GraphDefBuilderWrapper {
   // name `function_name` is not found in the FunctionLibraryDefinition, returns
   // an InvalidArgumentError. If the function with name `function_name` or any
   // of its dependent functions are stateful, returns an InvalidArgument error.
-  Status AddFunction(OpKernelContext* ctx, const string& function_name);
+  Status AddFunction(const FunctionLibraryDefinition& flib_def,
+                     const string& function_name);
 
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
@@ -167,18 +168,16 @@ class GraphDefBuilderWrapper {
  private:
   void AddTensorInternal(const Tensor& val, Node** output);
 
-  Status EnsureFunctionIsStateless(OpKernelContext* ctx,
+  Status EnsureFunctionIsStateless(const FunctionLibraryDefinition& flib_def,
                                    const string& function_name) const {
-    const FunctionLibraryDefinition* lib_def =
-        ctx->function_library()->GetFunctionLibraryDefinition();
-    const FunctionDef* function_def = lib_def->Find(function_name);
+    const FunctionDef* function_def = flib_def.Find(function_name);
     if (!function_def) {
       return errors::InvalidArgument("Unable to find FunctionDef for ",
                                      function_name, " in registry.");
     }
     for (const NodeDef& node_def : function_def->node_def()) {
       const OpDef* op_def;
-      TF_RETURN_IF_ERROR(lib_def->LookUpOpDef(node_def.op(), &op_def));
+      TF_RETURN_IF_ERROR(flib_def.LookUpOpDef(node_def.op(), &op_def));
       // TODO(b/65524810): Hack to allow functions to capture Dataset op
       // nodes needed for FlatMap. Currently, source datasets nodes have been
       // marked stateful to avoid constant folding since we do not have a
@@ -220,12 +219,13 @@ class GraphDefBuilderWrapper {
     return false;
   }
 
-  Status AddAttrFunctions(const AttrValue& attr_value, OpKernelContext* ctx) {
+  Status AddAttrFunctions(const AttrValue& attr_value,
+                          const FunctionLibraryDefinition& flib_def) {
     if (attr_value.has_func()) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
+      TF_RETURN_IF_ERROR(AddFunction(flib_def, attr_value.func().name()));
     } else if (attr_value.has_list()) {
       for (const NameAttrList& name_attr_list : attr_value.list().func()) {
-        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
+        TF_RETURN_IF_ERROR(AddFunction(flib_def, name_attr_list.name()));
       }
     }
     return Status::OK();
@@ -236,21 +236,17 @@ class GraphDefBuilderWrapper {
 
 class StatsAggregator;
 
-// A cut-down version of OpKernelContext for running computations in
-// iterators. Note that we cannot simply use OpKernelContext here
-// because we might run computation in an iterator whose lifetime is
-// not nested within the lifetime of a single OpKernelContext
-// (e.g. asynchronous prefetching).
+// A cut-down version of `OpKernelContext` for running computations in
+// iterators. Note that we cannot simply use `OpKernelContext` here because we
+// might run computation in an iterator whose lifetime is not nested within the
+// lifetime of a single `OpKernelContext` (e.g. asynchronous prefetching).
 //
-// TODO(mrry): We will probably need to support more of
-// OpKernelContext here. For example, should allocation be handled by
-// the IteratorContext?
-// TODO(mrry): We're making some daring assumptions about the lifetime
-// of the runner passed in here. A runner will be deleted when the original
-// step ends, but all existing runners only close over session-lifetime (or
-// longer-lived) state, so we can make a copy of the function. There's nothing
-// in the definition of the API from which we took the runner to guarantee that
-// what we are doing is safe. We should formalize the properties here.
+// TODO(mrry): We're making some daring assumptions about the lifetime of the
+// runner passed in here. A runner will be deleted when the original step ends,
+// but all existing runners only close over session-lifetime (or longer-lived)
+// state, so we can make a copy of the function. There's nothing in the
+// definition of the API from which we took the runner to guarantee that what we
+// are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
   struct Params {
@@ -318,6 +314,23 @@ class IteratorContext {
   Params params_;
 };
 
+// Aggregates runtime support needed for dataset and iterator serialization.
+class SerializationContext {
+ public:
+  struct Params {
+    const FunctionLibraryDefinition* flib_def;  // Not owned.
+  };
+
+  explicit SerializationContext(Params params) : params_(std::move(params)) {}
+
+  const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
+
+ private:
+  Params params_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
+};
+
 // Represents the current position in a range of outputs, where the
 // range of outputs is typically represented by an `DatasetBase`,
 // defined below.
@@ -357,7 +370,7 @@ class IteratorBase {
   virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
 
   // Saves the state of this iterator.
-  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
+  virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
     return SaveInternal(writer);
   }
 
@@ -368,19 +381,17 @@ class IteratorBase {
 
  protected:
   // This is needed so that sub-classes of IteratorBase can call
-  // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDatasetOp::Dataset`.
-  Status SaveParent(IteratorStateWriter* writer,
-                    const std::unique_ptr<IteratorBase>& parent) {
-    return parent->SaveInternal(writer);
+  // `SaveInternal` on their input iterators.
+  Status SaveInput(IteratorStateWriter* writer,
+                   const std::unique_ptr<IteratorBase>& input) {
+    return input->SaveInternal(writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
-  // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDatasetOp::Dataset`.
-  Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
-                       const std::unique_ptr<IteratorBase>& parent) {
-    return parent->RestoreInternal(ctx, reader);
+  // `RestoreInternal` on their input iterators.
+  Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return input->RestoreInternal(ctx, reader);
   }
 
   // Saves the state of this iterator recursively.
@@ -429,8 +440,10 @@ class DatasetBase : public core::RefCounted {
   virtual string DebugString() const = 0;
 
   // Serializes the dataset and writes it to the `writer`.
-  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {
-    return errors::Unimplemented("DatasetBase::Save");
+  virtual Status Save(SerializationContext* ctx,
+                      IteratorStateWriter* writer) const {
+    return errors::Unimplemented("%s does not support serialization",
+                                 DebugString());
   }
 
  protected:
@@ -441,13 +454,14 @@ class DatasetBase : public core::RefCounted {
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
-    Status AddParentDataset(OpKernelContext* ctx, const DatasetBase* dataset,
-                            Node** output) {
+    Status AddInputDataset(SerializationContext* ctx,
+                           const DatasetBase* dataset, Node** output) {
       return dataset->AsGraphDefInternal(ctx, this, output);
     }
   };
 
-  virtual Status AsGraphDefInternal(OpKernelContext* ctx,
+  // TODO(jsimsa): Consolidate overloading into a single method.
+  virtual Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** node) const {
     return AsGraphDefInternal(b, node);
@@ -455,7 +469,8 @@ class DatasetBase : public core::RefCounted {
 
   virtual Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
                                     Node** node) const {
-    return errors::Unimplemented("AsGraphDefInternal");
+    return errors::Unimplemented("%s does not support serialization",
+                                 DebugString());
   }
 
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -472,7 +487,7 @@ class GraphDatasetBase : public DatasetBase {
 
   const string op_name() const { return op_name_; }
 
-  Status Save(OpKernelContext* ctx,
+  Status Save(SerializationContext* ctx,
               IteratorStateWriter* writer) const override {
     string serialized_graph_def;
     string output_node;
@@ -492,13 +507,13 @@ class GraphDatasetBase : public DatasetBase {
   TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
 
  private:
-  Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,
+  Status Serialize(SerializationContext* ctx, string* serialized_graph_def,
                    string* output_node) const;
 
   const string op_name_;
 };
 
-// Represents an iterator that is associated with a particular parent dataset.
+// Represents an iterator that is associated with a particular dataset.
 class DatasetBaseIterator : public IteratorBase {
  public:
   struct BaseParams {
@@ -541,7 +556,7 @@ class DatasetBaseIterator : public IteratorBase {
     return s;
   }
 
-  Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
     return IteratorBase::Save(ctx, writer);
   }
@@ -560,13 +575,13 @@ class DatasetBaseIterator : public IteratorBase {
   BaseParams params_;
 };
 
-// Represents an iterator that is associated with a particular parent dataset
+// Represents an iterator that is associated with a particular dataset
 // with a particular type.
 template <class DatasetType>
 class DatasetIterator : public DatasetBaseIterator {
  public:
   struct Params {
-    // Borrowed pointer to the parent dataset.
+    // Borrowed pointer to the dataset.
     const DatasetType* dataset;
 
     // Identifies the sequence of iterators leading up to this iterator.

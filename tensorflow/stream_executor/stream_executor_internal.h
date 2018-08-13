@@ -236,7 +236,7 @@ class StreamExecutorInterface {
   virtual bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
                       const void *host_src, uint64 size) = 0;
   virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
-                                    const DeviceMemoryBase &host_src,
+                                    const DeviceMemoryBase &gpu_src,
                                     uint64 size) = 0;
   virtual bool HostCallback(Stream *stream, std::function<void()> callback) = 0;
   virtual bool HostCallback(Stream *stream,

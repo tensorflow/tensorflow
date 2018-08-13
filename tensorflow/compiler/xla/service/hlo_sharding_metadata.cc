@@ -158,7 +158,6 @@ ShapeTree<HloSharding> GetTupleSharding(HloInstruction* tuple) {
 const HloSharding* GetOperandSharding(const HloInstruction* operand,
                                       const DomainMetadata::Domain& domain,
                                       const HloSharding& sharding) {
-  DCHECK_EQ(domain.reach_set.count(const_cast<HloInstruction*>(operand)), 1);
   // Here the user of operand is within the domain instruction set, and since it
   // is user of operand, we need to look into the enter_domains set. If this is
   // not a kDomain within the user domains set, then return the operand
@@ -203,10 +202,17 @@ StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
       for (int64 i = 0; i < instruction->operand_count(); ++i) {
         const HloSharding* operand_sharding =
             GetOperandSharding(instruction->operand(i), domain, sharding);
-        if (operand_sharding != nullptr &&
-            shape_tree.element({i}) != *operand_sharding) {
-          *shape_tree.mutable_element({i}) = *operand_sharding;
-          ++tuple_assigned;
+        if (operand_sharding != nullptr) {
+          HloSharding operand_subsharding = HloSharding::Replicate();
+          if (operand_sharding == &sharding) {
+            operand_subsharding =
+                sharding.GetSubSharding(instruction->shape(), {i});
+            operand_sharding = &operand_subsharding;
+          }
+          if (shape_tree.element({i}) != *operand_sharding) {
+            *shape_tree.mutable_element({i}) = *operand_sharding;
+            ++tuple_assigned;
+          }
         }
       }
       if (tuple_assigned > 0) {

@@ -273,6 +273,47 @@ class HloAllReduceInstruction : public HloInstruction {
   tensorflow::gtl::optional<int64> all_reduce_id_;
 };
 
+class HloAllToAllInstruction : public HloInstruction {
+ public:
+  explicit HloAllToAllInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operand,
+      const std::vector<ReplicaGroup>& replica_groups,
+      tensorflow::StringPiece barrier);
+
+  const std::vector<ReplicaGroup>& replica_groups() const {
+    return replica_groups_;
+  }
+
+  // TODO(b/110096724): rename this.
+  void set_cross_replica_sum_barrier(string barrier) {
+    cross_replica_sum_barrier_ = barrier;
+  }
+  string cross_replica_sum_barrier() const {
+    return cross_replica_sum_barrier_;
+  }
+
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<ReplicaGroup> replica_groups_;
+
+  // The string representation of the barrier config.
+  string cross_replica_sum_barrier_;
+};
+
 class HloReverseInstruction : public HloInstruction {
  public:
   explicit HloReverseInstruction(const Shape& shape, HloInstruction* operand,

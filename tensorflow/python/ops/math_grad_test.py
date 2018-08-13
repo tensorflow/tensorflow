@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -228,6 +229,28 @@ class FloorModGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1],
                                                       floor_mod, [1])
       self.assertLess(error, 1e-4)
+
+
+class UnsafeDivGradientTest(test.TestCase):
+
+  def testBasicGradient(self):
+    inputs = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
+    outputs = math_ops.unsafe_div(inputs, 1 + math_ops.abs(inputs))
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs,
+          inputs.get_shape().as_list(), outputs,
+          outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
+
+  def testGradientWithDenominatorIsZero(self):
+    x = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
+    y = array_ops.zeros_like(x, dtype=dtypes.float32)
+    outputs = math_ops.unsafe_div(x, y)
+    with self.test_session():
+      dx, dy = gradients.gradients(outputs, [x, y])
+      self.assertAllClose(dx.eval(), np.zeros(x.shape.as_list()))
+      self.assertAllClose(dy.eval(), np.zeros(y.shape.as_list()))
 
 
 if __name__ == "__main__":

@@ -854,4 +854,46 @@ REGISTER_OP("IteratorGetNextAsOptional")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("MapDefun")
+    .Input("arguments: Targuments")
+    .Output("output: output_types")
+    .Attr("Targuments: list(type) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("f: func")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<TensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      if (output_shapes.size() != c->num_outputs()) {
+        return errors::InvalidArgument(
+            "`output_shapes` must be the same length as `output_types` (",
+            output_shapes.size(), " vs. ", c->num_outputs(), ")");
+      }
+
+      int64 dim_zero = -1;
+      for (size_t i = 0; i < static_cast<size_t>(c->num_inputs()); ++i) {
+        auto dim_handle = c->Dim(c->input(i), 0);
+        if (c->ValueKnown(dim_handle)) {
+          if (dim_zero == -1) {
+            dim_zero = c->Value(dim_handle);
+          } else if (c->Value(dim_handle) != dim_zero) {
+            return errors::InvalidArgument(
+                "Inputs must have the same dimension 0.");
+          }
+        }
+      }
+
+      for (size_t i = 0; i < output_shapes.size(); ++i) {
+        PartialTensorShape s({});
+        s = s.Concatenate(dim_zero);
+        s = s.Concatenate(output_shapes[i]);
+        shape_inference::ShapeHandle output_shape_handle;
+
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(s, &output_shape_handle));
+        c->set_output(static_cast<int>(i), output_shape_handle);
+      }
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include <algorithm>
 #include "mkldnn.hpp"
 using mkldnn::algorithm;
@@ -40,7 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // MKL-DNN is now default. MKL-ML must be specified explicitly.
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 // An implementation of MaxPooling (forward).
 template <typename Device, typename T>
@@ -817,7 +817,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   }
 };  // MklMaxPoolingGradOp
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")
                             .Device(DEVICE_CPU)

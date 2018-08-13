@@ -57,7 +57,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python:device_util",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
     tags = [
         "no_pip",
@@ -267,7 +267,7 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -315,7 +315,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:session",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -370,7 +370,7 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -440,11 +440,7 @@ cuda_py_test(
         "//tensorflow/contrib/optimizer_v2:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:dnn_linear_combined",
-        "//tensorflow/python/estimator:export_export",
-        "//tensorflow/python/estimator:numpy_io",
-        "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
@@ -470,17 +466,27 @@ py_library(
     ],
 )
 
+py_library(
+    name = "step_fn_test_lib",
+    testonly = 1,
+    srcs = ["step_fn_test.py"],
+    deps = [
+        ":combinations",
+        ":single_loss_example",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     additional_deps = [
-        ":single_loss_example",
-        ":combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
+        ":step_fn_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
@@ -681,8 +687,7 @@ cuda_py_test(
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
-        "//tensorflow/python/estimator:keras",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
     ],
     tags = [
