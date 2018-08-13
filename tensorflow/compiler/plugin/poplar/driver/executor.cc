@@ -770,7 +770,6 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
               tc->on_device = true;
               tc->input_handle = arg.first;
-              tc->converted_data.clear();
 
               if (current_config_.profiling().enable_io_trace()) {
                 AddEventRecord(
@@ -781,6 +780,11 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           }
 
           current_engine_->run(1);
+
+          for (auto arg : arg_map) {
+            TensorControl* tc = arg.second.tc;
+            tc->converted_data.clear();
+          }
         }
       } catch (std::logic_error e) {
         return tensorflow::errors::Internal("Poplar host write error ",
