@@ -28,16 +28,14 @@ namespace xla {
 
 using tensorflow::strings::StrAppend;
 
-HloModuleConfig::HloModuleConfig() {}
-
-HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape)
-    : host_entry_computation_layout_(program_shape),
-      device_entry_computation_layout_(program_shape) {}
+HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape,
+                                 bool ignore_layouts)
+    : entry_computation_layout_(
+          ComputationLayout(program_shape, ignore_layouts)) {}
 
 void HloModuleConfig::SetDefaultComputationLayout(
     const ProgramShape& program_shape) {
-  host_entry_computation_layout_ = ComputationLayout(program_shape);
-  device_entry_computation_layout_ = ComputationLayout(program_shape);
+  entry_computation_layout_ = ComputationLayout(program_shape);
 }
 
 string HloModuleConfig::compilation_cache_key() const {
@@ -46,18 +44,11 @@ string HloModuleConfig::compilation_cache_key() const {
   StrAppend(&key, "::(");
   std::vector<string> params;
   for (const ShapeLayout& param_layout :
-       host_entry_computation_layout_->parameter_layouts()) {
+       entry_computation_layout_->parameter_layouts()) {
     params.push_back(param_layout.shape().DebugString());
   }
   StrAppend(&key, tensorflow::str_util::Join(params, ", "), ") => ",
-            host_entry_computation_layout_->result_shape().SerializeAsString());
-  for (const ShapeLayout& param_layout :
-       device_entry_computation_layout_->parameter_layouts()) {
-    params.push_back(param_layout.shape().DebugString());
-  }
-  StrAppend(
-      &key, tensorflow::str_util::Join(params, ", "), ") => ",
-      device_entry_computation_layout_->result_shape().SerializeAsString());
+            entry_computation_layout_->result_shape().SerializeAsString());
   if (seed() != 0) {
     // TODO(b/32083678): force recompilation to reset global state.
     static std::atomic<int> counter{0};

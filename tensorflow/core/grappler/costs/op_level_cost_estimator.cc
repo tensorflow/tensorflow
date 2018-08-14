@@ -65,6 +65,7 @@ constexpr char kAvgPool[] = "AvgPool";
 constexpr char kAvgPoolGrad[] = "AvgPoolGrad";
 constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
 constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
+constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -76,6 +77,14 @@ string GetDataFormat(const OpInfo& op_features) {
     data_format = op_features.attr().at("data_format").s();
   }
   return data_format;
+}
+
+string GetFilterFormat(const OpInfo& op_features) {
+  string filter_format = "HWIO";  // Default format.
+  if (op_features.attr().find("filter_format") != op_features.attr().end()) {
+    filter_format = op_features.attr().at("filter_format").s();
+  }
+  return filter_format;
 }
 
 Padding GetPadding(const OpInfo& op_features) {
@@ -218,6 +227,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kQuantizedMatMulV2, wrap(&OpLevelCostEstimator::PredictMatMul)},
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kGuaranteeConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -260,67 +270,70 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
       EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
 
-  elementwise_ops_ = {// Unary ops alphabetically sorted
-                      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
-                      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
-                      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
-                      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
-                                    EIGEN_COST(scalar_atan_op<float>)},
-                      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
-                      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
-                      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
-                      {"Erf", 1},
-                      {"Erfc", 1},
-                      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
-                      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
-                      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
-                      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
-                      {"InvGrad", 1},
-                      {"Lgamma", 1},
-                      {"Log", EIGEN_COST(scalar_log_op<float>)},
-                      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
-                      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
-                      {"QuantizeV2", quantize_v2_cost},
-                      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
-                      {"Rint", 1},
-                      {"Round", EIGEN_COST(scalar_round_op<float>)},
-                      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
-                      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
-                      {"Square", EIGEN_COST(scalar_square_op<float>)},
-                      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
-                      {"Relu", EIGEN_COST(scalar_max_op<float>)},
-                      {"Sigmoid", EIGEN_COST(scalar_sigmoid_op<float>)},
-                      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
-                      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
-                      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
-                      // Binary ops alphabetically sorted
-                      {"Add", EIGEN_COST(scalar_sum_op<float>)},
-                      {"ApproximateEqual", 1},
-                      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
-                      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"Equal", 1},
-                      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
-                      {"Greater", 1},
-                      {"GreaterEqual", 1},
-                      {"Less", 1},
-                      {"LessEqual", 1},
-                      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
-                      {"LogicalNot", 1},
-                      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
-                      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
-                      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
-                      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
-                      {"Mul", EIGEN_COST(scalar_product_op<float>)},
-                      {"NotEqual", 1},
-                      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
-                      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
-                      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
-                      {"SquareDifference", 1},
-                      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
-                      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
+  elementwise_ops_ = {
+      // Unary ops alphabetically sorted
+      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
+      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
+      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
+      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
+                    EIGEN_COST(scalar_atan_op<float>)},
+      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
+      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
+      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
+      {"Erf", 1},
+      {"Erfc", 1},
+      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
+      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
+      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
+      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
+      {"InvGrad", 1},
+      {"Lgamma", 1},
+      {"Log", EIGEN_COST(scalar_log_op<float>)},
+      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
+      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
+      {"QuantizeV2", quantize_v2_cost},
+      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
+      {"Rint", 1},
+      {"Round", EIGEN_COST(scalar_round_op<float>)},
+      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
+      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
+      {"Square", EIGEN_COST(scalar_square_op<float>)},
+      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
+      {"Relu", EIGEN_COST(scalar_max_op<float>)},
+      {"Sigmoid", EIGEN_COST(scalar_sigmoid_op<float>)},
+      {"QuantizedSigmoid", EIGEN_COST(scalar_sigmoid_op<float>)},
+      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
+      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
+      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
+      // Binary ops alphabetically sorted
+      {"Add", EIGEN_COST(scalar_sum_op<float>)},
+      {"ApproximateEqual", 1},
+      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"QuantizedBiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
+      {"Equal", 1},
+      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
+      {"Greater", 1},
+      {"GreaterEqual", 1},
+      {"Less", 1},
+      {"LessEqual", 1},
+      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
+      {"LogicalNot", 1},
+      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
+      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
+      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
+      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
+      {"Mul", EIGEN_COST(scalar_product_op<float>)},
+      {"NotEqual", 1},
+      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
+      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
+      {"SquareDifference", 1},
+      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
+      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
 
 #undef EIGEN_COST
 
@@ -436,6 +449,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   if (found_unknown_shapes || !is_known_elementwise_op) {
     costs.inaccurate = true;
   }
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -456,6 +470,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   const double total_io_bytes = input_size + output_size;
   Costs costs = PredictOpCountBasedCost(operations, total_io_bytes, op_info);
   costs.inaccurate = unknown_shapes;
+  costs.num_ops_with_unknown_shapes = unknown_shapes;
   costs.max_memory = output_size;
   return costs;
 }
@@ -513,29 +528,44 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
     y_index = 3;
     channel_index = 1;
   } else {
+    // Use NHWC.
     x_index = 1;
     y_index = 2;
     channel_index = 3;
+  }
+  const string& filter_format = GetFilterFormat(op_features);
+  int filter_x_index, filter_y_index, in_channel_index, out_channel_index;
+  if (filter_format == "HWIO") {
+    filter_x_index = 0;
+    filter_y_index = 1;
+    in_channel_index = 2;
+    out_channel_index = 3;
+  } else {
+    // Use OIHW
+    filter_x_index = 2;
+    filter_y_index = 3;
+    in_channel_index = 1;
+    out_channel_index = 0;
   }
   int64 batch = image_shape.dim(0).size();
   int64 ix = image_shape.dim(x_index).size();
   int64 iy = image_shape.dim(y_index).size();
   int64 iz = image_shape.dim(channel_index).size();
-  int64 kx = filter_shape.dim(0).size();
-  int64 ky = filter_shape.dim(1).size();
+  int64 kx = filter_shape.dim(filter_x_index).size();
+  int64 ky = filter_shape.dim(filter_y_index).size();
   std::vector<int64> strides = GetStrides(op_features);
   const auto padding = GetPadding(op_features);
   int64 sx = strides[x_index];
   int64 sy = strides[y_index];
   int64 ox = GetOutputSize(ix, kx, sx, padding);
   int64 oy = GetOutputSize(iy, ky, sy, padding);
-  int64 oz = filter_shape.dim(3).size();
+  int64 oz = filter_shape.dim(out_channel_index).size();
   // Only check equality when both sizes are known (in other words, when
   // neither is set to a minimum dimension size of 1).
-  if (iz != 1 && filter_shape.dim(2).size() != 1) {
-    CHECK_EQ(iz, filter_shape.dim(2).size());
+  if (iz != 1 && filter_shape.dim(in_channel_index).size() != 1) {
+    CHECK_EQ(iz, filter_shape.dim(in_channel_index).size());
   } else {
-    iz = std::max<int64>(iz, filter_shape.dim(2).size());
+    iz = std::max<int64>(iz, filter_shape.dim(in_channel_index).size());
   }
   OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
       batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
@@ -599,6 +629,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
 
   if (op_features.inputs_size() < 2) {
     LOG(ERROR) << "Need 2 inputs but got " << op_features.inputs_size();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
@@ -652,7 +683,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   }
 
   ops = m_dim * n_dim * k_dim * 2;
-  VLOG(1) << "Operations for Matmul" << ops;
+  VLOG(1) << "Operations for Matmul: " << ops;
 
   if (mat_mul != nullptr) {
     mat_mul->m = m_dim;
@@ -666,11 +697,13 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_features, bool* found_unknown_shapes) const {
   if (op_features.op() != kBatchMatMul) {
     LOG(ERROR) << "Invalid Operation: " << op_features.op();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
   if (op_features.inputs_size() != 2) {
     LOG(ERROR) << "Expected 2 inputs but got " << op_features.inputs_size();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
@@ -830,6 +863,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
          "kDepthwiseConv2dNativeBackpropInput";
 
   if (op_features.inputs_size() < 2) {
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return ops;
   }
@@ -907,6 +941,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   }
 
   if (op_features.inputs_size() < 1) {
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return ops;
   }
@@ -949,8 +984,10 @@ int64 OpLevelCostEstimator::CalculateTensorElementCount(
 
 int64 OpLevelCostEstimator::CalculateTensorSize(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  return CalculateTensorElementCount(tensor, found_unknown_shapes) *
-         DataTypeSize(BaseType(tensor.dtype()));
+  int64 count = CalculateTensorElementCount(tensor, found_unknown_shapes);
+  int size = DataTypeSize(BaseType(tensor.dtype()));
+  VLOG(2) << "Count: " << count << " DataTypeSize: " << size;
+  return count * size;
 }
 
 int64 OpLevelCostEstimator::CalculateInputSize(
@@ -1007,6 +1044,7 @@ Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
   auto costs = PredictOpCountBasedCost(
       CountConv2DOperations(op_features, &found_unknown_shapes), op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1019,6 +1057,7 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1031,6 +1070,7 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropFilter(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1054,6 +1094,24 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   //
   // For more information, see
   // contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.cc
+
+  // TODO(yaozhang): Support other data formats (NCHW_VECT_C, NHWC_VECT_W) and
+  // filter formats (OIHW_VECT_I).
+  string data_format = GetDataFormat(op_context.op_info);
+  if (data_format != "NCHW" && data_format != "NHWC") {
+    LOG(WARNING) << "unsupported data format: " << data_format;
+    Costs cost = Costs::ZeroCosts();
+    cost.inaccurate = true;
+    return cost;
+  }
+  string filter_format = GetFilterFormat(op_context.op_info);
+  if (filter_format != "HWIO" && filter_format != "OIHW") {
+    LOG(WARNING) << "unsupported filter format: " << filter_format;
+    Costs cost = Costs::ZeroCosts();
+    cost.inaccurate = true;
+    return cost;
+  }
+
   auto& conv_input = op_context.op_info.inputs(0);
   auto& filter = op_context.op_info.inputs(1);
   auto& bias = op_context.op_info.inputs(2);
@@ -1069,28 +1127,12 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
 
   // Construct the shape of our output tensor from our convolution dimensions
   // and format, as it may not be available yet.
-  //
   // TODO(varomodt): should we centralize the Conv2D input/output shapes?
-  bool unknown_conv_format = false;
   OpInfo::TensorProperties output;
-  switch (GetConvolutionFormat(op_context)) {
-    case NCHW:
-      output =
-          DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.ox, dims.oy});
-      break;
-    case NHWC:
-      output =
-          DescribeTensor(DT_FLOAT, {dims.batch, dims.ox, dims.oy, dims.oz});
-      break;
-    default:
-      // TODO(b/77722245): support cost estimation for NCHW_VECT_C.
-      LOG(WARNING) << "unsupported data format: "
-                   << GetDataFormat(op_context.op_info)
-                   << " Defaulting to NHWC.";
-      output =
-          DescribeTensor(DT_FLOAT, {dims.batch, dims.ox, dims.oy, dims.oz});
-      unknown_conv_format = true;
-      break;
+  if (data_format == "NCHW") {
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.ox, dims.oy});
+  } else if (data_format == "NHWC") {
+    output = DescribeTensor(DT_FLOAT, {dims.batch, dims.ox, dims.oy, dims.oz});
   }
 
   // Add the operations the fused op always computes.
@@ -1115,7 +1157,8 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
 
   // Construct component operations and run the cost computation.
   auto costs = PredictFusedOp(op_context_with_output, component_ops);
-  costs.inaccurate |= found_unknown_shapes || unknown_conv_format;
+  costs.inaccurate |= found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = costs.inaccurate;
   return costs;
 }
 
@@ -1125,6 +1168,7 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
   auto costs = PredictOpCountBasedCost(
       CountMatMulOperations(op_features, &found_unknown_shapes), op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1139,6 +1183,7 @@ Costs OpLevelCostEstimator::PredictIdentity(const OpContext& op_context) const {
   VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
   Costs result = Costs::ZeroCosts();
   result.max_memory = CalculateOutputSize(op_features, &result.inaccurate);
+  result.num_ops_with_unknown_shapes = result.inaccurate;
   // Assign the minimum amount of time we can represent to the identity op since
   // it tends to be really cheap.
   result.compute_time = kMinComputeTime;
@@ -1152,6 +1197,7 @@ Costs OpLevelCostEstimator::PredictVariable(const OpContext& op_context) const {
   Costs result = Costs::ZeroCosts();
   result.persistent_memory =
       CalculateOutputSize(op_features, &result.inaccurate);
+  result.num_ops_with_unknown_shapes = result.inaccurate;
 
   result.compute_time = kMinComputeTime;
   result.execution_time = result.execution_time;
@@ -1166,6 +1212,7 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
       CountBatchMatMulOperations(op_features, &found_unknown_shapes),
       op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1173,6 +1220,7 @@ Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
   Costs costs = Costs::ZeroCosts();
   costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
+  costs.num_ops_with_unknown_shapes = costs.inaccurate;
   // Metadata operations are so cheap we assume they take the minimum amount of
   // time we can represent (1 ns).
   costs.compute_time = kMinComputeTime;
@@ -1217,6 +1265,7 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
   const double total_io = input_size + output_size;
   Costs costs = PredictOpCountBasedCost(op_count, total_io, op_info);
   costs.inaccurate = unknown_shapes;
+  costs.num_ops_with_unknown_shapes = unknown_shapes;
   costs.max_memory = output_size;
 
   return costs;
@@ -1358,6 +1407,7 @@ Costs OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context) const {
   Costs costs = PredictOpCountBasedCost(
       ops, total_input_size + total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1400,6 +1450,7 @@ Costs OpLevelCostEstimator::PredictMaxPoolGrad(
   Costs costs = PredictOpCountBasedCost(
       ops, total_input_size + total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1432,6 +1483,7 @@ Costs OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context) const {
   Costs costs = PredictOpCountBasedCost(
       ops, total_input_size + total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1484,6 +1536,7 @@ Costs OpLevelCostEstimator::PredictAvgPoolGrad(
   Costs costs = PredictOpCountBasedCost(
       ops, total_input_size + total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1530,6 +1583,7 @@ Costs OpLevelCostEstimator::PredictFusedBatchNorm(
       ops, total_input_size + total_output_size + total_internal_read_size,
       op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1563,25 +1617,12 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
       ops, total_input_size + total_output_size + total_internal_read_size,
       op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
 
 /* static */
-OpLevelCostEstimator::ConvolutionFormat
-OpLevelCostEstimator::GetConvolutionFormat(const OpContext& op_context) {
-  auto data_format = GetDataFormat(op_context.op_info);
-  if (data_format == "NCHW") {
-    return NCHW;
-  } else if (data_format == "NHWC") {
-    return NHWC;
-  } else if (data_format == "NCHW_VECT_C") {
-    return NCHW_VECT_C;
-  }
-
-  return UNKNOWN_CONVOLUTION_FORMAT;
-}
-
 void OpLevelCostEstimator::CombineCostsAndUpdateExecutionTime(
     Costs* costs) const {
   if (compute_memory_overlap_) {

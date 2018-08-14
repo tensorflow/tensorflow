@@ -184,7 +184,7 @@ class StringSplitV2Op : public OpKernel {
  public:
   explicit StringSplitV2Op(OpKernelConstruction* context)
       : OpKernel(context), maxsplit_(-1) {
-    context->GetAttr("maxsplit", &maxsplit_);
+    OP_REQUIRES_OK(context, context->GetAttr("maxsplit", &maxsplit_));
   }
 
   void Compute(OpKernelContext* ctx) override {

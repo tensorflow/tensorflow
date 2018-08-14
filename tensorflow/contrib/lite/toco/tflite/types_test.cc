@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 
+#include <complex>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -71,7 +73,8 @@ TEST(DataType, SupportedTypes) {
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32},
-      {ArrayDataType::kBool, ::tflite::TensorType_BOOL}};
+      {ArrayDataType::kBool, ::tflite::TensorType_BOOL},
+      {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64}};
   for (auto x : testdata) {
     EXPECT_EQ(x.second, DataType::Serialize(x.first));
     EXPECT_EQ(x.first, DataType::Deserialize(x.second));
@@ -151,6 +154,12 @@ TEST(DataBuffer, Int32) {
               ::testing::ElementsAre(1, 1 << 30));
 }
 
+TEST(DataBuffer, Int16) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kInt16>({1, 1 << 14});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kInt16>().data,
+              ::testing::ElementsAre(1, 1 << 14));
+}
+
 TEST(DataBuffer, String) {
   Array recovered = ToFlatBufferAndBack<ArrayDataType::kString>(
       {"AA", "BBB", "Best. String. Ever."});
@@ -163,6 +172,14 @@ TEST(DataBuffer, Bool) {
       ToFlatBufferAndBack<ArrayDataType::kBool>({true, false, true});
   EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kBool>().data,
               ::testing::ElementsAre(true, false, true));
+}
+
+TEST(DataBuffer, Complex64) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kComplex64>(
+      {std::complex<float>(1.0f, 2.0f), std::complex<float>(3.0f, 4.0f)});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kComplex64>().data,
+              ::testing::ElementsAre(std::complex<float>(1.0f, 2.0f),
+                                     std::complex<float>(3.0f, 4.0f)));
 }
 
 TEST(Padding, All) {

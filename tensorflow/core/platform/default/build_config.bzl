@@ -8,7 +8,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "if_mkl_ml",
 )
 
 # Appends a suffix to a list of deps.
@@ -202,7 +202,10 @@ def cc_proto_library(
   )
 
   if use_grpc_plugin:
-    cc_libs += ["//external:grpc_lib"]
+    cc_libs += select({
+        "//tensorflow:linux_s390x": ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
 
   if default_header:
     header_only_name = name
@@ -464,7 +467,6 @@ def tf_platform_srcs(files):
 
   return select({
     "//tensorflow:windows" : native.glob(windows_set),
-    "//tensorflow:windows_msvc" : native.glob(windows_set),
     "//conditions:default" : native.glob(posix_set),
   })
 
@@ -476,7 +478,6 @@ def tf_additional_lib_hdrs(exclude = []):
   ], exclude = exclude)
   return select({
     "//tensorflow:windows" : windows_hdrs,
-    "//tensorflow:windows_msvc" : windows_hdrs,
     "//conditions:default" : native.glob([
         "platform/default/*.h",
         "platform/posix/*.h",
@@ -491,7 +492,6 @@ def tf_additional_lib_srcs(exclude = []):
   ], exclude = exclude)
   return select({
     "//tensorflow:windows" : windows_srcs,
-    "//tensorflow:windows_msvc" : windows_srcs,
     "//conditions:default" : native.glob([
         "platform/default/*.cc",
         "platform/posix/*.cc",
@@ -617,10 +617,10 @@ def tf_additional_core_deps():
       ],
       "//conditions:default": [],
   }) + select({
-      "//tensorflow:with_s3_support_windows_override": [],
-      "//tensorflow:with_s3_support_android_override": [],
-      "//tensorflow:with_s3_support_ios_override": [],
-      "//tensorflow:with_s3_support": [
+      "//tensorflow:with_aws_support_windows_override": [],
+      "//tensorflow:with_aws_support_android_override": [],
+      "//tensorflow:with_aws_support_ios_override": [],
+      "//tensorflow:with_aws_support": [
           "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],
@@ -634,6 +634,7 @@ def tf_additional_cloud_op_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
       ],
       "//conditions:default": [],
   })
@@ -646,6 +647,7 @@ def tf_additional_cloud_kernel_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+        "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
       ],
       "//conditions:default": [],
   })
@@ -698,8 +700,8 @@ def tf_additional_binary_deps():
       # core).
       "//tensorflow/core/kernels:lookup_util",
       "//tensorflow/core/util/tensor_bundle",
-  ] + if_mkl(
+  ] + if_mkl_ml(
       [
-          "//third_party/mkl:intel_binary_blob",
+          "//third_party/intel_mkl_ml",
       ],
   )

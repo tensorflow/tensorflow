@@ -95,7 +95,7 @@ def sequence_input_layer(
   Raises:
     ValueError: If any of the `feature_columns` is the wrong type.
   """
-  feature_columns = fc._clean_feature_columns(feature_columns)
+  feature_columns = fc._normalize_feature_columns(feature_columns)
   for c in feature_columns:
     if not isinstance(c, fc._SequenceDenseColumn):
       raise ValueError(

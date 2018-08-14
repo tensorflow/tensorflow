@@ -58,6 +58,7 @@ cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
     copts = common_copts,
+    tags = ["no_oss"],
     deps = [
         ":profile_summarizer",
         "//tensorflow/contrib/lite:framework",

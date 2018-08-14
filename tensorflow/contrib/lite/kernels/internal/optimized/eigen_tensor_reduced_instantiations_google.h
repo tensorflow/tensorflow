@@ -33,7 +33,7 @@ limitations under the License.
 #include <functional>
 
 #ifdef _WIN32
-#include <winbase.h>
+#include <windows.h>
 #elif defined(__APPLE__)
 #include <mach/mach_time.h>
 #else

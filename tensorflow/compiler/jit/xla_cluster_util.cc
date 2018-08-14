@@ -139,27 +139,32 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   };
 
   for (Edge const* edge : graph->edges()) {
-    if (edge->dst()->IsEnter()) {
-      // Lift edges to an "Enter" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->dst()->id()].frame_name;
-      int dst = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(edge->src()->id(), dst)) {
-        return errors::Internal(
-            "Cycle detected when adding enter->frame edge: ",
-            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
+    if (edge->dst()->IsEnter() || edge->src()->IsExit()) {
+      const char* src_type = "pre-enter";
+      const char* dst_type = "post-exit";
+      int src = edge->src()->id();
+      int dst = edge->dst()->id();
+
+      if (edge->dst()->IsEnter()) {
+        // Lift edges to an "Enter" node to the corresponding frame node.
+        const string& frame_name =
+            control_flow_info[edge->dst()->id()].frame_name;
+        dst = GetOrAddFrameNodeId(frame_name);
+        dst_type = "frame";
       }
-      continue;
-    }
-    if (edge->src()->IsExit()) {
-      // Lift edges from an "Exit" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->src()->id()].frame_name;
-      int src = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(src, edge->dst()->id())) {
+
+      if (edge->src()->IsExit()) {
+        // Lift edges from an "Exit" node to the corresponding frame node.
+        const string& frame_name =
+            control_flow_info[edge->src()->id()].frame_name;
+        src = GetOrAddFrameNodeId(frame_name);
+        src_type = "frame";
+      }
+
+      if (!cycles->InsertEdge(src, dst)) {
         return errors::Internal(
-            "Cycle detected when adding frame->exit edge: ",
-            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
+            "Cycle detected when adding ", src_type, "->", dst_type,
+            " edge: ", DescribeCycle(cycles, *graph, src, dst));
       }
       // Drop the original edge.
       continue;
@@ -180,4 +185,26 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   return Status::OK();
 }
 
+gtl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
+  const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
+  if (attr_value == nullptr) {
+    return gtl::nullopt;
+  }
+  Status s = AttrValueHasType(*attr_value, "string");
+  if (!s.ok()) {
+    return gtl::nullopt;
+  }
+  return attr_value->s();
+}
+
+bool HasResourceInputOrOutput(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end() ||
+         std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
+}
+
+void RemoveFromXlaCluster(NodeDef* node_def) {
+  node_def->mutable_attr()->erase(kXlaClusterAttr);
+}
 }  // namespace tensorflow

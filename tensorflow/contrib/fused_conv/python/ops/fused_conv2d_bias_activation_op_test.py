@@ -21,8 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.fused_conv.python.ops import fused_conv2d_bias_activation_op
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -33,13 +31,6 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
-
-
-def NoMemoryOptimizationConfig():
-  config = config_pb2.ConfigProto()
-  config.graph_options.rewrite_options.memory_optimization = (
-      rewriter_config_pb2.RewriterConfig.OFF)
-  return config
 
 
 def GetShrunkInceptionShapes(shrink=10):
@@ -202,8 +193,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     # This is to guarantee that there is always negative values after
     # bias add so that we can test whether relu works correctly.
     x3 = bias
-    # TODO(b/79323979): re-enable memory optimization after this bug is fixed.
-    with self.test_session(use_gpu=True, config=NoMemoryOptimizationConfig()):
+    with self.test_session(use_gpu=True):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       fused_t2 = t2
@@ -251,9 +241,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     x3 = np.random.rand(*[filter_in_sizes[-1]]).astype(np.float32)
 
     def _SetupVal(data_format, use_gpu):
-      # TODO(b/79323979): re-enable memory optimization after this bug is fixed.
-      with self.test_session(
-          use_gpu=use_gpu, config=NoMemoryOptimizationConfig()):
+      with self.test_session(use_gpu=use_gpu):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         t3 = constant_op.constant(x3, shape=[filter_in_sizes[-1]])
@@ -634,7 +622,7 @@ def HwioToOihw(in_tensor):
 
 def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
                                           padding, strides, side_input_scale,
-                                          side_input, biases):
+                                          side_input, biases, apply_relu):
   """Simulates the int8 fused 2-D convolution op using separate float ops.
 
     The arguments and return values have the same format, meanings and
@@ -648,6 +636,9 @@ def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
     side_input_scale: A scalar 'float'.
     side_input: A `Tensor` of type `qint8` in NCHW_VECT_C layout.
     biases: A `Tensor` of type `float32` in NCHW layout.
+    apply_relu: A boolean to specify whether to apply "Relu" activation function
+      that clips outputs to the range [0, 127], or "None" activation that clips
+      to the range [-128, 127].
   Returns:
     A `Tensor` of type `qint8` in NCHW_VECT_C layout.
   """
@@ -661,10 +652,12 @@ def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
   conv_and_side_inputs = conv_result + side_input_scale * NchwVectCToNchw(
       gen_array_ops.dequantize(side_input, -128, 127))
 
-  logit = nn_ops.bias_add(conv_and_side_inputs, biases, data_format="NCHW")
+  output = nn_ops.bias_add(conv_and_side_inputs, biases, data_format="NCHW")
+  if apply_relu:
+    output = nn_ops.relu(output)
 
   result, _, _ = gen_array_ops.quantize_v2(
-      NchwToNchwVectC(nn_ops.relu(logit)), -128, 127, dtypes.qint8)
+      NchwToNchwVectC(output), -128, 127, dtypes.qint8)
   return result
 
 
@@ -807,7 +800,7 @@ class FusedConvInt8Tests(test.TestCase):
       },
   ]
 
-  def runTest(self, test_param):
+  def runTest(self, test_param, apply_relu):
     batch_size = test_param["batch_size"]
     input_channels = test_param["input_channels"]
     output_channels = test_param["output_channels"]
@@ -843,8 +836,8 @@ class FusedConvInt8Tests(test.TestCase):
                                                 vertical_stride, padding_type)
     output_width = CalculateConvolvedOutputDim(input_width, filter_width,
                                                horizontal_stride, padding_type)
-    tf_logging.info("output_height=", output_height, ", output_width=", 
-			                 output_width)
+    tf_logging.info("output_height=", output_height, ", output_width=",
+                    output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(
         random_ops.random_uniform(
@@ -870,16 +863,15 @@ class FusedConvInt8Tests(test.TestCase):
         conv_input_scale=conv_input_scale,
         side_input_scale=side_input_scale,
         side_input=side_input,
+        activation_mode="Relu" if apply_relu else "None",
         data_format="NCHW_VECT_C",
         filter_format="OIHW_VECT_I")
 
     expected = SimulateFusedConv2dBiasActivationInt8(
         conv_input_scale, conv_input, kernel, padding_type, strides,
-        side_input_scale, side_input, biases)
+        side_input_scale, side_input, biases, apply_relu)
 
-    # TODO(b/79323979): re-enable memory optimization after this bug is fixed.
-    with self.test_session(
-        use_gpu=True, config=NoMemoryOptimizationConfig()) as sess:
+    with self.test_session(use_gpu=True) as sess:
       actual_y, expected_y = sess.run([actual, expected])
       tf_logging.info("actual_y = ", actual_y)
       tf_logging.info("expected_y = ", expected_y)
@@ -891,8 +883,9 @@ class FusedConvInt8Tests(test.TestCase):
       tf_logging.info("int8 test skipped because not run with --config=cuda or "
                       "no GPUs with compute capability >= 6.1 are available.")
       return
-    for test_param in self._test_params:
-      self.runTest(test_param)
+    for apply_relu in [True, False]:
+      for test_param in self._test_params:
+        self.runTest(test_param, apply_relu)
 
 
 if __name__ == "__main__":

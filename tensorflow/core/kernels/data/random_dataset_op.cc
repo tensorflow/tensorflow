@@ -49,10 +49,10 @@ class RandomDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 seed, int64 seed2)
-        : GraphDatasetBase(ctx), seed_(seed), seed2_(seed2) {}
+        : DatasetBase(DatasetContext(ctx)), seed_(seed), seed2_(seed2) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
@@ -77,7 +77,8 @@ class RandomDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* seed = nullptr;
       Node* seed2 = nullptr;

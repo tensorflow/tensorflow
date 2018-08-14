@@ -63,11 +63,11 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* selector_input,
             std::vector<DatasetBase*> data_inputs)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           selector_input_(selector_input),
           data_inputs_(std::move(data_inputs)) {
       selector_input_->Ref();
@@ -110,15 +110,16 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* selector_input_node;
       TF_RETURN_IF_ERROR(
-          b->AddParentDataset(ctx, selector_input_, &selector_input_node));
+          b->AddInputDataset(ctx, selector_input_, &selector_input_node));
       std::vector<Node*> data_input_nodes(data_inputs_.size());
       for (size_t i = 0; i < data_inputs_.size(); ++i) {
         TF_RETURN_IF_ERROR(
-            b->AddParentDataset(ctx, data_inputs_[i], &data_input_nodes[i]));
+            b->AddInputDataset(ctx, data_inputs_[i], &data_input_nodes[i]));
       }
       TF_RETURN_IF_ERROR(b->AddDataset(this, {{0, selector_input_node}},
                                        {{1, data_input_nodes}}, {}, output));
@@ -204,7 +205,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (selector_input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, selector_input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, selector_input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("selector_input_impl_empty"), ""));
@@ -212,7 +213,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
         for (size_t i = 0; i < data_input_impls_.size(); ++i) {
           const auto& data_input_impl = data_input_impls_[i];
           if (data_input_impl) {
-            TF_RETURN_IF_ERROR(SaveParent(writer, data_input_impl));
+            TF_RETURN_IF_ERROR(SaveInput(writer, data_input_impl));
           } else {
             TF_RETURN_IF_ERROR(writer->WriteScalar(
                 full_name(strings::StrCat("data_input_impl_empty[", i, "]")),
@@ -226,15 +227,14 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("selector_input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, selector_input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, selector_input_impl_));
         } else {
           selector_input_impl_.reset();
         }
         for (size_t i = 0; i < data_input_impls_.size(); ++i) {
           if (!reader->Contains(full_name(
                   strings::StrCat("data_input_impl_empty[", i, "]")))) {
-            TF_RETURN_IF_ERROR(
-                RestoreParent(ctx, reader, data_input_impls_[i]));
+            TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, data_input_impls_[i]));
           } else {
             data_input_impls_[i].reset();
           }

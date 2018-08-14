@@ -80,12 +80,13 @@ class HloTestBase : public ::testing::Test {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase();
+  HloTestBase(bool allow_mixed_precision_in_hlo_verifier = true);
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
-  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
+              bool allow_mixed_precision_in_hlo_verifier = true);
 
   ~HloTestBase() override {}
 
@@ -166,6 +167,8 @@ class HloTestBase : public ::testing::Test {
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(const tensorflow::StringPiece hlo_string)
+      TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -185,13 +188,9 @@ class HloTestBase : public ::testing::Test {
   // 'layout'.
   void ForceParameterLayout(HloModule* module, int64 param_no,
                             const Layout& layout) {
-    ASSERT_LT(
-        param_no,
-        module->mutable_host_entry_computation_layout()->parameter_count());
-    module->mutable_host_entry_computation_layout()
-        ->mutable_parameter_layout(param_no)
-        ->ResetLayout(layout);
-    module->mutable_device_entry_computation_layout()
+    ASSERT_LT(param_no,
+              module->mutable_entry_computation_layout()->parameter_count());
+    module->mutable_entry_computation_layout()
         ->mutable_parameter_layout(param_no)
         ->ResetLayout(layout);
   }
@@ -199,21 +198,22 @@ class HloTestBase : public ::testing::Test {
   // Convenience method to force the layout of the computation result in a
   // module. The result layout of 'module' is set to 'layout'.
   void ForceResultLayout(HloModule* module, const Layout& layout) {
-    module->mutable_host_entry_computation_layout()
+    module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
-    module->mutable_device_entry_computation_layout()
+  }
+
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
         ->mutable_result_layout()
-        ->ResetLayout(layout);
+        ->ResetLayout(layout, shape_index);
   }
 
   // Convenience method to clear the layout of the computation result in
   // 'module'.
   void ForceClearResultLayout(HloModule* module) {
-    module->mutable_host_entry_computation_layout()
-        ->mutable_result_layout()
-        ->Clear();
-    module->mutable_device_entry_computation_layout()
+    module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->Clear();
   }

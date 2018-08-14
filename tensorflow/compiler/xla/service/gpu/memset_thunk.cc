@@ -14,21 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
+
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
 
 Status MemzeroThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenMemZero(&dest_data, dest_data.size());
   return Status::OK();
 }
 
 Status Memset32BitValueThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenMemset32(&dest_data, value_, dest_data.size());
   return Status::OK();
 }

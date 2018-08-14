@@ -35,7 +35,7 @@ namespace tensorflow {
 namespace java {
 namespace {
 
-const char* kLicense =
+constexpr const char kLicense[] =
     "/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.\n"
     "\n"
     "Licensed under the Apache License, Version 2.0 (the \"License\");\n"
@@ -391,9 +391,12 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   }
   if (!op.hidden()) {
     // expose the op in the Ops Graph API only if it is visible
-    op_class.add_annotation(
-        Annotation::Create("Operator", "org.tensorflow.op.annotation")
-            .attributes("group = \"" + endpoint.package() + "\""));
+    Annotation oper_annot =
+        Annotation::Create("Operator", "org.tensorflow.op.annotation");
+    if (endpoint.package() != kDefaultEndpointPackage) {
+      oper_annot.attributes("group = \"" + endpoint.package() + "\"");
+    }
+    op_class.add_annotation(oper_annot);
   }
   // create op class file
   const string op_dir_name = io::JoinPath(

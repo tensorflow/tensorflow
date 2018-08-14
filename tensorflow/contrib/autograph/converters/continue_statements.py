@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -31,13 +31,13 @@ GUARD_CREATED = 'guard_created'
 CREATE_GUARD_NEXT = 'create_guard_next'
 
 
-class ContinueCanonicalizationTransformer(transformer.Base):
+class ContinueCanonicalizationTransformer(converter.Base):
   """Canonicalizes continue statements into additional conditionals."""
 
   def visit_Continue(self, node):
     self.set_local(CONTINUE_USED, True)
     template = """
-      var_name = True
+      var_name = tf.constant(True)
     """
     return templates.replace(
         template, var_name=self.get_local(CONTROL_VAR_NAME))
@@ -85,14 +85,14 @@ class ContinueCanonicalizationTransformer(transformer.Base):
   def _visit_loop_body(self, node, nodes):
     self.enter_local_scope()
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    continue_var = self.context.namer.new_symbol('continue_', scope.referenced)
+    continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.set_local(CONTROL_VAR_NAME, continue_var)
 
     nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
 
     if self.get_local(CONTINUE_USED, False):
       template = """
-        var_name = False
+        var_name = tf.constant(False)
       """
       control_var_init = templates.replace(template, var_name=continue_var)
       nodes = control_var_init + nodes
@@ -135,5 +135,5 @@ class ContinueCanonicalizationTransformer(transformer.Base):
     return node
 
 
-def transform(node, namer):
-  return ContinueCanonicalizationTransformer(namer).visit(node)
+def transform(node, ctx):
+  return ContinueCanonicalizationTransformer(ctx).visit(node)

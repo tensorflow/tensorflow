@@ -38,27 +38,27 @@ class TileOpModel : public SingleOpModel {
     PopulateTensor<float>(input_, data);
   }
 
-  void SetInputUInt8(std::initializer_list<uint8> data) {
-    PopulateTensor<uint8>(input_, data);
+  void SetInputUInt8(std::initializer_list<uint8_t> data) {
+    PopulateTensor<uint8_t>(input_, data);
   }
 
-  void SetInputInt32(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(input_, data);
+  void SetInputInt32(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(input_, data);
   }
 
   void SetInputInt64(std::initializer_list<int64_t> data) {
     PopulateTensor<int64_t>(input_, data);
   }
 
-  void SetMultipliers(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(multipliers_, data);
+  void SetMultipliers(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(multipliers_, data);
   }
 
   std::vector<float> GetOutputFloat() { return ExtractVector<float>(output_); }
 
-  std::vector<uint8> GetOutputUInt8() { return ExtractVector<uint8>(output_); }
+  std::vector<uint8_t> GetOutputUInt8() { return ExtractVector<uint8_t>(output_); }
 
-  std::vector<int32> GetOutputInt32() { return ExtractVector<int32>(output_); }
+  std::vector<int32_t> GetOutputInt32() { return ExtractVector<int32_t>(output_); }
 
   std::vector<int64_t> GetOutputInt64() {
     return ExtractVector<int64_t>(output_);

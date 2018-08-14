@@ -1,7 +1,7 @@
 # Signal Processing (contrib)
 [TOC]
 
-@{tf.contrib.signal} is a module for signal processing primitives. All
+`tf.contrib.signal` is a module for signal processing primitives. All
 operations have GPU support and are differentiable. This module is especially
 helpful for building TensorFlow models that process or generate audio, though
 the techniques are useful in many domains.
@@ -10,7 +10,7 @@ the techniques are useful in many domains.
 
 When dealing with variable length signals (e.g. audio) it is common to "frame"
 them into multiple fixed length windows. These windows can overlap if the 'step'
-of the frame is less than the frame length. @{tf.contrib.signal.frame} does
+of the frame is less than the frame length. `tf.contrib.signal.frame` does
 exactly this. For example:
 
 ```python
@@ -24,7 +24,7 @@ signals = tf.placeholder(tf.float32, [None, None])
 frames = tf.contrib.signal.frame(signals, frame_length=128, frame_step=32)
 ```
 
-The `axis` parameter to @{tf.contrib.signal.frame} allows you to frame tensors
+The `axis` parameter to `tf.contrib.signal.frame` allows you to frame tensors
 with inner structure (e.g. a spectrogram):
 
 ```python
@@ -42,7 +42,7 @@ spectrogram_patches = tf.contrib.signal.frame(
 
 ## Reconstructing framed sequences and applying a tapering window
 
-@{tf.contrib.signal.overlap_and_add} can be used to reconstruct a signal from a
+`tf.contrib.signal.overlap_and_add` can be used to reconstruct a signal from a
 framed representation. For example, the following code reconstructs the signal
 produced in the preceding example:
 
@@ -58,7 +58,7 @@ the resulting reconstruction will have a greater magnitude than the original
 window function satisfies the Constant Overlap-Add (COLA) property for the given
 frame step, then it will recover the original `signals`.
 
-@{tf.contrib.signal.hamming_window} and @{tf.contrib.signal.hann_window} both
+`tf.contrib.signal.hamming_window` and `tf.contrib.signal.hann_window` both
 satisfy the COLA property for a 75% overlap.
 
 ```python
@@ -74,7 +74,7 @@ reconstructed_signals = tf.contrib.signal.overlap_and_add(
 A spectrogram is a time-frequency decomposition of a signal that indicates its
 frequency content over time. The most common approach to computing spectrograms
 is to take the magnitude of the [Short-time Fourier Transform][stft] (STFT),
-which @{tf.contrib.signal.stft} can compute as follows:
+which `tf.contrib.signal.stft` can compute as follows:
 
 ```python
 # A batch of float32 time-domain signals in the range [-1, 1] with shape
@@ -121,7 +121,7 @@ When working with spectral representations of audio, the [mel scale][mel] is a
 common reweighting of the frequency dimension, which results in a
 lower-dimensional and more perceptually-relevant representation of the audio.
 
-@{tf.contrib.signal.linear_to_mel_weight_matrix} produces a matrix you can use
+`tf.contrib.signal.linear_to_mel_weight_matrix` produces a matrix you can use
 to convert a spectrogram to the mel scale.
 
 ```python
@@ -156,7 +156,7 @@ log_mel_spectrograms = tf.log(mel_spectrograms + log_offset)
 
 ## Computing Mel-Frequency Cepstral Coefficients (MFCCs)
 
-Call @{tf.contrib.signal.mfccs_from_log_mel_spectrograms} to compute
+Call `tf.contrib.signal.mfccs_from_log_mel_spectrograms` to compute
 [MFCCs][mfcc] from log-magnitude, mel-scale spectrograms (as computed in the
 preceding example):
 

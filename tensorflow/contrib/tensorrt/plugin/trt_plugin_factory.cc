@@ -65,9 +65,6 @@ bool PluginFactoryTensorRT::RegisterPlugin(
 
 void PluginFactoryTensorRT::DestroyPlugins() {
   tensorflow::mutex_lock lock(instance_m_);
-  for (auto& owned_plugin_ptr : owned_plugins_) {
-    owned_plugin_ptr.release();
-  }
   owned_plugins_.clear();
 }
 

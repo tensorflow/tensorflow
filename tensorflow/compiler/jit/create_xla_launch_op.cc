@@ -66,8 +66,28 @@ class SinglePassSearch {
 
 Status CompilationRequested(const FunctionLibraryRuntime& flr,
                             const NodeDef& node_def) {
+  const FunctionDef* function_def =
+      flr.GetFunctionLibraryDefinition()->Find(node_def.name());
+  if (function_def == nullptr) {
+    // The node def is not calling a function. Individual ops can be
+    // run directly using on-demand mode, no need to create XlaLaunch
+    // kernel for them.
+    // TODO(b/110359382): Make custom kernel creation return a bool instead of
+    // status.
+    // We don't set error messages here to avoid unnecessary string copy.
+    // Similarly below.
+    return Status(error::INVALID_ARGUMENT, "");
+  }
+
+  // If kXlaCompileAttr is set on the node_def, use its value.
+  const auto& it = node_def.attr().find(kXlaCompileAttr);
+  if (it != node_def.attr().end()) {
+    return it->second.b() ? Status::OK() : Status(error::INVALID_ARGUMENT, "");
+  }
+
+  // kXlaCompileAttr is not set on node_def, check if it is set on
+  // FunctionDef.
   bool xla_compile = false;
-  // Check if op is marked _XlaCompile=true.
   Status status = flr.GetFunctionLibraryDefinition()->GetAttr(
       node_def, kXlaCompileAttr, &xla_compile);
   if (!status.ok() || !xla_compile) {

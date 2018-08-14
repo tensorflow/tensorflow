@@ -1410,6 +1410,14 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
       y_tf = self._adjustContrastTf(x_np, contrast_factor)
       self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
+  def testContrastFactorShape(self):
+    x_shape = [1, 2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      image_ops.adjust_contrast(x_np, [2.0])
+
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
@@ -1956,7 +1964,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -2680,6 +2688,102 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
 
 
+class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
+
+  def _ResizeImageWithPad(self, x, target_height, target_width,
+                          use_tensor_inputs):
+    if use_tensor_inputs:
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      x_tensor = x
+      feed_dict = {}
+
+    y = image_ops.resize_image_with_pad(x_tensor, target_height,
+                                        target_width)
+    if not use_tensor_inputs:
+      self.assertTrue(y.get_shape().is_fully_defined())
+
+    with self.test_session(use_gpu=True):
+      return y.eval(feed_dict=feed_dict)
+
+  def _assertReturns(self,
+                     x,
+                     x_shape,
+                     y,
+                     y_shape,
+                     use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageWithPad(x, target_height, target_width,
+                                      use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertRaises(self,
+                    x,
+                    x_shape,
+                    target_height,
+                    target_width,
+                    err_msg,
+                    use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    x = np.array(x).reshape(x_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      try:
+        self._ResizeImageWithPad(x, target_height, target_width,
+                                 use_tensor_inputs)
+      except Exception as e:  # pylint: disable=broad-except
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+
+  def _assertShapeInference(self, pre_shape, height, width, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.resize_image_with_pad(image, height, width)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+
+  def testNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertReturns(x, x_shape, x, x_shape)
+
+  def testPad(self):
+    # Reduce vertical dimension
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 1, 3, 0]
+    y_shape = [1, 4, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+    # Reduce horizontal dimension
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [1, 3, 0, 0]
+    y_shape = [2, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [1, 3]
+    y_shape = [1, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithCropOrPad(self, x, target_height, target_width,
@@ -2889,7 +2993,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -3105,7 +3209,8 @@ class PngTest(test_util.TensorFlowTestCase):
   def testExisting(self):
     # Read some real PNGs, converting to different channel numbers
     prefix = "tensorflow/core/lib/png/testdata/"
-    inputs = (1, "lena_gray.png"), (4, "lena_rgba.png")
+    inputs = ((1, "lena_gray.png"), (4, "lena_rgba.png"),
+              (3, "lena_palette.png"), (4, "lena_palette_trns.png"))
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
         with self.test_session(use_gpu=True) as sess:
@@ -3551,6 +3656,41 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
+
+
+class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
+
+  def testSelectFromThreeClusters(self):
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    max_output_size_np = 5
+    iou_threshold_np = 0.5
+    boxes = constant_op.constant(boxes_np)
+    scores = constant_op.constant(scores_np)
+    max_output_size = constant_op.constant(max_output_size_np)
+    iou_threshold = constant_op.constant(iou_threshold_np)
+    selected_indices_padded, num_valid_padded = \
+        image_ops.non_max_suppression_padded(
+            boxes,
+            scores,
+            max_output_size,
+            iou_threshold,
+            pad_to_max_output_size=True)
+    selected_indices, num_valid = image_ops.non_max_suppression_padded(
+        boxes,
+        scores,
+        max_output_size,
+        iou_threshold,
+        pad_to_max_output_size=False)
+    # The output shape of the padded operation must be fully defined.
+    self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
+    self.assertEqual(selected_indices.shape.is_fully_defined(), False)
+    with self.test_session():
+      self.assertAllClose(selected_indices_padded.eval(), [3, 0, 5, 0, 0])
+      self.assertEqual(num_valid_padded.eval(), 3)
+      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertEqual(num_valid.eval(), 3)
 
 
 class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):

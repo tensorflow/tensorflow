@@ -61,6 +61,9 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
   int minimum_segment_size_;
   int precision_mode_;
   int maximum_batch_size_;
+  bool is_dynamic_op_;
+  std::vector<int> batches_;
+  int max_cached_batches_;
   int64_t maximum_workspace_size_;
 };
 

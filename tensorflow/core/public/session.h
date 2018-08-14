@@ -237,7 +237,7 @@ class Session {
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
-/// function will return an error status.
+/// function will return an error status and set *out_session to nullptr.
 Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.

@@ -58,9 +58,9 @@ TEST(NegOpModel, NegFloat) {
 
 TEST(NegOpModel, NegInt32) {
   NegOpModel m({TensorType_INT32, {2, 3}}, {TensorType_INT32, {2, 3}});
-  m.SetInput<int32>({-2, -1, 0, 1, 2, 3});
+  m.SetInput<int32_t>({-2, -1, 0, 1, 2, 3});
   m.Invoke();
-  EXPECT_THAT(m.GetOutput<int32>(), ElementsAreArray({2, 1, 0, -1, -2, -3}));
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({2, 1, 0, -1, -2, -3}));
 }
 
 TEST(NegOpModel, NegInt64) {

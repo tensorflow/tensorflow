@@ -64,6 +64,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",

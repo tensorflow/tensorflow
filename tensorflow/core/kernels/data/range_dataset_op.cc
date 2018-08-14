@@ -43,10 +43,13 @@ class RangeDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
-        : GraphDatasetBase(ctx), start_(start), stop_(stop), step_(step) {}
+        : DatasetBase(DatasetContext(ctx)),
+          start_(start),
+          stop_(stop),
+          step_(step) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
@@ -71,7 +74,8 @@ class RangeDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* start = nullptr;
       Node* stop = nullptr;

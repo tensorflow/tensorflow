@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 
 AsyncExecution::AsyncExecution(Backend* backend,
-                               std::vector<Backend::StreamPtr> streams,
+                               std::vector<StreamPool::Ptr> streams,
                                const ExecutionProfile& profile,
                                GlobalDataHandle result)
     : backend_(CHECK_NOTNULL(backend)),
@@ -46,9 +46,10 @@ Status AsyncExecution::BlockUntilDone() const {
 
 ExecutionTracker::ExecutionTracker() : next_handle_(1) {}
 
-ExecutionHandle ExecutionTracker::Register(
-    Backend* backend, std::vector<Backend::StreamPtr> streams,
-    const ExecutionProfile& profile, GlobalDataHandle result) {
+ExecutionHandle ExecutionTracker::Register(Backend* backend,
+                                           std::vector<StreamPool::Ptr> streams,
+                                           const ExecutionProfile& profile,
+                                           GlobalDataHandle result) {
   tensorflow::mutex_lock lock(execution_mutex_);
   int64 handle = next_handle_++;
   auto inserted = handle_to_execution_.emplace(

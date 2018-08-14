@@ -26,8 +26,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer
 
 
@@ -44,7 +45,8 @@ def _raise_exception_fn(_=None):
 # Must be the argument to a distribution.call_for_each_tower() call, calls a
 # get_tower_context().merge_call() that raises an exception.
 def _merge_raises_fn():
-  distribute_lib.get_tower_context().merge_call(_raise_exception_fn)
+  distribution_strategy_context.get_tower_context().merge_call(
+      _raise_exception_fn)
 
 
 # Must be the argument to a get_tower_context().merge_call() call, calls
@@ -57,7 +59,7 @@ def _call_raises_fn(dist):
 # calls a get_tower_context().merge_call() that calls a
 # call_for_each_tower() that raises an exception.
 def _merge_call_raises_fn():
-  distribute_lib.get_tower_context().merge_call(_call_raises_fn)
+  distribution_strategy_context.get_tower_context().merge_call(_call_raises_fn)
 
 
 # Must be the argument to a get_tower_context().merge_call() call, calls
@@ -71,7 +73,8 @@ def _call_merge_raises_fn(dist):
 # get_tower_context().merge_call() that calls a call_for_each_tower() that
 # calls a get_tower_context().merge_call() that raises an exception.
 def _merge_call_merge_raises_fn():
-  distribute_lib.get_tower_context().merge_call(_call_merge_raises_fn)
+  distribution_strategy_context.get_tower_context().merge_call(
+      _call_merge_raises_fn)
 
 
 class DistributionTestBase(test.TestCase):
@@ -106,13 +109,14 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.fetch(v)
+          fetched = d.read_var(v)
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
-            g = d.reduce("sum", g, destinations=v)
+            g = d.reduce(
+                variable_scope.VariableAggregation.SUM, g, destinations=v)
             with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
-              after_list.append(d.fetch(v))
+              after_list.append(d.read_var(v))
         return before_list, after_list
 
       for i in range(10):
@@ -159,12 +163,13 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.fetch(v)
+          fetched = d.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
-            g = d.reduce("sum", g, destinations=v)
+            g = d.reduce(
+                variable_scope.VariableAggregation.SUM, g, destinations=v)
             with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
-              after_list.append(d.fetch(v))
+              after_list.append(d.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
@@ -184,7 +189,7 @@ class DistributionTestBase(test.TestCase):
     with d.scope():
       map_in = [constant_op.constant(i) for i in range(10)]
       map_out = d.map(map_in, lambda x, y: x * y, 2)
-      observed = d.fetch(d.reduce("sum", map_out))
+      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out)
       expected = 90  # 2 * (0 + 1 + ... + 9)
       self.assertEqual(expected, observed.numpy())
 
@@ -205,7 +210,7 @@ class DistributionTestBase(test.TestCase):
       expected_devices = [False] * len(d.worker_devices)
 
       def mark_devices_fn():
-        tower_id = distribute_lib.get_tower_context().tower_id
+        tower_id = distribution_strategy_context.get_tower_context().tower_id
         self.assertLess(tower_id, len(d.worker_devices))
         self.assertFalse(expected_devices[tower_id])
         expected_devices[tower_id] = True

@@ -104,7 +104,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
-  bool SynchronizeAllActivity() override { return false; }
+  bool SynchronizeAllActivity() override { return true; }
   bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override {
     return false;
   }
