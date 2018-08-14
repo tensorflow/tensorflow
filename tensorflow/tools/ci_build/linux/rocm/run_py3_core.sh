@@ -41,7 +41,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
     -//tensorflow/python/distribute:distribute_coordinator_test \
-    -//tensorflow/python/eager:pywrap_tfe_test \
     -//tensorflow/python/estimator:dnn_linear_combined_test \
     -//tensorflow/python/estimator:linear_test \
     -//tensorflow/python/keras:cudnn_recurrent_test \
