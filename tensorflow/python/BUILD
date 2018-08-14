@@ -3340,7 +3340,10 @@ py_library(
 
 py_library(
     name = "distribute",
-    srcs = ["training/distribute.py"],
+    srcs = [
+        "training/distribute.py",
+        "training/distribution_strategy_context.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
