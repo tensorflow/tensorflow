@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/amdgpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
@@ -74,6 +75,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
+#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -175,6 +178,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
@@ -202,50 +206,6 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<CudnnConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
-
-    // ROCM TODO: check if CudnnConvolutionAlgorithmPicker can be applied
-    // directly or should we come up with MIOpenConvolutionAlgorithmPicker
-    //// Choose the fastest algorithm for each conv.
-    ////
-    //// In theory doing this here is way too early: It needs to happen after
-    //// layout assignment, because the layout of the inputs/outputs affects the
-    //// speed of the conv.  But currently we only allow only one input/output
-    //// layout when calling cudnn, so there's no ambiguity.
-    ////
-    //// We pick the algorithm at this early stage so we can generate better HLO.
-    //// After CudnnConvolutionRewriter, our convolutions are CustomCalls which
-    //// return a tuple (conv_result, scratch_memory), and the each conv uses 0
-    //// bytes of scratch:
-    ////
-    ////   customcall = (f32[...], f32[0])
-    ////   return gte(customcall, 0)
-    ////
-    //// The algorithm picker then chooses the best algorithm, and potentially
-    //// increases the scratch space.  It replaces customcall with new_tuple,
-    //// giving us the following:
-    ////
-    ////   new_customcall = (f32[...], f32[N])
-    ////   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
-    ////   return gte(new_tuple, 0)
-    ////
-    //// The new tuple and gte instructions then be simplified away, because
-    //// nobody is expected to use the scratch value.
-    ////
-    //// However, if we were to run CudnnConvolutionAlgorithmPicker after layout
-    //// assignment, fusion would already have run, and the gte(customcall, 0)
-    //// would probably already be into a fusion node.  We can't simplify across
-    //// HloComputation boundaries, so in this case we wouldn't be able to
-    //// simplify away the new_tuple bits.
-    ////
-    //// We'll need to revisit this if we ever allow multiple layouts for the
-    //// inputs/outputs of a cudnn convolution.
-    //pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
-    //                                                  device_allocator);
- 
-    // Clean up new_tuple described above.
-    pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<HloDCE>();
-
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -261,6 +221,37 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
         /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
           return true;
         });
+
+    // Choose the fastest algorithm for each conv.
+    //
+    // We pick the algorithm before fusion so we can generate better HLO. After
+    // CudnnConvolutionRewriter, our convolutions are CustomCalls which return a
+    // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
+    // scratch:
+    //
+    //   customcall = (f32[...], f32[0])
+    //   return gte(customcall, 0)
+    //
+    // The algorithm picker then chooses the best algorithm, and potentially
+    // increases the scratch space.  It replaces customcall with new_tuple,
+    // giving us the following:
+    //
+    //   new_customcall = (f32[...], f32[N])
+    //   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
+    //   return gte(new_tuple, 0)
+    //
+    // The new tuple and gte instructions then be simplified away, because
+    // nobody is expected to use the scratch value.
+    //
+    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // the gte(customcall, 0) would probably already be into a fusion node.  We
+    // can't simplify across HloComputation boundaries, so in this case we
+    // wouldn't be able to simplify away the new_tuple bits.
+    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
+                                                      device_allocator);
+    // Clean up new_tuple described above.
+    pipeline.AddPass<TupleSimplifier>();
+
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -272,6 +263,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
+    fusion.AddPass<GpuMultiOutputFusion>();
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
@@ -288,6 +282,15 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       // fuse the new ReducePrecision operations.
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
+  }
+
+  {
+    // Do an aggressive LICM pass over while loops.  In particular, this hoists
+    // constants that were sunk by WhileLoopConstantSinking.  Leaving them in
+    // the while loop may result in unnecessary copies.
+    HloPassPipeline pipeline("while-loop-licm");
+    pipeline.AddPass<WhileLoopInvariantCodeMotion>(true);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return tensorflow::Status::OK();
 }
@@ -395,6 +398,9 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
