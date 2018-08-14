@@ -2997,13 +2997,13 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
                                  param->shape().element_type(), module_),
                              kTileSize + 1),
         kTileSize);
-    const int kNVPTXSharedMemoryAddrSpace = 3;
     auto* tile_base_ptr = new llvm::GlobalVariable(
         *b_.GetInsertBlock()->getParent()->getParent(), tile_type,
         /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
         llvm::UndefValue::get(tile_type),
         llvm_ir::AsStringRef(IrName(hlo, StrCat("tile", id))), nullptr,
-        llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+        llvm::GlobalValue::NotThreadLocal,
+        llvm_ir::kAMDGPUSharedMemoryAddrSpace);
     param_shmem_buffers[id] = tile_base_ptr;
     VLOG(3) << "Added shmem buffer for parameter " << id << ": "
             << llvm_ir::DumpToString(*tile_base_ptr);
@@ -3311,7 +3311,10 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
         llvm_ir::AsStringRef(
-            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)));
+            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)),
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/llvm_ir::kAMDGPUGlobalMemoryAddrSpace,
+        /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);
