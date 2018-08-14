@@ -56,6 +56,7 @@ _allowed_symbols = [
     'get_tower_context',
     'has_distribution_strategy',
     'require_tower_context',
+    'UpdateContext',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
