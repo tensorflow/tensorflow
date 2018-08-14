@@ -274,10 +274,9 @@ def group_norm(inputs,
   # Determine axes before channels. Some examples of common image formats:
   #  'NCHW': before = [N], after = [HW]
   #  'NHWC': before = [NHW], after = []
-  axes_before_channels = [array_ops.shape(inputs)[i]
-                          for i in range(0,channels_axis)]
-  axes_after_channels = [array_ops.shape(inputs)[i]
-                         for i in range(channels_axis+1,len(inputs.shape))]
+  axes_before_channels = [original_shape[i] for i in range(0, channels_axis)]
+  axes_after_channels = [original_shape[i]
+                         for i in range(channels_axis+1, inputs.shape.ndims)]
 
   # Manually broadcast the parameters to conform to the number of groups.
   params_shape_broadcast = ([1] * len(axes_before_channels) +
