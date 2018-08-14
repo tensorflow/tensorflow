@@ -109,11 +109,11 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
                       ResolveInternal(data));
   for (const auto& shaped_buffer : replicated_buffers) {
     std::vector<ShapeIndex> shape_indices;
-    ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
-                               [this, &shape_indices](const Shape& /*subshape*/,
-                                                      const ShapeIndex& index) {
-                                 shape_indices.push_back(index);
-                               });
+    ShapeUtil::ForEachSubshape(
+        shaped_buffer->on_device_shape(),
+        [&shape_indices](const Shape& /*subshape*/, const ShapeIndex& index) {
+          shape_indices.push_back(index);
+        });
     for (const ShapeIndex& index : shape_indices) {
       TF_RETURN_IF_ERROR(DecrementRefCount(shaped_buffer->buffer(index),
                                            shaped_buffer->device_ordinal()));

@@ -28,6 +28,10 @@ limitations under the License.
 #include <sys/time.h>
 #endif
 
+#if defined(_WIN32)
+#include <intrin.h>
+#endif
+
 namespace tensorflow {
 
 namespace profile_utils {
@@ -54,6 +58,9 @@ class CpuUtils {
   static inline uint64 GetCurrentClockCycle() {
 #if defined(__ANDROID__)
     return GetCpuUtilsHelperSingletonInstance().GetCurrentClockCycle();
+// ----------------------------------------------------------------
+#elif defined(_WIN32)
+    return __rdtsc();
 // ----------------------------------------------------------------
 #elif defined(__x86_64__) || defined(__amd64__)
     uint64_t high, low;

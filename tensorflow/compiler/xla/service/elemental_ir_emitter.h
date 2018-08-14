@@ -122,6 +122,9 @@ class ElementalIrEmitter {
                                          llvm::Value* lhs,
                                          llvm::Value* rhs) const;
 
+  virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
+                                          llvm::Value* value) const;
+
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x) const;
 

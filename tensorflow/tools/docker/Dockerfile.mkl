@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
-        python \
+        ${PYTHON} \
         ${PYTHON_DEV} \
         rsync \
         software-properties-common \
@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
-    python get-pip.py && \
+    ${PYTHON} get-pip.py && \
     rm get-pip.py
 
 RUN ${PIP} --no-cache-dir install \
@@ -44,7 +44,7 @@ RUN ${PIP} --no-cache-dir install \
         scipy \
         sklearn \
         && \
-    python -m ipykernel.kernelspec
+    ${PYTHON} -m ipykernel.kernelspec
 
 COPY ${TF_WHL_URL} /
 RUN ${PIP} install --no-cache-dir --force-reinstall /${TF_WHL_URL} && \

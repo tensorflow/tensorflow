@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -199,7 +200,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   run_options.set_stream(stream);
   run_options.set_allocator(xla_allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-  run_options.set_rng_seed(ctx->step_id());
+  run_options.set_rng_seed(GetXLARandomSeed());
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
@@ -209,7 +210,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
-  launch_context.PopulateOutputs(ctx, kernel, run_result.ConsumeValueOrDie());
+  OP_REQUIRES_OK(ctx, launch_context.PopulateOutputs(
+                          ctx, kernel, run_result.ConsumeValueOrDie()));
   VLOG(1) << "Done";
 }
 

@@ -733,7 +733,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       var4D, [epsilon](float a) { return a + epsilon; });
 
   auto rsqrt_var_add_epsilon = *ReferenceUtil::MapArray4D(
-      var_add_epsilon, [epsilon](float a) { return 1 / std::sqrt(a); });
+      var_add_epsilon, [](float a) { return 1 / std::sqrt(a); });
 
   auto grad_output_times_var =
       *ReferenceUtil::MapArray4D(grad_output_array, var_add_epsilon,

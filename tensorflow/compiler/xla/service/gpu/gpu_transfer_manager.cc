@@ -117,38 +117,37 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
   return std::move(buffer);
 }
 
-static std::unique_ptr<Literal> ShapeTreeToLiteral(
+static void ShapeTreeToLiteral(
     ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree) {
   // This is a struct instead of a lambda for std::function-free recursion.
   struct Helper {
-    static std::unique_ptr<Literal> helper(
+    static void helper(
         ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
         ShapeIndex* index) {
       const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
       if (ShapeUtil::IsArray(shape)) {
-        return (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
+        (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
+        return;
       }
 
       CHECK(ShapeUtil::IsTuple(shape))
           << ShapeUtil::HumanStringWithLayout(shape);
       const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
       index->push_back(0);
-      std::vector<std::unique_ptr<Literal>> tuple_operands;
       for (int64 i = 0; i < tuple_element_count; ++i) {
         index->back() = i;
-        tuple_operands.push_back(helper(shape_tree, index));
+        helper(shape_tree, index);
       }
       index->pop_back();
-      return LiteralUtil::MakeTupleOwned(std::move(tuple_operands));
     }
   };
   ShapeIndex index;
-  return Helper::helper(shape_tree, &index);
+  Helper::helper(shape_tree, &index);
 }
 
 Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* /*executor*/, const Shape& literal_shape,
-    Literal* literal) {
+    MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal_shape);
 
@@ -162,6 +161,8 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
           return;
         }
         *buffer = MakeUnique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+        (*buffer)->set_destination(
+            MakeUnique<MutableBorrowingLiteral>(literal, index));
       });
 
   // Give the tree of buffers to the outfeed mananger. The device will fill it
@@ -169,8 +170,8 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
-  // Now turn the tree of buffers back into a literal.
-  *literal = std::move(*ShapeTreeToLiteral(&outfeed_buffers));
+  // Now wait for the tree of buffers are written.
+  ShapeTreeToLiteral(&outfeed_buffers);
   return Status::OK();
 }
 

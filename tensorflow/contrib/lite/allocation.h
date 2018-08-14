@@ -52,6 +52,8 @@ class MMAPAllocation : public Allocation {
   size_t bytes() const override;
   bool valid() const override;
 
+  static bool IsSupported();
+
  protected:
   // Data required for mmap.
   int mmap_fd_ = -1;  // mmap file descriptor

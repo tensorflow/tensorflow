@@ -3,7 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -85,11 +85,12 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":test_utils",
         ":trt_allocator",
+        ":trt_conversion",
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
-        ":trt_conversion",
         ":utils",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -184,6 +185,8 @@ py_library(
     ],
 )
 
+# TODO(aaroey): this wrapper has been causing troubles of double linking, so
+# either get rid of it, or split to make it contain minimum dependencies.
 tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
@@ -192,6 +195,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     deps = [
+        ":test_utils",
         ":trt_conversion",
         ":trt_engine_op_kernel",
         "//third_party/python_runtime:headers",
@@ -264,6 +268,7 @@ tf_cuda_library(
     ],
     deps = [
         ":segment",
+        ":test_utils",
         ":trt_allocator",
         ":trt_plugins",
         ":trt_logging",
@@ -274,7 +279,6 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -412,4 +416,17 @@ cc_library(
     srcs = ["convert/utils.cc"],
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    srcs = ["test/utils.cc"],
+    hdrs = ["test/utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_googlesource_code_re2//:re2",
+    ],
 )

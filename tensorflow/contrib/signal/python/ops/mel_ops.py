@@ -108,7 +108,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
       # `M` has shape [frames, num_mel_bins]
       M = tf.matmul(S, A)
 
-  The matrix can be used with @{tf.tensordot} to convert an arbitrary rank
+  The matrix can be used with `tf.tensordot` to convert an arbitrary rank
   `Tensor` of linear-scale spectral bins into the mel scale.
 
       # S has shape [..., num_spectrogram_bins].

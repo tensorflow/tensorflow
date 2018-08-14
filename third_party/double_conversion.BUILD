@@ -4,6 +4,11 @@ licenses(["notice"])
 
 exports_files(["LICENSE"])
 
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
 cc_library(
     name = "double-conversion",
     srcs = [
@@ -28,11 +33,10 @@ cc_library(
         "double-conversion/ieee.h",
         "double-conversion/strtod.h",
     ],
-    includes = [
-        ".",
-    ],
-    linkopts = [
-        "-lm",
-    ],
+    includes = ["."],
+    linkopts = select({
+        ":windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     visibility = ["//visibility:public"],
 )

@@ -13,6 +13,79 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## AllToAll
+
+See also
+[`XlaBuilder::AllToAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Alltoall is a collective operation that sends data from all cores to all cores.
+It has two phases:
+
+1.  the scatter phase. On each core, the operand is split into `split_count`
+    number of blocks along the `split_dimensions`, and the blocks are scattered
+    to all cores, e.g., the ith block is send to the ith core.
+2.  the gather phase. Each core concatenates the received blocks along the
+    `concat_dimension`.
+
+The participating cores can be configured by:
+
+-   `replica_groups`: each ReplicaGroup contains a list of replica id. If empty,
+    all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
+    applied within subgroups in the specified order. For example, replica
+    groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
+    1, 2, 3, and in the gather phase, the received blocks will be concatenated
+    in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
+    5, 0, and the concatenation order is 4, 5, 0.
+
+Prerequisites:
+
+-   The dimension size of the operand on the split_dimension is divisible by
+    split_count.
+-   The operand's shape is not tuple.
+
+<b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
+replica_groups)` </b>
+
+
+| Arguments          | Type                  | Semantics                       |
+| ------------------ | --------------------- | ------------------------------- |
+| `operand`          | `XlaOp`               | n dimensional input array       |
+| `split_dimension`  | `int64`               | A value in the interval `[0,    |
+:                    :                       : n)` that names the dimension    :
+:                    :                       : along which the operand is      :
+:                    :                       : split                           :
+| `concat_dimension` | `int64`               | a value in the interval `[0,    |
+:                    :                       : n)` that names the dimension    :
+:                    :                       : along which the split blocks    :
+:                    :                       : are concatenated                :
+| `split_count`      | `int64`               | the number of cores that        |
+:                    :                       : participate this operation. If  :
+:                    :                       : `replica_groups` is empty, this :
+:                    :                       : should be the number of         :
+:                    :                       : replicas; otherwise, this       :
+:                    :                       : should be equal to the number   :
+:                    :                       : of replicas in each group.      :
+| `replica_groups`   | `ReplicaGroup` vector | each group contains a list of   |
+:                    :                       : replica id.                     :
+
+Below shows an example of Alltoall.
+
+```
+XlaBuilder b("alltoall");
+auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
+```
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/xla/ops_alltoall.png">
+</div>
+
+In this example, there are 4 cores participating the Alltoall. On each core, the
+operand is split into 4 parts along dimension 0, so each part has shape
+f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
+the received parts along dimension 1, in the order or core 0-4. So the output on
+each core has shape f32[16,4].
+
 ## BatchNormGrad
 
 See also
@@ -270,7 +343,7 @@ Clamp(min, operand, max) = s32[3]{0, 5, 6};
 
 See also
 [`XlaBuilder::Collapse`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
-and the @{tf.reshape} operation.
+and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
 
@@ -291,7 +364,7 @@ same position in the dimension sequence as those they replace, with the new
 dimension size equal to the product of original dimension sizes. The lowest
 dimension number in `dimensions` is the slowest varying dimension (most major)
 in the loop nest which collapses these dimension, and the highest dimension
-number is fastest varying (most minor). See the @{tf.reshape} operator
+number is fastest varying (most minor). See the `tf.reshape` operator
 if more general collapse ordering is needed.
 
 For example, let v be an array of 24 elements:
@@ -490,8 +563,8 @@ array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
 Dilation of the rhs is also called atrous convolution. For more details, see
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
-convolution. For more details, see @{tf.nn.conv2d_transpose}.
+`tf.nn.atrous_conv2d`. Dilation of the lhs is also called transposed
+convolution. For more details, see `tf.nn.conv2d_transpose`.
 
 The output shape has these dimensions, in this order:
 
@@ -1270,7 +1343,7 @@ let t: (f32[10], s32) = tuple(v, s);
 let element_1: s32 = gettupleelement(t, 1);  // Inferred shape matches s32.
 ```
 
-See also @{tf.tuple}.
+See also `tf.tuple`.
 
 ## Infeed
 
@@ -1431,19 +1504,29 @@ complete and returns the received data.
 See also
 [`XlaBuilder::Reduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Applies a reduction function to an array.
+Applies a reduction function to one or more arrays in parallel.
 
-<b> `Reduce(operand, init_value, computation, dimensions)` </b>
+<b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type             | Semantics
-------------- | ---------------- | ---------------------------------------
-`operand`     | `XlaOp`          | array of type `T`
-`init_value`  | `XlaOp`          | scalar of type `T`
-`computation` | `XlaComputation` | computation of type `T, T -> T`
-`dimensions`  | `int64` array    | unordered array of dimensions to reduce
+Arguments     | Type                  | Semantics
+------------- | --------------------- | ---------------------------------------
+`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
+`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
+`computation` | `XlaComputation`      | computation of type
+              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
+`dimensions`  | `int64` array         | unordered array of dimensions to reduce
 
-This operation reduces one or more dimensions of the input array into scalars.
-The rank of the returned array is `rank(operand) - len(dimensions)`.
+Where:
+* N is required to be greater or equal to 1.
+* All input arrays must have the same dimensions.
+* If `N = 1`, `Collate(T)` is `T`.
+* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
+
+The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
+`T_i`, the dimensions of which are described below.
+
+This operation reduces one or more dimensions of each input array into scalars.
+The rank of each returned array is `rank(operand) - len(dimensions)`.
 `init_value` is the initial value used for every reduction and may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
 identity of the reduction function (for example, 0 for addition). The applied
@@ -1459,9 +1542,9 @@ enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
 incorrect or unpredictable results in XLA reductions.
 
-As an example, when reducing across the one dimension in a 1D array with values
-[10, 11, 12, 13], with reduction function `f` (this is `computation`) then that
-could be computed as
+As an example, when reducing across one dimension in a single 1D array with
+values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
 
@@ -1542,6 +1625,34 @@ We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
 the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
+
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. For example, consider the following
+reduction function, which can be used to compute the max and the argmax of a
+a 1-D tensor in parallel:
+
+```
+f: (Float, Int, Float, Int) -> Float, Int
+f(max, argmax, value, index):
+  if value >= argmax:
+    return (value, index)
+  else:
+    return (max, argmax)
+```
+
+For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
+`I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
+input dimension is equivalent to the following recursive application:
+```
+f_0 = f(I_V, I_K, V_0, K_0)
+f_1 = f(f_0.first, f_0.second, V_1, K_1)
+...
+f_(N-1) = f(f_(N-2).first, f_(N-2).second, V_(N-1), K_(N-1))
+```
+
+Applying this reduction to an array of values, and an array of sequential
+indices (i.e. iota), will co-iterate over the arrays, and return a tuple
+containing the maximal value and the matching index.
 
 ## ReducePrecision
 
@@ -1766,19 +1877,19 @@ See also
 [`XlaBuilder::RngNormal`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
-the $$N(\mu, \sigma)$$ normal distribution. The parameters `mu` and `sigma`, and
-output shape have to have elemental type F32. The parameters furthermore have to
-be scalar valued.
+the $$N(\mu, \sigma)$$ normal distribution. The parameters $$\mu$$ and
+$$\sigma$$, and output shape have to have a floating point elemental type. The
+parameters furthermore have to be scalar valued.
 
-<b>`RngNormal(mean, sigma, shape)`</b>
+<b>`RngNormal(mu, sigma, shape)`</b>
 
 | Arguments | Type    | Semantics                                           |
 | --------- | ------- | --------------------------------------------------- |
-| `mu`      | `XlaOp` | Scalar of type F32 specifying mean of generated     |
-:           :         : numbers                                             :
-| `sigma`   | `XlaOp` | Scalar of type F32 specifying standard deviation of |
+| `mu`      | `XlaOp` | Scalar of type T specifying mean of generated       |
+:           :         : numbers                                   :
+| `sigma`   | `XlaOp` | Scalar of type T specifying standard deviation of   |
 :           :         : generated numbers                                   :
-| `shape`   | `Shape` | Output shape of type F32                            |
+| `shape`   | `Shape` | Output shape of type T                              |
 
 ## RngUniform
 
@@ -1787,9 +1898,11 @@ See also
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $$[a,b)$$. The parameters and output
-shape may be either F32, S32 or U32, but the types have to be consistent.
-Furthermore, the parameters need to be scalar valued. If $$b <= a$$ the result
-is implementation-defined.
+element type have to be a boolean type, an integral type or a floating point
+types, and the types have to be consistent. The CPU and GPU backends currently
+only support F64, F32, F16, BF16, S64, U64, S32 and U32. Furthermore, the
+parameters need to be scalar valued. If $$b <= a$$ the result is
+implementation-defined.
 
 <b>`RngUniform(a, b, shape)`</b>
 
@@ -1800,6 +1913,138 @@ is implementation-defined.
 | `b`       | `XlaOp`                 | Scalar of type T specifying upper |
 :           :                         : limit of interval                 :
 | `shape`   | `Shape`                 | Output shape of type T            |
+
+## Scatter
+
+The XLA scatter operation generates a result which is the value of the input
+tensor `operand`, with several slices (at indices specified by
+`scatter_indices`) updated with the values in `updates` using
+`update_computation`.
+
+See also
+[`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+<b> `scatter(operand, scatter_indices, updates, update_computation, index_vector_dim, update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims)` </b>
+
+|Arguments         | Type                   | Semantics                        |
+|------------------|------------------------|----------------------------------|
+|`operand`         | `XlaOp`                | Tensor to be scattered into.     |
+|`scatter_indices` | `XlaOp`                | Tensor containing the starting   |
+:                  :                        : indices of the slices that must  :
+:                  :                        : be scattered to.                 :
+|`updates`         | `XlaOp`                | Tensor containing the values that|
+:                  :                        : must be used for scattering.     :
+|`update_computation`| `XlaComputation`     | Computation to be used for       |
+:                  :                        : combining the existing values in :
+:                  :                        : the input tensor and the updates :
+:                  :                        : during scatter. This computation :
+:                  :                        : should be of type `T, T -> T`.   :
+|`index_vector_dim`| `int64`                | The dimension in                 |
+:                  :                        : `scatter_indices` that contains  :
+:                  :                        : the starting indices.            :
+|`update_window_dims`| `ArraySlice<int64>`  | The set of dimensions in         |
+:                  :                        : `updates` shape that are _window :
+:                  :                        : dimensions_.                     :
+|`inserted_window_dims`| `ArraySlice<int64>`| The set of _window dimensions_   |
+:                  :                        : that must be inserted into       :
+:                  :                        : `updates` shape.                 :
+|`scatter_dims_to_operand_dims`| `ArraySlice<int64>`  | A dimensions map from  |
+:                  :                        : the scatter indices to the       :
+:                  :                        : operand index space. This array  :
+:                  :                        : is interpreted as mapping `i` to :
+:                  :                        : `scatter_dims_to_operand_dims[i]`:
+:                  :                        : . It has to be one-to-one and    :
+:                  :                        : total.                           :
+
+If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
+`scatter_indices` to have a trailing `1` dimension.
+
+We define `update_scatter_dims` of type `ArraySlice<int64>` as the set of
+dimensions in `updates` shape that are not in `update_window_dims`, in ascending
+order.
+
+The arguments of scatter should follow these constraints:
+
+  - `updates` tensor must be of rank `update_window_dims.size +
+  scatter_indices.rank - 1`.
+
+  - Bounds of dimension `i` in `updates` must conform to the following:
+      - If `i` is present in `update_window_dims` (i.e. equal to
+        `update_window_dims`[`k`] for some `k`), then the bound of dimension
+        `i` in `updates` must not exceed the corresponding bound of `operand`
+        after accounting for the `inserted_window_dims` (i.e.
+        `adjusted_window_bounds`[`k`], where `adjusted_window_bounds` contains
+        the bounds of `operand` with the bounds at indices
+        `inserted_window_dims` removed).
+      - If `i` is present in `update_scatter_dims` (i.e. equal to
+        `update_scatter_dims`[`k`] for some `k`), then the bound of dimension
+        `i` in `updates` must be equal to the corresponding bound of
+        `scatter_indices`, skipping `index_vector_dim` (i.e.
+        `scatter_indices.shape.dims`[`k`], if `k` < `index_vector_dim` and
+        `scatter_indices.shape.dims`[`k+1`] otherwise).
+
+  - `update_window_dims` must be in ascending order, not have any repeating
+    dimension numbers, and be in the range `[0, updates.rank)`.
+
+  - `inserted_window_dims` must be in ascending order, not have any
+    repeating dimension numbers, and be in the range `[0, operand.rank)`.
+
+  - `scatter_dims_to_operand_dims.size` must be equal to
+    `scatter_indices`[`index_vector_dim`], and its values must be in the range
+    `[0, operand.rank)`.
+
+For a given index `U` in the `updates` tensor, the corresponding index `I` in
+the `operand` tensor into which this update has to be applied is computed as
+follows:
+
+  1. Let `G` = { `U`[`k`] for `k` in `update_scatter_dims` }. Use `G` to look up
+     an index vector `S` in the `scatter_indices` tensor such that `S`[`i`] =
+     `scatter_indices`[Combine(`G`, `i`)] where Combine(A, b) inserts b at
+     positions `index_vector_dim` into A.
+  2. Create an index `S`<sub>`in`</sub> into `operand` using `S` by scattering
+     `S` using the `scatter_dims_to_operand_dims` map. More formally:
+       1. `S`<sub>`in`</sub>[`scatter_dims_to_operand_dims`[`k`]] = `S`[`k`] if
+          `k` < `scatter_dims_to_operand_dims.size`.
+       2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+  3. Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
+     at `update_window_dims` in `U` according to `inserted_window_dims`.
+     More formally:
+       1. `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if
+          `k` < `update_window_dims.size`, where `window_dims_to_operand_dims`
+          is the monotonic function with domain [`0`, `update_window_dims.size`)
+          and range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For
+          example, if `update_window_dims.size` is `4`, `operand.rank` is `6`,
+          and `inserted_window_dims` is {`0`, `2`} then
+          `window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`,
+          `3`→`5`}).
+       2. `W`<sub>`in`</sub>[`_`] = `0` otherwise.
+  4. `I` is `W`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+     addition.
+
+In summary, the scatter operation can be defined as follows.
+
+   - Initialize `output` with `operand`, i.e. for all indices `O` in the
+     `operand` tensor:\
+       `output`[`O`] = `operand`[`O`]
+   - For every index `U` in the `updates` tensor and the corresponding index `O`
+     in the `operand` tensor:\
+       `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
+
+The order in which updates are applied is non-deterministic. So, when multiple
+indices in `updates` refer to the same index in `operand`, the corresponding
+value in `output` will be non-deterministic.
+
+Note that the first parameter that is passed into the `update_computation` will
+always be the current value from the `output` tensor and the second parameter
+will always be the value from the `updates` tensor. This is important
+specifically for cases when the `update_computation` is _not commutative_.
+
+Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
+the scatter op updates the elements in the input that are extracted by the
+corresponding gather op.
+
+For a detailed informal description and examples, refer to the
+"Informal Description" section under `Gather`.
 
 ## Select
 
@@ -2080,7 +2325,7 @@ element types.
 
 ## Transpose
 
-See also the @{tf.reshape} operation.
+See also the `tf.reshape` operation.
 
 <b>`Transpose(operand)`</b>
 
@@ -2140,8 +2385,6 @@ restrictions listed below.
     last execution of the `body`.
 *   The shape of the type `T` is statically determined and must be the same
     across all iterations.
-*   `While` nodes are not allowed to be nested. (This restriction may be lifted
-    in the future on some targets.)
 
 The T parameters of the computations are initialized with the `init` value in
 the first iteration and are automatically updated to the new result from `body`

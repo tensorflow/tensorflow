@@ -206,6 +206,9 @@ void RingReducer::ContinueAfterInputCopy() {
       group_size_tensor_ = group_size_val;
       group_size_tensor_ready_.Notify();
     }
+  } else {
+    // Value won't be used, so no need to initialize.
+    group_size_tensor_ready_.Notify();
   }
   Finish(RunAsyncParts());
 }

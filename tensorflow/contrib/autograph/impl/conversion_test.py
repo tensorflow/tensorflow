@@ -50,7 +50,7 @@ class ConversionTest(test.TestCase):
     self.assertTrue(conversion.is_whitelisted_for_graph(constant_op.constant))
 
   def test_entity_to_graph_unsupported_types(self):
-    with self.assertRaises(ValueError):
+    with self.assertRaises(NotImplementedError):
       program_ctx = self._simple_program_ctx()
       conversion.entity_to_graph('dummy', program_ctx, None, None)
 

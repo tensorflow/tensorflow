@@ -111,7 +111,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, TrivialMatrixVectorDot) {
                                         this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, OneElementVectorDot) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, OneElementVectorDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto lhs = ConstantR1<T>(&builder, {static_cast<T>(2.0f)});
@@ -137,7 +137,7 @@ std::vector<int64> MinorToMajorForIsRowMajor(bool row_major) {
   return {row_major ? 1 : 0, row_major ? 0 : 1};
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x0) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, Dot_0x2_2x0) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto lhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(0, 2));
@@ -148,7 +148,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x0) {
                                         this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x3) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, Dot_0x2_2x3) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto lhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(0, 2));
@@ -160,7 +160,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x3) {
                                         this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_3x2_2x0) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, Dot_3x2_2x0) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto lhs = ConstantR2FromArray2D<T>(
@@ -172,7 +172,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_3x2_2x0) {
                                         this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_2x0_0x2) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, Dot_2x0_0x2) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto lhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(2, 0));
@@ -183,7 +183,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_2x0_0x2) {
       &builder, Array2D<T>(2, 2, static_cast<T>(0.0f)), {}, this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, FusedDot) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, FusedDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto param0 =
@@ -533,7 +533,7 @@ XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
       &builder, expected, {lhs_handle.get(), rhs_handle.get()}, error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, ConcurrentMatMult) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, ConcurrentMatMult) {
   using T = TypeParam;
 
   XlaBuilder builder(this->TestName());
@@ -612,7 +612,7 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
   using T = TypeParam;
 
   XlaBuilder builder(this->TestName());
@@ -648,7 +648,49 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64, TransposeFolding) {
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
+                     "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
+                     "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(3);
+  dnums.add_rhs_contracting_dimensions(2);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_lhs_batch_dimensions(1);
+  dnums.add_rhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(1);
+
+  DotGeneral(x, y, dnums);
+
+  auto x_data =
+      this->client_
+          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D<T>(
+              {{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+               {{{9.0f, 10.0f}, {11.0f, 12.0f}},
+                {{13.0f, 14.0f}, {15.0f, 16.0f}}}}))
+          .ConsumeValueOrDie();
+
+  auto y_data =
+      this->client_
+          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D<T>(
+              {{{{1.0f, 0.0f}, {0.0f, 1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}},
+               {{{0.0f, 1.0f}, {1.0f, 0.0f}}, {{0.0f, 1.0f}, {1.0f, 0.0f}}}}))
+          .ConsumeValueOrDie();
+
+  this->template ComputeAndCompareR4<T>(
+      &builder,
+      /*expected=*/
+      {{{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+       {{{10.0f, 9.0f}, {12.0f, 11.0f}}, {{14.0f, 13.0f}, {16.0f, 15.0f}}}},
+      {x_data.get(), y_data.get()}, this->error_spec_);
+}
+
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, TransposeFolding) {
   using T = TypeParam;
   for (bool transpose_lhs : {false, true}) {
     for (bool transpose_rhs : {false, true}) {
@@ -708,7 +750,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, TransposeFolding) {
   }
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64,
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64,
                DotOfConcatOptimizationWithConstLHS) {
   using T = TypeParam;
   auto prim_type = primitive_util::NativeToPrimitiveType<T>();
@@ -754,7 +796,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64,
       this->error_spec_);
 }
 
-XLA_TYPED_TEST(DotOperationTest_F16F32F64,
+XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64,
                DotOfConcatOptimizationWithConstRHS) {
   using T = TypeParam;
   std::unique_ptr<Array2D<T>> constant_rhs_array(

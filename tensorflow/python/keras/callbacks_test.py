@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -385,6 +386,7 @@ class KerasCallbacksTest(test.TestCase):
       y_train = keras.utils.to_categorical(y_train)
 
       def make_model():
+        random_seed.set_random_seed(1234)
         np.random.seed(1337)
         model = keras.models.Sequential()
         model.add(
@@ -726,6 +728,8 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator without validation data
+      # histogram_freq must be zero
+      tsb.histogram_freq = 0
       model.fit_generator(
           data_generator(True),
           len(x_train),
@@ -734,6 +738,7 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator with validation data and accuracy
+      tsb.histogram_freq = 1
       model.fit_generator(
           data_generator(True),
           len(x_train),
@@ -743,6 +748,7 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator without validation data and accuracy
+      tsb.histogram_freq = 0
       model.fit_generator(
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)

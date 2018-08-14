@@ -98,9 +98,9 @@ class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
   A `tf.train.Server` instance encapsulates a set of devices and a
-  @{tf.Session} target that
+  `tf.Session` target that
   can participate in distributed training. A server belongs to a
-  cluster (specified by a @{tf.train.ClusterSpec}), and
+  cluster (specified by a `tf.train.ClusterSpec`), and
   corresponds to a particular task in a named job. The server can
   communicate with any other server in the same cluster.
   """
@@ -186,7 +186,7 @@ class Server(object):
     """Returns the target for a `tf.Session` to connect to this server.
 
     To create a
-    @{tf.Session} that
+    `tf.Session` that
     connects to this server, use the following snippet:
 
     ```python
@@ -230,7 +230,7 @@ class ClusterSpec(object):
 
   A `tf.train.ClusterSpec` represents the set of processes that
   participate in a distributed TensorFlow computation. Every
-  @{tf.train.Server} is constructed in a particular cluster.
+  `tf.train.Server` is constructed in a particular cluster.
 
   To create a cluster with two jobs and five tasks, you specify the
   mapping from job names to lists of network addresses (typically
@@ -421,7 +421,7 @@ class ClusterSpec(object):
     NOTE: For backwards compatibility, this method returns a list. If
     the given job was defined with a sparse set of task indices, the
     length of this list may not reflect the number of tasks defined in
-    this job. Use the @{tf.train.ClusterSpec.num_tasks} method
+    this job. Use the `tf.train.ClusterSpec.num_tasks` method
     to find the number of tasks defined in a particular job.
 
     Args:

@@ -148,6 +148,7 @@ enum class OperatorType : uint8 {
   kLogicalAnd,
   kLogicalNot,
   kLogicalOr,
+  kCTCBeamSearchDecoder,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -436,6 +437,28 @@ struct ConvOperator : Operator {
   // attribute is not present.
   int dilation_width_factor = 1;
   int dilation_height_factor = 1;
+};
+
+// CTCBeamSearchDecoder operator:
+//
+// Inputs:
+//   inputs[0]: required: the logits.
+//   inputs[1]: required: sequence length.
+//   inputs[2]: optional: beam width.
+//   inputs[3]: optional: top paths.
+//   inputs[4]: optional: merge repeated.
+//
+//  Outputs:
+//    outputs[0]: deocoded.
+//    outputs[1]: log probability.
+//
+// TensorFlow equivalent: CTCBeamSearchDecoder
+struct CTCBeamSearchDecoderOperator : Operator {
+  CTCBeamSearchDecoderOperator()
+      : Operator(OperatorType::kCTCBeamSearchDecoder) {}
+  int beam_width;
+  int top_paths;
+  bool merge_repeated = true;
 };
 
 // Depthwise-separable convolution operator.
@@ -1509,6 +1532,9 @@ struct TensorFlowUnsupportedOperator : Operator {
   string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
+  // A boolean indicating if the unsupported op output should allow float values
+  // in quantized mode.
+  bool support_output_type_float_in_quantized_op = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
   // Output shapes.
@@ -2045,7 +2071,7 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
-  // Arithmatic operations performed in the model.
+  // Arithmetic operations performed in the model.
   int64 ops_count = 0;
 
  private:
