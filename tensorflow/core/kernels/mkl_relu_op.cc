@@ -44,7 +44,7 @@ using mkldnn::memory;
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 template <typename T>
 class MklEltwiseFwdParams {
