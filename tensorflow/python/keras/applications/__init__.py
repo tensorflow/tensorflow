@@ -39,7 +39,7 @@ from tensorflow.python.keras.applications.densenet import DenseNet201
 from tensorflow.python.keras.applications.inception_resnet_v2 import InceptionResNetV2
 from tensorflow.python.keras.applications.inception_v3 import InceptionV3
 from tensorflow.python.keras.applications.mobilenet import MobileNet
-from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
+# TODO(fchollet): enable MobileNetV2 in next version.
 from tensorflow.python.keras.applications.nasnet import NASNetLarge
 from tensorflow.python.keras.applications.nasnet import NASNetMobile
 from tensorflow.python.keras.applications.resnet50 import ResNet50

@@ -31,6 +31,9 @@ Checkpointable data structures:
 @@List
 @@Mapping
 @@UniqueNameTracker
+
+Checkpoint management:
+@@CheckpointManager
 """
 
 from __future__ import absolute_import
@@ -41,6 +44,7 @@ from tensorflow.contrib.checkpoint.python.containers import UniqueNameTracker
 from tensorflow.contrib.checkpoint.python.split_dependency import split_dependency
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph
+from tensorflow.python.training.checkpoint_management import CheckpointManager
 from tensorflow.python.training.checkpointable.base import CheckpointableBase
 from tensorflow.python.training.checkpointable.data_structures import List
 from tensorflow.python.training.checkpointable.data_structures import Mapping

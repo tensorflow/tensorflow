@@ -193,7 +193,8 @@ class MNISTModel(tf.keras.Model):
   def call(self, input):
     """Run the model."""
     result = self.dense1(input)
-    result = self.dense2(result)  # reuse variables from dense1 layer
+    result = self.dense2(result)
+    result = self.dense2(result)  # reuse variables from dense2 layer
     return result
 
 model = MNISTModel()

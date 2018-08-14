@@ -296,109 +296,15 @@ py_test(
 )
 
 py_test(
-    name = "densenet_test",
-    size = "large",
-    srcs = ["applications/densenet_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["nomsan"],  # times out, http://b/78650237
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "inception_resnet_v2_test",
-    size = "medium",
-    srcs = ["applications/inception_resnet_v2_test.py"],
+    name = "applications_test",
+    size = "enormous",
+    srcs = ["applications/applications_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "inception_v3_test",
-    size = "medium",
-    srcs = ["applications/inception_v3_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "mobilenet_test",
-    size = "medium",
-    srcs = ["applications/mobilenet_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "nasnet_test",
-    size = "large",
-    srcs = ["applications/nasnet_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["nomsan"],  # times out, http://b/78573625
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "resnet50_test",
-    size = "medium",
-    srcs = ["applications/resnet50_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "vgg16_test",
-    size = "small",
-    srcs = ["applications/vgg16_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "vgg19_test",
-    size = "small",
-    srcs = ["applications/vgg19_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "xception_test",
-    size = "medium",
-    srcs = ["applications/xception_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -715,18 +621,6 @@ cuda_py_test(
         ":keras",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "imagenet_utils_test",
-    size = "small",
-    srcs = ["applications/imagenet_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 
