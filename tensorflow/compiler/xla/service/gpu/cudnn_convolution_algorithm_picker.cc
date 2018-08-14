@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace gpu {
@@ -137,6 +138,28 @@ string NumBytesToString(int64 bytes) {
       tensorflow::strings::HumanReadableNumBytes(bytes), " (", bytes, "B)");
 }
 
+// Acquires a process-global lock on the device pointed to by the given
+// StreamExecutor.
+//
+// This is used to prevent other XLA instances from trying to autotune on this
+// device while we're using it.
+tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64>,
+                   tensorflow::mutex>();
+
+  tensorflow::mutex_lock global_lock(mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+  return tensorflow::mutex_lock{it->second};
+}
+
 }  // anonymous namespace
 
 // We could have caching here so that we don't redo this work for two identical
@@ -155,6 +178,13 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
     const Shape& output_shape, const Window& window,
     const ConvolutionDimensionNumbers& dnums, HloInstruction* instr) {
+  // Don't run this function concurrently on the same GPU.
+  //
+  // This is a bit of a hack and doesn't protect us against arbitrary concurrent
+  // use of a GPU, but it's sufficient to let us compile two HLO modules
+  // concurrently and then run them sequentially.
+  tensorflow::mutex_lock lock = LockGpu(stream_exec_);
+
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();

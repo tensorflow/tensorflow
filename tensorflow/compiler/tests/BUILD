@@ -673,6 +673,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    shard_count = 5,
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -690,11 +691,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["random_ops_test.py"],
     disabled_backends = [
-        # TODO(b/110300529): RngNormal doesn't return values with the expected variance
-        "cpu",
         "cpu_ondemand",
-        # TODO(b/31361304): enable RNG ops on GPU when parallelized.
-        "gpu",
     ],
     deps = [
         ":xla_test",
@@ -1002,6 +999,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
+    shard_count = 5,
     # Times out in fastbuild mode.
     tags = ["optonly"],
     deps = [

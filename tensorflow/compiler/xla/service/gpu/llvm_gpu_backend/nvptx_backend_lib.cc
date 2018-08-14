@@ -114,21 +114,20 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
 // we see an unrecognized compute capability, we return "sm_30".
 static string GetSmName(std::pair<int, int> compute_capability) {
-  static auto* m = new std::map<std::pair<int, int>, int>(
-      {{{2, 0}, 20},
-       {{2, 1}, 21},
-       {{3, 0}, 30},
-       {{3, 2}, 32},
-       {{3, 5}, 35},
-       {{3, 7}, 37},
-       {{5, 0}, 50},
-       {{5, 2}, 52},
-       {{5, 3}, 53},
-       {{6, 0}, 60},
-       {{6, 1}, 61},
-       {{6, 2}, 62},
-       // TODO: Change this to 70 once LLVM NVPTX supports it
-       {{7, 0}, 60}});
+  static auto* m = new std::map<std::pair<int, int>, int>({
+      {{3, 0}, 30},
+      {{3, 2}, 32},
+      {{3, 5}, 35},
+      {{3, 7}, 37},
+      {{5, 0}, 50},
+      {{5, 2}, 52},
+      {{5, 3}, 53},
+      {{6, 0}, 60},
+      {{6, 1}, 61},
+      {{6, 2}, 62},
+      {{7, 0}, 70},
+      {{7, 2}, 72},
+  });
   int sm_version = 30;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
@@ -181,7 +180,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
   llvm_ir::SetTargetOptions(
       /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_enable_fast_math(),
+          .xla_gpu_enable_fast_math(),
       &target_options);
 
   // Enable FMA synthesis.
@@ -329,7 +328,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   if (linker.linkInModule(
           std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
           [](Module& M, const StringSet<>& GVS) {
-            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+            internalizeModule(M, [&GVS](const GlobalValue& GV) {
               return !GV.hasName() || (GVS.count(GV.getName()) == 0);
             });
           })) {

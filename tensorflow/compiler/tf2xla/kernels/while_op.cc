@@ -301,6 +301,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 }
 
 REGISTER_XLA_OP(Name("While").AllowResourceTypes(), XlaWhileOp);
+REGISTER_XLA_OP(Name("StatelessWhile").AllowResourceTypes(), XlaWhileOp);
 REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes(), XlaWhileOp);
 
 }  // namespace tensorflow

@@ -173,14 +173,22 @@ class ReadBatchFeaturesTest(
       for num_epochs in [1, 10]:
         with ops.Graph().as_default():
           # Basic test: read from file 0.
-          self.outputs = self.make_batch_feature(
+          outputs = self.make_batch_feature(
               filenames=self.test_filenames[0],
               num_epochs=num_epochs,
               batch_size=batch_size,
               drop_final_batch=True).make_one_shot_iterator().get_next()
-          for _, tensor in self.outputs.items():
+          for _, tensor in outputs.items():
             if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
               self.assertEqual(tensor.shape[0], batch_size)
+
+  def testIndefiniteRepeatShapeInference(self):
+    dataset = self.make_batch_feature(
+        filenames=self.test_filenames[0], num_epochs=None, batch_size=32)
+    for shape, clazz in zip(nest.flatten(dataset.output_shapes),
+                            nest.flatten(dataset.output_classes)):
+      if issubclass(clazz, ops.Tensor):
+        self.assertEqual(32, shape[0])
 
 
 class MakeCsvDatasetTest(test.TestCase):
@@ -795,6 +803,16 @@ class MakeCsvDatasetTest(test.TestCase):
               all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
           self.assertFalse(all_equal)
 
+  def testIndefiniteRepeatShapeInference(self):
+    column_names = ["col%d" % i for i in range(5)]
+    inputs = [[",".join(x for x in column_names), "0,1,2,3,4", "5,6,7,8,9"], [
+        ",".join(x for x in column_names), "10,11,12,13,14", "15,16,17,18,19"
+    ]]
+    filenames = self._setup_files(inputs)
+    dataset = self._make_csv_dataset(filenames, batch_size=32, num_epochs=None)
+    for shape in nest.flatten(dataset.output_shapes):
+      self.assertEqual(32, shape[0])
+
 
 class MakeTFRecordDatasetTest(
     reader_dataset_ops_test_base.TFRecordDatasetTestBase):
@@ -1001,6 +1019,13 @@ class MakeTFRecordDatasetTest(
           # you specify a seed.
           self._shuffle_test(batch_size, num_epochs, num_parallel_reads,
                              seed=21345)
+
+  def testIndefiniteRepeatShapeInference(self):
+    dataset = readers.make_tf_record_dataset(
+        file_pattern=self.test_filenames, num_epochs=None, batch_size=32)
+    for shape in nest.flatten(dataset.output_shapes):
+      self.assertEqual(32, shape[0])
+
 
 if __name__ == "__main__":
   test.main()

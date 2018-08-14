@@ -1,3 +1,4 @@
+// LINT.IfChange
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,3 +47,4 @@ inline float LogSumExp(float log_prob_1, float log_prob_2) {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_loss_util.h)

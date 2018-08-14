@@ -348,6 +348,11 @@ REGISTER_OP("AdjustContrast")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Deprecated(2, "Use AdjustContrastv2 instead")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor, min_value, max_value should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
@@ -357,6 +362,9 @@ REGISTER_OP("AdjustContrastv2")
     .Input("contrast_factor: float")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 

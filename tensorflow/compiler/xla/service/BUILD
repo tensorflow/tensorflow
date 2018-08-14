@@ -570,7 +570,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
@@ -613,6 +613,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = 1,
@@ -1385,14 +1386,26 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "while_loop_analysis",
+    srcs = ["while_loop_analysis.cc"],
+    hdrs = ["while_loop_analysis.h"],
+    deps = [
+        ":hlo",
+        ":hlo_evaluator",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "while_loop_simplifier",
     srcs = ["while_loop_simplifier.cc"],
     hdrs = ["while_loop_simplifier.h"],
     deps = [
         ":call_inliner",
         ":hlo",
-        ":hlo_evaluator",
         ":hlo_pass",
+        ":while_loop_analysis",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],

@@ -42,7 +42,9 @@ from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -357,6 +359,14 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
 
   def model_fn(features, labels, mode):
     """model_fn for keras Estimator."""
+    # Raise an error when users use DistributionStrategy with native Keras
+    # optimizers. Currently we only support native TensorFlow optimizers.
+    if distribute_lib.has_distribution_strategy() and \
+        not isinstance(keras_model.optimizer,
+                       (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+      raise ValueError('Only TensorFlow native optimizers are supported with '
+                       'DistributionStrategy.')
+
     model = _clone_and_build_model(mode, keras_model, custom_objects, features,
                                    labels)
     model_output_names = []
@@ -386,7 +396,7 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
       loss = model.total_loss
 
       if model.metrics:
-        # TODO(fchollet): support stateful metrics
+        # TODO(psv/fchollet): support stateful metrics
         eval_metric_ops = {}
         # When each metric maps to an output
         if isinstance(model.metrics, dict):
@@ -442,7 +452,7 @@ def _save_first_checkpoint(keras_model, custom_objects, config):
   # save checkpoint into subdirectory to allow warm start
   keras_model_dir = os.path.join(config.model_dir, 'keras')
   # Load weights and save to checkpoint if there is no checkpoint
-  latest_path = saver_lib.latest_checkpoint(keras_model_dir)
+  latest_path = checkpoint_management.latest_checkpoint(keras_model_dir)
   if not latest_path:
     keras_weights = None
     if _any_weight_initialized(keras_model):

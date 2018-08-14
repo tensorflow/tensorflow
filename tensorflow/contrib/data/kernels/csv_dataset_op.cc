@@ -131,7 +131,7 @@ class CSVDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<string> filenames, bool header,
             string compression_type, io::ZlibCompressionOptions options,
@@ -139,7 +139,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes,
             std::vector<Tensor> record_defaults, std::vector<int64> select_cols,
             bool use_quote_delim, char delim, string na_value)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_(header),
           out_type_(output_types),
@@ -168,7 +168,8 @@ class CSVDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       Node* compression_type = nullptr;

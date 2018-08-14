@@ -735,7 +735,10 @@ cc_library(
         "util/reporter.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-lm"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
@@ -860,7 +863,6 @@ tf_cuda_library(
         "util/work_sharder.h",
     ] + select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
@@ -2036,7 +2038,7 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
+        "//tensorflow:android": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",
@@ -2125,7 +2127,6 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -2150,7 +2151,6 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -2182,7 +2182,6 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -2238,6 +2237,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2266,6 +2266,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2292,6 +2293,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
         "@png_archive//:png",
     ],
 )
@@ -2483,7 +2485,6 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
@@ -2492,13 +2493,13 @@ tf_cuda_library(
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:freebsd": [],
+        "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
-        "//conditions:default": ["-ldl"],
-    }) + [
-        "-lm",
-    ],
+        "//conditions:default": [
+            "-ldl",
+            "-lm",
+        ],
+    }),
     deps = [
         ":lib",
         ":lib_internal",
@@ -3142,7 +3143,10 @@ cc_library(
     testonly = 1,
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
-    linkopts = ["-lm"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     visibility = ["//tensorflow:internal"],
     deps = [
         ":lib",
@@ -3233,6 +3237,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/mutex_test.cc",
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
@@ -3490,6 +3495,7 @@ tf_cc_tests(
         "framework/tensor_shape_test.cc",
         "framework/tensor_slice_test.cc",
         "framework/tensor_test.cc",
+        "framework/tensor_testutil_test.cc",
         "framework/tensor_util_test.cc",
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",
@@ -4576,6 +4582,8 @@ filegroup(
         # PNG data
         "lib/png/testdata/lena_gray.png",
         "lib/png/testdata/lena_rgba.png",
+        "lib/png/testdata/lena_palette.png",
+        "lib/png/testdata/lena_palette_trns.png",
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",

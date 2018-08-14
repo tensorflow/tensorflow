@@ -129,6 +129,10 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
   CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",
                                          OperatorType::kLogicalOr);
+  CheckSimpleOperator<LogicalAndOperator>("LOGICAL_AND",
+                                          OperatorType::kLogicalAnd);
+  CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
+                                          OperatorType::kLogicalNot);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -470,6 +474,20 @@ TEST_F(OperatorTest, BuiltinOneHot) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("ONE_HOT", OperatorType::kOneHot), op);
   EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
+TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
+  CTCBeamSearchDecoderOperator op;
+  op.beam_width = 3;
+  op.top_paths = 2;
+  op.merge_repeated = false;
+  std::unique_ptr<toco::CTCBeamSearchDecoderOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("CTC_BEAM_SEARCH_DECODER",
+                                          OperatorType::kCTCBeamSearchDecoder),
+                              op);
+  EXPECT_EQ(op.beam_width, output_toco_op->beam_width);
+  EXPECT_EQ(op.top_paths, output_toco_op->top_paths);
+  EXPECT_EQ(op.merge_repeated, output_toco_op->merge_repeated);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

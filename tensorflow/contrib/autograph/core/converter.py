@@ -233,7 +233,7 @@ class Base(transformer.Base):
     arg_values = []
     for def_ in defs:
       if (directive not in def_.directives or
-          arg not in arg not in def_.directives[directive]):
+          arg not in def_.directives[directive]):
         continue
       arg_value = def_.directives[directive][arg]
       for prev_value in arg_values:

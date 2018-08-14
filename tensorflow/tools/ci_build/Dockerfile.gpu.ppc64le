@@ -26,3 +26,6 @@ ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 # Configure the build for our CUDA configuration.
 ENV TF_NEED_CUDA 1
 ENV TF_CUDA_COMPUTE_CAPABILITIES 3.0
+
+# TODO get NCCL 2 in the docker image
+ENV TF_NCCL_VERSION 1

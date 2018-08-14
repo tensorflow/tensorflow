@@ -16,7 +16,7 @@
 
 FeatureColumns provide a high level abstraction for ingesting and representing
 features. FeatureColumns are also the primary way of encoding features for
-canned @{tf.estimator.Estimator}s.
+canned `tf.estimator.Estimator`s.
 
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
@@ -1904,7 +1904,7 @@ class FeatureColumn(object):
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
     dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of @{tf.parse_example} for all
+    supported objects. Please check documentation of `tf.parse_example` for all
     supported spec objects.
 
     Let's say a Feature column depends on raw feature ('raw') and another
@@ -2025,7 +2025,7 @@ def _create_dense_column_weighted_sum(column,
 class CategoricalColumn(FeatureColumn):
   """Represents a categorical feature.
 
-  A categorical feature typically handled with a @{tf.SparseTensor} of IDs.
+  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
   """
   __metaclass__ = abc.ABCMeta
 

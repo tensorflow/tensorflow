@@ -29,6 +29,7 @@ limitations under the License.
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_OpNameGetAttrType;
@@ -59,10 +60,11 @@ limitations under the License.
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
-%rename("%s") TFE_ContextOptionsSetServerDef;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
+%rename("%s") TFE_ContextStartStep;
+%rename("%s") TFE_ContextEndStep;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"

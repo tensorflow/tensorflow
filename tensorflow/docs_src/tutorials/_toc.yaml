@@ -37,8 +37,29 @@ toc:
     status: external
   - title: "Custom training: walkthrough"
     path: /tutorials/eager/custom_training_walkthrough
+  - title: Text generation
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/generative_examples/text_generation.ipynb
+    status: external
   - title: Translation with attention
     path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb
+    status: external
+  - title: Image captioning
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/generative_examples/image_captioning_with_attention.ipynb
+    status: external
+  - title: Neural Style Transfer
+    path: https://github.com/tensorflow/models/blob/master/research/nst_blogpost/4_Neural_Style_Transfer_with_Eager_Execution.ipynb
+    status: external
+  - title: DCGAN
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/generative_examples/dcgan.ipynb
+    status: external
+  - title: VAE
+    path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples/generative_examples/cvae.ipynb
+    status: external
+  - title: Pix2Pix
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/pix2pix/pix2pix_eager.ipynb
+    status: external
+  - title: Image Segmentation
+    path: https://github.com/tensorflow/models/blob/master/samples/outreach/blogs/segmentation_blogpost/image_segmentation.ipynb
     status: external
 
 - title: ML at production scale

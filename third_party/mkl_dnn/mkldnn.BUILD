@@ -18,6 +18,7 @@ cc_library(
     srcs = glob([
         "src/common/*.cpp",
         "src/cpu/*.cpp",
+        "src/cpu/gemm/*.cpp",
     ]),
     hdrs = glob(["include/*"]),
     copts = [
@@ -42,6 +43,7 @@ cc_library(
         "src/common",
         "src/cpu",
         "src/cpu/xbyak",
+        "src/cpu/gemm",
     ],
     nocopts = "-fno-exceptions",
     visibility = ["//visibility:public"],

@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl_tfconv_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::stream;
@@ -60,7 +60,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 //     convert the TF format input to MKL format
 ///////////////////////////////////////////////////////////
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 template <typename Device, typename T>
 class MklInputConversionOp : public OpKernel {
  public:

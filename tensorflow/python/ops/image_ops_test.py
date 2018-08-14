@@ -1410,6 +1410,14 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
       y_tf = self._adjustContrastTf(x_np, contrast_factor)
       self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
+  def testContrastFactorShape(self):
+    x_shape = [1, 2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      image_ops.adjust_contrast(x_np, [2.0])
+
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
@@ -1956,7 +1964,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -2985,7 +2993,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -3201,7 +3209,8 @@ class PngTest(test_util.TensorFlowTestCase):
   def testExisting(self):
     # Read some real PNGs, converting to different channel numbers
     prefix = "tensorflow/core/lib/png/testdata/"
-    inputs = (1, "lena_gray.png"), (4, "lena_rgba.png")
+    inputs = ((1, "lena_gray.png"), (4, "lena_rgba.png"),
+              (3, "lena_palette.png"), (4, "lena_palette_trns.png"))
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
         with self.test_session(use_gpu=True) as sess:

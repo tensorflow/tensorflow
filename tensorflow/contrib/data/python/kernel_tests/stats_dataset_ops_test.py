@@ -20,8 +20,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import reader_dataset_ops_test_base
+from tensorflow.contrib.data.python.kernel_tests import stats_dataset_test_base
 from tensorflow.contrib.data.python.ops import stats_ops
-from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -29,28 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class StatsDatasetTestBase(test.TestCase):
-
-  def _assertSummaryHasCount(self, summary_str, tag, expected_value):
-    summary_proto = summary_pb2.Summary()
-    summary_proto.ParseFromString(summary_str)
-    for value in summary_proto.value:
-      if tag == value.tag:
-        self.assertEqual(expected_value, value.histo.num)
-        return
-    self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
-
-  def _assertSummaryHasSum(self, summary_str, tag, expected_value):
-    summary_proto = summary_pb2.Summary()
-    summary_proto.ParseFromString(summary_str)
-    for value in summary_proto.value:
-      if tag == value.tag:
-        self.assertEqual(expected_value, value.histo.sum)
-        return
-    self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
-
-
-class StatsDatasetTest(StatsDatasetTestBase):
+class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testBytesProduced(self):
     stats_aggregator = stats_ops.StatsAggregator()
@@ -197,7 +176,7 @@ class StatsDatasetTest(StatsDatasetTestBase):
 
 
 class FeatureStatsDatasetTest(
-    StatsDatasetTestBase,
+    stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.ReadBatchFeaturesTestBase):
 
   def testFeaturesStats(self):

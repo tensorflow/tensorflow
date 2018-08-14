@@ -22,6 +22,7 @@ package_group(
         "//learning/brain/research/sparse_matrix/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
+        "//third_party/car/...",
     ],
 )
 
@@ -649,7 +650,14 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
-        ":transpose_op",
+    ] + if_mkl(
+        [
+            ":mkl_transpose_op",
+        ],
+        [
+            ":transpose_op",
+        ],
+    ) + [
         ":unique_op",
         ":unpack_op",
         ":unravel_index_op",
@@ -782,7 +790,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
     prefix = "quantize_and_dequantize_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":cwise_op"],
 )
 
 tf_kernel_library(
@@ -886,18 +894,27 @@ tf_kernel_library(
     deps = ARRAY_DEPS,
 )
 
-tf_kernel_library(
-    name = "transpose_op",
-    srcs = [
-        "transpose_op.cc",
-    ] + if_mkl([
-        "mkl_transpose_op.cc",
-    ]),
-    hdrs = ["transpose_op.h"],
-    deps = ARRAY_DEPS + if_mkl([
-        "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ]),
+if_mkl(
+    [tf_mkl_kernel_library(
+        name = "mkl_transpose_op",
+        srcs = [
+            "mkl_transpose_op.cc",
+            "transpose_op.cc",
+        ],
+        hdrs = ["transpose_op.h"],
+        deps = ARRAY_DEPS + if_mkl([
+            "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn",
+        ]),
+    )],
+    [tf_kernel_library(
+        name = "transpose_op",
+        srcs = [
+            "transpose_op.cc",
+        ],
+        hdrs = ["transpose_op.h"],
+        deps = ARRAY_DEPS,
+    )],
 )
 
 tf_kernel_library(
@@ -2347,6 +2364,22 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "crop_and_resize_op_benchmark_test",
+    srcs = ["crop_and_resize_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "resize_benchmark_test",
     srcs = ["resize_op_benchmark_test.cc"],
     deps = [
@@ -2525,6 +2558,7 @@ tf_kernel_library(
     # allow multiple definitions when linking this.
     linkopts = select({
         "//tensorflow:darwin": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
     visibility = [":friends"],
@@ -2837,6 +2871,8 @@ tf_kernel_library(
     srcs = [] + if_mkl([
         "mkl_batch_matmul_op.cc",
     ]),
+    # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
+    hdrs = ["batch_matmul_op_impl.h"],
     # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
     # to avoid long compiling time. See https://github.com/tensorflow/tensorflow/issues/10521
     copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
@@ -3773,7 +3809,7 @@ tf_kernel_library(
         "spacetodepth_op.h",
         "spacetodepth_op_gpu.cu.cc",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4870,6 +4906,7 @@ filegroup(
         "fill_functor.cc",
         "fill_functor.h",
         "function_ops.cc",
+        "function_ops.h",
         "gather_functor.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
@@ -5351,15 +5388,23 @@ cc_library(
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
     linkopts = ["-ldl"],
-    tags = [
-        "manual",
-        "notap",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_gif_internal",
         "//tensorflow/core:android_jpeg_internal",
         "//tensorflow/core:android_png_internal",
+        "//tensorflow/core:android_tensorflow_lib_lite",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "android_whole_file_read_ops",
+    srcs = if_android(["whole_file_read_ops.cc"]),
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    visibility = ["//visibility:public"],
+    deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
     ],
     alwayslink = 1,

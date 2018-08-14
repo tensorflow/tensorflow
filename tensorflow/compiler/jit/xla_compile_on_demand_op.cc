@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
@@ -71,13 +72,14 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   run_options.set_stream(stream);
   run_options.set_allocator(client->backend().memory_allocator());
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-  run_options.set_rng_seed(ctx->step_id());
+  run_options.set_rng_seed(GetXLARandomSeed());
 
   xla::StatusOr<xla::ScopedShapedBuffer> run_result =
       executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
-  launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());
+  TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
+      ctx, result, run_result.ConsumeValueOrDie()));
   return Status::OK();
 }
 

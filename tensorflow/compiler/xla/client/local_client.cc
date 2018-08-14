@@ -101,11 +101,14 @@ Status LocalExecutable::ValidateExecutionOptions(
     }
   }
 
-  // Verify that the device the executable was built for is equivalent to the
-  // device it will run on.
-  int run_device_ordinal = run_options.device_ordinal() == -1
-                               ? backend_->default_device_ordinal()
-                               : run_options.device_ordinal();
+  // Verify that the device the executable was built for is equivalent
+  // to the device it will run on.
+  int run_device_ordinal = run_options.device_ordinal();
+  if (run_device_ordinal == -1) {
+    run_device_ordinal = run_options.stream() != nullptr
+                             ? run_options.stream()->parent()->device_ordinal()
+                             : backend_->default_device_ordinal();
+  }
   TF_ASSIGN_OR_RETURN(bool devices_equivalent,
                       backend_->devices_equivalent(
                           run_device_ordinal, build_options_.device_ordinal()));
@@ -300,7 +303,7 @@ StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
     const Shape& shape, int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
-  auto literal = MakeUnique<Literal>();
+  auto literal = Literal::CreateFromShape(shape);
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
       executor, shape, literal.get()));
   return std::move(literal);

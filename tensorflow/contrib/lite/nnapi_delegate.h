@@ -19,9 +19,10 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
-class ANeuralNetworsModel;
+class ANeuralNetworksModel;
+class ANeuralNetworksMemory;
+class ANeuralNetworksCompilation;
 
 namespace tflite {
 
@@ -53,6 +54,9 @@ class NNAPIDelegate {
 
   // Run
   TfLiteStatus Invoke(Interpreter* interpreter);
+
+  // Whether the current platform supports NNAPI delegation.
+  static bool IsSupported();
 
  private:
   // The NN API model handle

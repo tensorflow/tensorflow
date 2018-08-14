@@ -211,6 +211,17 @@ py_library(
 )
 
 py_library(
+    name = "map_defun",
+    srcs = ["map_defun.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_library(
     name = "resampling",
     srcs = ["resampling.py"],
     srcs_version = "PY2AND3",
@@ -370,6 +381,7 @@ py_library(
         ":get_single_element",
         ":grouping",
         ":interleave_ops",
+        ":map_defun",
         ":optimization",
         ":prefetching_ops",
         ":readers",

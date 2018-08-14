@@ -1,0 +1,11 @@
+path: "tensorflow.estimator.inputs"
+tf_module {
+  member_method {
+    name: "numpy_input_fn"
+    argspec: "args=[\'x\', \'y\', \'batch_size\', \'num_epochs\', \'shuffle\', \'queue_capacity\', \'num_threads\'], varargs=None, keywords=None, defaults=[\'None\', \'128\', \'1\', \'None\', \'1000\', \'1\'], "
+  }
+  member_method {
+    name: "pandas_input_fn"
+    argspec: "args=[\'x\', \'y\', \'batch_size\', \'num_epochs\', \'shuffle\', \'queue_capacity\', \'num_threads\', \'target_column\'], varargs=None, keywords=None, defaults=[\'None\', \'128\', \'1\', \'None\', \'1000\', \'1\', \'target\'], "
+  }
+}
