@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "ignite_dataset_iterator.h"
 #include "ignite_plain_client.h"
-#include "ignite_ssl_client.h"
 #include "tensorflow/core/platform/logging.h"
+
+#ifndef PLATFORM_WINDOWS
+#include "ignite_ssl_client.h"
+#endif
 
 #include <time.h>
 
@@ -30,7 +33,6 @@ IgniteDatasetIterator::IgniteDatasetIterator(
     std::vector<tensorflow::int32> schema,
     std::vector<tensorflow::int32> permutation)
     : tensorflow::DatasetIterator<IgniteDataset>(params),
-      client(std::unique_ptr<Client>(new SslClient(host, port, certfile, keyfile, cert_password))),
       cache_name(cache_name),
       local(local),
       part(part),
@@ -44,7 +46,11 @@ IgniteDatasetIterator::IgniteDatasetIterator(
       last_page(false) {
 
   if (!certfile.empty())
+    #ifndef PLATFORM_WINDOWS
     client = std::unique_ptr<Client>(new SslClient(host, port, certfile, keyfile, cert_password));
+    #else
+    LOG(ERROR) << "SSL is unavailable on Windows";
+    #endif
   else 
     client = std::unique_ptr<Client>(new PlainClient(host, port));
 

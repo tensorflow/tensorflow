@@ -41,7 +41,6 @@ cc_library(
         "kernels/ignite_dataset_ops.cc",
         "kernels/ignite_client.h",
         "kernels/ignite_plain_client.h",
-        "kernels/ignite_ssl_client.h",
         "kernels/ignite_binary_object_parser.h",
         "kernels/ignite_binary_object_parser.cc",
         "kernels/ignite_dataset.h",
@@ -50,17 +49,18 @@ cc_library(
         "kernels/ignite_dataset_iterator.cc",
     ] + if_not_windows([
         "kernels/ignite_plain_client_unix.cc",
+        "kernels/ignite_ssl_client.h",
         "kernels/ignite_ssl_client_unix.cc",
     ]) + if_windows([
-        "kernels/ignite_plain_client_windows.cc",
-        "kernels/ignite_ssl_client_windows.cc",
+        "kernels/ignite_plain_client_windows.cc"
     ]),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@boringssl//:ssl",
         "@protobuf_archive//:protobuf_headers",
-    ],
+    ] + if_not_windows([
+        "@boringssl//:ssl",
+    ]),
     alwayslink = 1,
 )
 
