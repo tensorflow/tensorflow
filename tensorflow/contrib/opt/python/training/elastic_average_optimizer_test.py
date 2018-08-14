@@ -84,8 +84,10 @@ def _get_workers(num_workers, period, workers, moving_rate, num_ps=1):
         var_0 = variable_scope.get_variable(initializer=0.0, name="v0")
         var_1 = variable_scope.get_variable(initializer=1.0, name="v1")
       if num_ps > 1:
-        with variable_scope.variable_scope("",
-            partitioner=partitioned_variables.fixed_size_partitioner(num_ps, axis=0),
+        with variable_scope.variable_scope(
+            "",
+            partitioner=partitioned_variables.fixed_size_partitioner(
+                num_ps, axis=0),
             custom_getter=ea_custom), ops.device(
                 device_setter.replica_device_setter(
                     worker_device=worker_device,
@@ -93,7 +95,9 @@ def _get_workers(num_workers, period, workers, moving_rate, num_ps=1):
                     ps_tasks=num_ps)):
 
           partition_var = variable_scope.get_variable(
-              'partition_var',shape=[2,4], initializer=init_ops.ones_initializer)
+              'partition_var',
+              shape=[2, 4],
+              initializer=init_ops.ones_initializer)
           part_0 = list(partition_var)[0]
           part_1 = list(partition_var)[1]
 
@@ -112,13 +116,15 @@ def _get_workers(num_workers, period, workers, moving_rate, num_ps=1):
             ea_custom_getter=ea_custom)
         if num_ps == 1:
           train_op = [
-            opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
+              opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
                                 global_step)
           ]
         else:
           train_op = [
-            opt.apply_gradients(([grads_0, var_0], [grads_1, var_1],
-                                [grads_part_0, part_0], [grads_part_1, part_1]),
+              opt.apply_gradients(([grads_0, var_0],
+                                   [grads_1, var_1],
+                                   [grads_part_0, part_0],
+                                   [grads_part_1, part_1]),
                                 global_step)
           ]
         easgd_hook = opt.make_session_run_hook(is_chief, worker_id)
@@ -190,7 +196,8 @@ class ElasticAverageOptimizerTest(test.TestCase):
     sessions[0].run(train_ops[0])
 
     # save, data will be global value
-    savers[0].save(sessions[0]._sess._sess._sess._sess, save_path='./model/model')
+    savers[0].save(sessions[0]._sess._sess._sess._sess,
+        save_path='./model/model')
     ops.reset_default_graph()   # restore on a new graph
     with session.Session() as sess:
       v0 = variable_scope.get_variable(initializer=0.0, name="v0")
@@ -219,7 +226,8 @@ class ElasticAverageOptimizerTest(test.TestCase):
 
     var_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v0:0")
     var_1_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/v1:0")
-    part_0_g = graphs[0].get_tensor_by_name(GLOBAL_VARIABLE_NAME + "/partition_var/part_0:0")
+    part_0_g = graphs[0].get_tensor_by_name(
+        GLOBAL_VARIABLE_NAME + "/partition_var/part_0:0")
 
     # Verify the initialized value.
     self.assertAllEqual(0.0, sessions[0].run(var_0))
@@ -241,16 +249,21 @@ class ElasticAverageOptimizerTest(test.TestCase):
     # part_0 of global_center copy
     part_0_g = sessions[0].run(part_0_g)
 
-    savers[0].save(sessions[0]._sess._sess._sess._sess, save_path='./model/model')
+    savers[0].save(sessions[0]._sess._sess._sess._sess,
+        save_path='./model/model')
 
     # verify restore of partitioned_variables
     ops.reset_default_graph()   # restore on a new graph
     g = ops.get_default_graph()
     with session.Session() as sess, g.as_default():
-      with variable_scope.variable_scope("",
-          partitioner=partitioned_variables.fixed_size_partitioner(num_ps, axis=0)):
+      with variable_scope.variable_scope(
+          "",
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_ps, axis=0)):
         partition_var = variable_scope.get_variable(
-            'partition_var',shape=[2,4], initializer=init_ops.ones_initializer)
+            'partition_var',
+            shape=[2, 4],
+            initializer=init_ops.ones_initializer)
       s = saver.Saver(var_list=[partition_var])
       s.restore(sess, './model/model')
       part_0 = g.get_tensor_by_name('partition_var/part_0:0')
