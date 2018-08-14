@@ -197,6 +197,8 @@ if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python2" ]]; then
   :
 elif [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
   FINAL_TAG="${FINAL_TAG}-py3"
+elif [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+  FINAL_TAG="${FINAL_TAG}-py3.6"
 else
   die "Unrecognized value in TF_DOCKER_BUILD_PYTHON_VERSION: "\
 "${TF_DOCKER_BUILD_PYTHON_VERSION}"
@@ -377,15 +379,17 @@ else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
   fi
 
   # Modify python/pip version if necessary.
-  if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || \
-        [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
+  if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]] || [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+    if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${TF_DOCKER_BUILD_PYTHON_VERSION}")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON3_DEV=python3-dev")
         TF_DOCKER_BUILD_ARGS+=("--build-arg WHL_DIR=/tmp/pip3")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
         cp "${ORIG_DOCKERFILE}" "${DOCKERFILE}"
     else
+      if [[ "${TF_DOCKER_BUILD_TYPE}" != "mkl" ]]; then
+        die "Python 3.6 build only supported for MKL builds."
+      fi
       if sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
          sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
          sed -i -e 's^/tmp/pip^/tmp/pip3^g' "${DOCKERFILE}" && \
