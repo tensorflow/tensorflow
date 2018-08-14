@@ -24,7 +24,7 @@ REGISTER5(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16, int16,
           int32, int64);
 REGISTER6(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
-REGISTER5(BinaryOp, CPU, "UnsafeDiv", functor::unsafe_div, float, double, int16,
+REGISTER5(BinaryOp, CPU, "DivNoNan", functor::unsafe_div, float, double, int16,
           int32, int64);
 
 #if GOOGLE_CUDA

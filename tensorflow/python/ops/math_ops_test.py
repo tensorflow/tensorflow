@@ -473,7 +473,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf_result, expanded_nums)
 
 
-class UnsafeDivTest(test_util.TensorFlowTestCase):
+class DivNoNanTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
     nums = np.arange(-10, 10, .25).reshape(80, 1)

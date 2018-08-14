@@ -1,9 +1,9 @@
 op {
-  graph_op_name: "UnsafeDiv"
+  graph_op_name: "DivNoNan"
   summary: "Returns 0 if the denominator is zero."
   description: <<END
 
-*NOTE*: `UnsafeDiv` supports broadcasting. More about broadcasting
+*NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 END
 }

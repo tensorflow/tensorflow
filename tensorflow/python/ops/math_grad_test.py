@@ -231,7 +231,7 @@ class FloorModGradientTest(test.TestCase):
       self.assertLess(error, 1e-4)
 
 
-class UnsafeDivGradientTest(test.TestCase):
+class DivNoNanGradientTest(test.TestCase):
 
   def testBasicGradient(self):
     inputs = constant_op.constant(np.arange(-3, 3),
