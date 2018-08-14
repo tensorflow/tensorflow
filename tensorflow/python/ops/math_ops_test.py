@@ -483,7 +483,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
     np_result[:, divs[0] == 0] = 0
 
     with self.test_session():
-      tf_result = math_ops.unsafe_div(nums, divs).eval()
+      tf_result = math_ops.div_no_nan(nums, divs).eval()
       self.assertAllEqual(tf_result, np_result)
 
 

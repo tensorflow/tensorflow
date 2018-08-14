@@ -983,10 +983,10 @@ def _DivNoNanGrad(op, grad):
   x = math_ops.conj(x)
   y = math_ops.conj(y)
   return (array_ops.reshape(
-      math_ops.reduce_sum(math_ops.unsafe_div(grad, y), rx), sx),
+      math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
           array_ops.reshape(
               math_ops.reduce_sum(
-                  grad * math_ops.unsafe_div(math_ops.unsafe_div(-x, y), y),
+                  grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),
                   ry), sy))
 
 
