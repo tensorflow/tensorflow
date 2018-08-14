@@ -1041,11 +1041,8 @@ def div(x, y, name=None):
 def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
 
-  Note that the function uses Python 3 division operator semantics.
-
   Args:
-    x: A `Tensor`. Must be one of the following types:
-       `float32`, `float64`, `int16`, `int32`, `int64`.
+    x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     y: A `Tensor` whose dtype is compatible with `x`.
     name: A name for the operation (optional).
   Returns:
