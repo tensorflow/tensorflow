@@ -32,7 +32,7 @@ using mkldnn::stream;
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 using mkldnn::memory;
 using mkldnn::pooling_avg;
