@@ -34,7 +34,7 @@ from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import \
-  ElasticAverageOptimizer, ElasticAverageCustomGetter, GLOBAL_VARIABLE_NAME, GLOBAL_SHARE_VARS
+  ElasticAverageOptimizer, ElasticAverageCustomGetter, GLOBAL_VARIABLE_NAME
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
@@ -81,10 +81,6 @@ def _get_workers(num_workers, period, workers, moving_rate, num_ps=1):
                   ps_device="/job:ps/task:0/cpu:0",
                   ps_tasks=1)):
         global_step = training_util.get_or_create_global_step()
-        local_var = variable_scope.get_variable(initializer=0.0, trainable=False,
-              name='local_var', collections=[ops.GraphKeys.GLOBAL_VARIABLES])
-        global_var = variable_scope.get_variable(initializer=0.0, trainable=False,
-              name='global_var', collections=[GLOBAL_SHARE_VARS])
         var_0 = variable_scope.get_variable(initializer=0.0, name="v0")
         var_1 = variable_scope.get_variable(initializer=1.0, name="v1")
       if num_ps > 1:
@@ -182,13 +178,6 @@ class ElasticAverageOptimizerTest(test.TestCase):
     self.assertAllEqual(2.0, sessions[0].run(var_0_g))
     self.assertAllEqual(3.0, sessions[0].run(var_1_g))
     self.assertAllEqual(1, sessions[0].run(global_step))
-
-    # verify variables are set to right collection
-    with graphs[0].as_default():
-      for ele in ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES):
-        self.assertNotEqual(ele.op.name, 'global_var')
-      for ele in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES):
-        self.assertNotEqual(ele.op.name, 'local_var')
 
     # iteration 3
     sessions[0].run(train_ops[0])
