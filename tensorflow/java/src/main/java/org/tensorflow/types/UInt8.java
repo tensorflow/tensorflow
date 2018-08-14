@@ -16,6 +16,9 @@ limitations under the License.
 package org.tensorflow.types;
 
 /** Represents an 8-bit unsigned integer. */
-public class UInt8 {
+public class UInt8 extends TFNumber {
+
+  private static final long serialVersionUID = 1L;
+
   private UInt8() {}
 }
