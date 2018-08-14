@@ -1066,7 +1066,7 @@ bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
           << config.GetCacheKey();
 
   const bool enable_fast_math =
-      hlo_module_config_.debug_options().xla_enable_fast_math();
+      hlo_module_config_.debug_options().xla_cpu_enable_fast_math();
   const bool optimize_for_size =
       options::OptimizeForSizeRequested(hlo_module_config_);
 
@@ -1149,7 +1149,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
       swap_operands ? lhs_array_.GetBasePointer() : rhs_array_.GetBasePointer();
 
   const bool enable_fast_math =
-      hlo_module_config_.debug_options().xla_enable_fast_math();
+      hlo_module_config_.debug_options().xla_cpu_enable_fast_math();
   const bool optimize_for_size =
       options::OptimizeForSizeRequested(hlo_module_config_);
 

@@ -314,12 +314,14 @@ cc_library(
         "deadness_analysis_internal.h",
         "encapsulate_subgraphs_pass.cc",
         "mark_for_compilation_pass.cc",
+        "mark_for_compilation_pass_test_helper.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
         "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "mark_for_compilation_pass.h",
+        "mark_for_compilation_pass_test_helper.h",
     ],
     deps = [
         ":common",

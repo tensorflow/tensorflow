@@ -427,7 +427,19 @@ REGISTER_OP("UnravelIndex")
     .Input("dims: Tidx")
     .Output("output: Tidx")
     .Attr("Tidx: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices = c->input(0);
+      ShapeHandle dims;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &dims));
+      if (c->RankKnown(indices) && c->Rank(indices) == 0) {
+        c->set_output(0, c->Vector(c->Dim(dims, 0)));
+      } else if (c->RankKnown(indices)) {
+        c->set_output(0, c->Matrix(c->Dim(dims, 0), c->NumElements(indices)));
+      } else {
+        c->set_output(0, c->UnknownShape());
+      }
+      return Status::OK();
+    });
 
 REGISTER_OP("BroadcastTo")
     .Input("input: T")

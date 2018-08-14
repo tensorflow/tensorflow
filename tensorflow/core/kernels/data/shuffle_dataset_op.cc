@@ -40,11 +40,11 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
 
  protected:
   // Abstract base dataset that implements a shuffling iterator.
-  class ShuffleDatasetBase : public GraphDatasetBase {
+  class ShuffleDatasetBase : public DatasetBase {
    public:
     ShuffleDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
                        int64 buffer_size, int64 count)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           buffer_size_(buffer_size),
           count_(count) {
