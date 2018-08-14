@@ -112,13 +112,13 @@ class ExtractEnergyDepsOp : public OpKernel {
         Tensor *assoc_tensor = NULL;
         Tensor *assoc_inv_tensor = NULL;
         OP_REQUIRES_OK(context,
-                       context->allocate_output(0, {n_events, n_samples_, max_n_deps, 14}, &edeps_tensor));
+                       context->allocate_output(0, {n_events, max_n_deps, 14 * n_samples_}, &edeps_tensor));
         OP_REQUIRES_OK(context, context->allocate_output(1, {n_events, max_n_deps}, &ids_tensor));
         OP_REQUIRES_OK(context,
                        context->allocate_output(2, {n_events, max_n_deps, max_n_deps}, &assoc_tensor));
         OP_REQUIRES_OK(context,
                        context->allocate_output(3, {n_events, max_n_deps, max_n_deps}, &assoc_inv_tensor));
-        auto edeps_eigen_tensor = edeps_tensor->tensor<float, 4>();
+        auto edeps_eigen_tensor = edeps_tensor->tensor<float, 3>();
         auto ids_eigen_tensor = ids_tensor->tensor<float, 2>();
         auto assoc_eigen_tensor = assoc_tensor->tensor<float, 3>();
         auto assoc_inv_eigen_tensor = assoc_inv_tensor->tensor<float, 3>();
@@ -218,20 +218,21 @@ class ExtractEnergyDepsOp : public OpKernel {
                     double theta = atan(rho / z);
                     double phi = atan(y / x);
 
-                    edeps_eigen_tensor(event_index, sample, t_index, 0) = x;
-                    edeps_eigen_tensor(event_index, sample, t_index, 1) = y;
-                    edeps_eigen_tensor(event_index, sample, t_index, 2) = z;
-                    edeps_eigen_tensor(event_index, sample, t_index, 3) = xx;
-                    edeps_eigen_tensor(event_index, sample, t_index, 4) = yy;
-                    edeps_eigen_tensor(event_index, sample, t_index, 5) = zz;
-                    edeps_eigen_tensor(event_index, sample, t_index, 6) = xy;
-                    edeps_eigen_tensor(event_index, sample, t_index, 7) = xz;
-                    edeps_eigen_tensor(event_index, sample, t_index, 8) = yz;
-                    edeps_eigen_tensor(event_index, sample, t_index, 9) = rho;
-                    edeps_eigen_tensor(event_index, sample, t_index, 10) = theta;
-                    edeps_eigen_tensor(event_index, sample, t_index, 11) = phi;
-                    edeps_eigen_tensor(event_index, sample, t_index, 12) = e;
-                    edeps_eigen_tensor(event_index, sample, t_index, 13) = t;
+                    int sampleIndex = 14 * sample;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 0) = x;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 1) = y;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 2) = z;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 3) = xx;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 4) = yy;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 5) = zz;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 6) = xy;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 7) = xz;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 8) = yz;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 9) = rho;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 10) = theta;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 11) = phi;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 12) = e;
+                    edeps_eigen_tensor(event_index, t_index, sampleIndex + 13) = t;
                 }
             }
         }

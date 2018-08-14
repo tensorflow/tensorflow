@@ -23,7 +23,7 @@ REGISTER_OP("ExtractEnergyDeps")
         int nSamples;
         TF_RETURN_IF_ERROR(c->GetAttr<int>("n_samples", &nSamples));
 
-        c->set_output(0, c->MakeShape({eventDim, nSamples, c->UnknownDim(), 14}));
+        c->set_output(0, c->MakeShape({eventDim, c->UnknownDim(), 14 * nSamples}));
         c->set_output(1, c->MakeShape({eventDim, c->UnknownDim()}));
         c->set_output(2, c->MakeShape({eventDim, c->UnknownDim(), c->UnknownDim()}));
         c->set_output(3, c->MakeShape({eventDim, c->UnknownDim(), c->UnknownDim()}));
