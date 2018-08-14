@@ -26,6 +26,7 @@ import tempfile
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
@@ -485,6 +486,31 @@ class CheckpointManagerTest(test.TestCase):
     self.assertEqual(5000., state.last_preserved_timestamp)
     self.assertEqual([5020.],
                      state.all_model_checkpoint_timestamps)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomNumbering(self):
+    directory = self.get_temp_dir()
+    step = variables.Variable(0, dtype=dtypes.int64)
+    checkpoint = util.Checkpoint(step=step)
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2)
+    self.evaluate(step.initializer)
+    for i in range(5):
+      path = manager.save(checkpoint_number=step)
+      expected_suffix = "-%d" % (2 * i,)
+      if not path.endswith(expected_suffix):
+        self.fail("%s should have suffix %s" % (path, expected_suffix))
+      self.evaluate(step.assign_add(2))
+    self.assertEqual(5, self.evaluate(checkpoint.save_counter))
+    # Test regular integers
+    last_path = manager.save(checkpoint_number=32)
+    self.assertIn("-32", last_path)
+    self.assertEqual(last_path, manager.latest_checkpoint)
+    self.assertEqual(
+        last_path, checkpoint_management.latest_checkpoint(directory))
+    state = checkpoint_management.get_checkpoint_state(directory)
+    # Only the most recent two checkpoints are saved
+    self.assertEqual([path, last_path], state.all_model_checkpoint_paths)
 
 
 if __name__ == "__main__":
