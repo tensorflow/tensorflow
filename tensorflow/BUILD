@@ -424,14 +424,14 @@ package_group(
 
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "if_mkl_ml",
 )
 
 filegroup(
     name = "intel_binary_blob",
-    data = if_mkl(
+    data = if_mkl_ml(
         [
-            "//third_party/mkl:intel_binary_blob",
+            "//third_party/intel_mkl_ml",
         ],
     ),
 )

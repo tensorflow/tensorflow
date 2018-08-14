@@ -23,7 +23,9 @@ load(
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
-    "if_mkl_lnx_x64"
+    "if_mkl_lnx_x64",
+    "if_mkl_ml",
+    "mkl_deps",
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
@@ -377,9 +379,9 @@ def tf_cc_binary(name,
       name=name,
       copts=copts,
       srcs=srcs + tf_binary_additional_srcs(),
-      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl(
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
           [
-              "//third_party/mkl:intel_binary_blob",
+              "//third_party/intel_mkl_ml",
           ],
       ),
       data=data +  tf_binary_dynamic_kernel_dsos(kernels),
@@ -695,9 +697,9 @@ def tf_cc_test(name,
             "-lm"
         ],
       }) + linkopts + _rpath_linkopts(name),
-      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl(
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
           [
-              "//third_party/mkl:intel_binary_blob",
+              "//third_party/intel_mkl_ml",
           ],
       ),
       data=data + tf_binary_dynamic_kernel_dsos(kernels),
@@ -877,11 +879,7 @@ def tf_cc_test_mkl(srcs,
             "-lm"
         ],
       }) + _rpath_linkopts(src_to_test_name(src)),
-      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl(
-          [
-              "//third_party/mkl:intel_binary_blob",
-          ],
-      ),
+      deps=deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
       data=data + tf_binary_dynamic_kernel_dsos(kernels),
       linkstatic=linkstatic,
       tags=tags,
@@ -1015,6 +1013,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
           "@local_config_cuda//cuda:cuda_headers"
       ]),
       copts=(copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
+             if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
              if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
       **kwargs)
 
