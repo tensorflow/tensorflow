@@ -972,9 +972,9 @@ def _RealDivGrad(op, grad):
                   grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))
 
 
-@ops.RegisterGradient("UnsafeDiv")
-def _UnsafeDivGrad(op, grad):
-  """UnsafeDiv op gradient."""
+@ops.RegisterGradient("DivNoNan")
+def _DivNoNanGrad(op, grad):
+  """DivNoNan op gradient."""
   x = op.inputs[0]
   y = op.inputs[1]
   sx = array_ops.shape(x)

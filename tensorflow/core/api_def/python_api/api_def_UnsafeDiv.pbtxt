@@ -1,4 +1,4 @@
 op {
-  graph_op_name: "UnsafeDiv"
+  graph_op_name: "DivNoNan"
   visibility: HIDDEN
 }
