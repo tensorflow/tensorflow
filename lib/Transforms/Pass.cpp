@@ -15,11 +15,11 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements loop unrolling.
+// This file implements common pass infrastructure.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/Pass.h"
+#include "mlir/Transforms/Pass.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
