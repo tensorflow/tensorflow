@@ -820,6 +820,7 @@ REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(string, double);
 REGISTER_KERNEL(string, float);
