@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 using mkldnn::pooling_avg;
 using mkldnn::pooling_avg_exclude_padding;
