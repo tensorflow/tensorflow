@@ -46,8 +46,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/estimator:linear_test \
     -//tensorflow/python/keras:cudnn_recurrent_test \
     -//tensorflow/python/keras:pooling_test \
-    -//tensorflow/python/keras:model_subclassing_test \
-    -//tensorflow/python/keras:topology_test \
     -//tensorflow/python/kernel_tests:conv1d_test \
     -//tensorflow/python/kernel_tests:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests:conv_ops_3d_test \
