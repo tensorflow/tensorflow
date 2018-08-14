@@ -754,7 +754,25 @@ static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
     4,          // warp_alloc_granularity
     256,        // register_alloc_granularity
     256         // shared_memory_alloc_granularity
-  }
+  },
+  {
+    900,        // AMDGPU ISA version (900)
+    16,         // blocks_per_core_limit
+    64 * 1024,  // registers_per_core_limit
+    255,        // registers_per_thread_limit
+    4,          // warp_alloc_granularity
+    256,        // register_alloc_granularity
+    256         // shared_memory_alloc_granularity
+  },
+  {
+    906,        // AMDGPU ISA version (900)
+    16,         // blocks_per_core_limit
+    64 * 1024,  // registers_per_core_limit
+    255,        // registers_per_thread_limit
+    4,          // warp_alloc_granularity
+    256,        // register_alloc_granularity
+    256         // shared_memory_alloc_granularity
+  },
 };
 
 DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
