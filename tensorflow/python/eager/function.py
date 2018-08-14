@@ -1325,18 +1325,60 @@ def defun(func=None, input_signature=None, compiled=False):
   generates and placed in the eager context if executing eagerly or into an
   outer graph otherwise.
 
-  _Tracing and Input Signatures_.
-  The signature of inputs supplied to `F` is defined to be a tuple of the shapes
-  and dtypes of Tensor-typed arguments and the values of non-Tensor arguments,
-  where "arguments" includes both args and kwargs. Every time `F` is invoked,
-  the signature of its inputs are inferred. The first time `F(*args, **kwargs)`
-  is invoked with a particular signature, `f(*args, **kwargs)` is executed and
-  all the TensorFlow operations that `f` executes, along with the Tensors that
-  flow between them, are recorded in a TensorFlow graph. `F` caches this graph
-  and binds it to the inputs' signature; every subsequent invocation of `F` with
-  inputs conforming to this signature will immediately retrieve the cached graph
-  and pass it to the TensorFlow runtime for execution.
+  _Input Signatures_
+  By default, `F = tf.contrib.eager.defun(f)` instantiates a separate graph
+  for every unique sequence of the shapes and dtypes of Tensor arguments and
+  the values of Python objects it is invoked with. For example, calling
+  `F(tf.random_uniform([2])` will execute a different graph than
+  `F(tf.random_uniform([3])` because the two inputs have different shapes.
+  The first time that `F(*args, **kwargs)` is called with a particular sequence
+  of Tensor shapes and dtypes and Python values, it constructs a graph by
+  tracing the execution of `f(*args, **kwargs)`; this graph is bound to an
+  input signature inferred from `(*args, **kwargs)` and cached for future reuse.
 
+  `tf.contrib.eager.defun` caches graphs for your convenience, letting you
+  define TensorFlow functions without explicitly specifying their signatures.
+  However, this policy is conservative and potentially expensive; for example,
+  when different invocations of your function have differently-shaped Tensor
+  inputs, this policy might generate more graph functions than necessary. To
+  eliminate such costs, `tf.contrib.eager.defun` allows you to supply an
+  optional `input_signature` argument specifying the shapes and dtypes of the
+  inputs. In particular, the shapes may be partially unspecified, with `None`s
+  in the unknown dimensions.  When an input signature is provided,
+  `tf.contrib.eager.defun` will only instantiate a single graph for the
+  decorated Python function. The following is an example:
+
+  ```python
+  import tensorflow as tf
+
+  # The first `TensorSpec` below describes the shape and dtype of `words`,
+  # and the second describes the shape and dtype of `another_tensor`. Note that
+  # the last dimension of the `words` `TensorSpec` is left unspecified.
+  @tf.contrib.eager.defun(input_signature=[
+    tf.contrib.eager.TensorSpec(shape=[50, 300, None], dtype=tf.float32),
+    tf.contrib.eager.TensorSpec(shape=[300, 100], dtype=tf.float32)
+  ])
+  def my_sequence_model(words, another_tensor):
+    ...
+
+  # Note how the third dimension of the first input can vary freely.
+  words = tf.random_uniform(([50, 300, 10])
+  second_input = tf.random_uniform([300, 100])
+  my_sequence_model(words, second_input)
+
+  words = tf.random_uniform(([50, 300, 20])
+  my_sequence_model(words, second_input)
+
+  # Passing an input with an incompatible shape will raise an error.
+  words = tf.random_uniform(([50, 100, 20])
+  my_sequence_model(words, second_input)  # <---- This will raise an error.
+
+  ```
+
+  Python functions that are compiled with an `input_signature` must only accept
+  Tensors as arguments and must not take unnamed keyword arguments (**kwargs).
+
+  _Tracing_
   Be aware that because `F` only logs TensorFlow operations, all the other
   Python code that `f` executes will only shape the _construction_ of the graphs
   that `F` executes: the Python code won't be executed when the graphs
