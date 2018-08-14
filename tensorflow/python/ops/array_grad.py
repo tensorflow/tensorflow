@@ -763,9 +763,10 @@ def _ExtractImagePatchesGrad(op, grad):
                                  (1, rows_out, cols_out, ksize_r * ksize_c))
 
   # Construct mapping table for indices: (input -> output).
-  idx_matrix = array_ops.concat([array_ops.expand_dims(input_idx_patched, axis=-1),
-                                 array_ops.expand_dims(output_idx, axis=-1)],
-                                axis=-1)
+  idx_matrix = array_ops.concat(
+      [array_ops.expand_dims(input_idx_patched, axis=-1),
+       array_ops.expand_dims(output_idx, axis=-1)],
+      axis=-1)
   idx_map = array_ops.reshape(idx_matrix, (-1, 2))
 
   sp_shape = (input_indices_num, output_indices_num)
