@@ -101,9 +101,6 @@ std::map<string, string> kBrokenTests = {
      "77546240"},
     {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
      "77546240"},
-
-    // A TOCO bug when multiple Conv2D/Matmul shares the same weight tensor.
-    {R"(^\/conv_with_shared_weights.*)", "112436267"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes
