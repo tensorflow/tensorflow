@@ -197,7 +197,7 @@ def _fused_batch_norm(inputs,
 
   Can be used as a normalizer function for conv2d and fully_connected.
 
-  Note: when training, the moving_mean and moving_variance need to be updated.
+  Caution: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
   need to be added as a dependency to the `train_op`. For example:
 
@@ -463,7 +463,7 @@ def batch_norm(inputs,
   this
   corresponds to the batch and space dimensions.
 
-  Note: when training, the moving_mean and moving_variance need to be updated.
+  Caution: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
   need to be added as a dependency to the `train_op`. For example:
 

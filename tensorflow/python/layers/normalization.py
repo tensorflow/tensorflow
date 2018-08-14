@@ -188,7 +188,7 @@ def batch_normalization(inputs,
 
   Sergey Ioffe, Christian Szegedy
 
-  Note: when training, the moving_mean and moving_variance need to be updated.
+  Caution: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
   need to be added as a dependency to the `train_op`. Also, be sure to add
   any batch_normalization ops before getting the update_ops collection.
