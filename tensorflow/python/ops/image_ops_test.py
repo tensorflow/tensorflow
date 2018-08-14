@@ -3686,7 +3686,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
             boxes, scores, max_output_size, iou_threshold).eval()
         self.assertAllClose(selected_indices, [3, 0, 5])
     # gen_image_ops.non_max_suppression_v4.
-    score_threshold=float('-inf')
+    score_threshold = float('-inf')
     for dtype in [np.float16, np.float32]:
       with self.test_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
