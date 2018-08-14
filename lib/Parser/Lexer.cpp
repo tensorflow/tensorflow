@@ -323,6 +323,12 @@ Token Lexer::lexString(const char *tokStart) {
     case '\v':
     case '\f':
       return emitError(curPtr-1, "expected '\"' in string literal");
+    case '\\':
+      // Handle explicitly \" -> ".
+      // TODO(someone): define more escaping rules.
+      if (*curPtr == '"')
+        ++curPtr;
+      continue;
 
     default:
       continue;

@@ -315,3 +315,11 @@ bb0:
   "foo"(){bar: tensor<??f32>} : () -> ()
   return
 }
+
+// CHECK-LABEL: cfgfunc @stringquote
+cfgfunc @stringquote() -> () {
+bb0:
+// CHECK: "foo"() {bar: "a\"quoted\"string"} : () -> ()
+  "foo"(){bar: "a\"quoted\"string"} : () -> ()
+  return
+}

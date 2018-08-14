@@ -81,9 +81,8 @@ Optional<unsigned> Token::getIntTypeBitwidth() const {
 /// Given a 'string' token, return its value, including removing the quote
 /// characters and unescaping the contents of the string.
 std::string Token::getStringValue() const {
-  // TODO: Handle escaping.
-
-  // Just drop the quotes off for now.
+  // Start by dropping the quotes.
+  // TODO: Un-escape the string here instead of passing through the raw content.
   return getSpelling().drop_front().drop_back().str();
 }
 
