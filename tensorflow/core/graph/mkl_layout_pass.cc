@@ -2432,8 +2432,37 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
     csinfo_.mkl_conv2d_grad_filter_with_bias =
         "_MklConv2DBackpropFilterWithBias";
+// Temporarily don't convert quantized operators into MKL versions for now.
+// TODO(Intel-tf) Once all the relevant PRs have been merged then remove
+// the ifdef.
+#ifdef INTEL_MKL_QUANTIZED
+    csinfo_.quantized_avg_pool = "QuantizedAvgPool";
+    csinfo_.quantized_concatv2 = "QuantizedConcatV2";
+    csinfo_.quantized_conv2d = "QuantizedConv2D";
+    csinfo_.quantized_conv2d_with_requantize = "QuantizedConv2DAndRequantize";
+    csinfo_.quantized_conv2d_with_bias = "QuantizedConv2DWithBias";
+    csinfo_.quantized_conv2d_with_bias_and_requantize =
+        "QuantizedConv2DWithBiasAndRequantize";
+    csinfo_.quantized_conv2d_and_relu = "QuantizedConv2DAndRelu";
+    csinfo_.quantized_conv2d_and_relu_and_requantize =
+        "QuantizedConv2DAndReluAndRequantize";
+    csinfo_.quantized_conv2d_with_bias_and_relu =
+        "QuantizedConv2DWithBiasAndRelu";
+    csinfo_.quantized_conv2d_with_bias_and_relu_and_requantize =
+        "QuantizedConv2DWithBiasAndReluAndRequantize";
+    csinfo_.quantized_max_pool = "QuantizedMaxPool";
+    csinfo_.quantized_conv2d_with_bias_sum_and_relu =
+        "QuantizedConv2DWithBiasSumAndRelu";
+    csinfo_.quantized_conv2d_with_bias_sum_and_relu_and_requantize =
+        "QuantizedConv2DWithBiasSumAndReluAndRequantize";
+    csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize =
+        "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize";
+#endif
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
+#ifdef INTEL_MKL_QUANTIZED
+    csinfo_.requantize = "Requantize";
+#endif
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
@@ -2508,11 +2537,73 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.mul,
                       mkl_op_registry::GetMklOpName(csinfo_.mul),
                       CopyAttrsDataType, AlwaysRewrite});
+#ifdef INTEL_MKL_QUANTIZED
+    rinfo_.push_back({csinfo_.quantized_avg_pool,
+                      mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
+                      CopyAttrsQuantizedPooling, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_concatv2,
+                      mkl_op_registry::GetMklOpName(csinfo_.quantized_concatv2),
+                      CopyAttrsConcatV2, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d,
+                      mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d_with_requantize,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_conv2d_with_requantize),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_conv2d_with_bias,
+         mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d_with_bias),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_and_requantize,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_conv2d_with_bias_and_requantize),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_conv2d_and_relu,
+         mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d_and_relu),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d_and_relu_and_requantize,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_conv2d_and_relu_and_requantize),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_and_relu,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_conv2d_with_bias_and_relu),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_conv2d_with_bias_and_relu_and_requantize,
+         mkl_op_registry::GetMklOpName(
+             csinfo_.quantized_conv2d_with_bias_and_relu_and_requantize),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_max_pool,
+                      mkl_op_registry::GetMklOpName(csinfo_.quantized_max_pool),
+                      CopyAttrsQuantizedPooling, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_sum_and_relu,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_conv2d_with_bias_sum_and_relu),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_conv2d_with_bias_sum_and_relu_and_requantize,
+         mkl_op_registry::GetMklOpName(
+             csinfo_.quantized_conv2d_with_bias_sum_and_relu_and_requantize),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize,
+         mkl_op_registry::GetMklOpName(
+             csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+#endif
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
                       CopyAttrsDataType, AlwaysRewrite});
+#ifdef INTEL_MKL_QUANTIZED
+    rinfo_.push_back({csinfo_.requantize,
+                      mkl_op_registry::GetMklOpName(csinfo_.requantize),
+                      CopyAttrsRequantize, AlwaysRewrite});
+#endif
     /*
     rinfo_.push_back({csinfo_.tanh,
                       mkl_op_registry::GetMklOpName(csinfo_.tanh),
@@ -2629,8 +2720,23 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_conv2d_grad_filter_with_bias;
     string mkl_conv2d_with_bias;
     string mul;
+    string quantized_avg_pool;
+    string quantized_conv2d;
+    string quantized_conv2d_with_requantize;
+    string quantized_conv2d_with_bias;
+    string quantized_conv2d_with_bias_and_requantize;
+    string quantized_conv2d_and_relu;
+    string quantized_conv2d_and_relu_and_requantize;
+    string quantized_conv2d_with_bias_and_relu;
+    string quantized_conv2d_with_bias_and_relu_and_requantize;
+    string quantized_concatv2;
+    string quantized_max_pool;
+    string quantized_conv2d_with_bias_sum_and_relu;
+    string quantized_conv2d_with_bias_sum_and_relu_and_requantize;
+    string quant_conv2d_with_bias_signed_sum_and_relu_and_requantize;
     string relu;
     string relu_grad;
+    string requantize;
     string tanh;
     string tanh_grad;
     string reshape;
@@ -2833,6 +2939,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //
   // @return RewriteInfo* for the applicable rewrite rule
   const RewriteInfo* CheckForNodeRewrite(const Node* n) const;
+  const RewriteInfo* CheckForQuantizedNodeRewrite(const Node* n) const;
 
   // Default rewrite rule to be used in scenario 1 for rewrite.
   // @return - true (since we want to always rewrite)
@@ -3091,7 +3198,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsQuantizedPooling(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsQuantizedConv2D(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsQuantizedConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsRequantize(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
@@ -3411,8 +3522,27 @@ Status MklLayoutRewritePass::SetUpInputs(
   // We add workspace edge only for MaxPool, LRN and BatchNorm.
   std::vector<NodeBuilder::NodeOut> workspace_tensors;
   bool are_workspace_tensors_available = false;
-  AddWorkSpaceEdgeIfNeeded(g, old_node, nb, &workspace_tensors,
-                           &are_workspace_tensors_available);
+
+  // Avoid workspace check for QuantizedConv2D and the fused
+  // Ops as they don't have attribute: "T".
+  std::vector<string> quant_ops {
+      "QuantizedConv2D",
+      "QuantizedConv2DWithBias",
+      "QuantizedConv2DAndRelu",
+      "QuantizedConv2DWithBiasAndRelu",
+      "QuantizedConv2DWithBiasSumAndRelu",
+      "QuantizedConv2DAndRequantize",
+      "QuantizedConv2DWithBiasAndRequantize",
+      "QuantizedConv2DAndReluAndRequantize",
+      "QuantizedConv2DWithBiasAndReluAndRequantize",
+      "QuantizedConv2DWithBiasSumAndReluAndRequantize",
+      "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize"};
+  bool should_check_workspace =
+      std::find(std::begin(quant_ops), std::end(quant_ops),
+                old_node->type_string()) == std::end(quant_ops);
+  if (should_check_workspace)
+    AddWorkSpaceEdgeIfNeeded(g, old_node, nb, &workspace_tensors,
+                             &are_workspace_tensors_available);
 
   int new_node_input_slots = 0;
   if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
@@ -3683,6 +3813,69 @@ void MklLayoutRewritePass::CopyAttrsDataType(const Node* orig_node,
 
   // Add attributes to new node.
   nb->Attr("T", T);
+}
+
+void MklLayoutRewritePass::CopyAttrsQuantizedPooling(const Node* orig_node,
+                                                     NodeBuilder* nb) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> ksize, strides;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("ksize", ksize);
+  nb->Attr("strides", strides);
+  nb->Attr("padding", padding);
+}
+
+void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
+                                                    NodeBuilder* nb) {
+  DataType Tinput, Tfilter, out_type;
+  string padding;
+  string data_format("NHWC");
+  std::vector<int32> strides, dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tinput", &Tinput));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tfilter", &Tfilter));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "out_type", &out_type));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+
+  // Add attributes to new node.
+  nb->Attr("Tinput", Tinput);
+  nb->Attr("Tfilter", Tfilter);
+  nb->Attr("out_type", out_type);
+  nb->Attr("padding", padding);
+  nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
+  nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
+  nb->Attr("data_format", data_format);
+  // Requantization attr Tbias
+  DataType Tbias;
+  Status bias_status = GetNodeAttr(orig_node->def(), "Tbias", &Tbias);
+  if (bias_status.ToString() == "OK") nb->Attr("Tbias", Tbias);
+}
+
+void MklLayoutRewritePass::CopyAttrsRequantize(const Node* orig_node,
+                                               NodeBuilder* nb) {
+  DataType Tinput, out_type;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tinput", &Tinput));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "out_type", &out_type));
+
+  // Add attributes to new node.
+  nb->Attr("Tinput", Tinput);
+  nb->Attr("out_type", out_type);
 }
 
 void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
@@ -4145,9 +4338,16 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
   }
 
   ri->copy_attrs(const_cast<const Node*>(orig_node), &nb);
-  // Set the Mkl layer label for this op.
-  nb.Attr("_kernel", mkl_op_registry::kMklOpLabel);
 
+  // Set the Mkl layer label for this op.
+  if (DataTypeIsQuantized(orig_node->input_type(0)) ||
+      DataTypeIsQuantized(orig_node->output_type(0))) {
+#ifdef INTEL_MKL_QUANTIZED
+    nb.Attr("_kernel", mkl_op_registry::kMklQuantizedOpLabel);
+#endif
+  } else {
+    nb.Attr("_kernel", mkl_op_registry::kMklOpLabel);
+  }
   // Finalize graph and get new node.
   Node* new_node = nullptr;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
@@ -4193,9 +4393,37 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
   return Status::OK();
 }
 
+// TODO(mdfaijul): Is there any other elegent way to check for quantized ops
+// having attributes other than "T"?
+// Current implementation reflects only QuantizedConv2D and its fused Ops.
+const MklLayoutRewritePass::RewriteInfo*
+MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
+#ifdef INTEL_MKL_QUANTIZED
+  DataType Tinput, Tfilter;
+  if (!(GetNodeAttr(n->def(), "Tinput", &Tinput).ok() &&
+        GetNodeAttr(n->def(), "Tfilter", &Tfilter).ok())) {
+    return nullptr;
+  }
+  if (mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
+                               Tinput, Tfilter)) {
+    for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
+      if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
+        return &*ri;
+      }
+    }
+  }
+#endif
+  return nullptr;
+}
+
 const MklLayoutRewritePass::RewriteInfo*
 MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   CHECK_NOTNULL(n);
+
+  // QuntizedOps may have attributes other than "T", so decoupled the check
+  // with a function, CheckForQuantizedNodeRewrite(const Node*).
+  const RewriteInfo* ri = CheckForQuantizedNodeRewrite(n);
+  if (ri != nullptr) return ri;
 
   // First check if node along with its type is supported by MKL layer.
   // We do not want to rewrite an op into Mkl op if types are not supported.
