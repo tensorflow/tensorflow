@@ -57,7 +57,8 @@ def main(args):
   # tf.Estimator that utilizes the DistributionStrategy.
   strategy = tf.contrib.distribute.MirroredStrategy(
       ['/device:GPU:0', '/device:GPU:1'])
-  config = tf.estimator.RunConfig(train_distribute=strategy)
+  config = tf.estimator.RunConfig(
+      train_distribute=strategy, eval_distribute=strategy)
   keras_estimator = tf.keras.estimator.model_to_estimator(
       keras_model=model, config=config, model_dir=model_dir)
 

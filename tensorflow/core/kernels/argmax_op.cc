@@ -59,7 +59,7 @@ class ArgOp : public OpKernel {
 
     int axis = dim < 0 ? dim + input_dims : dim;
 
-    OP_REQUIRES(context, axis >= 0 && axis < input_dims,
+    OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
                 errors::InvalidArgument("Expected dimension in the range [",
                                         -input_dims, ", ", input_dims,
                                         "), but got ", dim));
@@ -75,6 +75,10 @@ class ArgOp : public OpKernel {
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
 
 #define HANDLE_DIM(NDIM)                                        \
   case NDIM:                                                    \

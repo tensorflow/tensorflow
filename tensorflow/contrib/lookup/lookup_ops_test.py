@@ -280,6 +280,21 @@ class HashTableOpTest(test.TestCase):
       table.init.run()
       self.assertAllEqual(3, table.size().eval())
 
+  def testHashTableInt32String(self):
+    with self.test_session():
+      default_val = "n/a"
+      keys = constant_op.constant([0, 1, 2], dtypes.int32)
+      values = constant_op.constant(["brain", "salad", "surgery"])
+      table = lookup.HashTable(
+          lookup.KeyValueTensorInitializer(keys, values), default_val)
+      table.init.run()
+
+      input_tensor = constant_op.constant([0, 1, -1])
+      output = table.lookup(input_tensor)
+
+      result = output.eval()
+      self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
+
 
 class MutableHashTableOpTest(test.TestCase):
 
@@ -419,8 +434,10 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual([[0, 1], [2, 3], [-1, -1]], result)
 
       exported_keys, exported_values = table.export()
-      self.assertAllEqual([None], exported_keys.get_shape().as_list())
-      self.assertAllEqual([None, 2], exported_values.get_shape().as_list())
+      self.assertAllEqual([None], exported_keys.get_shape().as_list(),
+                          msg="Saw shape %s" % exported_keys.shape)
+      self.assertAllEqual([None, 2], exported_values.get_shape().as_list(),
+                          msg="Saw shape %s" % exported_values.shape)
       # exported data is in the order of the internal map, i.e. undefined
       sorted_keys = np.sort(exported_keys.eval())
       sorted_values = np.sort(exported_values.eval())
@@ -654,7 +671,7 @@ class MutableHashTableOpTest(test.TestCase):
 
       # lookup with keys of the wrong type
       input_string = constant_op.constant([1, 2, 3], dtypes.int64)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(ValueError):
         table.lookup(input_string).eval()
 
       # default value of the wrong type
@@ -838,7 +855,8 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       input_string = constant_op.constant([11, 12, 15], dtypes.int64)
       output = table.lookup(input_string)
-      self.assertAllEqual([3, 4], output.get_shape())
+      self.assertAllEqual(
+          [3, 4], output.shape, msg="Saw shape: %s" % output.shape)
 
       result = output.eval()
       self.assertAllEqual([[0, 1, 2, 3], [3, 4, 5, 6], [-1, -2, -3, -4]],

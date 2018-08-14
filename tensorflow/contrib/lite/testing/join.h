@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <cstdlib>
 #include <sstream>
-#include <string>
+
+#include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {
 namespace testing {

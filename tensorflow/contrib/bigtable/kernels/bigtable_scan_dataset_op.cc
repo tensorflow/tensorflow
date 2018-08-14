@@ -84,7 +84,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string prefix, string start_key, string end_key,
@@ -92,7 +92,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
                      std::vector<string> columns, float probability,
                      const DataTypeVector& output_types,
                      std::vector<PartialTensorShape> output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           table_(table),
           prefix_(std::move(prefix)),
           start_key_(std::move(start_key)),
@@ -111,8 +111,8 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtableScanDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtableScan")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -129,34 +129,47 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
+    }
+
    private:
     class Iterator : public BigtableReaderDatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
           : BigtableReaderDatasetIterator<Dataset>(params) {}
 
-      ::bigtable::RowRange MakeRowRange() override {
+      ::google::cloud::bigtable::RowRange MakeRowRange() override {
         if (!dataset()->prefix_.empty()) {
           DCHECK(dataset()->start_key_.empty());
-          return ::bigtable::RowRange::Prefix(dataset()->prefix_);
+          return ::google::cloud::bigtable::RowRange::Prefix(
+              dataset()->prefix_);
         } else {
           DCHECK(!dataset()->start_key_.empty())
               << "Both prefix and start_key were empty!";
-          return ::bigtable::RowRange::Range(dataset()->start_key_,
-                                             dataset()->end_key_);
+          return ::google::cloud::bigtable::RowRange::Range(
+              dataset()->start_key_, dataset()->end_key_);
         }
       }
-      ::bigtable::Filter MakeFilter() override {
+      ::google::cloud::bigtable::Filter MakeFilter() override {
         // TODO(saeta): Investigate optimal ordering here.
-        return ::bigtable::Filter::Chain(
-            ::bigtable::Filter::Latest(1),
-            ::bigtable::Filter::FamilyRegex(dataset()->column_family_regex_),
-            ::bigtable::Filter::ColumnRegex(dataset()->column_regex_),
+        return ::google::cloud::bigtable::Filter::Chain(
+            ::google::cloud::bigtable::Filter::Latest(1),
+            ::google::cloud::bigtable::Filter::FamilyRegex(
+                dataset()->column_family_regex_),
+            ::google::cloud::bigtable::Filter::ColumnRegex(
+                dataset()->column_regex_),
             dataset()->probability_ != 1.0
-                ? ::bigtable::Filter::RowSample(dataset()->probability_)
-                : ::bigtable::Filter::PassAllFilter());
+                ? ::google::cloud::bigtable::Filter::RowSample(
+                      dataset()->probability_)
+                : ::google::cloud::bigtable::Filter::PassAllFilter());
       }
-      Status ParseRow(IteratorContext* ctx, const ::bigtable::Row& row,
+      Status ParseRow(IteratorContext* ctx,
+                      const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) override {
         out_tensors->reserve(dataset()->columns_.size() + 1);
         Tensor row_key_tensor(ctx->allocator({}), DT_STRING, {});

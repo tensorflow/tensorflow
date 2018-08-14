@@ -73,6 +73,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLt:
@@ -100,6 +101,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAfterAll:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
+    case HloOpcode::kTupleSelect:
       return false;
 
     // Cheap instructions for reals, but expensive for complex.
@@ -118,6 +120,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
@@ -139,6 +142,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

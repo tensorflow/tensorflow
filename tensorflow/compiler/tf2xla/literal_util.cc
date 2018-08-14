@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
@@ -29,6 +29,23 @@ Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
                                            host_tensor.shape(), &xla_shape));
   *literal = xla::BorrowingLiteral(
       static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
+  return Status::OK();
+}
+
+Status HostTensorToMutableBorrowingLiteral(
+    Tensor* host_tensor, xla::MutableBorrowingLiteral* literal) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor->dtype(),
+                                           host_tensor->shape(), &xla_shape));
+  return HostTensorToMutableBorrowingLiteral(xla_shape, host_tensor, literal);
+}
+
+Status HostTensorToMutableBorrowingLiteral(
+    const xla::Shape& xla_shape, Tensor* host_tensor,
+    xla::MutableBorrowingLiteral* literal) {
+  *literal = xla::MutableBorrowingLiteral(
+      static_cast<const char*>(DMAHelper::base(host_tensor)), xla_shape);
+
   return Status::OK();
 }
 

@@ -177,8 +177,8 @@ Status CheckNoCycleContains(const Node* node, const int num_nodes) {
     visited[current_node->id()] = true;
     for (const Edge* out : current_node->out_edges()) {
       if (out->dst() == node) {
-        return errors::Internal("Detect a cycle: Node \"", node->name(), "\"(",
-                                node->def().op(), ") feeds into itself.");
+        return errors::Internal("Detected a cycle: ", FormatNodeForError(*node),
+                                "(", node->def().op(), ") feeds into itself.");
       } else if (!visited[out->dst()->id()]) {
         ready.push_back(out->dst());
       }
@@ -324,7 +324,7 @@ Status AddMissingFunctionDef(const FunctionDef& fdef,
     if (library->Find(node.op())) {
       continue;
     }
-    // The function refered by 'SymbolicGradient' node is specified in its
+    // The function referred by 'SymbolicGradient' node is specified in its
     // attribute 'f'.
     if (node.op() == FunctionLibraryDefinition::kGradientOp) {
       const AttrValue* attr =
@@ -437,22 +437,24 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
           continue;
         }
         if (enter_merge != nullptr) {
-          return errors::Internal(
-              "Enter node for loop-varying argument ", arg.enter->name(),
-              " has multiple successors: ", enter_merge->dst()->name(), " and ",
-              e->dst()->name());
+          return errors::Internal("Enter node for loop-varying argument ",
+                                  FormatNodeForError(*arg.enter),
+                                  " has multiple successors: ",
+                                  FormatNodeForError(*enter_merge->dst()),
+                                  " and ", FormatNodeForError(*e->dst()));
         }
         enter_merge = e;
       }
       if (enter_merge == nullptr) {
         return errors::Internal("Enter node for loop-varying argument ",
-                                arg.enter->name(), " has zero successors");
+                                FormatNodeForError(*arg.enter),
+                                " has zero successors");
       }
       arg.merge = enter_merge->dst();
       if (!IsMerge(arg.merge)) {
         return errors::InvalidArgument(
             "Successor of Enter node for loop-varying argument ",
-            arg.merge->name(),
+            FormatNodeForError(*arg.merge),
             " is not a Merge node; got: ", arg.merge->type_string());
       }
 
@@ -462,7 +464,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
         return errors::InvalidArgument(
             "Unexpected number of inputs to Merge node for loop-varying "
             "argument ",
-            arg.merge->name(), "; expected 2, got ",
+            FormatNodeForError(*arg.merge), "; expected 2, got ",
             arg.merge->input_types().size());
       }
       TF_RETURN_IF_ERROR(arg.merge->input_node(1 - enter_merge->dst_input(),
@@ -470,7 +472,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
       if (!IsNextIteration(arg.next_iteration)) {
         return errors::InvalidArgument(
             "Expected NextIteration node as input to Merge node; got node ",
-            arg.next_iteration->name(), " with kind ",
+            FormatNodeForError(*arg.next_iteration), " with kind ",
             arg.next_iteration->type_string());
       }
 
@@ -481,14 +483,14 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
             switches.find(edge->dst()) != switches.end()) {
           if (arg.switch_node != nullptr) {
             return errors::InvalidArgument("Duplicate Switch successors to ",
-                                           arg.merge->name());
+                                           FormatNodeForError(*arg.merge));
           }
           arg.switch_node = edge->dst();
         }
       }
       if (arg.switch_node == nullptr) {
         return errors::InvalidArgument("Missing Switch successor to ",
-                                       arg.merge->name());
+                                       FormatNodeForError(*arg.merge));
       }
 
       // Update the device on the Identity outputs of the switch to match their
@@ -516,14 +518,15 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
         possible_exit.pop_front();
         if (IsExit(edge->dst())) {
           if (arg.exit != nullptr) {
-            return errors::InvalidArgument("Duplicate Exit successors to ",
-                                           arg.switch_node->name());
+            return errors::InvalidArgument(
+                "Duplicate Exit successors to ",
+                FormatNodeForError(*arg.switch_node));
           }
           arg.exit = edge->dst();
         } else {
           if (!IsIdentity(edge->dst())) {
             return errors::Unimplemented("General graph between switch (",
-                                         arg.switch_node->name(),
+                                         FormatNodeForError(*arg.switch_node),
                                          ") and exit node of frame ",
                                          frame->name, " not supported yet.");
           }
@@ -1470,7 +1473,7 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   if (!unreachable_nodes.empty()) {
     return errors::InvalidArgument(
         "The following nodes are unreachable from the source in the graph: ",
-        tensorflow::str_util::Join(unreachable_nodes, ", "));
+        errors::FormatNodeNamesForError(unreachable_nodes));
   }
 
   // Builds Frames, indexed by name.

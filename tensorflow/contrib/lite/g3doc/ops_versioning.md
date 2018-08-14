@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite Ops Versioning
 
 This document describes TensorFlow Lite's op versioning schema. Op

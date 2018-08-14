@@ -31,14 +31,17 @@ import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import keras
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -68,6 +71,25 @@ def c_tfe_py_fastpath_execute(a,
     else:
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
+
+
+class SubclassedKerasModel(keras.Model):
+
+  def __init__(self):
+    super(SubclassedKerasModel, self).__init__()
+    self.layer = keras.layers.Dense(
+        10, kernel_initializer="ones", bias_initializer="zeros")
+
+  def call(self, x):
+    return self.layer(x)
+
+
+def make_keras_model():
+  x = keras.Input(shape=(10,))
+  y = keras.layers.Dense(
+      10, kernel_initializer="ones", bias_initializer="zeros")(
+          x)
+  return keras.Model(inputs=x, outputs=y)
 
 
 class MicroBenchmarks(test.Benchmark):
@@ -115,6 +137,7 @@ class MicroBenchmarks(test.Benchmark):
 
     def func():
       ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+
     self._run(func, 30000)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
@@ -211,8 +234,8 @@ class MicroBenchmarks(test.Benchmark):
     inputs = [m]
 
     def f():
-      pywrap_tensorflow.TFE_Py_Execute(
-          ctx_handle, None, "Identity", inputs, attrs, 1)
+      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "Identity", inputs,
+                                       attrs, 1)
 
     self._run(f, 30000)
 
@@ -234,14 +257,13 @@ class MicroBenchmarks(test.Benchmark):
     def f():
       with backprop.GradientTape():
         pass
+
     self._run(f, 30000)
 
   def benchmark_tf_gradient_function_no_op(self):
     with context.device(CPU):
       m = gen_array_ops.identity(self._m_2)
-      self._run(
-          lambda: backprop.gradients_function(lambda x: x, [0])(m),
-          30000)
+      self._run(lambda: backprop.gradients_function(lambda x: x, [0])(m), 30000)
 
   def _benchmark_np_matmul(self, m, transpose_b, num_iters):
     a = m.cpu().numpy()
@@ -255,6 +277,7 @@ class MicroBenchmarks(test.Benchmark):
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_gen_math_ops_matmul(self, m, transpose_b, num_iters):
+
     def func():
       gen_math_ops.mat_mul(m, m, transpose_b=transpose_b)
 
@@ -276,9 +299,10 @@ class MicroBenchmarks(test.Benchmark):
     device = context.context().device_name
     attrs = ("transpose_a", False, "transpose_b", transpose_b, "T",
              m.dtype.as_datatype_enum)
+
     def func():
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, device, "MatMul",
-                                       inputs, attrs, 1)
+      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, device, "MatMul", inputs,
+                                       attrs, 1)
 
     self._run(func, num_iters)
 
@@ -505,6 +529,54 @@ class MicroBenchmarks(test.Benchmark):
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
+  def benchmark_defun_without_signature(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(func)
+    t = constant_op.constant(0.0)
+    cache_computation = lambda: defined(t, t, t, t, t, t, t, t)
+    self._run(cache_computation, 30000)
+
+  def benchmark_defun_without_signature_and_with_kwargs(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(func)
+    t = constant_op.constant(0.0)
+    def cache_computation():
+      return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+    self._run(cache_computation, 30000)
+
+  def benchmark_defun_with_signature(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(
+        func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
+    t = constant_op.constant(0.0)
+    signature_computation = lambda: defined(t, t, t, t, t, t, t, t)
+    self._run(signature_computation, 30000)
+
+  def benchmark_defun_with_signature_and_kwargs(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(
+        func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
+    t = constant_op.constant(0.0)
+    def signature_computation():
+      return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+    self._run(signature_computation, 30000)
+
   def benchmark_matmul_read_variable_op_2_by_2_CPU(self):
     with context.device(CPU):
       m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
@@ -541,6 +613,30 @@ class MicroBenchmarks(test.Benchmark):
       m = resource_variable_ops.ResourceVariable(self._m_2_by_2.gpu())
       self._benchmark_read_variable_with_tape(
           m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_keras_model_subclassed(self):
+    model = SubclassedKerasModel()
+    data = random_ops.random_uniform((10, 10))
+
+    func = lambda: model(data)
+    # First call is more expensive (creates variables etc.), discount that.
+    func()
+
+    # The whole point of this test is to contrast subclassing with
+    # the functional style of keras model building, so validate that
+    # the models are equivalent.
+    assert np.equal(func(), make_keras_model()(data)).all()
+
+    self._run(func, 30000)
+
+  def benchmark_keras_model_functional(self):
+    model = make_keras_model()
+    data = random_ops.random_uniform((10, 10))
+    func = lambda: model(data)
+    # Symmetry with benchmark_keras_model_subclassed
+    func()
+    assert np.equal(func(), SubclassedKerasModel()(data)).all()
+    self._run(func, 30000)
 
 
 if __name__ == "__main__":

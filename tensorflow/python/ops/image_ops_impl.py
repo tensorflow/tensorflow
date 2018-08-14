@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -55,6 +56,7 @@ ops.NotDifferentiable('SampleDistortedBoundingBoxV2')
 ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
+ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
 
 
 # pylint: disable=invalid-name
@@ -263,7 +265,7 @@ def random_flip_up_down(image, seed=None):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -285,7 +287,7 @@ def random_flip_left_right(image, seed=None):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -305,7 +307,7 @@ def _random_flip(image, flip_index, seed, scope_name):
       flip_index: The dimension along which to flip the image.
                   Vertical: 0, Horizontal: 1
       seed: A Python integer. Used to create a random seed. See
-        @{tf.set_random_seed}
+        `tf.set_random_seed`
         for behavior.
       scope_name: Name of the scope in which the ops are added.
 
@@ -946,7 +948,7 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  @{tf.image.resize_image_with_pad}.
+  `tf.image.resize_image_with_pad`.
 
   `method` can be one of:
 
@@ -1165,7 +1167,7 @@ def resize_image_with_pad(image,
     _ImageDimensions(padded, rank=4)
 
     if not is_batch:
-      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, axis=[0])
 
     return padded
 
@@ -1225,7 +1227,7 @@ def random_brightness(image, max_delta, seed=None):
     image: An image.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -1253,7 +1255,7 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -1752,6 +1754,22 @@ def is_jpeg(contents, name=None):
     return math_ops.equal(substr, b'\xff\xd8\xff', name=name)
 
 
+def _is_png(contents, name=None):
+  r"""Convenience function to check if the 'contents' encodes a PNG image.
+
+  Args:
+    contents: 0-D `string`. The encoded image bytes.
+    name: A name for the operation (optional)
+
+  Returns:
+     A scalar boolean tensor indicating if 'contents' may be a PNG image.
+     is_png is susceptible to false positives.
+  """
+  with ops.name_scope(name, 'is_png'):
+    substr = string_ops.substr(contents, 0, 3)
+    return math_ops.equal(substr, b'\211PN', name=name)
+
+
 @tf_export('image.decode_image')
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
@@ -1829,8 +1847,8 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
 
     def check_png():
       """Checks if an image is PNG."""
-      is_png = math_ops.equal(substr, b'\211PN', name='is_png')
-      return control_flow_ops.cond(is_png, _png, check_gif, name='cond_png')
+      return control_flow_ops.cond(
+          _is_png(contents), _png, check_gif, name='cond_png')
 
     def _jpeg():
       """Decodes a jpeg image."""
@@ -2091,6 +2109,108 @@ def non_max_suppression(boxes,
         score_threshold, name='score_threshold')
     return gen_image_ops.non_max_suppression_v3(boxes, scores, max_output_size,
                                                 iou_threshold, score_threshold)
+
+
+@tf_export('image.non_max_suppression_padded')
+def non_max_suppression_padded(boxes,
+                               scores,
+                               max_output_size,
+                               iou_threshold=0.5,
+                               score_threshold=float('-inf'),
+                               pad_to_max_output_size=False,
+                               name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size`.
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
+        boxes, scores, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_to_max_output_size: bool.  If True, size of `selected_indices` output
+      is padded to `max_output_size`.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    valid_outputs: A scalar integer `Tensor` denoting how many elements in
+    `selected_indices` are valid.  Valid elements occur first, then padding.
+  """
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    if compat.forward_compatible(2018, 8, 7) or pad_to_max_output_size:
+      return gen_image_ops.non_max_suppression_v4(
+          boxes, scores, max_output_size, iou_threshold, score_threshold,
+          pad_to_max_output_size)
+    else:
+      return gen_image_ops.non_max_suppression_v3(
+          boxes, scores, max_output_size, iou_threshold, score_threshold)
+
+
+@tf_export('image.non_max_suppression_overlaps')
+def non_max_suppression_with_overlaps(overlaps,
+                                      scores,
+                                      max_output_size,
+                                      overlap_threshold=0.5,
+                                      score_threshold=float('-inf'),
+                                      name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Prunes away boxes that have high overlap with previously selected boxes.
+  N-by-n overlap values are supplied as square matrix.
+  The output of this operation is a set of integers indexing into the input
+  collection of bounding boxes representing the selected boxes.  The bounding
+  box coordinates corresponding to the selected indices can then be obtained
+  using the `tf.gather operation`.  For example:
+    selected_indices = tf.image.non_max_suppression_overlaps(
+        overlaps, scores, max_output_size, iou_threshold)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    overlaps: A 2-D float `Tensor` of shape `[num_boxes, num_boxes]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    overlap_threshold: A float representing the threshold for deciding whether
+      boxes overlap too much with respect to the provided overlap values.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the overlaps tensor, where `M <= max_output_size`.
+  """
+  with ops.name_scope(name, 'non_max_suppression_overlaps'):
+    overlap_threshold = ops.convert_to_tensor(
+        overlap_threshold, name='overlap_threshold')
+    # pylint: disable=protected-access
+    return gen_image_ops._non_max_suppression_v3(
+        overlaps, scores, max_output_size, overlap_threshold, score_threshold)
+    # pylint: enable=protected-access
 
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,

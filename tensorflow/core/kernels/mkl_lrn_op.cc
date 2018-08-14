@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::lrn_across_channels;
 using mkldnn::lrn_backward;
@@ -69,7 +69,7 @@ void GetBandMatrix(int depth, int depth_radius,
 
 }  // namespace
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename T>
 class MklLRNOp : public OpKernel {
@@ -847,12 +847,12 @@ class MklLRNOp : public OpKernel {
                             MklDnnData<T>* src_dnn_data,
                             MklDnnData<T>* dst_dnn_data,
                             MklDnnData<uint8>* wksp_dnn_data = nullptr) {
-    std::vector<primitive> net;
 
     // Check for input reorder
-    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc(), &net);
+    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc());
 
     // Create pooling primitive and add it to net
+    std::vector<primitive> net;
     if (wksp_dnn_data != nullptr) {
       net.push_back(lrn_forward(lrn_fwd_desc, src_dnn_data->GetOpMem(),
                                 wksp_dnn_data->GetOpMem(),
@@ -1160,15 +1160,15 @@ class MklLRNGradOp : public OpKernel {
       MklDnnData<T>* output_diff_src,
       const memory::primitive_desc& target_diff_dst_pd,
       const MklDnnData<uint8>* workspace_dnn_data = nullptr) {
-    std::vector<primitive> net;
 
     // Check for input reordering on the diff dst input
     input_gradient_diff_dst->CheckReorderToOpMem(
-        lrn_bkwd_desc.diff_dst_primitive_desc(), &net);
+        lrn_bkwd_desc.diff_dst_primitive_desc());
 
     // Check for input reordering on the original input
-    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc(), &net);
+    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc());
     // Create pooling primitive and add it to net
+    std::vector<primitive> net;
     if (nullptr == workspace_dnn_data) {
       net.push_back(lrn_backward(lrn_bkwd_desc, src_dnn_data->GetOpMem(),
                                  input_gradient_diff_dst->GetOpMem(),
@@ -1345,7 +1345,7 @@ class MklLRNGradOp : public OpKernel {
   float beta_;
 };
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 #define REGISTER_MKL_LRN_CPU(T)                                     \
   REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \

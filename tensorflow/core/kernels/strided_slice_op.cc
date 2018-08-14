@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -304,6 +305,9 @@ class StridedSliceAssignOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
+      mutex_lock ml(*v->mu());
+      OP_REQUIRES_OK(context,
+                     PrepareToUpdateVariable<Device, T>(context, v->tensor()));
       old_lhs = *v->tensor();
       OP_REQUIRES(context, old_lhs.dtype() == DataTypeToEnum<T>::value,
                   errors::InvalidArgument(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
 #include <queue>
+#include <random>
 #include <set>
 #include <unordered_map>
 
@@ -295,6 +296,31 @@ void AddDtypeToKernalDefConstraint(StringPiece name, DataType dtype,
       constraint.mutable_allowed_values()->mutable_list()->add_type(dtype);
     }
   }
+}
+
+namespace {
+uint32 InitialRandomSeed() {
+  // Support plumbing the TF seed through to XLA is being worked on.
+  // If a user wants deterministic behavior, their best option
+  // is to start with a known checkpoint. This also handles issues when
+  // multiple random calls can be invoked in any order by TF executor.
+  // Another option is to use stateless random ops. They have much cleaner
+  // semantics.
+  // If a user really wants to set a deterministic seed for XLA-based
+  // devices, this is the place to do it.
+  std::random_device rd;
+  // Make the starting value odd.
+  return rd() | 1;
+}
+}  // namespace
+
+uint32 GetXLARandomSeed() {
+  // We initialize counter with an odd number and increment it by two
+  // everytime. This ensures that it will never be zero, even
+  // after an overflow. When seeded with zero, some XLA backends
+  // can return all zeros instead of random numbers.
+  static std::atomic<uint32> counter(InitialRandomSeed());
+  return counter.fetch_add(2);
 }
 
 }  // namespace tensorflow

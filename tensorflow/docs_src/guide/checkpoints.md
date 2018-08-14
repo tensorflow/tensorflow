@@ -129,7 +129,7 @@ in the `model_dir` according to the following schedule:
 
 You may alter the default schedule by taking the following steps:
 
-1.  Create a @{tf.estimator.RunConfig$`RunConfig`} object that defines the
+1.  Create a `tf.estimator.RunConfig` object that defines the
     desired schedule.
 2.  When instantiating the Estimator, pass that `RunConfig` object to the
     Estimator's `config` argument.

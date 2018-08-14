@@ -453,10 +453,14 @@ class MatMulOp : public OpKernel {
     const Tensor& b = ctx->input(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] is not a matrix"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(a.shape()),
+        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
+                                a.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(b.shape()),
+        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
+                                b.shape().DebugString()));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
@@ -574,25 +578,41 @@ struct MatMulFunctor<SYCLDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
+#if defined(INTEL_MKL)
 
-// MKL does not support half and int32 types for matrix-multiplication, so
-// register the kernel to use default Eigen based implementations for these
-// types. Registration for NO-LABEL version is in mkl_matmul_op.cc
-TF_CALL_float(REGISTER_CPU_EIGEN);
-TF_CALL_double(REGISTER_CPU_EIGEN);
+// MKL does not support half, bfloat16 and int32 types for
+// matrix-multiplication, so register the kernel to use default Eigen based
+// implementations for these types. REGISTER_CPU defines two versions - Eigen
+// label and NO-LABEL
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
-
 TF_CALL_int32(REGISTER_CPU);
+
+// Float is supported in both MKL DNN as well as in MKL ML
+// Registration for NO-LABEL version is in mkl_matmul_op.cc for types supported
+// by MKL. However we define Eigen label version here just to pass a few unit
+// tests
+TF_CALL_float(REGISTER_CPU_EIGEN);
+
+// MKL DNN does not support complex64/complex128/double, if user specifies
+// to use only opensource MKL DNN then use default implementation for these
+// types otherwise use GEMM from MKL ML binary
+
+#if defined(INTEL_MKL_DNN_ONLY)
+TF_CALL_complex64(REGISTER_CPU);
+TF_CALL_complex128(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+#else  // INTEL_MKL_DNN_ONLY
 TF_CALL_complex64(REGISTER_CPU_EIGEN);
 TF_CALL_complex128(REGISTER_CPU_EIGEN);
-#else
+TF_CALL_double(REGISTER_CPU_EIGEN);
+#endif
+
+#else  // INTEL MKL
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
-
 TF_CALL_int32(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);

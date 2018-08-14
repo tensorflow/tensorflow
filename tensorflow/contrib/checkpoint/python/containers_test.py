@@ -26,6 +26,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 
@@ -79,7 +80,7 @@ class UniqueNameTrackerTests(test.TestCase):
             resource_variable_ops.ResourceVariable(4.), "y"))
         slots.append(slotdeps.track(
             resource_variable_ops.ResourceVariable(5.), "x"))
-        self.slots = slots
+        self.slots = data_structures.NoDependency(slots)
 
     manager = SlotManager()
     self.evaluate([v.initializer for v in manager.slots])

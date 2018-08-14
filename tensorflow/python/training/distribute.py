@@ -21,6 +21,7 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -221,11 +222,11 @@ def has_distribution_strategy():
 
 
 def get_loss_reduction():
-  """Reduce `method_string` corresponding to the last loss reduction."""
+  """Reduce `aggregation` corresponding to the last loss reduction."""
   loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
   if loss_reduction == losses_impl.Reduction.SUM:
-    return "sum"
-  return "mean"
+    return variable_scope.VariableAggregation.SUM
+  return variable_scope.VariableAggregation.MEAN
 
 
 # ------------------------------------------------------------------------------
@@ -539,8 +540,8 @@ class DistributionStrategy(object):
   1. Wrap your input dataset in `d.distribute_dataset()` and create an iterator.
   2. Define each tower `d.call_for_each_tower()` up to the point of
      getting a list of gradient, variable pairs.
-  3. Call `d.reduce("sum", t, v)` or `d.batch_reduce()` to sum the
-     gradients (with locality T) into values with locality V(`v`).
+  3. Call `d.reduce(VariableAggregation.SUM, t, v)` or `d.batch_reduce()` to sum
+     the gradients (with locality T) into values with locality V(`v`).
   4. Call `d.update(v)` for each variable to update its value.
 
   Steps 3 and 4 are done automatically by class `Optimizer` if you call
@@ -613,43 +614,6 @@ class DistributionStrategy(object):
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
-
-  def tower_local_var_scope(self, reduce_method):
-    """Inside this scope, new variables will not be mirrored.
-
-    There will still be one component variable per tower, but there is
-    no requirement that they stay in sync. Instead, when saving them
-    or calling `read_var()`, we use the value that results when
-    calling `reduce()` on all the towers' variables.
-
-    Note: tower-local implies not trainable. Instead, it is expected
-    that each tower will directly update (using `assign_add()` or
-    whatever) its local variable instance but only the aggregated
-    value (accessible using `read_var()`) will be exported from the
-    model. When it is acceptable to only aggregate on export, we
-    greatly reduce communication overhead by using tower-local
-    variables.
-
-    Note: All component variables will be initialized to the same
-    value, using the initialization expression from the first tower.
-    The values will match even if the initialization expression uses
-    random numbers.
-
-    Args:
-      reduce_method: String used as a `method_string` to `reduce()`
-        to get the value to save when checkpointing.
-
-    Returns:
-      A context manager.
-    """
-    def create_tower_local_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      kwargs["use_resource"] = True
-      kwargs["tower_local_reduce_method"] = reduce_method
-      return next_creator(*args, **kwargs)
-
-    _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_tower_local_variable)
 
   def read_var(self, v):
     """Reads the value of a variable.
@@ -764,6 +728,85 @@ class DistributionStrategy(object):
   def _broadcast(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  def initialize(self):
+    """Any initialization to be done before running any computations.
+
+    In eager mode, it executes any initialization as a side effect.
+    In graph mode, it creates the initialization ops and returns them.
+
+    For example, TPU initialize_system ops.
+
+    Returns:
+      In eager mode, returns `None`.
+      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+    """
+    if context.executing_eagerly():
+      return
+    else:
+      return []
+
+  def finalize(self):
+    """Any final actions to be done at the end of all computations.
+
+    In eager mode, it executes any finalize actions as a side effect.
+    In graph mode, it creates the finalize ops and returns them.
+
+    For example, TPU shutdown ops.
+
+    Returns:
+      In eager mode, returns `None`.
+      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+    """
+    if context.executing_eagerly():
+      return
+    else:
+      return []
+
+  def run_steps_on_dataset(self, fn, iterator, iterations=1,
+                           initial_loop_values=None):
+    """Run `fn` with input from `iterator` for `iterations` times.
+
+    This method can be used to run a step function for training a number of
+    times using input from a dataset.
+
+    Args:
+      fn: function to run using this distribution strategy. The function must
+        have the following signature: def fn(context, inputs).
+        `context` is an instance of `MultiStepContext` that will be passed when
+        `fn` is run. `context` can be used to specify the outputs to be returned
+        from `fn` by calling `context.set_last_step_output`. It can also be used
+        to capture non tensor outputs by `context.set_non_tensor_output`.
+        See `MultiStepContext` documentation for more information.
+        `inputs` will have same type/structure as `iterator.get_next()`.
+        Typically, `fn` will use `call_for_each_tower` method of the strategy
+        to distribute the computation over multiple towers.
+      iterator: Iterator of a dataset that represents the input for `fn`. The
+        caller is responsible for initializing the iterator as needed.
+      iterations: (Optional) Number of iterations that `fn` should be run.
+        Defaults to 1.
+      initial_loop_values: (Optional) Initial values to be passed into the
+        loop that runs `fn`. Defaults to `None`. # TODO(priyag): Remove
+        initial_loop_values argument when we have a mechanism to infer the
+        outputs of `fn`.
+
+    Returns:
+      Returns the `MultiStepContext` object which has the following properties,
+      among other things:
+        - run_op: An op that runs `fn` `iterations` times.
+        - last_step_outputs: A dictionary containing tensors set using
+        `context.set_last_step_output`. Evaluating this returns the value of
+        the tensors after the last iteration.
+        - non_tensor_outputs: A dictionatry containing anything that was set by
+          `fn` by calling `context.set_non_tensor_output`.
+    """
+    _require_cross_tower_context(self)
+    return self._run_steps_on_dataset(fn, iterator, iterations,
+                                      initial_loop_values)
+
+  def _run_steps_on_dataset(self, fn, iterator, iterations,
+                            initial_loop_values):
+    raise NotImplementedError("must be implemented in descendants")
+
   def call_for_each_tower(self, fn, *args, **kwargs):
     """Run `fn` once per tower.
 
@@ -816,12 +859,12 @@ class DistributionStrategy(object):
   def _call_for_each_tower(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
-  def reduce(self, method_string, value, destinations=None):
+  def reduce(self, aggregation, value, destinations=None):
     """Combine (via e.g. sum or mean) values across towers.
 
     Args:
-      method_string: A string indicating how to combine values, either
-        "sum" or "mean".
+      aggregation: Indicates how a variable will be aggregated. Accepted values
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value: A per-device value with one value per tower.
       destinations: An optional mirrored variable, a device string,
         list of device strings. The return value will be copied to all
@@ -836,18 +879,21 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_tower_context(self)
-    assert method_string in ("sum", "mean")
-    return self._reduce(method_string, value, destinations)
+    assert aggregation in [
+        variable_scope.VariableAggregation.SUM,
+        variable_scope.VariableAggregation.MEAN
+    ]
+    return self._reduce(aggregation, value, destinations)
 
-  def _reduce(self, method_string, value, destinations):
+  def _reduce(self, aggregation, value, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
-  def batch_reduce(self, method_string, value_destination_pairs):
+  def batch_reduce(self, aggregation, value_destination_pairs):
     """Combine multiple `reduce` calls into one for faster execution.
 
     Args:
-      method_string: A string indicating how to combine values, either
-        "sum" or "mean".
+      aggregation: Indicates how a variable will be aggregated. Accepted values
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -856,12 +902,17 @@ class DistributionStrategy(object):
     """
     # TODO(josh11b): More docstring
     _require_cross_tower_context(self)
-    assert method_string in ("sum", "mean")
-    return self._batch_reduce(method_string, value_destination_pairs)
+    assert aggregation in [
+        variable_scope.VariableAggregation.SUM,
+        variable_scope.VariableAggregation.MEAN
+    ]
+    return self._batch_reduce(aggregation, value_destination_pairs)
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
-    return [self.reduce(method_string, t, destinations=v)
-            for t, v in value_destination_pairs]
+  def _batch_reduce(self, aggregation, value_destination_pairs):
+    return [
+        self.reduce(aggregation, t, destinations=v)
+        for t, v in value_destination_pairs
+    ]
 
   def update(self, var, fn, *args, **kwargs):
     """Run `fn` to update `var` using inputs mirrored to the same devices.
@@ -928,8 +979,22 @@ class DistributionStrategy(object):
       A list of values contained in `value`. If `value` represents a single
       value, this returns `[value].`
     """
-    _require_cross_tower_context(self)
     return self._unwrap(value)
+
+  def value_container(self, value):
+    """Returns the container that this per-device `value` belongs to.
+
+    Args:
+      value: A value returned by `call_for_each_tower()` or a variable
+        created in `scope()`.
+
+    Returns:
+      A container that `value` belongs to.
+      If value does not belong to any container (including the case of
+      container having been destroyed), returns the value itself.
+      `value in unwrap(value_container(value))` will always be true.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def _unwrap(self, distributed_value):
     raise NotImplementedError("must be implemented in descendants")
@@ -1090,10 +1155,6 @@ class TowerContext(object):
     finally:
       _pop_per_thread_mode()
 
-  def tower_local_var_scope(self, reduce_method):
-    """Alias for distribution_strategy.tower_local_var_scope()."""
-    return self._distribution_strategy.tower_local_var_scope(reduce_method)
-
   @property
   def is_single_tower(self):
     """Returns whether there is a single tower or multiple."""
@@ -1140,21 +1201,10 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      kwargs.pop("tower_local_reduce_method", None)
       return next_creator(*args, **kwargs)
 
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator))
-
-  def tower_local_var_scope(self, reduce_method):
-    """Does not set to resource variables."""
-    def create_tower_local_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      kwargs["trainable"] = False
-      return next_creator(*args, **kwargs)
-
-    _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_tower_local_variable)
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
@@ -1176,9 +1226,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     with TowerContext(self, tower_id=0):
       return fn(*args, **kwargs)
 
-  def _reduce(self, method_string, value, destinations):
+  def _reduce(self, aggregation, value, destinations):
     # TODO(josh11b): Use destinations?
-    del method_string, destinations
+    del aggregation, destinations
     return value
 
   def _update(self, var, fn, *args, **kwargs):
@@ -1198,6 +1248,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def _unwrap(self, distributed_value):
     return [distributed_value]
+
+  def value_container(self, value):
+    return value
 
   @property
   def is_single_tower(self):

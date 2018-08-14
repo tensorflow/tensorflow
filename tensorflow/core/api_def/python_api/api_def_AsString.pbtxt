@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "as_string"
-    deprecation_message: "tf.as_string is deprecated, please use tf.dtypes.as_string instead."
+    deprecated: true
   }
 }

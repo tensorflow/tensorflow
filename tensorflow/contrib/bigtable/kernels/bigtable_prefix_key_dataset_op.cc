@@ -35,11 +35,13 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string prefix)
-        : GraphDatasetBase(ctx), table_(table), prefix_(std::move(prefix)) {
+        : DatasetBase(DatasetContext(ctx)),
+          table_(table),
+          prefix_(std::move(prefix)) {
       table_->Ref();
     }
 
@@ -47,8 +49,8 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtablePrefixKeyDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtablePrefixKey")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -68,21 +70,30 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
+    }
+
    private:
     class Iterator : public BigtableReaderDatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
           : BigtableReaderDatasetIterator<Dataset>(params) {}
 
-      ::bigtable::RowRange MakeRowRange() override {
-        return ::bigtable::RowRange::Prefix(dataset()->prefix_);
+      ::google::cloud::bigtable::RowRange MakeRowRange() override {
+        return ::google::cloud::bigtable::RowRange::Prefix(dataset()->prefix_);
       }
-      ::bigtable::Filter MakeFilter() override {
-        return ::bigtable::Filter::Chain(
-            ::bigtable::Filter::CellsRowLimit(1),
-            ::bigtable::Filter::StripValueTransformer());
+      ::google::cloud::bigtable::Filter MakeFilter() override {
+        return ::google::cloud::bigtable::Filter::Chain(
+            ::google::cloud::bigtable::Filter::CellsRowLimit(1),
+            ::google::cloud::bigtable::Filter::StripValueTransformer());
       }
-      Status ParseRow(IteratorContext* ctx, const ::bigtable::Row& row,
+      Status ParseRow(IteratorContext* ctx,
+                      const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) override {
         Tensor output_tensor(ctx->allocator({}), DT_STRING, {});
         output_tensor.scalar<string>()() = string(row.row_key());

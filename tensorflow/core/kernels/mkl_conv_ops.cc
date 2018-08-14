@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string.h>
 #include <map>
-#include <string>
 #include <vector>
 #include <memory>
 
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
@@ -42,7 +42,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
@@ -57,7 +57,7 @@ using mkldnn::convolution_direct;
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 // This structure aggregates multiple inputs to Conv2DFwd* methods.
 struct MklConvFwdParams {
@@ -298,8 +298,8 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(const MklConvFwdParams& convFwdDims) {
-    std::string prefix = "conv2d_fwd_";
+  static string CreateKey(const MklConvFwdParams& convFwdDims) {
+    string prefix = "conv2d_fwd_";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convFwdDims.src_dims);
@@ -314,12 +314,12 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetConv2DFwd(const MklConvFwdParams& convFwdDims) {
-    std::string key = CreateKey(convFwdDims);
+    string key = CreateKey(convFwdDims);
     return this->GetOp(key);
   }
 
   void SetConv2DFwd(const MklConvFwdParams& convFwdDims, MklPrimitive* op) {
-    std::string key = CreateKey(convFwdDims);
+    string key = CreateKey(convFwdDims);
     this->SetOp(key, op);
   }
 };
@@ -329,7 +329,7 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 template <typename Device, typename T, bool biasEnabled>
 class MklConv2DOp : public OpKernel {
  public:
@@ -899,11 +899,10 @@ class MklConv2DOp : public OpKernel {
       T* dst_data = static_cast<T*>(dst_tensor->flat<T>().data());
 
       // check whether src/filter need reorder
-      std::vector<primitive> net;
-      T* src_data = nullptr;
+      T *src_data = nullptr;
       if (src_md.data.format != conv2d_fwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(conv_fwd_pd.get()->src_primitive_desc(), &net);
+        src.CheckReorderToOpMem(conv_fwd_pd.get()->src_primitive_desc());
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
@@ -912,15 +911,12 @@ class MklConv2DOp : public OpKernel {
       if (filter_md.data.format != conv2d_fwd->GetFilterMemoryFormat()) {
         filter.SetUsrMem(filter_md, &filter_tensor);
         filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_primitive_desc(),
-                                   filter.GetTensorBuffer(filter_out_tensor),
-                                   &net);
+                                   filter.GetTensorBuffer(filter_out_tensor));
         filter_data = static_cast<T*>(filter.GetOpMem().get_data_handle());
       } else {
         filter_data =
             static_cast<T*>(const_cast<T*>(filter_tensor.flat<T>().data()));
       }
-
-      stream(stream::kind::eager).submit(net).wait();
 
 
       // execute convolution
@@ -934,10 +930,9 @@ class MklConv2DOp : public OpKernel {
         conv2d_fwd->Execute(src_data, filter_data, dst_data);
       }
     } catch (mkldnn::error &e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) +
-                       ", in file " + std::string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
+      string error_msg = tensorflow::strings::StrCat(
+          "Status: ", e.status, ", message: ", string(e.message), ", in file ",
+          __FILE__, ":", __LINE__);
       OP_REQUIRES_OK(context,
         errors::Aborted("Operation received an exception:", error_msg));
     }
@@ -1016,16 +1011,15 @@ class MklConv2DOp : public OpKernel {
     // Create reorders between user layout and MKL layout if it is needed and
     // add it to the net before convolution. No need to check for output
     // reorder as we propagate output layout to the next layer.
-    std::vector<primitive> net;
-    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc(), &net);
+    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc());
 
     // rather than re-order to a temp buffer, reorder directly to the
     // filter output tensor
     filter->CheckReorderToOpMem(conv_prim_desc.weights_primitive_desc(),
-                                filter->GetTensorBuffer(filter_out_tensor),
-                                &net);
+                                filter->GetTensorBuffer(filter_out_tensor));
 
     // Create convolution primitive and add it to net.
+    std::vector<primitive> net;
     if (bias) {
       CHECK_EQ(biasEnabled, true);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),

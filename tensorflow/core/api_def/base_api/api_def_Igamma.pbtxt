@@ -1,6 +1,6 @@
 op {
   graph_op_name: "Igamma"
-  summary: "Compute the lower regularized incomplete Gamma function `Q(a, x)`."
+  summary: "Compute the lower regularized incomplete Gamma function `P(a, x)`."
   description: <<END
 The lower regularized incomplete Gamma function is defined as:
 

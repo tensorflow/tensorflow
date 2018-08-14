@@ -34,13 +34,13 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   // The meanings of other parameters are the same as LoopEmitter.
   ParallelLoopEmitter(BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* ir_builder, int unroll_factor = 1);
+                      llvm::IRBuilder<>* b, int unroll_factor = 1);
   // Constructs a ParallelLoopEmitter from an element generator that generates
   // each element of the given target array.
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       const llvm_ir::IrArray& target_array,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* ir_builder, int unroll_factor = 1);
+                      llvm::IRBuilder<>* b, int unroll_factor = 1);
 
   // Constructs a loop emitter for a loop that generates on element of each of N
   // arrays on each iteration.
@@ -50,7 +50,7 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ParallelLoopEmitter(
       const llvm_ir::ElementGenerator& target_element_generator,
       tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
-      const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder,
+      const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
       int unroll_factor = 1);
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;

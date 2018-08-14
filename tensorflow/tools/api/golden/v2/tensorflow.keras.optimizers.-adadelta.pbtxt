@@ -1,0 +1,34 @@
+path: "tensorflow.keras.optimizers.Adadelta"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Adadelta\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Optimizer\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'lr\', \'rho\', \'epsilon\', \'decay\'], varargs=None, keywords=kwargs, defaults=[\'1.0\', \'0.95\', \'None\', \'0.0\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_gradients"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_updates"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+}

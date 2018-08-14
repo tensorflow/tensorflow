@@ -80,12 +80,13 @@ class HloTestBase : public ::testing::Test {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase();
+  HloTestBase(bool allow_mixed_precision_in_hlo_verifier = true);
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
-  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
+              bool allow_mixed_precision_in_hlo_verifier = true);
 
   ~HloTestBase() override {}
 
@@ -166,6 +167,8 @@ class HloTestBase : public ::testing::Test {
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(const tensorflow::StringPiece hlo_string)
+      TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -198,6 +201,13 @@ class HloTestBase : public ::testing::Test {
     module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
+  }
+
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout, shape_index);
   }
 
   // Convenience method to clear the layout of the computation result in

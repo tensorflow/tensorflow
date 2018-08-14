@@ -6,6 +6,10 @@ package(
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 tf_kernel_library(
     name = "xla_ops",
@@ -58,6 +62,7 @@ tf_kernel_library(
         "pack_op.cc",
         "pad_op.cc",
         "pooling_ops.cc",
+        "qr_op.cc",
         "quantize_and_dequantize_op.cc",
         "random_ops.cc",
         "reduce_window_op.cc",
@@ -107,6 +112,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
         "//tensorflow/compiler/tf2xla/lib:cholesky",
+        "//tensorflow/compiler/tf2xla/lib:qr",
         "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/lib:triangular_solve",
@@ -114,15 +120,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:while_loop",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:numeric",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:pooling",
+        "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
@@ -145,8 +158,14 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
         "//tensorflow/core/kernels:training_ops",
-        "//tensorflow/core/kernels:transpose_op",
-    ],
+    ] + if_mkl(
+        [
+            "//tensorflow/core/kernels:mkl_transpose_op",
+        ],
+        [
+            "//tensorflow/core/kernels:transpose_op",
+        ],
+    ),
 )
 
 tf_kernel_library(
@@ -157,8 +176,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -173,8 +193,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -208,10 +228,11 @@ tf_kernel_library(
         ":index_ops_kernel_argmax_float_2d",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:argmax_op",

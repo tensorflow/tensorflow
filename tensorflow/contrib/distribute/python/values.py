@@ -30,10 +30,12 @@ from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver
@@ -76,6 +78,13 @@ class DistributedValues(object):
   @property
   def devices(self):
     return list(self._index.keys())
+
+  @property
+  def is_tensor_like(self):
+    for v in self._index.values():
+      if not tensor_util.is_tensor(v):
+        return False
+    return True
 
   def __str__(self):
     return "%s:%s" % (self.__class__.__name__, self._index)
@@ -196,11 +205,54 @@ class DistributedVariable(DistributedDelegate):
     # to the container without introducing a reference cycle.
     for v in six.itervalues(index):
       v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+    # tf.keras keeps track of variables initialized using this attribute. When
+    # tf.keras gets the default session, it initializes all uninitialized vars.
+    # We need to make _keras_initialized a member of DistributedVariable because
+    # without this it will use `__getattr__` which will delegate to a component
+    # variable.
+    self._keras_initialized = False
+    # Typically, a `DistributedVariable`'s initializer is composed of the
+    # initializers of the components variables. However, in some cases, such as
+    # when restoring from a checkpoint, we may set the _initializer_op
+    # property on the entire `DistributedVariable`.
+    self._initializer_op = None
     super(DistributedVariable, self).__init__(index)
+
+  def is_initialized(self, name=None):
+    """Identifies if all the component variables are initialized.
+
+    Args:
+      name: Name of the final `logical_and` op.
+
+    Returns:
+      The op that evaluates to True or False depending on if all the
+      component variables are initialized.
+    """
+    # We have to cast the self._index.values() to a `list` because when we
+    # use `model_to_estimator` to run tf.keras models, self._index.values() is
+    # of type `dict_values` and not `list`.
+    values_list = list(self._index.values())
+    result = values_list[0].is_initialized()
+    # We iterate through the list of values except the last one to allow us to
+    # name the final `logical_and` op the same name that is passed by the user
+    # to the `is_initialized` op. For distributed variables, the
+    # `is_initialized` op is a `logical_and` op.
+    for v in values_list[1:-1]:
+      result = math_ops.logical_and(result, v.is_initialized())
+    result = math_ops.logical_and(result, values_list[-1].is_initialized(),
+                                  name=name)
+    return result
 
   @property
   def initializer(self):
-    return control_flow_ops.group([v.initializer for v in self._index.values()])
+    if self._initializer_op:
+      init_op = self._initializer_op
+    else:
+      # return grouped ops of all the var initializations of component values of
+      # the mirrored variable
+      init_op = control_flow_ops.group(
+          [v.initializer for v in self._index.values()])
+    return init_op
 
   @property
   def graph(self):
@@ -242,6 +294,9 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.graph,
                               self._primary_var.op.type)
     return self.get().op
+
+  def read_value(self):
+    return distribute_lib.get_distribution_strategy().read_var(self)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -290,13 +345,13 @@ class MirroredVariable(DistributedVariable, Mirrored,
                        checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are kept in sync."""
 
-  def __init__(self, index, primary_var, aggregation_method=None):
+  def __init__(self, index, primary_var, aggregation):
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
     for v in six.itervalues(index):
       v._mirrored_container = weakref.ref(self)  # pylint: disable=protected-access
     self._primary_var = primary_var
-    self._aggregation_method = aggregation_method
+    self._aggregation = aggregation
     super(MirroredVariable, self).__init__(index)
 
   # The arguments to update() are automatically unwrapped so the update()
@@ -319,34 +374,42 @@ class MirroredVariable(DistributedVariable, Mirrored,
       return distribute_lib.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:
+      _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
       # context.
       # We reduce the value we want to assign/add/sub. More details about how we
       # handle the different use cases can be found in the _reduce method.
       # We call the function on each of the mirrored variables with the reduced
       # value.
-      if not self._aggregation_method:
+      if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "MirroredVariable in Tower Context.")
 
-      def merge_fn(strategy, value):
-        return strategy.update(self,
-                               f,
-                               strategy.reduce(
-                                   method_string=self._aggregation_method,
-                                   value=value,
-                                   destinations=self))
+      def merge_fn(strategy, value, *other_args, **other_kwargs):
+        return strategy.update(
+            self, f,
+            strategy.reduce(
+                aggregation=self._aggregation, value=value, destinations=self),
+            *other_args, **other_kwargs)
+
       return distribute_lib.get_tower_context().merge_call(merge_fn, *args,
                                                            **kwargs)
 
   def assign_sub(self, *args, **kwargs):
-    return self._assign_func(f=state_ops.assign_sub, *args, **kwargs)
+    assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
+    return self._assign_func(f=assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    return self._assign_func(f=state_ops.assign_add, *args, **kwargs)
+    assign_add_fn = lambda var, *a, **kw: var.assign_add(*a, **kw)
+    return self._assign_func(f=assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    return self._assign_func(f=state_ops.assign, *args, **kwargs)
+    assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
+    return self._assign_func(f=assign_fn, *args, **kwargs)
+
+  @property
+  def aggregation(self):
+    return self._aggregation
 
   def _get_cross_tower(self):
     device = device_util.canonicalize(device_util.current())
@@ -408,14 +471,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    # To preserve the sum across save and restore, we have to divide the
-    # total across all devices when restoring a variable that was summed
-    # when saving.
-    if self._tower_local_variable.reduce_method == "sum":
-      tensor *= 1. / len(self._tower_local_variable.devices)
-    return control_flow_ops.group([
-        _assign_on_device(d, v, tensor)
-        for d, v in six.iteritems(self._tower_local_variable._index)])  # pylint: disable=protected-access
+    return self._tower_local_variable.assign(tensor)
 
 
 def _assert_tower_context():
@@ -428,9 +484,9 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
                          checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are reduced on save."""
 
-  def __init__(self, index, primary_var, reduce_method):
+  def __init__(self, index, primary_var, aggregation):
     self._primary_var = primary_var
-    self._reduce_method = reduce_method
+    self._aggregation = aggregation
     super(TowerLocalVariable, self).__init__(index)
 
   def assign_sub(self, *args, **kwargs):
@@ -442,18 +498,29 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    _assert_tower_context()
-    return self.get().assign(*args, **kwargs)
+    if distribute_lib.get_cross_tower_context():
+      # To preserve the sum across save and restore, we have to divide the
+      # total across all devices when restoring a variable that was summed
+      # when saving.
+      tensor = args[0]
+      if self._aggregation == vs.VariableAggregation.SUM:
+        tensor *= 1. / len(self.devices)
+      return control_flow_ops.group(
+          [_assign_on_device(d, v, tensor)
+           for d, v in six.iteritems(self._index)])
+    else:
+      _assert_tower_context()
+      return self.get().assign(*args, **kwargs)
 
   @property
-  def reduce_method(self):
-    return self._reduce_method
+  def aggregation(self):
+    return self._aggregation
 
   def _get_cross_tower(self):
     all_components = tuple(self._index.values())
     # TODO(josh11b): Use a strategy-specific method.
     total = math_ops.add_n(all_components)
-    if self._reduce_method == "mean":
+    if self._aggregation == vs.VariableAggregation.MEAN:
       return total * (1./ len(all_components))
     return total
 
@@ -868,65 +935,120 @@ class MultiStepContext(object):
 
   This context object is useful when running multiple steps at a time using the
   `run_steps_on_dataset` API. For e.g. it allows the user's step function to
-  specify which outputs to emit at what frequency. Currently it only supports
-  capturing output from the last step, but will soon be augmented to support
-  other use cases such as output each N steps.
+  specify which outputs to emit at what frequency. Currently it supports
+  capturing output from the last step, as well as capturing non tensor outputs.
+  In the future it will be augmented to support other use cases such as output
+  each N steps.
   """
 
-  def __init__(self, initial_loop_values=None):
+  def __init__(self):
     """Initializes an output context.
 
-    Args:
-      initial_loop_values: Initial values passed to the run steps
-        while loop. The only purpose is to verify the shapes and types
-        when the actual output is set. This will be removed once we
-        automatically infer the output shapes and types (and do not need to
-        check for user error in specifying them manually).
     Returns:
       A context object.
     """
-    self._last_step_outputs = None
-    self._non_tensor_outputs = None
-    self._initial_loop_values = initial_loop_values
+    self._last_step_outputs = {}
+    self._last_step_outputs_aggregations = {}
+    self._non_tensor_outputs = {}
 
   @property
   def last_step_outputs(self):
-    """Return the last step's outputs."""
+    """A dictionary consisting of outputs to be captured on last step.
+
+    Keys in the dictionary are names of tensors to be captured, as specified
+    when `set_last_step_output` is called.
+    Values in the dictionary are the tensors themselves. If
+    `set_last_step_output` was called with an `aggregation` for this output,
+    then the value is the aggregated value.
+
+    Returns:
+      A dictionary with last step outputs.
+    """
     return self._last_step_outputs
 
-  @last_step_outputs.setter
-  def last_step_outputs(self, outputs):
-    """Set the last step's outputs."""
-    self._verify_structure_shapes_types(outputs, self._initial_loop_values)
+  def _set_last_step_outputs(self, outputs):
+    """Replace the entire dictionary of last step outputs."""
+    if not isinstance(outputs, dict):
+      raise ValueError("Need a dictionary to set last_step_outputs.")
     self._last_step_outputs = outputs
+
+  def set_last_step_output(self, name, output,
+                           aggregation=variables_lib.VariableAggregation.NONE):
+    """Set `output` with `name` to be outputted from the last step.
+
+    Args:
+      name: String, name to identify the output. Doesn't need to match tensor
+        name.
+      output: The tensors that should be outputted with `name`. See below for
+        actual types supported.
+      aggregation: Aggregation method to use to aggregate outputs from multiple
+        towers. Required if `set_last_step_output` is called in a tower context.
+        Optional in cross_tower_context.
+        When present, the outputs from all the towers are aggregated using the
+        current distribution strategy's `reduce` method. Hence, the type of
+        `output` must be what's supported by the corresponding `reduce` method.
+        For e.g. if using MirroredStrategy and aggregation is set, output
+        must be a `PerDevice` value.
+        The aggregation method is also recorded in a dictionary
+        `_last_step_outputs_aggregations` for later interpreting of the
+        outputs as already reduced or not.
+
+    """
+    if distribute_lib.get_cross_tower_context():
+      self._last_step_outputs_aggregations[name] = aggregation
+      if aggregation is variables_lib.VariableAggregation.NONE:
+        self._last_step_outputs[name] = output
+      else:
+        distribution = distribute_lib.get_distribution_strategy()
+        self._last_step_outputs[name] = distribution.reduce(
+            aggregation, output, destinations="/device:CPU:0")
+    else:
+      assert aggregation is not variables_lib.VariableAggregation.NONE
+      def merge_fn(distribution, value):
+        self._last_step_outputs[name] = distribution.reduce(
+            aggregation, value, destinations="/device:CPU:0")
+        # Setting this inside the `merge_fn` because all towers share the same
+        # context object, so it's more robust to set it only once (even if all
+        # the towers are trying to set the same value).
+        self._last_step_outputs_aggregations[name] = aggregation
+      distribute_lib.get_tower_context().merge_call(merge_fn, output)
 
   @property
   def non_tensor_outputs(self):
-    """Return the non tensor outputs."""
+    """A dictionary consisting of any non tensor outputs to be captured."""
     return self._non_tensor_outputs
 
-  @non_tensor_outputs.setter
-  def non_tensor_outputs(self, outputs):
-    """Set any non tensor outputs."""
-    self._non_tensor_outputs = outputs
+  def set_non_tensor_output(self, name, output):
+    """Set `output` with `name` to be captured as a non tensor output."""
+    if distribute_lib.get_cross_tower_context():
+      self._non_tensor_outputs[name] = output
+    else:
+      def merge_fn(distribution, value):
+        # NOTE(priyag): For non tensor outputs, we simply return all the values
+        # in a list as aggregation doesn't make sense on non tensors.
+        self._non_tensor_outputs[name] = distribution.unwrap(value)
+      distribute_lib.get_tower_context().merge_call(merge_fn, output)
 
-  def _verify_structure_shapes_types(self, left, right):
-    """Verify that the structure, shapes and types of left are same as right."""
-    nest.assert_same_structure(left, right)
-    flat_left = nest.flatten(left)
-    flat_right = nest.flatten(right)
-    assert len(flat_left) == len(flat_right), (
-        "Length of left {} and right {} should be same.".
-        format(len(flat_left), len(flat_right)))
 
-    for o, i in zip(flat_left, flat_right):
-      # TODO(priyag): Add checks for other types like IndexedSlices.
-      if isinstance(o, ops.Tensor):
-        assert isinstance(i, ops.Tensor)
-        assert o.shape == i.shape, (
-            "Shape {} of left {} doesn't match shape {} of right {}.".
-            format(o.shape, o, i.shape, i))
-        assert o.dtype == i.dtype, (
-            "Dtype {} of left {} doesn't match dtype {} of right {}.".
-            format(o.dtype, o, i.dtype, i))
+def value_container(val):
+  """Returns the container that this per-device `value` belongs to.
 
+  Args:
+    val: A value returned by `call_for_each_tower()` or a variable
+      created in `scope()`.
+
+  Returns:
+    A container that `value` belongs to.
+    If value does not belong to any container (including the case of
+    container having been destroyed), returns the value itself.
+  """
+  # pylint: disable=protected-access
+  if (hasattr(val, "_distributed_container") and
+      # DistributedVariable has _distributed_container defined
+      # but we don't want to return it.
+      not isinstance(val, DistributedVariable)):
+    container = val._distributed_container()
+    # pylint: disable=protected-access
+    if container is not None:
+      return container
+  return val

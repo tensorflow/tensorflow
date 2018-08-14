@@ -57,7 +57,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python:device_util",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
     tags = [
         "no_pip",
@@ -101,6 +101,23 @@ py_library(
 )
 
 py_library(
+    name = "parameter_server_strategy",
+    srcs = ["parameter_server_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":cross_tower_ops",
+        ":mirrored_strategy",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
@@ -113,6 +130,24 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "collective_all_reduce_strategy",
+    srcs = ["collective_all_reduce_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":cross_tower_ops",
+        ":cross_tower_utils",
+        ":mirrored_strategy",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -152,6 +187,7 @@ py_library(
         ":multi_worker_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/optimizer_v2:training",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
@@ -207,6 +243,35 @@ py_test(
     ],
 )
 
+py_test(
+    name = "parameter_server_strategy_test",
+    srcs = ["parameter_server_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/estimator:estimator_py",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "mirrored_strategy_multigpu_test",
     srcs = ["mirrored_strategy_multigpu_test.py"],
@@ -247,11 +312,11 @@ py_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:training",
-        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -272,12 +337,42 @@ py_library(
     deps = [
         ":one_device_strategy",
         ":values",
-        "//tensorflow/contrib/tpu",
-        "//tensorflow/contrib/tpu:tpu_py",
+        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "collective_all_reduce_strategy_test",
+    srcs = ["collective_all_reduce_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":cross_tower_utils",
+        ":multi_worker_test_base",
+        ":strategy_test_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -345,11 +440,7 @@ cuda_py_test(
         "//tensorflow/contrib/optimizer_v2:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:dnn_linear_combined",
-        "//tensorflow/python/estimator:export_export",
-        "//tensorflow/python/estimator:numpy_io",
-        "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
@@ -375,17 +466,27 @@ py_library(
     ],
 )
 
+py_library(
+    name = "step_fn_test_lib",
+    testonly = 1,
+    srcs = ["step_fn_test.py"],
+    deps = [
+        ":combinations",
+        ":single_loss_example",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "step_fn_test",
     srcs = ["step_fn_test.py"],
     additional_deps = [
-        ":single_loss_example",
-        ":combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
+        ":step_fn_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
@@ -451,8 +552,11 @@ py_library(
         "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -487,7 +591,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -495,6 +601,7 @@ py_library(
 
 cuda_py_test(
     name = "cross_tower_ops_test",
+    size = "large",
     srcs = ["cross_tower_ops_test.py"],
     additional_deps = [
         ":combinations",
@@ -509,7 +616,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    shard_count = 15,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
@@ -581,12 +687,12 @@ cuda_py_test(
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
-        "//tensorflow/python/estimator:keras",
-        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_windows_gpu",
         "notsan",
     ],
 )
@@ -603,6 +709,43 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "warm_starting_util_test",
+    size = "medium",
+    srcs = ["warm_starting_util_test.py"],
+    additional_deps = [
+        ":combinations",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "checkpoint_utils_test",
+    size = "medium",
+    srcs = ["checkpoint_utils_test.py"],
+    additional_deps = [
+        ":combinations",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:checkpoint_utils_test",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
     tags = [
         "multi_and_single_gpu",

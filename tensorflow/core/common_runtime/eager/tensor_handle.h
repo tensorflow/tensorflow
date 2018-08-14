@@ -109,6 +109,8 @@ class TensorHandle : public core::RefCounted {
                          tensorflow::Device** device,
                          tensorflow::Device** op_device);
 
+  Status Shape(tensorflow::TensorShape* shape);
+
   Status NumDims(int* num_dims);
   Status Dim(int dim_index, int64* dim);
 
@@ -136,6 +138,12 @@ class TensorHandle : public core::RefCounted {
 
   void SetRemoteShape(std::unique_ptr<TensorShape> remote_shape) {
     remote_shape_ = std::move(remote_shape);
+  }
+
+  bool OnHostCPU() {
+    mutex_lock ml(ctx_mutex_);
+    return device_ == nullptr ||
+           (ctx_ == nullptr || ctx_->HostCPU() == device_);
   }
 
  private:
