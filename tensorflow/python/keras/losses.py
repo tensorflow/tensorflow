@@ -25,9 +25,12 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import array_ops    # boolean_mask, shape, where
+from tensorflow.python.ops import gen_array_ops # fill
+from tensorflow.python.ops import gen_math_ops  # equal, less_equal
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import tf_export
-
+import numpy as np
 
 @tf_export('keras.metrics.mean_squared_error',
            'keras.metrics.mse',
@@ -48,6 +51,42 @@ def mean_squared_error(y_true, y_pred):
 def mean_absolute_error(y_true, y_pred):
   return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
+"""
+Based on 
+
+Generalized Cross Entropy Loss for Training Deep Neural Networks with Noisy Labels
+Zhilu Zhang and Mert R. Sabuncu
+Electrical and Computer Engineering - Cornell University
+
+Reference: https://arxiv.org/pdf/1805.07836.pdf  (May-20, 2018)
+
+Noise-robust loss functions that can be seen as a generalization of MAE and CCE.
+Hyperparameters: 
+	q in [0,1] in normal mode or truncated mode. Default: 0.7
+	k in [0,1] omitted in normal mode and specified in truncated mode. 
+"""
+@tf_export('keras.metrics.gencross_entropy_error',
+           'keras.losses.gencross_entropy_error')
+def gen_crossentropy(y_true, y_pred, q=0.7, k=-1.0):
+    # Filter true values ("y_true") in "y_pred"
+  y_ok = array_ops.boolean_mask(y_pred, gen_math_ops.equal(y_true,1))   
+    # Conversion for Float64 for valid operations in TensorFlow
+  um = np.float64(1.) 
+  q = np.float64(q)
+ 
+  if k==-1:  # cross entropy loss
+      # mean[ (1-y_ok^q)/q ]
+    return K.mean(math_ops.divide(math_ops.subtract(um,math_ops.pow(y_ok,q)),q),axis=-1)  
+  else:      # truncated cross entropy loss
+
+    k = np.float64(k)
+      # if y_ok < k
+      #     [ (1-k^q)/q    ]  (no broadcasting in Where())  
+      #     [ (1-y_ok^q)/q ]
+    vfunct = array_ops.where (gen_math_ops.less_equal(y_ok,k), 
+          gen_array_ops.fill(array_ops.shape(y_ok),(um-k**q)/q),
+	      math_ops.divide(math_ops.subtract(um,math_ops.pow(y_ok,q)),q))     
+    return K.mean(vfunct, axis=-1)    # mean [ above values ]
 
 @tf_export('keras.metrics.mean_absolute_percentage_error',
            'keras.metrics.mape',

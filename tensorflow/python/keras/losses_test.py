@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.platform import test
+from tensorflow.python.framework import dtypes  # float64 (for gen_crossentropy_test)
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -43,7 +44,9 @@ ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.poisson,
               keras.losses.cosine_proximity,
               keras.losses.logcosh,
-              keras.losses.categorical_hinge]
+              keras.losses.categorical_hinge
+              keras.losses.gencross_entropy_error
+			  ]
 
 
 class _MSEMAELoss(object):
@@ -90,6 +93,8 @@ class KerasLossesTest(test.TestCase):
       objective_output = keras.losses.sparse_categorical_crossentropy(y_a, y_b)
       assert keras.backend.eval(objective_output).shape == (6,)
 
+
+
   def test_serialization(self):
     fn = keras.losses.get('mse')
     config = keras.losses.serialize(fn)
@@ -100,9 +105,27 @@ class KerasLossesTest(test.TestCase):
     y_pred = keras.backend.variable(np.array([[0.3, 0.2, 0.1],
                                               [0.1, 0.2, 0.7]]))
     y_true = keras.backend.variable(np.array([[0, 1, 0], [1, 0, 0]]))
+
     expected_loss = ((0.3 - 0.2 + 1) + (0.7 - 0.1 + 1)) / 2.0
     loss = keras.backend.eval(keras.losses.categorical_hinge(y_true, y_pred))
     self.assertAllClose(expected_loss, np.mean(loss))
+
+  def test_gen_crossentropy(self):
+    y_pred = keras.backend.variable(np.array([[0.2, 0.3, 0.3, 0.1, 0.1],
+	              [0.1, 0.1, 0.6, 0.1, 0.1]]))
+    y_true = keras.backend.variable(np.array([[0, 1, 0,  0, 0],
+                  [0, 0, 1,  0, 0]]),dtype=dtypes.float64)
+    expected_loss = ((1-0.3**0.7)/0.7 + (1-0.6**0.7)/0.7)/2
+    loss = keras.backend.eval(keras.losses.gen_crossentropy(y_true, y_pred,q=0.7,k=0.2)))
+    self.assertAllClose(expected_loss, np.sum(loss))
+
+    expected_loss = ((1-0.5**0.6)/0.6 + (1-0.6**0.6)/0.6)/2
+    loss = keras.backend.eval(keras.losses.gen_crossentropy(y_true, y_pred,q=0.6,k=0.5))
+    self.assertAllClose(expected_loss, np.sum(loss))
+
+    expected_loss = ((1-0.3**0.5)/0.5 + (1-0.6**0.5)/0.5)/2
+    loss = keras.backend.eval(keras.losses.gen_crossentropy(y_true, y_pred,q=0.5))
+    self.assertAllClose(expected_loss, np.sum(loss))
 
   def test_serializing_loss_class(self):
     orig_loss_class = _MSEMAELoss(0.3)
