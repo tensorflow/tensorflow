@@ -11,12 +11,17 @@ import test_utils as tu
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.training import gradient_descent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 class IpuFuseOpsTest(test_util.TensorFlowTestCase):
@@ -169,6 +174,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      # Clear old reports
+      sess.run(report)
+
       fe = {
         pa: np.ones([1,1,2,2]),
         pb: np.zeros([1,1,2,2]),
@@ -199,6 +207,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      # Clear old reports
+      sess.run(report)
+
       fd = {
         pa: [2.0, 0.5, 1.0],
         pb: [1.0, 2.0, 3.0]
@@ -230,6 +241,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      # Clear old reports
+      sess.run(report)
+
       fd = {
         pa: [2.0, 0.5, 1.0],
         pb: [1.0, 2.0, 3.0]
@@ -247,6 +261,39 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'host-exchange-local-copy-',
             'sub/call/AddTo']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testConvolutionBiasApply(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer())
+        y = convolutional.conv2d(y, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer())
+
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run([train,loss], {x: np.zeros([1,4,4,2])})
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 12) # 2xcompile, 4xupload, 1xload, 4xdownload, 1xexecute
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/call.*/BiasUpdate']
+      self.assertTrue(tu.check_some_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":
     googletest.main()

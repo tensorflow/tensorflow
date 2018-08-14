@@ -4,6 +4,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -444,6 +445,17 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(float_lit, literal.Convert(F32));
 
   float learning_rate = float_lit->GetFirstElement<float>();
+
+  auto* conv_call = inst->operand(1);
+  while (!IsPopOpsCall(conv_call, "conv_with_reverse")) {
+    conv_call = conv_call->to_apply()->root_instruction();
+  }
+  auto* conv = conv_call->to_apply()->root_instruction();
+  if (conv->opcode() != HloOpcode::kConvolution) {
+    return xla::InternalError("Failed to find convolution");
+  }
+
+  TF_ASSIGN_OR_RETURN(deltas, ShuffleConvolutionInputToPoplar(conv, deltas));
 
   poplar::program::Sequence prog;
   popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate,

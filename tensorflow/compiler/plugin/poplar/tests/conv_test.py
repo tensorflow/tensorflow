@@ -260,6 +260,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_partialReduceOut_to_depthwise/call.2_out_0',
             'depthwise/call.*clone/Conv_1x1',
             'add/call.*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))

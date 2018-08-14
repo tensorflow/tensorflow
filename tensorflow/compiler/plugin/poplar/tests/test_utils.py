@@ -45,14 +45,22 @@ def check_all_compute_sets_in_list(cs_list, whitelist):
   result = True
   fail_list = []
   wl = [x+'*' for x in whitelist]
-  if len(cs_list) < len(wl):
-    print("Too few compute sets for whitelist")
-    return False
-  else:
-    for cs in cs_list:
-      if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
-        fail_list += [ cs ]
-        result = False
+  for cs in cs_list:
+    if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
+      fail_list += [ cs ]
+      result = False
+  if not result:
+    print("Failed to match " + str(fail_list))
+  return result
+
+def check_some_compute_sets_in_list(cs_list, whitelist):
+  result = True
+  fail_list = []
+  wl = [x+'*' for x in whitelist]
+  for x in wl:
+    if len([cs for cs in cs_list if fnmatch.fnmatch(cs, x)]) == 0:
+      fail_list += [ cs ]
+      result = False
   if not result:
     print("Failed to match " + str(fail_list))
   return result
