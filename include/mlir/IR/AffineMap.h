@@ -50,6 +50,11 @@ public:
   /// their range dimensions (more accurately co-domain dimensions).
   bool isBounded() const { return rangeSizes != nullptr; }
 
+  /// Returns true if this affine map is an identity affine map.
+  /// An identity affine map corresponds to an identity affine function on the
+  /// dimensional identifiers.
+  bool isIdentity() const;
+
   // Prints affine map to 'os'.
   void print(raw_ostream &os) const;
   void dump() const;

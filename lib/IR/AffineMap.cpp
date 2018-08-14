@@ -27,6 +27,19 @@ AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
       results(results), rangeSizes(rangeSizes) {}
 
+bool AffineMap::isIdentity() const {
+  if (getNumDims() != getNumResults())
+    return false;
+  ArrayRef<AffineExpr *> results = getResults();
+  for (unsigned i = 0; i < getNumDims(); ++i) {
+    auto *expr = results[i];
+    if (!isa<AffineDimExpr>(expr) ||
+        cast<AffineDimExpr>(expr)->getPosition() != i)
+      return false;
+  }
+  return true;
+}
+
 /// Simplify add expression. Return nullptr if it can't be simplified.
 AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
                                             MLIRContext *context) {
