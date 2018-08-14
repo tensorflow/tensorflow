@@ -313,8 +313,8 @@ def eager_py_func(func, inp, Tout, name=None):
   in a once-differentiable TensorFlow operation that executes it with eager
   exeuction enabled. As a consequence, `tf.contrib.eager.py_func` makes it
   possible to express control flow using Python constructs (`if`, `while`,
-  `for`, etc.), instead of TensorFlow control flow constructs (@{tf.cond},
-  @{tf.while_loop}). For example, you might use `tf.contrib.eager.py_func` to
+  `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
+  `tf.while_loop`). For example, you might use `tf.contrib.eager.py_func` to
   implement the log huber function:
 
   ```python
@@ -345,15 +345,15 @@ def eager_py_func(func, inp, Tout, name=None):
 
   For more information on eager execution, see @{$guide/eager}.
 
-  `tf.contrib.eager.py_func` is similar in spirit to @{tf.py_func}, but unlike
+  `tf.contrib.eager.py_func` is similar in spirit to `tf.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
-  Python function. In particular, while @{tf.py_func} only runs on CPUs and
+  Python function. In particular, while `tf.py_func` only runs on CPUs and
   wraps functions that take NumPy arrays as inputs and return NumPy arrays as
   outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
-  Like @{tf.py_func}, `tf.contrib.eager.py_func` has the following limitations
+  Like `tf.py_func`, `tf.contrib.eager.py_func` has the following limitations
   with respect to serialization and distribution:
 
   * The body of the function (i.e. `func`) will not be serialized in a

@@ -331,7 +331,7 @@ class TimeDistributed(Wrapper):
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
     input_uid = generic_utils.object_list_uid(inputs)
-    inner_inputs = self._input_map[input_uid]
+    inner_inputs = self._input_map.get(input_uid, inputs)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:

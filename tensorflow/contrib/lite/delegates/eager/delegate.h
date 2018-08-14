@@ -30,7 +30,7 @@ namespace tflite {
 // interpreter.
 //
 // Usage:
-//   EagerDelegate delegate();
+//   EagerDelegate delegate;
 //   ... build interpreter ...
 //
 //   delegate.Apply(interpreter);
@@ -42,10 +42,8 @@ class EagerDelegate {
   EagerDelegate();
   ~EagerDelegate();
 
-  TfLiteStatus Apply(Interpreter* interpreter) {
-    return interpreter->ModifyGraphWithDelegate(delegate_.get(),
-                                                /*allow_dynamic_tensors=*/true);
-  }
+  // Modifies the graph loaded in the interpreter.
+  TfLiteStatus Apply(Interpreter* interpreter);
 
  private:
   std::unique_ptr<eager::DelegateData> delegate_data_;

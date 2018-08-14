@@ -98,7 +98,7 @@ TEST(GcsFileSystemTest,
       "Timeouts: 5 1 10\n",
       R"(
           {
-            "location":"us-east1"
+            "location":"US-EAST1"
           })")});
 
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -124,7 +124,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
            "Timeouts: 5 1 10\n",
            R"(
           {
-            "location":"us-east1"
+            "location":"US-EAST1"
           })"),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/anotherbucket\n"
@@ -132,7 +132,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
            "Timeouts: 5 1 10\n",
            R"(
           {
-            "location":"us-east1"
+            "location":"US-EAST1"
           })"),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket\n"
@@ -140,7 +140,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
            "Timeouts: 5 1 10\n",
            R"(
           {
-            "location":"us-east1"
+            "location":"US-EAST1"
           })")});
 
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -181,7 +181,7 @@ TEST(GcsFileSystemTest,
       "Timeouts: 5 1 10\n",
       R"(
           {
-            "location":"barfoo"
+            "location":"BARFOO"
           })")});
 
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -3076,7 +3076,7 @@ TEST(GcsFileSystemTest, BucketLocationConstraintEnvironmentVariableTest) {
   GcsFileSystem fs1;
   EXPECT_EQ(*kAllowedLocationsAuto, fs1.allowed_locations());
 
-  setenv("GCS_ALLOWED_BUCKET_LOCATIONS", "custom,list", 1);
+  setenv("GCS_ALLOWED_BUCKET_LOCATIONS", "CUSTOM,list", 1);
   GcsFileSystem fs2;
   EXPECT_EQ(std::unordered_set<string>({"custom", "list"}),
             fs2.allowed_locations());

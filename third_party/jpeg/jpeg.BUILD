@@ -22,7 +22,6 @@ libjpegturbo_copts = select({
         "-w",
     ],
     ":windows": WIN_COPTS,
-    ":windows_msvc": WIN_COPTS,
     "//conditions:default": [
         "-O3",
         "-w",
@@ -272,8 +271,10 @@ cc_library(
         "jchuff.h",
         "jconfig.h",
         "jdct.h",
+        "jerror.h",
         "jinclude.h",
         "jmorecfg.h",
+        "jpegint.h",
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
@@ -423,7 +424,6 @@ genrule(
     outs = ["jconfig.h"],
     cmd = select({
         ":windows": "cp $(location jconfig_win.h) $@",
-        ":windows_msvc": "cp $(location jconfig_win.h) $@",
         ":k8": "cp $(location jconfig_nowin_simd.h) $@",
         ":armeabi-v7a": "cp $(location jconfig_nowin_simd.h) $@",
         ":arm64-v8a": "cp $(location jconfig_nowin_simd.h) $@",
@@ -441,7 +441,6 @@ genrule(
     outs = ["jconfigint.h"],
     cmd = select({
         ":windows": "cp $(location jconfigint_win.h) $@",
-        ":windows_msvc": "cp $(location jconfigint_win.h) $@",
         "//conditions:default": "cp $(location jconfigint_nowin.h) $@",
     }),
 )
@@ -539,11 +538,6 @@ config_setting(
 config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
-)
-
-config_setting(
-    name = "windows_msvc",
-    values = {"cpu": "x64_windows_msvc"},
 )
 
 config_setting(

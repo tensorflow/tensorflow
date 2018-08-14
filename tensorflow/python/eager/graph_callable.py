@@ -330,13 +330,9 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   sorted_variables = sorted(variable_captures.variables.values(),
                             key=lambda x: x.name)
-  captures = tmp_graph.captures
-  ids = list(sorted(captures.keys()))
-  if ids:
-    extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])
-  else:
-    extra_inputs = []
-    extra_placeholders = []
+
+  extra_inputs = tmp_graph.captures.keys()
+  extra_placeholders = tmp_graph.captures.values()
 
   flat_inputs = [x for x in nest.flatten(func_inputs)
                  if isinstance(x, tf_ops.Tensor)]

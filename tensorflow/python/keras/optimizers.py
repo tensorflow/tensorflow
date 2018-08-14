@@ -718,10 +718,13 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
       global_step = training_util.get_global_step()
       opt_update = self.optimizer.apply_gradients(grads, global_step)
     else:
-      self.updates = [state_ops.assign_add(self.iterations, 1)]
       if not params:
+        self.updates = [state_ops.assign_add(self.iterations, 1)]
         return self.updates
 
+      # Updates list starts out empty because the iterations variable is
+      # incremented in optimizer.apply_gradients()
+      self.updates = []
       grads = self.optimizer.compute_gradients(loss, params)
       opt_update = self.optimizer.apply_gradients(
           grads, global_step=self.iterations)

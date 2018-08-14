@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import os
 import weakref
 
 from tensorflow.core.protobuf import checkpointable_object_graph_pb2
@@ -34,8 +35,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
@@ -225,10 +227,11 @@ def _default_getter(name, shape, dtype, initializer=None,
       def initial_value():
         return initializer(
             shape_object.as_list(), dtype=dtype, partition_info=partition_info)
-    return resource_variable_ops.ResourceVariable(
+    return variables.Variable(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
+        use_resource=True,
         **kwargs
     )
 
@@ -1100,7 +1103,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
 
 def _copy_saver_with_new_var_list(old_saver, new_var_list):
   """Copy a `tf.train.Saver`'s state to a new Saver with different variables."""
-  new_saver = saver_lib.Saver(var_list=new_var_list)
+  new_saver = saver_lib.Saver(var_list=new_var_list, max_to_keep=None)
   # TODO(allenl): Move to copying functionality to Saver?
   # pylint: disable=protected-access
   new_saver._last_checkpoints = old_saver._last_checkpoints
@@ -1226,7 +1229,8 @@ class CheckpointableSaver(object):
         self._last_save_saver = _copy_saver_with_new_var_list(
             old_saver=self._last_save_saver, new_var_list=named_variables)
       else:
-        self._last_save_saver = saver_lib.Saver(var_list=named_variables)
+        self._last_save_saver = saver_lib.Saver(
+            var_list=named_variables, max_to_keep=None)
       self._last_save_object_graph = graph_proto
     with ops.device("/cpu:0"):
       save_path = self._last_save_saver.save(
@@ -1234,6 +1238,7 @@ class CheckpointableSaver(object):
               session=session, feed_additions=feed_additions),
           save_path=file_prefix,
           write_meta_graph=False,
+          write_state=False,
           global_step=checkpoint_number)
     return save_path
 
@@ -1486,6 +1491,32 @@ class Checkpoint(tracking.Checkpointable):
             add_variable(self, name="save_counter", initializer=0,
                          dtype=dtypes.int64))
 
+  def write(self, file_prefix, session=None):
+    """Writes a training checkpoint.
+
+    The checkpoint includes variables created by this object and any
+    checkpointable objects it depends on at the time `Checkpoint.write()` is
+    called.
+
+    `write` does not number checkpoints, increment `save_counter`, or update the
+    metadata used by `tf.train.latest_checkpoint`. It is primarily intended for
+    use by higher level checkpoint management utilities. `save` provides a very
+    basic implementation of these features.
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix).
+      session: The session to evaluate variables in. Ignored when executing
+        eagerly. If not provided when graph building, the default session is
+        used.
+
+    Returns:
+      The full path to the checkpoint (i.e. `file_prefix`).
+    """
+    return self._saver.save(
+        file_prefix=file_prefix,
+        session=session)
+
   @property
   def save_counter(self):
     """An integer variable which starts at zero and is incremented on save.
@@ -1499,11 +1530,18 @@ class Checkpoint(tracking.Checkpointable):
     return self._save_counter
 
   def save(self, file_prefix, session=None):
-    """Save a training checkpoint.
+    """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
     checkpointable objects it depends on at the time `Checkpoint.save()` is
     called.
+
+    `save` is a basic convenience wrapper around the `write` method,
+    sequentially numbering checkpoints using `save_counter` and updating the
+    metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
+    management, for example garbage collection and custom numbering, may be
+    provided by other utilities which also wrap `write`
+    (`tf.contrib.checkpoint.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1527,15 +1565,20 @@ class Checkpoint(tracking.Checkpointable):
         session.run(self.save_counter.initializer)
     if not graph_building or self._save_assign_op is None:
       with ops.colocate_with(self.save_counter):
-        assign_op = self.save_counter.assign_add(1, read_value=False)
+        assign_op = self.save_counter.assign_add(1, read_value=True)
       if graph_building:
-        self._save_assign_op = assign_op
+        self._save_assign_op = data_structures.NoDependency(assign_op)
     if graph_building:
-      session.run(self._save_assign_op)
-    return self._saver.save(
-        file_prefix=file_prefix,
-        checkpoint_number=self.save_counter,
-        session=session)
+      checkpoint_number = session.run(self._save_assign_op)
+    else:
+      checkpoint_number = assign_op.numpy()
+    file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
+                           session=session)
+    checkpoint_management.update_checkpoint_state(
+        save_dir=os.path.dirname(file_prefix),
+        model_checkpoint_path=file_path,
+        all_model_checkpoint_paths=[file_path])
+    return file_path
 
   def restore(self, save_path):
     """Restore a training checkpoint.

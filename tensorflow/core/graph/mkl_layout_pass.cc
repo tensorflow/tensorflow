@@ -43,7 +43,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -2211,7 +2211,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   return Status::OK();
 }
 
-#else   // INTEL_MKL_ML
+#else   // INTEL_MKL_ML_ONLY
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -4474,7 +4474,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
 
   return Status::OK();
 }
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 }  // namespace tensorflow
 
 #endif

@@ -42,7 +42,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
@@ -57,7 +57,7 @@ using mkldnn::convolution_direct;
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 // This structure aggregates multiple inputs to Conv2DFwd* methods.
 struct MklConvFwdParams {
@@ -329,7 +329,7 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 template <typename Device, typename T, bool biasEnabled>
 class MklConv2DOp : public OpKernel {
  public:

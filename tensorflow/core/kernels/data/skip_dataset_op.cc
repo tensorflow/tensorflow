@@ -38,10 +38,10 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
-        : GraphDatasetBase(ctx), count_(count), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
       input_->Ref();
     }
 
@@ -68,10 +68,11 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "SkipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* count = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
       TF_RETURN_IF_ERROR(
@@ -152,7 +153,7 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -165,7 +166,7 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }

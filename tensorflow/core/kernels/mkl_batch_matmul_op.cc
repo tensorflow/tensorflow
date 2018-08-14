@@ -25,7 +25,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
+#if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY)
 #include <vector>
 #include "mkl_cblas.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"

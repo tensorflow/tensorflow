@@ -56,6 +56,9 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
 void AddDtypeToKernalDefConstraint(StringPiece name, DataType dtype,
                                    KernelDef* kdef);
 
+// Returns the next random seed to use for seeding xla rng.
+uint32 GetXLARandomSeed();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TF2XLA_UTIL_H_
