@@ -1038,6 +1038,7 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
+@tf_export("div_no_nan")
 def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
 
