@@ -42,6 +42,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import distribute
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -832,6 +833,8 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
   func_graph = FuncGraph(_inference_name(name), graph=ops.get_default_graph())
 
   with func_graph.as_default(), AutomaticControlDependencies() as a:
+    variable_scope.get_variable_scope().set_use_resource(True)
+
     if signature is None:
       func_args = _get_defun_inputs_from_args(args)
       func_kwds = _get_defun_inputs_from_args(kwds)
