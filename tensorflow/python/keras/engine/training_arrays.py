@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
-
 import numpy as np
 
 from tensorflow.python.framework import errors
@@ -92,14 +90,8 @@ def fit_loop(model,
   val_sample_weights = val_sample_weights or []
   if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
     ins = inputs + targets + sample_weights + [1]
-    if val_inputs:
-      val_ins = val_inputs + val_targets + val_sample_weights + [1]
   else:
     ins = inputs + targets + sample_weights
-    if val_inputs:
-      val_ins = val_inputs + val_targets + val_sample_weights
-  if not val_inputs:
-    val_ins = []
 
   do_validation = False
   if val_inputs:
@@ -116,64 +108,26 @@ def fit_loop(model,
                        'training, i.e. `steps_per_epoch` '
                        'must be set.')
 
-  out_labels = model.metrics_names
-  if do_validation:
-    callback_metrics = copy.copy(out_labels) + ['val_' + n for n in out_labels]
-    # need to create the test_function before start of the first epoch
-    # because TensorBoard callback on_epoch_begin adds summary to the
-    # list of fetches of the test_function
-    model._make_test_function()
-  else:
-    callback_metrics = copy.copy(out_labels)
-
   num_train_samples = training_utils.check_num_samples(
       ins, batch_size, steps_per_epoch, 'steps_per_epoch')
+  count_mode = 'steps' if steps_per_epoch else 'samples'
+  callbacks = cbks.configure_callbacks(
+      callbacks,
+      model,
+      do_validation=do_validation,
+      val_inputs=val_inputs,
+      val_targets=val_targets,
+      val_sample_weights=val_sample_weights,
+      batch_size=batch_size,
+      epochs=epochs,
+      steps_per_epoch=steps_per_epoch,
+      samples=num_train_samples,
+      validation_steps=validation_steps,
+      verbose=verbose,
+      count_mode=count_mode)
+
   if num_train_samples is not None:
     index_array = np.arange(num_train_samples)
-
-  model.history = cbks.History()
-  all_callbacks = [cbks.BaseLogger(
-      stateful_metrics=model.stateful_metric_names)]
-  if verbose:
-    if steps_per_epoch is not None:
-      count_mode = 'steps'
-    else:
-      count_mode = 'samples'
-    all_callbacks.append(
-        cbks.ProgbarLogger(
-            count_mode, stateful_metrics=model.stateful_metric_names))
-  all_callbacks += (callbacks or []) + [model.history]
-  callbacks = cbks.CallbackList(all_callbacks)
-  out_labels = out_labels or []
-
-  # it's possible to callback a different model than self
-  # (used by Sequential models)
-  if hasattr(model, 'callback_model') and model.callback_model:
-    callback_model = model.callback_model
-  else:
-    callback_model = model
-
-  callbacks.set_model(callback_model)
-
-  callback_params = {
-      'batch_size': batch_size,
-      'epochs': epochs,
-      'steps': steps_per_epoch,
-      'samples': num_train_samples,
-      'verbose': verbose,
-      'do_validation': do_validation,
-      'metrics': callback_metrics or [],
-  }
-  if validation_steps:
-    callback_params.update({'validation_steps': validation_steps})
-  callbacks.set_params(callback_params)
-
-  for cbk in callbacks:
-    cbk.validation_data = val_ins
-  # validation_data must be set before on_train_begin() is called
-  # so that TensorboardCallback can validate its input
-  callbacks.on_train_begin()
-  callback_model.stop_training = False
 
   # To prevent a slowdown, we find beforehand the arrays that need conversion.
   feed = model._feed_inputs + model._feed_targets + model._feed_sample_weights
@@ -182,6 +136,7 @@ def fit_loop(model,
     if issparse is not None and issparse(ins[i]) and not K.is_sparse(feed[i]):
       indices_for_conversion_to_dense.append(i)
 
+  callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
     # Reset stateful metrics
     for m in model.stateful_metric_functions:
@@ -208,11 +163,11 @@ def fit_loop(model,
 
         if not isinstance(outs, list):
           outs = [outs]
-        for l, o in zip(out_labels, outs):
+        for l, o in zip(model.metrics_names, outs):
           batch_logs[l] = o
 
         callbacks.on_batch_end(step_index, batch_logs)
-        if callback_model.stop_training:
+        if callbacks.model.stop_training:
           break
 
       if do_validation:
@@ -226,7 +181,7 @@ def fit_loop(model,
         if not isinstance(val_outs, list):
           val_outs = [val_outs]
         # Same labels assumed.
-        for l, o in zip(out_labels, val_outs):
+        for l, o in zip(model.metrics_names, val_outs):
           epoch_logs['val_' + l] = o
     else:
       # Sample-wise fit loop.
@@ -259,11 +214,11 @@ def fit_loop(model,
         outs = f(ins_batch)
         if not isinstance(outs, list):
           outs = [outs]
-        for l, o in zip(out_labels, outs):
+        for l, o in zip(model.metrics_names, outs):
           batch_logs[l] = o
 
         callbacks.on_batch_end(batch_index, batch_logs)
-        if callback_model.stop_training:
+        if callbacks.model.stop_training:
           break
 
         if batch_index == len(batches) - 1:  # Last batch.
@@ -278,10 +233,10 @@ def fit_loop(model,
             if not isinstance(val_outs, list):
               val_outs = [val_outs]
             # Same labels assumed.
-            for l, o in zip(out_labels, val_outs):
+            for l, o in zip(model.metrics_names, val_outs):
               epoch_logs['val_' + l] = o
     callbacks.on_epoch_end(epoch, epoch_logs)
-    if callback_model.stop_training:
+    if callbacks.model.stop_training:
       break
   callbacks.on_train_end()
   return model.history

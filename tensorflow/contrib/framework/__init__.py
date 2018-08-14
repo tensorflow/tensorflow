@@ -100,6 +100,8 @@ See the @{$python/contrib.framework} guide.
 
 @@BoundedTensorSpec
 @@TensorSpec
+
+@@RecordInput
 """
 
 from __future__ import absolute_import
@@ -119,6 +121,7 @@ from tensorflow.python.framework.smart_cond import smart_cond
 from tensorflow.python.framework.smart_cond import smart_constant_value
 from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
 from tensorflow.python.framework.tensor_spec import TensorSpec
+from tensorflow.python.ops.data_flow_ops import RecordInput
 from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_1d
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d

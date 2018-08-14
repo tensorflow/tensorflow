@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 namespace {
 
@@ -1898,7 +1898,7 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 }  // namespace
 
-#else  // INTEL_MKL_ML
+#else  // INTEL_MKL_ML_ONLY
 
 // NOTE: Unit tests in this file rely on a topological sorted graph for
 // printing. But since sibling nodes of a node in the topologically sorted graph
@@ -3582,7 +3582,7 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 }  // namespace
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
 }  // namespace tensorflow
 

@@ -41,7 +41,7 @@ data from, and decide which nodes you would like to annotate with
 For example, suppose you are training a convolutional neural network for
 recognizing MNIST digits. You'd like to record how the learning rate
 varies over time, and how the objective function is changing. Collect these by
-attaching @{tf.summary.scalar} ops
+attaching `tf.summary.scalar` ops
 to the nodes that output the learning rate and loss respectively. Then, give
 each `scalar_summary` a meaningful `tag`, like `'learning rate'` or `'loss
 function'`.
@@ -49,7 +49,7 @@ function'`.
 Perhaps you'd also like to visualize the distributions of activations coming
 off a particular layer, or the distribution of gradients or weights. Collect
 this data by attaching
-@{tf.summary.histogram} ops to
+`tf.summary.histogram` ops to
 the gradient outputs and to the variable that holds your weights, respectively.
 
 For details on all of the summary operations available, check out the docs on
@@ -60,13 +60,13 @@ depends on their output. And the summary nodes that we've just created are
 peripheral to your graph: none of the ops you are currently running depend on
 them. So, to generate summaries, we need to run all of these summary nodes.
 Managing them by hand would be tedious, so use
-@{tf.summary.merge_all}
+`tf.summary.merge_all`
 to combine them into a single op that generates all the summary data.
 
 Then, you can just run the merged summary op, which will generate a serialized
 `Summary` protobuf object with all of your summary data at a given step.
 Finally, to write this summary data to disk, pass the summary protobuf to a
-@{tf.summary.FileWriter}.
+`tf.summary.FileWriter`.
 
 The `FileWriter` takes a logdir in its constructor - this logdir is quite
 important, it's the directory where all of the events will be written out.

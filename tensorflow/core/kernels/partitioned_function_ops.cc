@@ -98,7 +98,8 @@ class PartitionedCallOp : public AsyncOpKernel {
                           done);
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
         CopyGraph(*fbody->graph, graph.get());
-        OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
+        OP_REQUIRES_OK_ASYNC(ctx, PropagateInheritedDevices(graph.get(), args),
+                             done);
 
         DeviceSet device_set;
         for (auto d : lib->device_mgr()->ListDevices()) {
@@ -114,8 +115,16 @@ class PartitionedCallOp : public AsyncOpKernel {
 
         // The FunctionLibraryRuntime's library cannot be mutated from within
         // an OpKernel, so functions are instantiated in an overlay library.
-        overlay_lib_.reset(new FunctionLibraryDefinition(
-            *lib->GetFunctionLibraryDefinition()));
+        OP_REQUIRES_ASYNC(
+            ctx, overlay_libs_.find(lib) == overlay_libs_.end(),
+            errors::Internal("Found an overlay library but did not "
+                             "find cached function partitions; "
+                             "this indicates a bug."),
+            done);
+        FunctionLibraryDefinition* overlay_lib =
+            new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
+        overlay_libs_.emplace(lib, overlay_lib);
+
         auto handles = tensorflow::MakeUnique<gtl::FlatMap<string, FHandle>>();
         for (const auto& pair : subgraphs) {
           // TODO(akshayka): Fail gracefully if the set of devices corresponds
@@ -125,13 +134,13 @@ class PartitionedCallOp : public AsyncOpKernel {
           OP_REQUIRES_OK_ASYNC(
               ctx, UpdateArgAndRetMetadata(target, subgraph.get()), done);
           FunctionDef shard;
-          string unique_name = UniquifyFunctionName(func_.name());
+          string unique_name = UniquifyFunctionName(overlay_lib, func_.name());
           OP_REQUIRES_OK_ASYNC(
               ctx, GraphToFunctionDef(*subgraph, unique_name, &shard), done);
-          OP_REQUIRES_OK_ASYNC(ctx, overlay_lib_->AddFunctionDef(shard), done);
+          OP_REQUIRES_OK_ASYNC(ctx, overlay_lib->AddFunctionDef(shard), done);
           FunctionLibraryRuntime::InstantiateOptions opts;
           opts.target = target;
-          opts.overlay_lib = overlay_lib_.get();
+          opts.overlay_lib = overlay_lib;
           FHandle handle;
           OP_REQUIRES_OK_ASYNC(
               ctx,
@@ -154,10 +163,15 @@ class PartitionedCallOp : public AsyncOpKernel {
                     std::vector<AllocatorAttributes>>
       ArgAndRetAllocAttrs;
 
+  // Propagates device annotations from the outer graph to the function body.
+  //
   // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
   // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices.
-  Status PinResourceArgs(Graph* graph, const OpInputList& args) {
+  // access these resources to the appropriate devices. Additionally, places
+  // nodes that are unadorned with device annotations onto PartitiondCallOp's
+  // device. This lets call-site device annotations influence the execution
+  // of the function.
+  Status PropagateInheritedDevices(Graph* graph, const OpInputList& args) {
     for (Node* node : graph->op_nodes()) {
       string node_type = node->type_string();
       if (node_type == FunctionLibraryDefinition::kArgOp) {
@@ -169,6 +183,18 @@ class PartitionedCallOp : public AsyncOpKernel {
         if (dtype == DT_RESOURCE) {
           ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
+        }
+      } else if (node_type != FunctionLibraryDefinition::kRetOp) {
+        // All non-RetVal nodes that weren't explicitly placed by the user
+        // inherit PartitionedCallOp's device. RetVal placement is inferred by
+        // the placer, to avoid forcing the function's outputs through a single
+        // device.
+        //
+        // TODO(b/112166045): Plumb the original requested device into this
+        // OpKernel (this->requested_device() isn't reliable), and merge it
+        // with node->requested_device() if possible.
+        if (node->requested_device().empty()) {
+          node->set_requested_device(local_device_name_);
         }
       }
     }
@@ -235,12 +261,6 @@ class PartitionedCallOp : public AsyncOpKernel {
   //      device, and
   //  (3) records which `Arg` and `Retval` nodes live in host memory.
   Status UpdateArgAndRetMetadata(const string& device, Graph* subgraph) {
-    if (arg_and_ret_indices_.find(device) != arg_and_ret_indices_.end()) {
-      // This function has already been partitioned, albeit for a different
-      // function library.
-      return Status::OK();
-    }
-
     ArgAndRetIndices indices;
     std::vector<int>* arg_indices = &indices.first;
     std::vector<int>* ret_indices = &indices.second;
@@ -248,6 +268,8 @@ class PartitionedCallOp : public AsyncOpKernel {
     std::vector<std::pair<Node*, int>> ret_nodes;
     const AttrValue* attr_value;
 
+    // Find the Arg and Retval nodes, along with their corresponding indices
+    // in the original function.
     for (Node* node : subgraph->op_nodes()) {
       string node_type = node->type_string();
       if (node_type == FunctionLibraryDefinition::kArgOp) {
@@ -263,6 +285,8 @@ class PartitionedCallOp : public AsyncOpKernel {
       }
     }
 
+    // Rewrite the indices of the Arg and Retval nodes for this function
+    // to range from 0 to the number of Arg nodes, Retval nodes, respectively.
     auto sort_by_index = [](std::pair<Node*, int> one,
                             std::pair<Node*, int> two) -> bool {
       return one.second < two.second;
@@ -292,7 +316,12 @@ class PartitionedCallOp : public AsyncOpKernel {
       arg_and_ret_alloc_attrs_[device].second.push_back(alloc_attr);
     }
 
-    arg_and_ret_indices_.emplace(device, indices);
+    // If this kernel execution corresponds to a StatefulPartitionedCallOp,
+    // `arg_and_ret_indices_` might have been populated by a previous
+    // invocation.
+    if (arg_and_ret_indices_.find(device) == arg_and_ret_indices_.end()) {
+      arg_and_ret_indices_.emplace(device, indices);
+    }
     return Status::OK();
   }
 
@@ -399,10 +428,11 @@ class PartitionedCallOp : public AsyncOpKernel {
     }
   }
 
-  string UniquifyFunctionName(const string& name) {
+  string UniquifyFunctionName(const FunctionLibraryDefinition* function_library,
+                              const string& name) {
     for (;; ++suffix_) {
       const string candidate = strings::StrCat(name, "_", suffix_);
-      if (overlay_lib_->Find(candidate) == nullptr) {
+      if (function_library->Find(candidate) == nullptr) {
         return candidate;
       }
     }
@@ -410,14 +440,16 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   NameAttrList func_;
   string local_device_name_;
-  // Function shards are added to `overlay_lib_`.
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib_;
-  // Contains maps from device names to handles of function shards, keyed by
+  // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
   // for a stateful op, different invocations of it may use different FLRs.)
   gtl::FlatMap<FunctionLibraryRuntime*,
                std::unique_ptr<gtl::FlatMap<string, FHandle>>>
       function_handles_ GUARDED_BY(mu_);
+  // Function partitions are added to overlay libraries.
+  gtl::FlatMap<FunctionLibraryRuntime*,
+               std::unique_ptr<FunctionLibraryDefinition>>
+      overlay_libs_ GUARDED_BY(mu_);
   // Map from device name to the indices of the arguments and return values
   // placed on that device. Read-only after the first invocation.
   gtl::FlatMap<string, ArgAndRetIndices> arg_and_ret_indices_;
@@ -427,7 +459,7 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   mutex mu_;
 
-  // Used to uniquify function names in `overlay_lib_`.
+  // Used to uniquify function names in `overlay_libs_`.
   uint32 suffix_ = 0;
 };
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_CPU),

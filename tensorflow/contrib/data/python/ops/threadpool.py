@@ -100,6 +100,6 @@ def override_threadpool(dataset, thread_pool):
   Returns:
     A dataset containing the same values as `dataset`, but which uses
     `thread_pool` to compute any of its parallel operations (such as
-    @{tf.data.Dataset.map}).
+    `tf.data.Dataset.map`).
   """
   return _ThreadPoolDataset(dataset, thread_pool)

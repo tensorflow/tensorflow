@@ -22,6 +22,7 @@ from __future__ import print_function
 from collections import deque
 from collections import Iterable
 from collections import OrderedDict
+import copy
 import csv
 import json
 import math
@@ -31,10 +32,12 @@ import time
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.training_utils import standardize_input_data
+from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
@@ -52,6 +55,110 @@ except ImportError:
   requests = None
 
 
+def configure_callbacks(callbacks,
+                        model,
+                        do_validation=False,
+                        val_inputs=None,
+                        val_targets=None,
+                        val_sample_weights=None,
+                        batch_size=None,
+                        epochs=None,
+                        steps_per_epoch=None,
+                        samples=None,
+                        validation_steps=None,
+                        verbose=1,
+                        count_mode='steps'):
+  """Configures callbacks for use in various training loops.
+
+  Arguments:
+      callbacks: List of Callbacks.
+      model: Model being trained.
+      do_validation: Whether or not validation loop will be run.
+      val_inputs: Inputs to Model for validation loop. Can be any
+        data format Keras accepts.
+      val_targets: Targets for Model for validation loop. Can be any
+        data format Keras accepts.
+      val_sample_weights: Sample weights for Model for validation loop.
+        Can be any data format Keras accepts.
+      batch_size: Number of samples per batch.
+      epochs: Number of epoch to train.
+      steps_per_epoch: Number of batches to run per training epoch.
+      samples: Number of training samples.
+      validation_steps: Number of batches to run per validation epoch.
+      verbose: int, 0 or 1. Keras logging verbosity to pass to ProgbarLogger.
+      count_mode: One of 'steps' or 'samples'. Per-batch or per-sample count.
+
+  Returns:
+      Instance of CallbackList used to control all Callbacks.
+  """
+
+  # Add additional callbacks
+  model.history = History()
+  stateful_metric_names = None
+  if hasattr(model, 'stateful_metric_names'):
+    stateful_metric_names = model.stateful_metric_names
+  callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
+              ] + (callbacks or []) + [model.history]
+  if verbose:
+    callbacks.append(
+        ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names))
+  callback_list = CallbackList(callbacks)
+
+  # Set callback model
+  callback_model = model._get_callback_model()  # pylint: disable=protected-access
+  if do_validation and val_inputs and not context.executing_eagerly():
+    # Need to create the test_function before start of the first epoch
+    # because TensorBoard callback on_epoch_begin adds summary to the
+    # list of fetches of the test_function
+    callback_model._make_test_function()  # pylint: disable=protected-access
+  callback_list.set_model(callback_model)
+
+  # Set callback parameters
+  callback_metrics = []
+  # When we have deferred build scenario with iterator input, we will compile
+  # when we standardize first batch of data.
+  if model._is_compiled:  # pylint: disable=protected-access
+    callback_metrics = copy.copy(model.metrics_names)
+    if do_validation:
+      callback_metrics += ['val_' + n for n in model.metrics_names]
+  if validation_steps is None and isinstance(val_inputs, Sequence):
+    validation_steps = len(val_inputs)
+  callback_params = {
+      'batch_size': batch_size,
+      'epochs': epochs,
+      'steps': steps_per_epoch,
+      'samples': samples,
+      'verbose': verbose,
+      'do_validation': do_validation,
+      'metrics': callback_metrics,
+      'validation_steps': validation_steps
+  }
+  callback_list.set_params(callback_params)
+
+  # Pass validation data to callbacks
+  if not val_inputs:
+    val_data = []
+  elif _is_generator_like(val_inputs):
+    val_data = val_inputs
+  else:
+    val_data = val_inputs + val_targets
+    if val_sample_weights:
+      val_data += val_sample_weights
+    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      val_data += [0.]
+  for cbk in callbacks:
+    cbk.validation_data = val_data
+
+  callback_list.model.stop_training = False
+  return callback_list
+
+
+def _is_generator_like(data):
+  """Checks if data is a generator, Sequence, or Iterator."""
+  return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.EagerIterator)))
+
+
 class CallbackList(object):
   """Container abstracting a list of callbacks.
 
@@ -65,15 +172,19 @@ class CallbackList(object):
     callbacks = callbacks or []
     self.callbacks = [c for c in callbacks]
     self.queue_length = queue_length
+    self.params = {}
+    self.model = None
 
   def append(self, callback):
     self.callbacks.append(callback)
 
   def set_params(self, params):
+    self.params = params
     for callback in self.callbacks:
       callback.set_params(params)
 
   def set_model(self, model):
+    self.model = model
     for callback in self.callbacks:
       callback.set_model(model)
 
@@ -722,7 +833,7 @@ class TensorBoard(Callback):
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
 
-  @compatbility(eager)
+  @compatibility(eager)
   Using `Tensorboard` callback will work while eager execution is enabled,
   however outputting histogram summaries of weights and gradients is not
   supported, and thus `histogram_freq` will be ignored.
@@ -939,7 +1050,7 @@ class TensorBoard(Callback):
     """Checks if histogram summaries can be run."""
     # will never be set when in eager
     if self.histogram_freq:
-      if 'validation_steps' in self.params:
+      if self.params.get('validation_steps', None) is not None:
         self._validation_batches = self.params['validation_steps']
       elif self.validation_data:
         self._validation_batches = math.ceil(

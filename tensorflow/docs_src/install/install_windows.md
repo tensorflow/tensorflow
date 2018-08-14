@@ -24,6 +24,8 @@ You must choose one of the following types of TensorFlow to install:
     and you need to run performance-critical applications, you should
     ultimately install this version.
 
+<a name="NVIDIARequirements"></a>
+
 ### Requirements to run TensorFlow with GPU support
 
 If you are installing TensorFlow with GPU support using one of the mechanisms

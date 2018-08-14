@@ -28,7 +28,7 @@ class Iterator(iterator_ops.EagerIterator):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   NOTE: Unlike the iterator created by the
-  @{tf.data.Dataset.make_one_shot_iterator} method, this class enables
+  `tf.data.Dataset.make_one_shot_iterator` method, this class enables
   additional experimental functionality, such as prefetching to the GPU.
   """
 

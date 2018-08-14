@@ -28,7 +28,7 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -705,7 +705,7 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    if distribute_lib.has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       self.updates = []
 
       if not params:
@@ -718,10 +718,13 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
       global_step = training_util.get_global_step()
       opt_update = self.optimizer.apply_gradients(grads, global_step)
     else:
-      self.updates = [state_ops.assign_add(self.iterations, 1)]
       if not params:
+        self.updates = [state_ops.assign_add(self.iterations, 1)]
         return self.updates
 
+      # Updates list starts out empty because the iterations variable is
+      # incremented in optimizer.apply_gradients()
+      self.updates = []
       grads = self.optimizer.compute_gradients(loss, params)
       opt_update = self.optimizer.apply_gradients(
           grads, global_step=self.iterations)

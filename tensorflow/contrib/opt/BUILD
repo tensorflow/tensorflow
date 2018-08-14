@@ -348,6 +348,7 @@ py_test(
 
 py_test(
     name = "shampoo_test",
+    size = "large",
     srcs = ["python/training/shampoo_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -361,5 +362,6 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -67,14 +67,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func, int32 num_parallel_calls,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           num_parallel_calls_(num_parallel_calls),
@@ -113,11 +113,12 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       // Input: input_dataset
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
       DataTypeVector other_arguments_types;
@@ -137,7 +138,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           b->AddScalar(num_parallel_calls_, &num_parallel_calls));
 
       // Attr: f
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
 

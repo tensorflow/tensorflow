@@ -1015,6 +1015,19 @@ _BLACKLISTED_INFERENCE_OPS = set([
 ])
 
 
+def under_tpu_inference_context():
+  """Check if it is currently under `tpu.rewrite_for_inference()`."""
+  graph = ops.get_default_graph()
+
+  context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  while context:
+    if isinstance(context, _TPUInferenceContext):
+      return True
+    context = context.outer_context
+
+  return False
+
+
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU inference computation.
 

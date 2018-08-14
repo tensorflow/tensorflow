@@ -26,11 +26,11 @@ namespace tflite {
 // executed by TensorFlow's runtime via Eager.
 //
 // The interpreter must be constructed after the EagerDelegate and destructed
-// before the EagerDelegate. This delegate can only be used with one
-// interpreter.
+// before the EagerDelegate. This delegate may be used with multiple
+// interpreters, but it is *not* thread-safe.
 //
 // Usage:
-//   EagerDelegate delegate();
+//   EagerDelegate delegate;
 //   ... build interpreter ...
 //
 //   delegate.Apply(interpreter);
@@ -42,10 +42,8 @@ class EagerDelegate {
   EagerDelegate();
   ~EagerDelegate();
 
-  TfLiteStatus Apply(Interpreter* interpreter) {
-    return interpreter->ModifyGraphWithDelegate(delegate_.get(),
-                                                /*allow_dynamic_tensors=*/true);
-  }
+  // Modifies the graph loaded in the interpreter.
+  TfLiteStatus Apply(Interpreter* interpreter);
 
  private:
   std::unique_ptr<eager::DelegateData> delegate_data_;

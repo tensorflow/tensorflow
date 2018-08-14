@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::stream;
 #else
@@ -42,7 +41,7 @@ class MklReshapeOp : public OpKernel {
  public:
   explicit MklReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
   void Compute(OpKernelContext* context) override {
     const Tensor& input = MklGetInput(context, 0);
     const Tensor& sizes = MklGetInput(context, 1);
@@ -317,7 +316,7 @@ class MklReshapeOp : public OpKernel {
     }
   }
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
  private:
   const int kInputSlotIdx = 0;

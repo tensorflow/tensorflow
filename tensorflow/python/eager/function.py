@@ -42,7 +42,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training import distribute
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -83,26 +84,30 @@ def create_substitute_placeholder(value, name, dtype=None):
 
 def capture_value(tensor_map, value, dtype, name):
   """Capture a value from outside the function, to pass in as an extra arg."""
-  captured_tuple = tensor_map.get(ops.tensor_id(value), None)
-  if captured_tuple is None:
+  captured_value = tensor_map.get(value, None)
+  if captured_value is None:
     captured_value = create_substitute_placeholder(value, name=name,
                                                    dtype=dtype)
-    tensor_map[ops.tensor_id(value)] = (value, captured_value)
-  else:
-    captured_value = captured_tuple[1]
+    tensor_map[value] = captured_value
   tape.record_operation("captured_value", [captured_value], [value],
                         lambda x: [x])
   return captured_value
 
 
 class CapturingGraph(ops.Graph):
-  """Graph used when constructing eager functions."""
+  """Graph that can capture tensors from other graphs.
+
+  Attributes:
+    captures: Maps external tensor -> internal tensor (e.g. input placeholder).
+      The entries are in the order they were captured.
+  """
 
   def __init__(self):
     super(CapturingGraph, self).__init__()
+
+    self.captures = collections.OrderedDict()
     self._building_function = True
-    # Maps external tensor id -> internal tensor (e.g. input placeholder).
-    self.captures = {}
+
     # Map from resource tensor name to last op (in program order) which uses
     # this tensor. Used to enforce that execution order matches program order
     # for resource tensors.
@@ -115,7 +120,22 @@ class CapturingGraph(ops.Graph):
   def clear_resource_control_flow_state(self):
     self._last_op_using_resource_tensor = {}
 
+  # TODO(skyewm): get rid of name and use the name of `tensor`.
   def capture(self, tensor, name=None):
+    """Capture `tensor` if it's external to this graph.
+
+    If `tensor` is from a different graph, returns a placeholder for it.
+    `tensor` and the placeholder will also appears in self.captures. Multiple
+    calls to this method with the same `tensor` argument will return the same
+    placeholder. If `tensor` is from this graph, returns `tensor`.
+
+    Args:
+      tensor: Tensor. May be from this FuncGraph or a different graph.
+      name: Optional name if a placeholder is created.
+
+    Returns:
+      Tensor from this FuncGraph.
+    """
     if isinstance(tensor, ops.EagerTensor):
       if name is None:
         name = str(ops.uid())
@@ -137,6 +157,7 @@ class CapturingGraph(ops.Graph):
       op_def=None,
       compute_shapes=True,
       compute_device=True):
+    """Captures an external inputs before calling Graph.capture_op."""
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead
     # the context to get confused and try to create an Enter for an Enter. We
@@ -157,6 +178,73 @@ class CapturingGraph(ops.Graph):
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_device=compute_device)
+
+
+class FuncGraph(CapturingGraph):
+  """Graph representing a function body.
+
+  Attributes:
+    name: The name of the function.
+
+    inputs: Placeholder tensors representing the inputs to this function. The
+      tensors are in this FuncGraph. This represents "regular" inputs as well as
+      captured inputs (i.e. the values of self.captures), with the regular
+      inputs coming first.
+    outputs: Tensors that will be returned by this function. The tensors are in
+      this FuncGraph.
+    structured_outputs: A possibly-nested python object which will be returned
+      by this function. The Tensors in this structure are the same as those of
+      self.outputs. Note that this structure might contain Python `None`s.
+    variables: Variables that should be watched during function execution.
+    seed: The graph-level random seed.
+  """
+
+  def __init__(self, name, graph=None):
+    """Construct a new FuncGraph.
+
+    Args:
+      name: the name of the function.
+      graph: if specified, this FuncGraph will inherit its graph key,
+        collections, and seed from `graph`.
+    """
+    super(FuncGraph, self).__init__()
+
+    self.name = name
+    self.inputs = []
+    self.outputs = []
+    self.structured_outputs = None
+    self.variables = []
+
+    if graph is not None:
+      # Inherit the graph key, since this is used for matching variables in
+      # optimizers.
+      self._graph_key = graph._graph_key  # pylint: disable=protected-access
+
+      # Copy the graph collections to ensure summaries and other things work.
+      # This lets the function access (but not mutate) collections of the
+      # containing graph, such as the global step and the summary writer
+      # collections.
+      for collection in graph.collections:
+        self.get_collection_ref(collection)[:] = graph.get_collection(
+            collection)
+
+      # Copy distribution strategy scope from the containing graph as well.
+      self._distribution_strategy_stack = graph._distribution_strategy_stack  # pylint: disable=protected-access
+
+      if context.executing_eagerly():
+        self.seed = context.global_seed()
+      else:
+        self.seed = graph.seed
+
+  def capture(self, tensor, name=None):
+    """Calls CapturingGraph.capture and updates self.inputs if necessary."""
+    new_capture = tensor not in self.captures
+    internal_tensor = super(FuncGraph, self).capture(tensor, name)
+
+    if new_capture and tensor is not internal_tensor:
+      self.inputs.append(internal_tensor)
+
+    return internal_tensor
 
 
 # pylint: disable=invalid-name
@@ -484,7 +572,7 @@ class GraphModeFunction(object):
     # Find the variables that are components of something distributed and
     # put them into a {handle_tensor -> distributed variable object} map.
     self._distributed_variables = {}
-    strategy = distribute.get_distribution_strategy()
+    strategy = distribution_strategy_context.get_distribution_strategy()
     for variable in self._variables:
       # If variable is not distributed, unwrap returns [variable].
       component_variables = strategy.unwrap(variable)
@@ -502,6 +590,7 @@ class GraphModeFunction(object):
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     filtered_outputs = [x for x in self._python_returns if x is not None]
+    # TODO(skyewm): use FuncGraph
     backwards_graph = CapturingGraph()
     backwards_graph._graph_key = self._graph._graph_key  # pylint: disable=protected-access
     for collection in self._graph.collections:
@@ -521,13 +610,8 @@ class GraphModeFunction(object):
         grad for grad in _flatten(in_gradients) if grad is not None)
     output_shapes = tuple(grad.shape for grad in backward_outputs)
 
-    captures = backwards_graph.captures
-    ids = list(sorted(captures.keys()))
-    if ids:
-      extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])
-    else:
-      extra_inputs = []
-      extra_placeholders = []
+    extra_inputs = backwards_graph.captures.keys()
+    extra_placeholders = backwards_graph.captures.values()
 
     forward_name = _forward_name(self._func_name)
     # Note: we cannot have placeholder ops in the graph or the TPU compilation
@@ -744,24 +828,16 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
 
   Returns:
     A GraphModeFunction.
+
+  Raises:
+    TypeError: If any of `python_func`'s return values is neither `None` nor a
+      `Tensor`.
   """
-  graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  func_graph = CapturingGraph()
-  # Inherit the graph key, since this is used for matching variables in
-  # optimizers.
-  func_graph._graph_key = graph_key  # pylint: disable=protected-access
-  # Copy the graph collections to ensure summaries and other things work. This
-  # lets the function access (but not mutate) collections of the containing
-  # graph, such as the global step and the summary writer collections.
-  curr_graph = ops.get_default_graph()
-  for collection in curr_graph.collections:
-    func_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
-        collection)
-  if context.executing_eagerly():
-    func_graph.seed = context.global_seed()
-  else:
-    func_graph.seed = curr_graph.seed
+  func_graph = FuncGraph(_inference_name(name), graph=ops.get_default_graph())
+
   with func_graph.as_default(), AutomaticControlDependencies() as a:
+    variable_scope.get_variable_scope().set_use_resource(True)
+
     if signature is None:
       func_args = _get_defun_inputs_from_args(args)
       func_kwds = _get_defun_inputs_from_args(kwds)
@@ -769,15 +845,29 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
       func_args = _get_defun_inputs_from_signature(signature)
       func_kwds = {}
 
+    # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
+    func_graph.inputs.extend(
+        x for x in nest.flatten(func_args) + nest.flatten(func_kwds)
+        if isinstance(x, ops.Tensor)
+    )
+
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
     func_args_before = nest.pack_sequence_as(func_args, nest.flatten(func_args))
     func_kwds_before = nest.pack_sequence_as(func_kwds, nest.flatten(func_kwds))
 
     def convert(x):
+      """Converts an argument to a Tensor."""
       if x is None:
         return None
-      x = ops.convert_to_tensor_or_indexed_slices(x)
+      try:
+        x = ops.convert_to_tensor_or_indexed_slices(x)
+      except (ValueError, TypeError):
+        raise TypeError(
+            "To be compatible with tf.contrib.eager.defun, Python functions "
+            "must return zero or more Tensors; in compilation of %s, found "
+            "return value of type %s, which is not a Tensor." %
+            (str(python_func), type(x)))
       x = a.mark_as_return(x)
       return x
 
@@ -806,6 +896,7 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
 
     finally:
       tape.pop_tape(this_tape)
+    func_graph.structured_outputs = func_outputs
     variables = list(this_tape.watched_variables())
 
     # Some variables captured by the tape can come from a DistributedValue.
@@ -813,38 +904,25 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
     # the function is run on a different device). Thus, instead of storing
     # the specific captured variable, we replace it with its distributed
     # container.
-    strategy = distribute.get_distribution_strategy()
+    strategy = distribution_strategy_context.get_distribution_strategy()
     for i, variable in enumerate(variables):
       # If variable is not distributed value_container returns itself.
       variables[i] = strategy.value_container(variable)
 
+    func_graph.variables = variables
+
     # Returning a closed-over tensor as an output does not trigger a
     # call to convert_to_tensor, so we manually capture all such tensors.
-    outputs_list = _flatten(func_outputs)
-    func_def_outputs = [
-        func_graph.capture(x) for x in outputs_list
+    func_graph.outputs.extend(
+        func_graph.capture(x) for x in _flatten(func_graph.structured_outputs)
         if x is not None
-    ]
+    )
 
-    captures = func_graph.captures
-    ids = list(sorted(captures.keys()))
-    if ids:
-      extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
-    else:
-      extra_inputs = []
-      extra_placeholders = []
     output_shapes = tuple(
         x.shape if isinstance(x, ops.Tensor) else None
-        for x in func_def_outputs)
+        for x in func_graph.outputs)
 
-  # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
-  flat_inputs = [
-      x for x in nest.flatten(func_args) + nest.flatten(func_kwds)
-      if isinstance(x, ops.Tensor)
-  ]
-  all_inputs = flat_inputs + list(extra_placeholders)
-  all_ignored_ops = frozenset(x.op for x in all_inputs)
-  fname = _inference_name(name)
+  all_ignored_ops = frozenset(x.op for x in func_graph.inputs)
   operations = tuple(x for x in func_graph.get_operations()
                      if x not in all_ignored_ops)
   # Register any other functions defined in the graph
@@ -859,8 +937,9 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
     attrs[_xla_compile_attr] = attr_value_pb2.AttrValue(b=True)
 
   return GraphModeFunction(
-      fname, all_inputs, extra_inputs, func_graph, operations, func_def_outputs,
-      func_outputs, output_shapes, variables, attrs)
+      func_graph.name, func_graph.inputs, func_graph.captures.keys(),
+      func_graph, operations, func_graph.outputs, func_graph.structured_outputs,
+      output_shapes, func_graph.variables, attrs)
 
 
 _TensorType = collections.namedtuple("_TensorType", ["dtype", "shape"])
@@ -1148,7 +1227,7 @@ def defun(func=None, input_signature=None, compiled=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") trace-compiles a Python function
-  composed of TensorFlow operations into a callable that executes a @{tf.Graph}
+  composed of TensorFlow operations into a callable that executes a `tf.Graph`
   containing those operations. The callable produced by `defun` contains only
   the subgraph of TensorFlow operations that were executed when the Python
   function was called with a particular input signature, defined as a list
@@ -1171,9 +1250,9 @@ def defun(func=None, input_signature=None, compiled=False):
   For a Python function to be compatible with `defun`, all of its arguments must
   be hashable Python objects or lists thereof. The function itself may not
   modify the list/map structure of its arguments. Additionally, it must return
-  zero or more @{tf.Tensor} objects. If the Python function returns
-  a @{tf.Variable}, its compiled version will return the value of that variable
-  as a @{tf.Tensor}.
+  zero or more `tf.Tensor` objects. If the Python function returns
+  a `tf.Variable`, its compiled version will return the value of that variable
+  as a `tf.Tensor`.
 
   Executing a graph generated by `defun` respects device annotations (i.e.,
   all `with tf.device` directives present in a Python function will also be
@@ -1242,25 +1321,67 @@ def defun(func=None, input_signature=None, compiled=False):
 
   When using `defun`, there are subtleties regarding inputs, Python control
   flow, and variable creation that one should be aware of. For concreteness, let
-  `f` be a Python function that returns zero or more @{tf.Tensor} objects and
+  `f` be a Python function that returns zero or more `tf.Tensor` objects and
   let `F = defun(f)`. `F` builds a graph for each unique input signature it
   sees, Python control flow is baked into graphs, and operations related to
   variable initialization are automatically lifted out of the graphs that `F`
   generates and placed in the eager context if executing eagerly or into an
   outer graph otherwise.
 
-  _Tracing and Input Signatures_.
-  The signature of inputs supplied to `F` is defined to be a tuple of the shapes
-  and dtypes of Tensor-typed arguments and the values of non-Tensor arguments,
-  where "arguments" includes both args and kwargs. Every time `F` is invoked,
-  the signature of its inputs are inferred. The first time `F(*args, **kwargs)`
-  is invoked with a particular signature, `f(*args, **kwargs)` is executed and
-  all the TensorFlow operations that `f` executes, along with the Tensors that
-  flow between them, are recorded in a TensorFlow graph. `F` caches this graph
-  and binds it to the inputs' signature; every subsequent invocation of `F` with
-  inputs conforming to this signature will immediately retrieve the cached graph
-  and pass it to the TensorFlow runtime for execution.
+  _Input Signatures_
+  By default, `F = tf.contrib.eager.defun(f)` instantiates a separate graph
+  for every unique sequence of the shapes and dtypes of Tensor arguments and
+  the values of Python objects it is invoked with. For example, calling
+  `F(tf.random_uniform([2])` will execute a different graph than
+  `F(tf.random_uniform([3])` because the two inputs have different shapes.
+  The first time that `F(*args, **kwargs)` is called with a particular sequence
+  of Tensor shapes and dtypes and Python values, it constructs a graph by
+  tracing the execution of `f(*args, **kwargs)`; this graph is bound to an
+  input signature inferred from `(*args, **kwargs)` and cached for future reuse.
 
+  `tf.contrib.eager.defun` caches graphs for your convenience, letting you
+  define TensorFlow functions without explicitly specifying their signatures.
+  However, this policy is conservative and potentially expensive; for example,
+  when different invocations of your function have differently-shaped Tensor
+  inputs, this policy might generate more graph functions than necessary. To
+  eliminate such costs, `tf.contrib.eager.defun` allows you to supply an
+  optional `input_signature` argument specifying the shapes and dtypes of the
+  inputs. In particular, the shapes may be partially unspecified, with `None`s
+  in the unknown dimensions.  When an input signature is provided,
+  `tf.contrib.eager.defun` will only instantiate a single graph for the
+  decorated Python function. The following is an example:
+
+  ```python
+  import tensorflow as tf
+
+  # The first `TensorSpec` below describes the shape and dtype of `words`,
+  # and the second describes the shape and dtype of `another_tensor`. Note that
+  # the last dimension of the `words` `TensorSpec` is left unspecified.
+  @tf.contrib.eager.defun(input_signature=[
+    tf.contrib.eager.TensorSpec(shape=[50, 300, None], dtype=tf.float32),
+    tf.contrib.eager.TensorSpec(shape=[300, 100], dtype=tf.float32)
+  ])
+  def my_sequence_model(words, another_tensor):
+    ...
+
+  # Note how the third dimension of the first input can vary freely.
+  words = tf.random_uniform(([50, 300, 10])
+  second_input = tf.random_uniform([300, 100])
+  my_sequence_model(words, second_input)
+
+  words = tf.random_uniform(([50, 300, 20])
+  my_sequence_model(words, second_input)
+
+  # Passing an input with an incompatible shape will raise an error.
+  words = tf.random_uniform(([50, 100, 20])
+  my_sequence_model(words, second_input)  # <---- This will raise an error.
+
+  ```
+
+  Python functions that are compiled with an `input_signature` must only accept
+  Tensors as arguments and must not take unnamed keyword arguments (**kwargs).
+
+  _Tracing_
   Be aware that because `F` only logs TensorFlow operations, all the other
   Python code that `f` executes will only shape the _construction_ of the graphs
   that `F` executes: the Python code won't be executed when the graphs
@@ -1325,10 +1446,10 @@ def defun(func=None, input_signature=None, compiled=False):
   On the other hand, because `defun` generates graphs by tracing and not by
   source code analysis, it fully unrolls Python `for` and `while` loops,
   potentially creating large graphs. If your Python function has native loops
-  that run for many iterations, consider replacing them with @{tf.while_loop}
+  that run for many iterations, consider replacing them with `tf.while_loop`
   operations.
 
-  When constructing graphs, @{tf.Tensor} objects cannot be used as Python
+  When constructing graphs, `tf.Tensor` objects cannot be used as Python
   `bool` objects. This means, for example, that you should replace code in `f`
   resembling
 
@@ -1347,7 +1468,7 @@ def defun(func=None, input_signature=None, compiled=False):
   automatically lifted out of the graphs generated by `defun`. In practice, this
   implies that variable creation and initialization only happen the first time
   `F` is called, and that variables are reused every time thereafter. Many
-  TensorFlow APIs, like @{tf.keras.layers.Layer} objects, create variables the
+  TensorFlow APIs, like `tf.keras.layers.Layer` objects, create variables the
   first time they are called and reuse them thereafter. Automatic variable
   lifting makes it possible to compile these APIs without extra effort, at the
   cost of introducing a discrepancy between the semantics of executing Python
@@ -1386,7 +1507,7 @@ def defun(func=None, input_signature=None, compiled=False):
   to reference the same set of variables, add logic to your Python function that
   ensures that variables are only created the first time it is called and are
   reused for every subsequent invocation; note that this is precisely what
-  @{tf.keras.layers.Layer} objects do, so we recommend using them to represent
+  `tf.keras.layers.Layer` objects do, so we recommend using them to represent
   variable-bearing computations whenever possible.
 
   Args:

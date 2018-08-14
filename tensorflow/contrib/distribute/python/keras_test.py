@@ -241,6 +241,47 @@ class TestWithDistributionStrategy(test.TestCase):
                 validation_data=dataset, validation_steps=2)
       model.predict(dataset, steps=2)
 
+  def test_fit_with_tuple_and_dict_dataset_inputs(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
+
+      dense = keras.layers.Dense(4, name='dense')
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+      model = keras.models.Model([a, b], [d, e])
+
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0'])
+      model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
+
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 3))
+      output_d_np = np.random.random((10, 4))
+      output_e_np = np.random.random((10, 4))
+
+      # Test with tuples
+      dataset_tuple = dataset_ops.Dataset.from_tensor_slices((
+          (input_a_np, input_b_np), (output_d_np, output_e_np)))
+      dataset_tuple = dataset_tuple.repeat(100)
+      dataset_tuple = dataset_tuple.batch(10)
+
+      model.fit(dataset_tuple, epochs=1, steps_per_epoch=2, verbose=1)
+
+      # Test with dict
+      dataset_dict = dataset_ops.Dataset.from_tensor_slices((
+          {'input_a': input_a_np, 'input_b': input_b_np},
+          (output_d_np, output_e_np)))
+      dataset_dict = dataset_dict.repeat(100)
+      dataset_dict = dataset_dict.batch(10)
+
+      model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
+
   def test_fit_eval_and_predict_methods_on_dataset(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')

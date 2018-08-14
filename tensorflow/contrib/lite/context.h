@@ -452,13 +452,15 @@ typedef struct _TfLiteDelegate {
 
   // Copy the data from delegate buffer handle to raw memory.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyFromBufferHandle)(TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
+                                       TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
                                        void* data, size_t size);
 
   // Copy the data from raw memory to delegate buffer handle.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyToBufferHandle)(TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
+                                     TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
                                      void* data, size_t size);
 
@@ -466,7 +468,7 @@ typedef struct _TfLiteDelegate {
   // this doesn't release the underlying resource (e.g. textures). The
   // resources are either owned by application layer or the delegate.
   // This can be null if the delegate doesn't use its own buffer.
-  void (*FreeBufferHandle)(TfLiteDelegate* delegate,
+  void (*FreeBufferHandle)(TfLiteContext* context, TfLiteDelegate* delegate,
                            TfLiteBufferHandle* handle);
 } TfLiteDelegate;
 

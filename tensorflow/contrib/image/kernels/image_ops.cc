@@ -71,6 +71,7 @@ class ImageProjectiveTransform : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& images_t = ctx->input(0);
     const Tensor& transform_t = ctx->input(1);
+    const Tensor& shape_t = ctx->input(2);
     OP_REQUIRES(ctx, images_t.shape().dims() == 4,
                 errors::InvalidArgument("Input images must have rank 4"));
     OP_REQUIRES(ctx,
@@ -81,11 +82,28 @@ class ImageProjectiveTransform : public OpKernel {
                      ProjectiveGenerator<Device, T>::kNumParameters),
                 errors::InvalidArgument(
                     "Input transform should be num_images x 8 or 1 x 8"));
+    OP_REQUIRES(ctx, shape_t.dims() == 1,
+                errors::InvalidArgument("output shape must be 1-dimensional",
+                                        shape_t.shape().DebugString()));
+    OP_REQUIRES(ctx, shape_t.NumElements() == 2,
+                errors::InvalidArgument("output shape must have two elements",
+                                        shape_t.shape().DebugString()));
+    auto shape_vec = shape_t.vec<int32>();
+    int32 out_height = shape_vec(0);
+    int32 out_width = shape_vec(1);
+    OP_REQUIRES(ctx, out_height > 0 && out_width > 0,
+                errors::InvalidArgument("output dimensions must be positive"));
+
+    Tensor* output_t;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(
+                            0,
+                            TensorShape({images_t.dim_size(0), out_height,
+                                         out_width, images_t.dim_size(3)}),
+                            &output_t));
+    auto output = output_t->tensor<T, 4>();
     auto images = images_t.tensor<T, 4>();
     auto transform = transform_t.matrix<float>();
-    Tensor* output_t;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, images_t.shape(), &output_t));
-    auto output = output_t->tensor<T, 4>();
+
     (FillProjectiveTransform<Device, T>(interpolation_))(
         ctx->eigen_device<Device>(), &output, images, transform);
   }
@@ -129,10 +147,11 @@ TF_CALL_double(DECLARE_FUNCTOR);
 
 }  // end namespace functor
 
-#define REGISTER(TYPE)                                        \
-  REGISTER_KERNEL_BUILDER(Name("ImageProjectiveTransform")    \
-                              .Device(DEVICE_GPU)             \
-                              .TypeConstraint<TYPE>("dtype"), \
+#define REGISTER(TYPE)                                       \
+  REGISTER_KERNEL_BUILDER(Name("ImageProjectiveTransform")   \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<TYPE>("dtype") \
+                              .HostMemory("output_shape"),   \
                           ImageProjectiveTransform<GPUDevice, TYPE>)
 
 TF_CALL_uint8(REGISTER);

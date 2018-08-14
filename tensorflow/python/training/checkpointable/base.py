@@ -79,10 +79,6 @@ class CheckpointInitialValue(ops.Tensor):
       self.wrapped_value.set_shape(shape)
     self._checkpoint_position = checkpoint_position
 
-  @property
-  def __class__(self):
-    return (self.wrapped_value.__class__, CheckpointInitialValue)
-
   def __getattr__(self, attr):
     try:
       return getattr(self.wrapped_value, attr)

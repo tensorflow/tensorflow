@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/Target/TargetMachine.h"
+#include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
@@ -78,7 +79,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
   CpuAotCompilationResult(
-      ObjectFileData object_file_data, BufferSizes buffer_sizes,
+      ObjectFileData object_file_data,
+      std::vector<::tensorflow::cpu_function_runtime::BufferInfo> buffer_infos,
       int64 result_buffer_index,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
@@ -88,17 +90,20 @@ class CpuAotCompilationResult : public AotCompilationResult {
   }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const BufferSizes& buffer_sizes() const { return buffer_sizes_; }
+  const std::vector<::tensorflow::cpu_function_runtime::BufferInfo>&
+  buffer_infos() const {
+    return buffer_infos_;
+  }
   int64 result_buffer_index() const { return result_buffer_index_; }
 
  private:
   // Contains the compiled computation: an object file.
   const ObjectFileData object_file_data_;
 
-  // The list of buffer sizes which should be allocated in order to execute the
-  // compiled computation.  These buffers are used for temporary buffers used
-  // ephemerally during computation as well as the output result.
-  const BufferSizes buffer_sizes_;
+  // A list of BufferInfo objects describing the buffers used by the XLA
+  // computation.
+  const std::vector<::tensorflow::cpu_function_runtime::BufferInfo>
+      buffer_infos_;
 
   // Contains which buffer index into |buffer_sizes| was designated to the
   // result of the computation.  This buffer should be passed into the output

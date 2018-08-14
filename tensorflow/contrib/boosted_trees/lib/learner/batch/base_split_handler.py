@@ -132,6 +132,10 @@ class BaseSplitHandler(object):
     return control_flow_ops.group(update_1, *update_2[self])
 
   @abc.abstractmethod
+  def reset(self, stamp_token, next_stamp_token):
+    """Resets the state maintained by the handler."""
+
+  @abc.abstractmethod
   def make_splits(self, stamp_token, next_stamp_token, class_id):
     """Create the best split using the accumulated stats and flush the state.
 

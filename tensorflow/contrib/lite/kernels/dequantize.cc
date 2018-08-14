@@ -36,6 +36,21 @@ struct OpContext {
   TfLiteTensor* output;
 };
 
+struct OpData {
+  // This boolean value is only used when the input tensor is constant.
+  bool float_dequantized_weights_initialized;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* op_data = new OpData();
+  op_data->float_dequantized_weights_initialized = false;
+  return op_data;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -45,12 +60,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, op_context.input->type == kTfLiteUInt8);
 
   op_context.output->type = kTfLiteFloat32;
+  // If the input tensor is constant, we can persist the dequantized value in
+  // the output tensor. Otherwise we run dequantize upon each eval.
+  if (IsConstantTensor(op_context.input)) {
+    op_context.output->allocation_type = kTfLiteArenaRwPersistent;
+  }
   return context->ResizeTensor(context, op_context.output,
                                TfLiteIntArrayCopy(op_context.input->dims));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   OpContext op_context(context, node);
+  if (IsConstantTensor(op_context.input) &&
+      op_data->float_dequantized_weights_initialized) {
+    return kTfLiteOk;
+  }
 
   auto zero_point = op_context.input->params.zero_point;
   auto scale = op_context.input->params.scale;
@@ -59,14 +84,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorDims(op_context.input), zero_point, scale,
                             GetTensorData<float>(op_context.output),
                             GetTensorDims(op_context.output));
+
+  if (IsConstantTensor(op_context.input)) {
+    op_data->float_dequantized_weights_initialized = true;
+  }
+
   return kTfLiteOk;
 }
 
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, dequantize::Prepare,
-                                 dequantize::Eval};
+  static TfLiteRegistration r = {dequantize::Init, dequantize::Free,
+                                 dequantize::Prepare, dequantize::Eval};
   return &r;
 }
 
