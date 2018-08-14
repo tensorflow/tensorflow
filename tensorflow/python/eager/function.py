@@ -43,7 +43,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribute
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -227,6 +227,9 @@ class FuncGraph(CapturingGraph):
       for collection in graph.collections:
         self.get_collection_ref(collection)[:] = graph.get_collection(
             collection)
+
+      # Copy distribution strategy scope from the containing graph as well.
+      self._distribution_strategy_stack = graph._distribution_strategy_stack  # pylint: disable=protected-access
 
       if context.executing_eagerly():
         self.seed = context.global_seed()
@@ -569,7 +572,7 @@ class GraphModeFunction(object):
     # Find the variables that are components of something distributed and
     # put them into a {handle_tensor -> distributed variable object} map.
     self._distributed_variables = {}
-    strategy = distribute.get_distribution_strategy()
+    strategy = distribution_strategy_context.get_distribution_strategy()
     for variable in self._variables:
       # If variable is not distributed, unwrap returns [variable].
       component_variables = strategy.unwrap(variable)
@@ -901,7 +904,7 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
     # the function is run on a different device). Thus, instead of storing
     # the specific captured variable, we replace it with its distributed
     # container.
-    strategy = distribute.get_distribution_strategy()
+    strategy = distribution_strategy_context.get_distribution_strategy()
     for i, variable in enumerate(variables):
       # If variable is not distributed value_container returns itself.
       variables[i] = strategy.value_container(variable)
