@@ -4189,16 +4189,14 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // We handle control edges now.
   for (const Edge* e : pred->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+      //Don't allow duplicate edge
+      (*g)->AddControlEdge(e->src(), new_node, false);
     }
   }
   for (const Edge* e : succ->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+      //Don't allow duplicate edge
+      (*g)->AddControlEdge(e->src(), new_node, false);
     }
   }
 
@@ -4206,9 +4204,8 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // First, we will fix outgoing control edges from 'pred' node.
   for (const Edge* e : pred->out_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+      //Don't allow duplicate edge
+      (*g)->AddControlEdge(new_node, e->dst(), false);
     }
   }
 

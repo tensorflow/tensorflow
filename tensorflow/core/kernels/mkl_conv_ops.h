@@ -300,10 +300,6 @@ class MklDnnConvUtil {
     mkldnn_sizes[MklDnnDims::Dim_H] = static_cast<int>(out_rows);
     mkldnn_sizes[MklDnnDims::Dim_W] = static_cast<int>(out_cols);
     *output_dims_mkl_order = mkldnn_sizes;
-
-    // Now handle padding. MKL-DNN uses asymetric padding.
-    // But, if padEnabled, i.e., pad and conv op are fused,
-    // then, *pad_l and *pad_r are already set from pad op
   }
 
   // Calculate output and pad size of forward Convolution operator.
