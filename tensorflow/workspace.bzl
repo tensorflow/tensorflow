@@ -362,11 +362,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "protobuf_archive",
         urls = [
-            "https://mirror.bazel.build/github.com/google/protobuf/archive/0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7.tar.gz",
-            "https://github.com/google/protobuf/archive/0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7.tar.gz",
+            "https://mirror.bazel.build/github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
+            "https://github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
         ],
-        sha256 = "4bb48bcc972ee9d40a8bb7e481522030b6e6771a7283ae83c896872115180d25",
-        strip_prefix = "protobuf-0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7",
+        sha256 = "b91b0ac9907af983877c960809dcad7a6dc8e4b06e34d32b7d66a12b9ea1fa17",
+        strip_prefix = "protobuf-fe2eef4bf414ebb352cf11bcec633f1fd46ec876",
     )
 
     # We need to import the protobuf library under the names com_google_protobuf
@@ -375,21 +375,21 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_protobuf",
         urls = [
-            "https://mirror.bazel.build/github.com/google/protobuf/archive/0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7.tar.gz",
-            "https://github.com/google/protobuf/archive/0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7.tar.gz",
+            "https://mirror.bazel.build/github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
+            "https://github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
         ],
-        sha256 = "4bb48bcc972ee9d40a8bb7e481522030b6e6771a7283ae83c896872115180d25",
-        strip_prefix = "protobuf-0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7",
+        sha256 = "b91b0ac9907af983877c960809dcad7a6dc8e4b06e34d32b7d66a12b9ea1fa17",
+        strip_prefix = "protobuf-fe2eef4bf414ebb352cf11bcec633f1fd46ec876",
     )
 
     tf_http_archive(
         name = "com_google_protobuf_cc",
         urls = [
-            "https://mirror.bazel.build/github.com/google/protobuf/archive/0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7.tar.gz",
-            "https://github.com/google/protobuf/archive/0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7.tar.gz",
+            "https://mirror.bazel.build/github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
+            "https://github.com/google/protobuf/archive/fe2eef4bf414ebb352cf11bcec633f1fd46ec876.tar.gz",
         ],
-        sha256 = "4bb48bcc972ee9d40a8bb7e481522030b6e6771a7283ae83c896872115180d25",
-        strip_prefix = "protobuf-0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7",
+        sha256 = "b91b0ac9907af983877c960809dcad7a6dc8e4b06e34d32b7d66a12b9ea1fa17",
+        strip_prefix = "protobuf-fe2eef4bf414ebb352cf11bcec633f1fd46ec876",
     )
 
     tf_http_archive(
