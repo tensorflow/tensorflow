@@ -35,7 +35,6 @@ from tensorflow.python.training import session_run_hook
 
 LOCAL_VARIABLE_NAME = 'local_center_variable'
 GLOBAL_VARIABLE_NAME = 'global_center_variable'
-GLOBAL_SHARE_VARS = 'global_share_var'
 GLOBAL_STEP = 'global_step'
 
 
@@ -131,21 +130,6 @@ class ElasticAverageCustomGetter(object):
               = list(global_center_variable)[i]
       return local_var
     else:
-      # 1. default to LOCAL_VARIABLES (instead of GLOBAL_VARIABLES)
-      # 2. put to global if explicitly defined (GLOBAL_SHARE_VARS)
-      # 3. other GLOBAL_VARIABLES put to LOCAL_VARIABLES
-      #    exept global_step, which must be global
-      if collections is None or len(collections) == 0:
-        collections = [ops.GraphKeys.LOCAL_VARIABLES]
-      elif GLOBAL_SHARE_VARS in collections:
-        collections = list(collections)
-        if ops.GraphKeys.GLOBAL_VARIABLES not in collections:
-          collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-      elif ops.GraphKeys.GLOBAL_VARIABLES in collections \
-          and GLOBAL_STEP not in name.split('/'):
-        collections = list(collections)
-        collections.append(ops.GraphKeys.LOCAL_VARIABLES)
-        collections.remove(ops.GraphKeys.GLOBAL_VARIABLES)
       return getter(name, trainable=trainable, collections=collections, *args, **kwargs)
 
 
@@ -171,7 +155,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
                moving_rate=None,
                rho=None,
                use_locking=True,
-               sync_flag=False,
+               synchronous=False,
                name='ElasticAverageOptimizer'):
     """Construct a new gradient descent optimizer.
 
@@ -187,7 +171,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
         value is moving_rate/learning_rate
         rho=0.0 is suggested in async mode.
       use_locking: If True use locks for update operations.
-      sync_flag: Add_sync_queues_and_barrier or not.
+      synchronous: Add_sync_queues_and_barrier or not.
                  True: all workers will wait for each other before start training
                  False: worker can start training when its initilization is done,
                         no need to wait for everyone is ready.
@@ -202,7 +186,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     self._period = communication_period
     self._local_map = ea_custom_getter._local_map
     self._global_map = ea_custom_getter._global_map
-    self._sync_flag = sync_flag
+    self._synchronous = synchronous
 
     if moving_rate is None:
       self._moving_rate = self.BETA / communication_period / num_worker
@@ -309,11 +293,11 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       g = ops.get_default_graph()
       idx = 0
       for _ in range(len(g._collections[ops.GraphKeys.GLOBAL_VARIABLES])):
-        var = g._collections[ops.GraphKeys.GLOBAL_VARIABLES][idx]
+        var = g.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES)[idx]
         name = var.op.name
         if name in opt_vars:
           ops.add_to_collection(ops.GraphKeys.LOCAL_VARIABLES, var)
-          del g._collections[ops.GraphKeys.GLOBAL_VARIABLES][idx]
+          del g.get_collection_ref(ops.GraphKeys.GLOBAL_VARIABLES)[idx]
         else:
           idx += 1
 
@@ -397,7 +381,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       init_ops.append(state_ops.assign(lc_var, gc_var))
 
     init_op = control_flow_ops.group(*(init_ops))
-    if self._sync_flag == False:
+    if self._synchronous == False:
       return init_op
 
     sync_queue_op = _Add_sync_queues_and_barrier([init_op])
