@@ -802,6 +802,7 @@ class _VariableStore(object):
     initializing_from_value = False
     if initializer is not None and not callable(initializer):
       initializing_from_value = True
+
     if shape is not None and initializing_from_value:
       raise ValueError("If initializer is a constant, do not specify shape.")
 
@@ -837,9 +838,6 @@ class _VariableStore(object):
       raise ValueError("Variable %s does not exist, or was not created with "
                        "tf.get_variable(). Did you mean to set "
                        "reuse=tf.AUTO_REUSE in VarScope?" % name)
-    if not shape.is_fully_defined() and not initializing_from_value:
-      raise ValueError("Shape of a new variable (%s) must be fully defined, "
-                       "but instead was %s." % (name, shape))
 
     # Create the tensor to initialize the variable with default value.
     if initializer is None:
@@ -854,8 +852,11 @@ class _VariableStore(object):
         # Instantiate initializer if provided initializer is a type object.
         if isinstance(initializer, type(init_ops.Initializer)):
           initializer = initializer(dtype=dtype)
-        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-            shape.as_list(), dtype=dtype, partition_info=partition_info)
+        if validate_shape:
+          init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+              shape.as_list(), dtype=dtype, partition_info=partition_info)
+        else:
+          init_val = initializer
         variable_dtype = dtype.base_dtype
 
     # Create the variable.
@@ -902,7 +903,7 @@ class _VariableStore(object):
             v_name = v.name
             loss_name = loss.name
           logging.vlog(1, "Applied regularizer to %s and added the result %s "
-                       "to REGULARIZATION_LOSSES.", v_name, loss_name)
+                          "to REGULARIZATION_LOSSES.", v_name, loss_name)
           ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
     return v
 
