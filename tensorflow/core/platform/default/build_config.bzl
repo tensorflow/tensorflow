@@ -8,7 +8,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "if_mkl_ml",
 )
 
 # Appends a suffix to a list of deps.
@@ -700,8 +700,8 @@ def tf_additional_binary_deps():
       # core).
       "//tensorflow/core/kernels:lookup_util",
       "//tensorflow/core/util/tensor_bundle",
-  ] + if_mkl(
+  ] + if_mkl_ml(
       [
-          "//third_party/mkl:intel_binary_blob",
+          "//third_party/intel_mkl_ml",
       ],
   )
