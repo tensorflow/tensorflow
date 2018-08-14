@@ -106,8 +106,9 @@ class LocalVariableTest(test.TestCase):
   def testResourceVariable(self):
     a = variables_lib2.local_variable(0)
     b = variables_lib2.local_variable(0, use_resource=True)
-    self.assertEqual(type(a), variables_lib.Variable)
-    self.assertEqual(type(b), resource_variable_ops.ResourceVariable)
+    self.assertTrue(isinstance(a, variables_lib.Variable))
+    self.assertFalse(isinstance(a, resource_variable_ops.ResourceVariable))
+    self.assertTrue(isinstance(b, resource_variable_ops.ResourceVariable))
 
 
 class GlobalVariableTest(test.TestCase):
@@ -176,8 +177,9 @@ class GlobalVariableTest(test.TestCase):
   def testResourceVariable(self):
     a = variables_lib2.global_variable(0)
     b = variables_lib2.global_variable(0, use_resource=True)
-    self.assertEqual(type(a), variables_lib.Variable)
-    self.assertEqual(type(b), resource_variable_ops.ResourceVariable)
+    self.assertTrue(isinstance(a, variables_lib.Variable))
+    self.assertFalse(isinstance(a, resource_variable_ops.ResourceVariable))
+    self.assertTrue(isinstance(b, resource_variable_ops.ResourceVariable))
 
 
 class GlobalStepTest(test.TestCase):

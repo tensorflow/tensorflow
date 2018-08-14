@@ -35,6 +35,8 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
 
 try:
@@ -336,10 +338,18 @@ class TestWholeModelSaving(test.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.RepeatVector(3))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
-      model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
-                    metrics=[keras.metrics.categorical_accuracy],
-                    sample_weight_mode='temporal')
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          weighted_metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          sample_weight_mode='temporal')
       x = np.random.random((1, 3))
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
@@ -434,9 +444,17 @@ class TestWholeModelSaving(test.TestCase):
       output = keras.layers.Dense(3)(x)
 
       model = keras.models.Model(inputs, output)
-      model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
-                    metrics=[keras.metrics.categorical_accuracy])
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          weighted_metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ])
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
@@ -622,9 +640,13 @@ class TestWholeModelSaving(test.TestCase):
       outputs = keras.layers.Dense(3)(x)
 
       model = keras.Model(inputs, outputs)
-      model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.Adam(),
-                    metrics=[keras.metrics.categorical_accuracy])
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.Adam(),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ])
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
@@ -662,6 +684,22 @@ class SubclassedModel(training.Model):
 
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase):
+
+  def test_keras_optimizer_warning(self):
+    graph = ops.Graph()
+    with graph.as_default(), self.test_session(graph):
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+      model._make_train_function()
+      temp_dir = self.get_temp_dir()
+      prefix = os.path.join(temp_dir, 'ckpt')
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.save_weights(prefix)
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Keras optimizer')
 
   @test_util.run_in_graph_and_eager_modes
   def test_tensorflow_format_overwrite(self):
@@ -722,18 +760,23 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         self.assertEqual(len(graph.get_operations()), op_count)
 
   def _weight_loading_test_template(self, make_model_fn):
-    with self.test_session() as session:
+    with self.test_session():
       model = make_model_fn()
+      model.compile(
+          loss='mse',
+          optimizer=training_module.RMSPropOptimizer(0.1),
+          metrics=['acc', keras.metrics.CategoricalAccuracy()])
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
+      train_x = np.random.random((3, 2))
+      train_y = np.random.random((3,))
+      x = constant_op.constant(train_x, dtype=dtypes.float32)
 
-      x = constant_op.constant(np.random.random((3, 2)), dtype=dtypes.float32)
-      executing_eagerly = context.executing_eagerly()
-      ref_y_tensor = model(x)
-      if not executing_eagerly:
-        session.run([v.initializer for v in model.variables])
-      ref_y = self.evaluate(ref_y_tensor)
+      model.train_on_batch(train_x, train_y)
       model.save_weights(prefix, save_format='tf')
+      ref_y_before_train = model.predict(train_x)
+      model.train_on_batch(train_x, train_y)
+      ref_y_after_train = model.predict(train_x)
       for v in model.variables:
         self.evaluate(
             v.assign(random_ops.random_normal(shape=array_ops.shape(v))))
@@ -741,16 +784,27 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       self.addCleanup(shutil.rmtree, temp_dir)
 
       model.load_weights(prefix)
-      y = self.evaluate(model(x))
-      self.assertAllClose(ref_y, y)
+      self.assertAllClose(ref_y_before_train, self.evaluate(model(x)))
 
       # Test restore-on-create if this is a subclassed Model (graph Networks
       # will have already created their variables).
       load_model = make_model_fn()
       load_model.load_weights(prefix)
-      restore_on_create_y_tensor = load_model(x)
-      restore_on_create_y = self.evaluate(restore_on_create_y_tensor)
-      self.assertAllClose(ref_y, restore_on_create_y)
+      self.assertAllClose(
+          ref_y_before_train,
+          self.evaluate(load_model(x)))
+      load_model = make_model_fn()
+      load_model.load_weights(prefix)
+      # We need to run some of the restore ops for predict(), but not all
+      # variables have been created yet (optimizer slot variables). Tests
+      # incremental restore.
+      load_model.predict(train_x)
+      load_model.compile(
+          loss='mse',
+          optimizer=training_module.RMSPropOptimizer(0.1),
+          metrics=['acc', keras.metrics.CategoricalAccuracy()])
+      load_model.train_on_batch(train_x, train_y)
+      self.assertAllClose(ref_y_after_train, self.evaluate(load_model(x)))
 
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_graph_model(self):
@@ -780,6 +834,9 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         session.run([v.initializer for v in model.variables])
       ref_y = self.evaluate(ref_y_tensor)
       model.save_weights(prefix)
+      self.assertEqual(
+          prefix,
+          checkpoint_management.latest_checkpoint(temp_dir))
       for v in model.variables:
         self.evaluate(
             v.assign(random_ops.random_normal(shape=array_ops.shape(v))))
@@ -857,6 +914,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self._new_layer_weight_loading_test_template(
         SubclassedModel, SubclassedModelRestore,
         _restore_init_fn)
+
 
 if __name__ == '__main__':
   test.main()

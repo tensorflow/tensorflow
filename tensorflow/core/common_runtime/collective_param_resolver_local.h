@@ -213,8 +213,16 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
       LOCKS_EXCLUDED(irec->out_mu);
 
   friend class CollectiveParamResolverLocalTest;
+  // Establishes the requested number of subdivision permutations based on the
+  // ring order implicit in the device order.
   static void GenerateSubdivPerms(const string& device, int source_rank,
                                   CollectiveParams* cp);
+  // Establishes the subdivisions for broadcast op.  The first subdiv executes
+  // binary tree bcast with one device per task.  Each subsequent subdiv
+  // executes intra-task binary tree broadcast.
+  static void GenerateBcastSubdivPerms(const string& device, int source_rank,
+                                       const std::vector<int>& dev_per_task,
+                                       CollectiveParams* cp);
 
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.

@@ -1072,8 +1072,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
   def testGenerateFeatureSplitCandidatesMulticlassFullHessian(self):
     with self.test_session() as sess:
       # Batch is 4, 2 classes
-      gradients = array_ops.constant(
-          [[0.2, 1.4], [-0.5, 0.1], [1.2, 3], [4.0, -3]])
+      gradients = array_ops.constant([[0.2, 1.4], [-0.5, 0.1], [1.2, 3],
+                                      [4.0, -3]])
       # 2x2 matrix for each instance
       hessian_0 = [[0.12, 0.02], [0.3, 0.11]]
       hessian_1 = [[0.07, -0.2], [-0.5, 0.2]]
@@ -1167,8 +1167,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
   def testGenerateFeatureSplitCandidatesMulticlassDiagonalHessian(self):
     with self.test_session() as sess:
       # Batch is 4, 2 classes
-      gradients = array_ops.constant(
-          [[0.2, 1.4], [-0.5, 0.1], [1.2, 3], [4.0, -3]])
+      gradients = array_ops.constant([[0.2, 1.4], [-0.5, 0.1], [1.2, 3],
+                                      [4.0, -3]])
       # Each hessian is a diagonal from a full hessian matrix.
       hessian_0 = [0.12, 0.11]
       hessian_1 = [0.07, 0.2]
@@ -1402,6 +1402,100 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
             ]))
     self.assertFalse(are_splits_ready)
     self.assertTrue(are_splits_ready2)
+    self.assertEqual(len(partitions), 0)
+    self.assertEqual(len(gains), 0)
+    self.assertEqual(len(splits), 0)
+
+  def testEmptyBuckets(self):
+    """Test that reproduces the case when quantile buckets were empty."""
+    with self.test_session() as sess:
+      sparse_column = array_ops.sparse_placeholder(dtypes.float32)
+
+      # We have two batches - at first, a sparse feature is empty.
+      empty_indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
+      empty_values = array_ops.constant([], dtype=dtypes.float32)
+      empty_sparse_column = sparse_tensor.SparseTensor(empty_indices,
+                                                       empty_values, [4, 2])
+      empty_sparse_column = empty_sparse_column.eval(session=sess)
+
+      # For the second batch, the sparse feature is not empty.
+      non_empty_indices = array_ops.constant(
+          [[0, 0], [2, 1], [3, 2]], dtype=dtypes.int64, shape=[3, 2])
+      non_empty_values = array_ops.constant(
+          [0.52, 0.3, 0.52], dtype=dtypes.float32)
+      non_empty_sparse_column = sparse_tensor.SparseTensor(
+          non_empty_indices, non_empty_values, [4, 2])
+      non_empty_sparse_column = non_empty_sparse_column.eval(session=sess)
+
+      gradient_shape = tensor_shape.scalar()
+      hessian_shape = tensor_shape.scalar()
+      class_id = -1
+
+      split_handler = ordinal_split_handler.SparseSplitHandler(
+          l1_regularization=0.0,
+          l2_regularization=2.0,
+          tree_complexity_regularization=0.0,
+          min_node_weight=0.0,
+          epsilon=0.01,
+          num_quantiles=2,
+          feature_column_group_id=0,
+          sparse_float_column=sparse_column,
+          init_stamp_token=0,
+          gradient_shape=gradient_shape,
+          hessian_shape=hessian_shape,
+          multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS)
+      resources.initialize_resources(resources.shared_resources()).run()
+      gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
+      hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
+      partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
+
+      empty_gradients, empty_hessians = get_empty_tensors(
+          gradient_shape, hessian_shape)
+      example_weights = array_ops.ones([4, 1], dtypes.float32)
+
+      update_1 = split_handler.update_stats_sync(
+          0,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_1]):
+        are_splits_ready = split_handler.make_splits(
+            np.int64(0), np.int64(1), class_id)[0]
+
+        # First, calculate quantiles and try to update on an empty data for a
+        # feature.
+        are_splits_ready = (
+            sess.run(
+                are_splits_ready,
+                feed_dict={sparse_column: empty_sparse_column}))
+        self.assertFalse(are_splits_ready)
+
+      update_2 = split_handler.update_stats_sync(
+          1,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_2]):
+        are_splits_ready2, partitions, gains, splits = (
+            split_handler.make_splits(np.int64(1), np.int64(2), class_id))
+
+        # Now the feature in the second batch is not empty, but buckets
+        # calculated on the first batch are empty.
+        are_splits_ready2, partitions, gains, splits = (
+            sess.run(
+                [are_splits_ready2, partitions, gains, splits],
+                feed_dict={sparse_column: non_empty_sparse_column}))
+    self.assertFalse(are_splits_ready)
+    self.assertTrue(are_splits_ready2)
+    # Since the buckets were empty, we can't calculate the splits.
     self.assertEqual(len(partitions), 0)
     self.assertEqual(len(gains), 0)
     self.assertEqual(len(splits), 0)

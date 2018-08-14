@@ -1,4 +1,4 @@
-# Installing TensorFlow on Windows
+# Install TensorFlow on Windows
 
 This guide explains how to install TensorFlow on Windows. Although these
 instructions might also work on other Windows variants, we have only
@@ -23,6 +23,8 @@ You must choose one of the following types of TensorFlow to install:
     system has a NVIDIA® GPU meeting the prerequisites shown below
     and you need to run performance-critical applications, you should
     ultimately install this version.
+
+<a name="NVIDIARequirements"></a>
 
 ### Requirements to run TensorFlow with GPU support
 
@@ -157,7 +159,7 @@ TensorFlow programs:
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 ## Common installation problems
 

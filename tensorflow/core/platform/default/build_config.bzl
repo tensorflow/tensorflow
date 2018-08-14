@@ -467,7 +467,6 @@ def tf_platform_srcs(files):
 
   return select({
     "//tensorflow:windows" : native.glob(windows_set),
-    "//tensorflow:windows_msvc" : native.glob(windows_set),
     "//conditions:default" : native.glob(posix_set),
   })
 
@@ -479,7 +478,6 @@ def tf_additional_lib_hdrs(exclude = []):
   ], exclude = exclude)
   return select({
     "//tensorflow:windows" : windows_hdrs,
-    "//tensorflow:windows_msvc" : windows_hdrs,
     "//conditions:default" : native.glob([
         "platform/default/*.h",
         "platform/posix/*.h",
@@ -494,7 +492,6 @@ def tf_additional_lib_srcs(exclude = []):
   ], exclude = exclude)
   return select({
     "//tensorflow:windows" : windows_srcs,
-    "//tensorflow:windows_msvc" : windows_srcs,
     "//conditions:default" : native.glob([
         "platform/default/*.cc",
         "platform/posix/*.cc",
@@ -620,10 +617,10 @@ def tf_additional_core_deps():
       ],
       "//conditions:default": [],
   }) + select({
-      "//tensorflow:with_s3_support_windows_override": [],
-      "//tensorflow:with_s3_support_android_override": [],
-      "//tensorflow:with_s3_support_ios_override": [],
-      "//tensorflow:with_s3_support": [
+      "//tensorflow:with_aws_support_windows_override": [],
+      "//tensorflow:with_aws_support_android_override": [],
+      "//tensorflow:with_aws_support_ios_override": [],
+      "//tensorflow:with_aws_support": [
           "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],

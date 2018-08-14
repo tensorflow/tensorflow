@@ -104,8 +104,8 @@ class SummaryToEventTransformer(object):
     and adds it to the event file.
 
     You can pass the result of evaluating any summary op, using
-    @{tf.Session.run} or
-    @{tf.Tensor.eval}, to this
+    `tf.Session.run` or
+    `tf.Tensor.eval`, to this
     function. Alternatively, you can pass a `tf.Summary` protocol
     buffer that you populate with your own data. The latter is
     commonly done to report evaluation results in event files.
@@ -325,7 +325,7 @@ class FileWriter(SummaryToEventTransformer):
     ```
 
     The `session` argument to the constructor makes the returned `FileWriter` a
-    a compatibility layer over new graph-based summaries (`tf.contrib.summary`).
+    compatibility layer over new graph-based summaries (`tf.contrib.summary`).
     Crucially, this means the underlying writer resource and events file will
     be shared with any other `FileWriter` using the same `session` and `logdir`,
     and with any `tf.contrib.summary.SummaryWriter` in this session using the

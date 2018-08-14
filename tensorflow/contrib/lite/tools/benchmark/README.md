@@ -115,7 +115,7 @@ E.g. for running the benchmark on big cores on Pixel 2 with a single thread one
 can use the following command:
 
 ```
-adb shell tasket f0 /data/local/tmp/benchmark_model \
+adb shell taskset f0 /data/local/tmp/benchmark_model \
   --graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
   --input_layer="input" \
   --input_layer_shape="1,224,224,3" \

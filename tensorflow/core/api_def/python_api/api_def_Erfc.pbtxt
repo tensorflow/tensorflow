@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "erfc"
-    deprecation_message: "tf.erfc is deprecated, please use tf.math.erfc instead."
+    deprecated: true
   }
 }

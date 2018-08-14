@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -105,26 +105,26 @@ llvm::Value* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id,
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
-    llvm::IRBuilder<>* ir_builder);
+    llvm::IRBuilder<>* b);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* ir_builder);
+                          llvm::IRBuilder<>* b);
 
 // Emit float min. Emit minnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* ir_builder);
+                          llvm::IRBuilder<>* b);
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
 // determined from the element type of the array.  The int64 index overload
 // wraps the index in a i64 llvm::Value.
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* ir_builder);
+                                   llvm::IRBuilder<>* b);
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
-                                   llvm::IRBuilder<>* ir_builder);
+                                   llvm::IRBuilder<>* b);
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -139,8 +139,9 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder);
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
+                                                         int32* shape_size,
+                                                         llvm::IRBuilder<>* b);
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
 //
@@ -164,21 +165,21 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 // through a loop.
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             tensorflow::StringPiece name,
-                                            llvm::IRBuilder<>* ir_builder,
+                                            llvm::IRBuilder<>* b,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
 // instead of a single element.
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
     llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* ir_builder, int alignment = 0);
+    llvm::IRBuilder<>* b, int alignment = 0);
 
 // Creates a basic block with the same context and function as for the
 // builder. Inserts at the end of the function if insert_before is
 // null.
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
                                    tensorflow::StringPiece name,
-                                   llvm::IRBuilder<>* ir_builder);
+                                   llvm::IRBuilder<>* b);
 
 // Struct with data on a conditional branch in a diamond shape created
 // via EmitIfThenElse.
@@ -210,13 +211,13 @@ struct LlvmIfData {
 // block with a terminator. If you need to use this for a
 // non-terminated block, just make the function able to do that too.
 LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
-                          llvm::IRBuilder<>* ir_builder, bool emit_else = true);
+                          llvm::IRBuilder<>* b, bool emit_else = true);
 
 // Emits a compare operation between "lhs" and "rhs" with the given predicate,
 // and then converts the result to i8 so that it is addressable.
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs, llvm::Value* rhs,
-                            llvm::IRBuilder<>* ir_builder);
+                            llvm::IRBuilder<>* b);
 
 // Emits a call that logs the given value with the given tag as a prefix.
 // The provided tag and value are passed to a runtime logging call that is
@@ -228,8 +229,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // Precondition: value must be an int64.
 // Precondition: tag must be a stable pointer for the lifetime of the generated
 // program (the constant pointer is burned in to the program).
-void EmitLogging(const char* tag, llvm::Value* value,
-                 llvm::IRBuilder<>* ir_builder);
+void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b);
 
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
@@ -292,6 +292,27 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
 // don't start with xla_ to LLVM.
 void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
 
+// Zero-extends two 32-bit values to 64 bits, multiplies them, and returns the
+// result as a pair of (low 32 bits, high 32 bits).
+std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
+                                                    llvm::Value* src0,
+                                                    llvm::Value* src1);
+// Splits the 64-bit integer value into its high and low 32 bits.
+std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
+    llvm::IRBuilder<>* b, llvm::Value* value_64bits);
+
+// Checks whether a global variable is already created to represent a
+// state passed between RNG calls implemented with Philox algorithm. If not,
+// creates such a variable. Returns the global variable.
+llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
+    llvm::Module* module, llvm::IRBuilder<>* b);
+
+// Adds a value to the global state variable each time when a RNG hlo is
+// executed. The value of this global state variable is added to the seed
+// of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
+// should rarely produce the same result.
+void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
+                                        llvm::IRBuilder<>* b);
 }  // namespace llvm_ir
 }  // namespace xla
 

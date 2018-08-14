@@ -49,11 +49,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
             const DatasetBase* input)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
           drop_remainder_(drop_remainder),
           input_(input) {
@@ -96,10 +96,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* batch_size = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
       Node* drop_remainder = nullptr;
@@ -203,7 +204,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         }
         return Status::OK();
       }
@@ -212,7 +213,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }

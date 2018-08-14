@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::stream;
 using mkldnn::sum;
@@ -38,7 +37,7 @@ using mkldnn::sum;
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
@@ -286,7 +285,7 @@ class MklAddNOp : public OpKernel {
   } MklAddNOpContext;
 };
 
-#else  // INTEL_MKL_ML
+#else  // INTEL_MKL_ML_ONLY
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
  public:
@@ -445,11 +444,10 @@ class MklAddNOp : public OpKernel {
       // atleast one input is in MKL format, we choose output descriptor for
       // reorder.
       std::vector<primitive::at> inputs;
-      std::vector<primitive> net;
       // Check if actual input format of the tensor is different than common_pd
       // we told MKLDNN. In that case, we will need reorder.
-      src1.CheckReorderToOpMem(srcs_pd[0], &net);
-      src2.CheckReorderToOpMem(srcs_pd[1], &net);
+      src1.CheckReorderToOpMem(srcs_pd[0]);
+      src2.CheckReorderToOpMem(srcs_pd[1]);
       inputs.push_back(src1.GetOpMem());
       inputs.push_back(src2.GetOpMem());
 
@@ -482,6 +480,7 @@ class MklAddNOp : public OpKernel {
       dst.SetUsrMemDataHandle(dst_tensor);
 
       // Create Sum op, and submit net for execution.
+      std::vector<primitive> net;
       net.push_back(sum(sum_pd, inputs, dst.GetOpMem()));
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {

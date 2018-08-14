@@ -78,6 +78,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool convert_pow = true;
     bool convert_log1p = true;
     bool convert_expm1 = true;
+    bool unary_ops_composition = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

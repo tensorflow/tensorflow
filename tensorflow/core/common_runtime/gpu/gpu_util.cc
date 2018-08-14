@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -150,7 +150,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   const int64 total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
     tracing::ScopedAnnotation annotation("SetProtoFromGPU");
-    alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
     buf = alloc->Allocate<char>(total_bytes);
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation("SetProtoFromGPU",

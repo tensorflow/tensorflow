@@ -47,6 +47,10 @@ cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/contrib/lite/testing:util",
@@ -121,13 +125,26 @@ cc_library(
         "graph_info.cc",
         "interpreter.cc",
         "model.cc",
-        "nnapi_delegate.cc",
         "op_resolver.cc",
         "optional_debug_tools.cc",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "nnapi_delegate.cc",
+            "mmap_allocation.cc",
+        ],
+        "//tensorflow:windows": [
+            "nnapi_delegate_disabled.cc",
+            "mmap_allocation_disabled.cc",
+        ],
+        "//conditions:default": [
+            "nnapi_delegate_disabled.cc",
+            "mmap_allocation.cc",
+        ],
+    }),
     hdrs = [
         "allocation.h",
         "context.h",
+        "context_util.h",
         "error_reporter.h",
         "graph_info.h",
         "interpreter.h",
@@ -145,6 +162,7 @@ cc_library(
         ":memory_planner",
         ":schema_fbs_version",
         ":simple_memory_arena",
+        ":string",
         ":util",
         "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
@@ -198,6 +216,7 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":framework",
         ":string_util",
@@ -242,6 +261,7 @@ cc_test(
     name = "op_resolver_test",
     size = "small",
     srcs = ["op_resolver_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":framework",
         "//tensorflow/contrib/lite/testing:util",
@@ -274,6 +294,7 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":context",
         ":util",

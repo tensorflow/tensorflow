@@ -16,15 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
-
-// Returns a zero-filled tensor with shape `shape`.
-xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape);
 
 // Returns a floating point scalar constant of 'type' with 'value'.
 // If 'type' is complex, returns a real value with zero imaginary component.

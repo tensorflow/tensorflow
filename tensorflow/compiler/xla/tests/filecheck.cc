@@ -76,6 +76,11 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
     XLA_LOG_LINES(tensorflow::WARNING, input);
     LOG(WARNING) << "FileCheck pattern was:";
     XLA_LOG_LINES(tensorflow::WARNING, pattern);
+  } else if (!standard_error.empty()) {
+    LOG(INFO) << "FileCheck stderr:";
+    XLA_LOG_LINES(tensorflow::INFO, standard_error);
+    LOG(INFO) << "FileCheck input was:";
+    XLA_LOG_LINES(tensorflow::INFO, input);
   }
   return succeeded;
 }

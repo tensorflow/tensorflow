@@ -67,10 +67,16 @@ def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
       [ExtractBitsFromBFloat16(x) for x in proto_values])
 
 
+def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendBFloat16ArrayToTensorProto(
+      tensor_proto, np.asarray(
+          proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype:
-          SlowAppendBFloat16ArrayToTensorProto,
+          FastAppendBFloat16ArrayToTensorProto,
       np.float16:
           _MediumAppendFloat16ArrayToTensorProto,
       np.float32:
@@ -935,8 +941,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
-  Check whether an object is a tensor. Equivalent to
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+  Check whether an object is a tensor. This check is equivalent to calling
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
+  if all the component variables of a MirroredVariable or a TowerLocalVariable
+  are tensors.
 
   Args:
     x: A python object to check.
@@ -944,4 +952,5 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a tensor, `False` if not.
   """
-  return isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x)  # pylint: disable=protected-access
+  return (isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x) or  # pylint: disable=protected-access
+          (hasattr(x, "is_tensor_like") and x.is_tensor_like))

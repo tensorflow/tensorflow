@@ -87,11 +87,12 @@ def main(_):
   words_list = input_data.prepare_words_list(FLAGS.wanted_words.split(','))
   model_settings = models.prepare_model_settings(
       len(words_list), FLAGS.sample_rate, FLAGS.clip_duration_ms,
-      FLAGS.window_size_ms, FLAGS.window_stride_ms, FLAGS.dct_coefficient_count)
+      FLAGS.window_size_ms, FLAGS.window_stride_ms, FLAGS.feature_bin_count,
+      'mfcc')
   audio_processor = input_data.AudioProcessor(
       '', FLAGS.data_dir, FLAGS.silence_percentage, 10,
       FLAGS.wanted_words.split(','), FLAGS.validation_percentage,
-      FLAGS.testing_percentage, model_settings)
+      FLAGS.testing_percentage, model_settings, FLAGS.data_dir)
 
   output_audio_sample_count = FLAGS.sample_rate * FLAGS.test_duration_seconds
   output_audio = np.zeros((output_audio_sample_count,), dtype=np.float32)
@@ -242,10 +243,11 @@ if __name__ == '__main__':
       default=10.0,
       help='How long the stride is between spectrogram timeslices',)
   parser.add_argument(
-      '--dct_coefficient_count',
+      '--feature_bin_count',
       type=int,
       default=40,
-      help='How many bins to use for the MFCC fingerprint',)
+      help='How many bins to use for the MFCC fingerprint',
+  )
   parser.add_argument(
       '--wanted_words',
       type=str,
