@@ -64,7 +64,7 @@ Set use_nesterov = True if you want to use Nesterov momentum.
 
 That is for rows we have grad for, we update var and accum as follows:
 
-accum = accum * momentum + grad
-var -= lr * accum
+$$accum = accum * momentum + grad$$
+$$var -= lr * accum$$
 END
 }

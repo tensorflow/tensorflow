@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -58,7 +57,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
-                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8);
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+                     input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
+                     input_type == kTfLiteInt64);
 
   // Output dimensions will match input dimensions, except 'axis', which
   // will be the sum of inputs
@@ -122,6 +123,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_CONCATENATION(optimized_ops, float);
       }
       break;
+    case kTfLiteInt32:
+      if (kernel_type == kReference) {
+        TF_LITE_CONCATENATION(reference_ops, int32);
+      } else {
+        TF_LITE_CONCATENATION(optimized_ops, int32);
+      }
+      break;
     case kTfLiteUInt8:
       if (kernel_type == kReference) {
         TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
@@ -129,6 +137,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_CONCATENATION_QUANTIZED(optimized_ops);
       }
       break;
+    case kTfLiteInt64:
+      if (kernel_type == kReference) {
+        TF_LITE_CONCATENATION(reference_ops, int64_t);
+      } else {
+        TF_LITE_CONCATENATION(optimized_ops, int64_t);
+      }
+      break;
+
     default:
       context->ReportError(context,
                            "Only float32 and uint8 are currently supported.");

@@ -119,9 +119,20 @@ class ShapeInference {
       const Shape& in, FftType fft_type,
       tensorflow::gtl::ArraySlice<int64> fft_length);
 
-  // Infers the shape produced a cross replica sum with the given operand
+  // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferCrossReplicaSumShape(
+      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
+
+  // Infers final shape of an Alltoall operation that is created by the xla
+  // builder.
+  static StatusOr<Shape> InferAllToAllShape(const Shape& shape,
+                                            int64 split_dimension,
+                                            int64 concat_dimension,
+                                            int64 split_count);
+
+  // Infers the shape of an HLO all-to-all instruction.
+  static StatusOr<Shape> InferAllToAllTupleShape(
       tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
 
   // Infers the shape produced by applying the given reduction computation
@@ -131,7 +142,7 @@ class ShapeInference {
   // index as the leading parameter, and the program shape should match
   // accordingly (or an error will result).
   static StatusOr<Shape> InferReduceShape(
-      const Shape& arg, const Shape& init_value,
+      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       const ProgramShape& to_apply);
 
@@ -216,11 +227,11 @@ class ShapeInference {
   static StatusOr<Shape> InferConcatOpShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes, int64 dimension);
 
-  // Infers the shape produced by a kGenerateToken operation. Trivially this
-  // shape is always a TOKEN shape. However, ShapeInference serves two purposes:
-  // inferring shapes and checking operand shapes. This method verifies that the
-  // operand shapes are all TOKENs.
-  static StatusOr<Shape> InferTokenShape(
+  // Infers the shape produced by a kAfterAll. Trivially this shape is always a
+  // TOKEN shape. However, ShapeInference serves two purposes: inferring shapes
+  // and checking operand shapes. This method verifies that the operand shapes
+  // are all TOKENs.
+  static StatusOr<Shape> InferAfterAllShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes);
 
   // Helper that validates the given operand shape can be converted to the
@@ -268,6 +279,14 @@ class ShapeInference {
       const GatherDimensionNumbers& gather_dim_numbers,
       tensorflow::gtl::ArraySlice<int64> window_bounds);
 
+  // Helper that validates the given input shape, scatter indices shape, updates
+  // shape, and scatter dimension numbers that constitute a scatter operation,
+  // and returns the result shape of the scatter operation.
+  static StatusOr<Shape> InferScatterShape(
+      const Shape& operand_shape, const Shape& scatter_indices_shape,
+      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
+
  private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.
@@ -286,6 +305,10 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
+  // Helper for inferring the shape of TupleSelect ops.
+  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
+                                               const Shape& on_true,
+                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast

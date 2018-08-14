@@ -34,7 +34,10 @@ py_test(
     name = "correlation_matrix_volumes_test",
     size = "medium",
     srcs = ["correlation_matrix_volumes_test.py"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":correlation_matrix_volumes_py",
         # For statistical testing

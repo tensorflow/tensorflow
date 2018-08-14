@@ -78,29 +78,44 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <KernelType kernel_type>
-void EvalFloat(TfLiteContext* context, TfLiteNode* node,
-               TfLiteDivParams* params, const OpData* data,
-               const TfLiteTensor* input1, const TfLiteTensor* input2,
-               TfLiteTensor* output) {
-  float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
-#define TF_LITE_DIV(type, opname)                                   \
-  type::opname(GetTensorData<float>(input1), GetTensorDims(input1), \
-               GetTensorData<float>(input2), GetTensorDims(input2), \
-               output_activation_min, output_activation_max,        \
-               GetTensorData<float>(output), GetTensorDims(output))
-  if (kernel_type == kReference) {
-    if (data->requires_broadcast) {
-      TF_LITE_DIV(reference_ops, BroadcastDiv);
+void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
+             const OpData* data, const TfLiteTensor* input1,
+             const TfLiteTensor* input2, TfLiteTensor* output) {
+#define TF_LITE_DIV(type, opname, data_type)                            \
+  data_type output_activation_min, output_activation_max;               \
+  CalculateActivationRange(params->activation, &output_activation_min,  \
+                           &output_activation_max);                     \
+  type::opname(GetTensorData<data_type>(input1), GetTensorDims(input1), \
+               GetTensorData<data_type>(input2), GetTensorDims(input2), \
+               output_activation_min, output_activation_max,            \
+               GetTensorData<data_type>(output), GetTensorDims(output))
+  if (output->type == kTfLiteInt32) {
+    if (kernel_type == kReference) {
+      if (data->requires_broadcast) {
+        TF_LITE_DIV(reference_ops, BroadcastDiv, int32_t);
+      } else {
+        TF_LITE_DIV(reference_ops, Div, int32_t);
+      }
     } else {
-      TF_LITE_DIV(reference_ops, Div);
+      if (data->requires_broadcast) {
+        TF_LITE_DIV(optimized_ops, BroadcastDiv, int32_t);
+      } else {
+        TF_LITE_DIV(optimized_ops, Div, int32_t);
+      }
     }
-  } else {
-    if (data->requires_broadcast) {
-      TF_LITE_DIV(optimized_ops, BroadcastDiv);
+  } else if (output->type == kTfLiteFloat32) {
+    if (kernel_type == kReference) {
+      if (data->requires_broadcast) {
+        TF_LITE_DIV(reference_ops, BroadcastDiv, float);
+      } else {
+        TF_LITE_DIV(reference_ops, Div, float);
+      }
     } else {
-      TF_LITE_DIV(optimized_ops, Div);
+      if (data->requires_broadcast) {
+        TF_LITE_DIV(optimized_ops, BroadcastDiv, float);
+      } else {
+        TF_LITE_DIV(optimized_ops, Div, float);
+      }
     }
   }
 #undef TF_LITE_DIV
@@ -115,11 +130,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  if (output->type == kTfLiteFloat32) {
-    EvalFloat<kernel_type>(context, node, params, data, input1, input2, output);
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+    EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else {
     context->ReportError(
-        context, "Div only supports FLOAT32 and quantized UINT8 now, got %d.",
+        context,
+        "Div only supports FLOAT32, INT32 and quantized UINT8 now, got %d.",
         output->type);
     return kTfLiteError;
   }

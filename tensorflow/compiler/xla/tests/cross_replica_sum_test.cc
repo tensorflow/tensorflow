@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -45,7 +45,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
   })";
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
-  auto literal = Literal::CreateR1<float>({1, 2, 3});
+  auto literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   EXPECT_EQ(*literal, *ExecuteAndTransfer(std::move(module), {literal.get()}));
 }
 
@@ -66,10 +66,10 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
   })";
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
-  auto literal0 = Literal::CreateR1<float>({1, 2, 3});
-  auto literal1 = Literal::CreateR1<float>({10, 20});
+  auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
+  auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
   EXPECT_EQ(
-      *Literal::MakeTuple({literal0.get(), literal1.get()}),
+      *LiteralUtil::MakeTuple({literal0.get(), literal1.get()}),
       *ExecuteAndTransfer(std::move(module), {literal0.get(), literal1.get()}));
 }
 
@@ -93,9 +93,9 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
   })";
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
-  auto literal0 = Literal::CreateR1<float>({1, 2, 3});
-  auto literal1 = Literal::CreateR1<float>({10, 20});
-  EXPECT_EQ(*Literal::MakeTuple({literal0.get(), literal1.get()}),
+  auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
+  auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
+  EXPECT_EQ(*LiteralUtil::MakeTuple({literal0.get(), literal1.get()}),
             *ExecuteAndTransfer(std::move(module), {literal0.get()}));
 }
 

@@ -177,6 +177,40 @@ cc_library(
 )
 
 cc_library(
+    name = "legacy_optimized_base",
+    srcs = [],
+    hdrs = [
+        "common.h",
+        "optimized/depthwiseconv_float.h",
+        "optimized/depthwiseconv_uint8.h",
+        "optimized/depthwiseconv_uint8_3x3_filter.h",
+        "optimized/legacy_optimized_ops.h",
+        "optimized/optimized_ops.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":quantization_util",
+        ":strided_slice_logic",
+        ":types",
+        ":legacy_reference_base",
+        ":round",
+        "//third_party/eigen3",
+        "@gemmlowp",
+        "//tensorflow/contrib/lite:builtin_op_data",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "optimized",
     hdrs = [
         "optimized/cblas_conv.h",
@@ -198,6 +232,7 @@ cc_library(
 cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":reference",
         "@com_google_googletest//:gtest",
@@ -226,6 +261,7 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest",
@@ -250,6 +286,37 @@ cc_library(
         "common.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/reference_ops.h",
+    ],
+    deps = [
+        ":quantization_util",
+        ":round",
+        ":strided_slice_logic",
+        ":types",
+        "//third_party/eigen3",
+        "@gemmlowp",
+        "//tensorflow/contrib/lite:builtin_op_data",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "legacy_reference_base",
+    srcs = [],
+    hdrs = [
+        "common.h",
+        "reference/depthwiseconv_float.h",
+        "reference/depthwiseconv_uint8.h",
+        "reference/legacy_reference_ops.h",
         "reference/reference_ops.h",
     ],
     deps = [
@@ -414,6 +481,9 @@ cc_library(
         ":darwin": [
             ":neon_tensor_utils",
         ],
+        ":darwin_x86_64": [
+            ":neon_tensor_utils",
+        ],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
@@ -426,6 +496,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":types",
+        "//tensorflow/contrib/lite:string",
     ],
 )
 
@@ -440,7 +511,10 @@ cc_test(
         "//conditions:default": [],
     }),
     linkstatic = 1,
-    tags = ["tflite_not_portable_ios"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":tensor_utils",
         "//tensorflow/contrib/lite:builtin_op_data",
@@ -452,6 +526,7 @@ cc_test(
 cc_test(
     name = "depthwiseconv_float_test",
     srcs = ["depthwiseconv_float_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -464,6 +539,10 @@ cc_test(
 cc_test(
     name = "depthwiseconv_quantized_test",
     srcs = ["depthwiseconv_quantized_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -476,7 +555,10 @@ cc_test(
 cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
-    tags = ["tflite_not_portable"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -492,11 +574,13 @@ cc_test(
     srcs = [
         "softmax_quantized_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -507,12 +591,16 @@ cc_test(
     srcs = [
         "logsoftmax_quantized_test.cc",
     ],
-    tags = ["tflite_not_portable"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -520,9 +608,11 @@ cc_test(
 cc_test(
     name = "log_quantized_test",
     srcs = ["log_quantized_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         ":reference_base",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -546,6 +636,7 @@ cc_library(
 cc_test(
     name = "batch_to_space_nd_test",
     srcs = ["batch_to_space_nd_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         "@com_google_googletest//:gtest_main",

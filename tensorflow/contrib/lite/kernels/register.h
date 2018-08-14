@@ -26,10 +26,14 @@ namespace builtin {
 class BuiltinOpResolver : public MutableOpResolver {
  public:
   BuiltinOpResolver();
+
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override;
+  const TfLiteRegistration* FindOp(const char* op, int version) const override;
 };
 
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_BUILTIN_KERNELS_H
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_

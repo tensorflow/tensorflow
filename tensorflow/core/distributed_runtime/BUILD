@@ -494,9 +494,11 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -506,6 +508,7 @@ cc_library(
     hdrs = ["collective_rma_distributed.h"],
     deps = [
         ":cancellable_call",
+        ":request_id",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -628,6 +631,7 @@ tf_cuda_cc_test(
         ":master",
         ":remote_device",
         ":worker_interface",
+        "//tensorflow:grpc++",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -649,7 +653,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:variable_ops",
-        "@grpc//:grpc++",
     ],
 )
 
@@ -667,6 +670,7 @@ tf_cuda_cc_test(
         ":master",
         ":remote_device",
         ":worker_interface",
+        "//tensorflow:grpc++",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -682,7 +686,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
-        "@grpc//:grpc++",
     ],
 )
 

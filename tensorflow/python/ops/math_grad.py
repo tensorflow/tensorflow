@@ -651,27 +651,28 @@ def _BesselI1eGrad(op, grad):
 
 @ops.RegisterGradient("Igamma")
 def _IgammaGrad(op, grad):
-  """Returns gradient of igamma(a, x) with respect to x."""
-  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
+  """Returns gradient of igamma(a, x) with respect to a and x."""
   a = op.inputs[0]
   x = op.inputs[1]
   sa = array_ops.shape(a)
   sx = array_ops.shape(x)
-  unused_ra, rx = gen_array_ops.broadcast_gradient_args(sa, sx)
+  ra, rx = gen_array_ops.broadcast_gradient_args(sa, sx)
 
-  # Perform operations in log space before summing, because Gamma(a)
-  # and Gamma'(a) can grow large.
-  partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) - math_ops.lgamma(a))
-  # TODO(b/36815900): Mark None return values as NotImplemented
-  return (None, array_ops.reshape(
-      math_ops.reduce_sum(partial_x * grad, rx), sx))
+  with ops.control_dependencies([grad]):
+    partial_a = gen_math_ops.igamma_grad_a(a, x)
+    # Perform operations in log space before summing, because Gamma(a)
+    # and Gamma'(a) can grow large.
+    partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x)
+                             - math_ops.lgamma(a))
+    return (array_ops.reshape(math_ops.reduce_sum(partial_a * grad, ra), sa),
+            array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Igammac")
 def _IgammacGrad(op, grad):
-  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. x."""
-  _, igamma_grad_x = _IgammaGrad(op, grad)
-  return None, -igamma_grad_x
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
+  igamma_grad_a, igamma_grad_x = _IgammaGrad(op, grad)
+  return (-igamma_grad_a, -igamma_grad_x)
 
 
 @ops.RegisterGradient("Betainc")
@@ -969,6 +970,24 @@ def _RealDivGrad(op, grad):
           array_ops.reshape(
               math_ops.reduce_sum(
                   grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))
+
+
+@ops.RegisterGradient("UnsafeDiv")
+def _UnsafeDivGrad(op, grad):
+  """UnsafeDiv op gradient."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  x = math_ops.conj(x)
+  y = math_ops.conj(y)
+  return (array_ops.reshape(
+      math_ops.reduce_sum(math_ops.unsafe_div(grad, y), rx), sx),
+          array_ops.reshape(
+              math_ops.reduce_sum(
+                  grad * math_ops.unsafe_div(math_ops.unsafe_div(-x, y), y),
+                  ry), sy))
 
 
 @ops.RegisterGradient("Pow")

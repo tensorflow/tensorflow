@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -56,8 +57,9 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   FusedIrEmitter(tensorflow::gtl::ArraySlice<llvm_ir::IrArray> parameter_arrays,
                  ElementalIrEmitter* elemental_emitter)
       : parameter_arrays_(parameter_arrays),
+        tiled_parameter_info_(nullptr),
         elemental_emitter_(elemental_emitter),
-        ir_builder_(elemental_emitter->ir_builder()),
+        b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
@@ -86,9 +88,14 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
     return it->second;
   }
 
+  void SetTiledParameterInfo(const llvm_ir::TiledParameterInfo* info) {
+    tiled_parameter_info_ = info;
+  }
+
  private:
   // Arrays of parameters of fusion instruction
   tensorflow::gtl::ArraySlice<llvm_ir::IrArray> parameter_arrays_;
+  const llvm_ir::TiledParameterInfo* tiled_parameter_info_;
 
   ElementalIrEmitter* elemental_emitter_;
 
@@ -96,7 +103,7 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   const HloInstruction* fused_root_ = nullptr;
 
   // Borrowed
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Module* module_;
 
   // Map from instruction pointers to functions to generate elements of their

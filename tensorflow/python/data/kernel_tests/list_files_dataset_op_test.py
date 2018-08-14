@@ -123,13 +123,11 @@ class ListFilesDatasetOpTest(test.TestCase):
 
     with self.test_session() as sess:
       itr = dataset.make_initializable_iterator()
-      next_element = itr.get_next()
-      sess.run(
-          itr.initializer,
-          feed_dict={filename_placeholder: path.join(self.tmp_dir, '*')})
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError, 'No files matched pattern: '):
+        sess.run(
+            itr.initializer,
+            feed_dict={filename_placeholder: path.join(self.tmp_dir, '*')})
 
   def testSimpleDirectoryInitializer(self):
     filenames = ['a', 'b', 'c']

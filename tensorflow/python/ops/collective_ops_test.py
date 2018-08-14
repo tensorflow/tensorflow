@@ -37,11 +37,11 @@ class CollectiveOpTest(test.TestCase):
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
         colred0 = collective_ops.all_reduce(in0, 2, group_key, instance_key,
-                                            'Add', 'Div', [0])
+                                            'Add', 'Div')
       with ops.device('/CPU:1'):
         in1 = constant_op.constant(t1)
         colred1 = collective_ops.all_reduce(in1, 2, group_key, instance_key,
-                                            'Add', 'Div', [0])
+                                            'Add', 'Div')
       run_options = config_pb2.RunOptions()
       run_options.experimental.collective_graph_key = 1
       results = sess.run([colred0, colred1], options=run_options)

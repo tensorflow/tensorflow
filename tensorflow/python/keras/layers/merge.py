@@ -250,6 +250,7 @@ class Add(_Merge):
     return output
 
 
+@tf_export('keras.layers.Subtract')
 class Subtract(_Merge):
   """Layer that subtracts two inputs.
 
@@ -336,6 +337,7 @@ class Maximum(_Merge):
     return output
 
 
+@tf_export('keras.layers.Minimum')
 class Minimum(_Merge):
   """Layer that computes the minimum (element-wise) a list of inputs.
 
@@ -586,6 +588,7 @@ def add(inputs, **kwargs):
   return Add(**kwargs)(inputs)
 
 
+@tf_export('keras.layers.subtract')
 def subtract(inputs, **kwargs):
   """Functional interface to the `Subtract` layer.
 
@@ -656,6 +659,7 @@ def maximum(inputs, **kwargs):
   return Maximum(**kwargs)(inputs)
 
 
+@tf_export('keras.layers.minimum')
 def minimum(inputs, **kwargs):
   """Functional interface to the `Minimum` layer.
 

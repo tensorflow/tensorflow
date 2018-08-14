@@ -67,6 +67,11 @@ message NodeExecStats {
   uint32 thread_id = 10;
   repeated AllocationDescription referenced_tensor = 11;
   MemoryStats memory_stats = 12;
+  int64 all_start_nanos = 13;
+  int64 op_start_rel_nanos = 14;
+  int64 op_end_rel_nanos = 15;
+  int64 all_end_rel_nanos = 16;
+  int64 scheduled_nanos = 17;
 };
 
 message DeviceStepStats {

@@ -225,6 +225,7 @@ class PeerAccessInterface {
                             const AllocatorAttributes& to_alloc_attr,
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
+                            int dev_to_dev_stream_index,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,

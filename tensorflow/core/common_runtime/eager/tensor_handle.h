@@ -51,38 +51,41 @@ class TensorHandle : public core::RefCounted {
  public:
   TensorHandle(const Tensor& t, Device* d, Device* op_device, EagerContext* ctx)
       : dtype(t.dtype()),
-        node_id(0),
+        node_id_(0),
         tensor_(t),
         device_(d),
         op_device_(op_device),
         remote_op_id_(-1),
         remote_output_num_(-1),
+        remote_shape_node_id_(-1),
         ctx_(ctx),
         is_ready_(true) {}
 
   TensorHandle(uint64 node_id, DataType dtype, EagerContext* ctx)
       : dtype(dtype),
-        node_id(node_id),
+        node_id_(node_id),
         tensor_(dtype),
         device_(nullptr),
         op_device_(nullptr),
         remote_op_id_(-1),
         remote_output_num_(-1),
+        remote_shape_node_id_(-1),
         ctx_(ctx),
         is_ready_(ctx == nullptr) {
-    DCHECK_GT(node_id, 0);
+    DCHECK_GT(node_id_, 0);
   }
 
   // Remote tensor handle constructor.
-  TensorHandle(uint64 op_id, int32 output_num, DataType dtype,
-               std::function<void()> call_on_destroy, Device* d,
+  TensorHandle(int64 op_id, int32 output_num, uint64 remote_shape_node_id,
+               DataType dtype, std::function<void()> call_on_destroy, Device* d,
                Device* op_device, EagerContext* ctx)
       : dtype(dtype),
-        node_id(0),
+        node_id_(0),
         device_(d),
         op_device_(op_device),
         remote_op_id_(op_id),
         remote_output_num_(output_num),
+        remote_shape_node_id_(remote_shape_node_id),
         call_on_destroy_(std::move(call_on_destroy)),
         ctx_(ctx),
         is_ready_(true) {
@@ -106,8 +109,13 @@ class TensorHandle : public core::RefCounted {
                          tensorflow::Device** device,
                          tensorflow::Device** op_device);
 
+  Status Shape(tensorflow::TensorShape* shape);
+
+  Status NumDims(int* num_dims);
+  Status Dim(int dim_index, int64* dim);
+
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(uint64* op_id, int32* output_num);
+  Status RemoteAddress(int64* op_id, int32* output_num);
 
   // Note that this can be called at most once, and only on non-ready handles,
   // and makes them ready.
@@ -128,11 +136,22 @@ class TensorHandle : public core::RefCounted {
   // ready.
   const DataType dtype;
 
+  void SetRemoteShape(std::unique_ptr<TensorShape> remote_shape) {
+    remote_shape_ = std::move(remote_shape);
+  }
+
+  bool OnHostCPU() {
+    mutex_lock ml(ctx_mutex_);
+    return device_ == nullptr ||
+           (ctx_ == nullptr || ctx_->HostCPU() == device_);
+  }
+
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that compuatation is
   // done and the handle is "ready".
   Status WaitReady();
+  Status WaitForNode(uint64 node_id, bool return_if_is_ready);
 
   bool IsReady();
 
@@ -140,7 +159,7 @@ class TensorHandle : public core::RefCounted {
 
   // Id for the EagerNode that will compute the value pointed to by this handle.
   // If the value is 0, the handle is already ready, but not vice-versa.
-  const uint64 node_id;
+  const uint64 node_id_;
 
   tensorflow::Tensor tensor_;
 
@@ -159,8 +178,10 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* op_device_;
 
   // IDs required when this class is representing a remote tensor handle.
-  const uint64 remote_op_id_;
+  const int64 remote_op_id_;
   const int32 remote_output_num_;
+  std::unique_ptr<TensorShape> remote_shape_;
+  const uint64 remote_shape_node_id_;
 
   // A callback that is executed when the class is destroyed.
   //

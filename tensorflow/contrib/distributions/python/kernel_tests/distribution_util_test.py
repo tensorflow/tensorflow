@@ -544,7 +544,7 @@ class PadDynamicTest(_PadTest, test.TestCase):
 
 class TestMoveDimension(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_move_dimension_static_shape(self):
 
     x = random_ops.random_normal(shape=[200, 30, 4, 1, 6])
@@ -561,7 +561,7 @@ class TestMoveDimension(test.TestCase):
     x_perm = distribution_util.move_dimension(x, 4, 2)
     self.assertAllEqual(x_perm.shape.as_list(), [200, 30, 6, 4, 1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_move_dimension_dynamic_shape(self):
 
     x_ = random_ops.random_normal(shape=[200, 30, 4, 1, 6])

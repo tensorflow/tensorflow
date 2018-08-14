@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -114,7 +114,7 @@ def CheckGradConfigsToTest():
     yield i, f, o, s, p
 
 
-class DepthwiseConv2DTest(XLATestCase):
+class DepthwiseConv2DTest(xla_test.XLATestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
   # produce the same results.  It also tests that NCHW and NWHC

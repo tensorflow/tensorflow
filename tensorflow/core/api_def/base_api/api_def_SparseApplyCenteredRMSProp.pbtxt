@@ -83,8 +83,8 @@ mean_square = decay * mean_square + (1-decay) * gradient ** 2
 mean_grad = decay * mean_grad + (1-decay) * gradient
 Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
 
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
+$$ms <- rho * ms_{t-1} + (1-rho) * grad * grad$$
+$$mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)$$
+$$var <- var - mom$$
 END
 }

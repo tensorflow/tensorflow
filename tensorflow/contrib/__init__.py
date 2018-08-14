@@ -22,15 +22,16 @@ from __future__ import print_function
 import os
 
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import autograph
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import checkpoint
-from tensorflow.contrib import cloud
+if os.name != "nt":
+  from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import constrained_optimization
-from tensorflow.contrib import control_flow
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn

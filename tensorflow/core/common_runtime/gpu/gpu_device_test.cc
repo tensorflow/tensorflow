@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -58,7 +58,7 @@ void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
 
 class GPUDeviceTest : public ::testing::Test {
  public:
-  void TearDown() override { ProcessState::singleton()->TestOnlyReset(); }
+  void TearDown() override { GPUProcessState::singleton()->TestOnlyReset(); }
 
  protected:
   static SessionOptions MakeSessionOptions(

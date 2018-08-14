@@ -34,7 +34,7 @@ _VALID_METRIC_FN_ARGS = set(['features', 'labels', 'predictions', 'config'])
 
 
 def add_metrics(estimator, metric_fn):
-  """Creates a new @{tf.estimator.Estimator} which has given metrics.
+  """Creates a new `tf.estimator.Estimator` which has given metrics.
 
   Example:
 
@@ -61,7 +61,7 @@ def add_metrics(estimator, metric_fn):
   ```
 
   Args:
-    estimator: A @{tf.estimator.Estimator} object.
+    estimator: A `tf.estimator.Estimator` object.
     metric_fn: A function which should obey the following signature:
       - Args: can only have following four arguments in any order:
         * predictions: Predictions `Tensor` or dict of `Tensor` created by given
@@ -79,7 +79,7 @@ def add_metrics(estimator, metric_fn):
          function, namely a `(metric_tensor, update_op)` tuple.
 
   Returns:
-      A new @{tf.estimator.Estimator} which has a union of original metrics with
+      A new `tf.estimator.Estimator` which has a union of original metrics with
         given ones.
   """
   _verify_metric_fn_args(metric_fn)
@@ -165,14 +165,14 @@ def forward_features(estimator, keys=None):
   ```
 
   Args:
-    estimator: A @{tf.estimator.Estimator} object.
+    estimator: A `tf.estimator.Estimator` object.
     keys: a `string` or a `list` of `string`. If it is `None`, all of the
       `features` in `dict` is forwarded to the `predictions`. If it is a
       `string`, only given key is forwarded. If it is a `list` of strings, all
       the given `keys` are forwarded.
 
   Returns:
-      A new @{tf.estimator.Estimator} which forwards features to predictions.
+      A new `tf.estimator.Estimator` which forwards features to predictions.
 
   Raises:
     ValueError:

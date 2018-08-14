@@ -61,6 +61,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kFusion:
       return CallContext::kParallel;

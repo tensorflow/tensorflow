@@ -107,7 +107,7 @@ diff <my_cc_file> /tmp/my_cc_file.cc
 #### Python coding style
 
 Changes to TensorFlow Python code should conform to
-[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
+[Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
 
 Use `pylint` to check your Python changes. To install `pylint` and
 retrieve TensorFlow's custom style definition:

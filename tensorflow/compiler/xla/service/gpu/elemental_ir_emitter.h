@@ -43,7 +43,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloComputation&, tensorflow::gtl::ArraySlice<llvm::Value*>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
-                        llvm::Module* module, llvm::IRBuilder<>* ir_builder,
+                        llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
   llvm_ir::ElementGenerator MakeElementGenerator(
@@ -51,9 +51,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloToElementGeneratorMap& operand_to_generator) const override;
 
  protected:
-  StatusOr<llvm::Value*> EmitFloatUnaryOp(
-      const HloInstruction* op, llvm::Value* operand_value) const override;
-
   StatusOr<llvm::Value*> EmitFloatBinaryOp(
       const HloInstruction* op, llvm::Value* lhs_value,
       llvm::Value* rhs_value) const override;
@@ -84,6 +81,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
                                    llvm::Value* rhs) const override;
+
+  StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
+                                  llvm::Value* value) const override;
 
   llvm::Value* EmitThreadId() const override;
 

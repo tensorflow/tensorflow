@@ -152,8 +152,11 @@ def get_pruning_hparams():
     end_pruning_step: integer
       the global step at which to terminate pruning. Defaults to -1 implying
       that pruning continues till the training stops
-    do_not_prune: list of strings
-      list of layers that are not pruned
+    weight_sparsity_map: list of strings
+       comma separed list of weight variable name:target sparsity pairs.
+       For layers/weights not in this list, sparsity as specified by the
+       target_sparsity hyperparameter is used.
+       Eg. [conv1:0.9,conv2/kernel:0.8]
     threshold_decay: float
       the decay factor to use for exponential decay of the thresholds
     pruning_frequency: integer
@@ -200,7 +203,7 @@ def get_pruning_hparams():
       name='model_pruning',
       begin_pruning_step=0,
       end_pruning_step=-1,
-      do_not_prune=[''],
+      weight_sparsity_map=[''],
       threshold_decay=0.9,
       pruning_frequency=10,
       nbins=256,
@@ -234,6 +237,9 @@ class Pruning(object):
     # Pruning specification
     self._spec = spec if spec else get_pruning_hparams()
 
+    # Sanity check for pruning hparams
+    self._validate_spec()
+
     # A tensorflow variable that tracks the sparsity function.
     # If not provided as input, the graph must already contain the global_step
     # variable before calling this constructor.
@@ -256,6 +262,37 @@ class Pruning(object):
     # Block pooling function
     self._block_pooling_function = self._spec.block_pooling_function
 
+    # Mapping of weight names and target sparsity
+    self._weight_sparsity_map = self._get_weight_sparsity_map()
+
+  def _validate_spec(self):
+    spec = self._spec
+    if spec.begin_pruning_step < 0:
+      raise ValueError('Illegal value for begin_pruning_step')
+
+    if spec.begin_pruning_step >= spec.end_pruning_step:
+      if spec.end_pruning_step != -1:
+        raise ValueError(
+            'Pruning must begin before it can end. begin_step=%d, end_step=%d.'
+            'Set end_pruning_step to -1 if pruning is required till training'
+            'stops' % (spec.begin_pruning_step, spec.end_pruning_step))
+
+    if spec.sparsity_function_begin_step < 0:
+      raise ValueError('Illegal value for sparsity_function_begin_step')
+
+    if spec.sparsity_function_begin_step >= spec.sparsity_function_end_step:
+      raise ValueError(
+          'Sparsity function requires begin_step < end_step')
+
+    if not 0.0 <= spec.threshold_decay < 1.0:
+      raise ValueError('threshold_decay must be in range [0,1)')
+
+    if not 0.0 <= spec.initial_sparsity < 1.0:
+      raise ValueError('initial_sparsity must be in range [0,1)')
+
+    if not 0.0 <= spec.target_sparsity < 1.0:
+      raise ValueError('target_sparsity must be in range [0,1)')
+
   def _setup_global_step(self, global_step):
     graph_global_step = global_step
     if graph_global_step is None:
@@ -269,11 +306,6 @@ class Pruning(object):
     initial_sparsity = self._spec.initial_sparsity
     target_sparsity = self._spec.target_sparsity
     exponent = self._spec.sparsity_function_exponent
-
-    if begin_step >= end_step:
-      raise ValueError(
-          'Pruning must begin before it can end. begin_step=%d, end_step=%d' %
-          (begin_step, end_step))
 
     with ops.name_scope(self._spec.name):
       p = math_ops.minimum(
@@ -306,15 +338,36 @@ class Pruning(object):
             'last_mask_update_step', dtype=dtypes.int32)
     return last_update_step
 
-  def _exists_in_do_not_prune_list(self, tensor_name):
-    do_not_prune_list = self._spec.do_not_prune
-    if not do_not_prune_list[0]:
-      return False
-    for layer_name in do_not_prune_list:
-      if tensor_name.find(layer_name) != -1:
-        return True
+  def _get_weight_sparsity_map(self):
+    """Return the map of weight_name:sparsity parsed from the hparams."""
+    weight_sparsity_map = {}
+    val_list = self._spec.weight_sparsity_map
+    filtered_val_list = [l for l in val_list if l]
+    for val in filtered_val_list:
+      weight_name, sparsity = val.split(':')
+      if float(sparsity) >= 1.0:
+        raise ValueError('Weight sparsity can not exceed 1.0')
+      weight_sparsity_map[weight_name] = float(sparsity)
 
-    return False
+    return weight_sparsity_map
+
+  def _get_sparsity(self, weight_name):
+    """Return target sparsity for the given layer/weight name."""
+    target_sparsity = [
+        sparsity for name, sparsity in self._weight_sparsity_map.items()
+        if weight_name.find(name) != -1
+    ]
+    if not target_sparsity:
+      return self._sparsity
+
+    if len(target_sparsity) > 1:
+      raise ValueError(
+          'Multiple matches in weight_sparsity_map for weight %s' % weight_name)
+    # TODO(suyoggupta): This will work when initial_sparsity = 0. Generalize
+    # to handle other cases as well.
+    return math_ops.mul(
+        self._sparsity,
+        math_ops.div(target_sparsity[0], self._spec.target_sparsity))
 
   def _update_mask(self, weights, threshold):
     """Updates the mask for a given weight tensor.
@@ -342,6 +395,8 @@ class Pruning(object):
     if self._sparsity is None:
       raise ValueError('Sparsity variable undefined')
 
+    sparsity = self._get_sparsity(weights.op.name)
+
     with ops.name_scope(weights.op.name + '_pruning_ops'):
       abs_weights = math_ops.abs(weights)
       max_value = math_ops.reduce_max(abs_weights)
@@ -354,7 +409,7 @@ class Pruning(object):
           math_ops.div(
               math_ops.reduce_sum(
                   math_ops.cast(
-                      math_ops.less(norm_cdf, self._sparsity), dtypes.float32)),
+                      math_ops.less(norm_cdf, sparsity), dtypes.float32)),
               float(self._spec.nbins)), max_value)
 
       smoothed_threshold = math_ops.add_n([
@@ -453,10 +508,6 @@ class Pruning(object):
       if is_partitioned:
         weight = weight.as_tensor()
 
-      if self._spec.do_not_prune:
-        if self._exists_in_do_not_prune_list(mask.name):
-          continue
-
       new_threshold, new_mask = self._maybe_update_block_mask(weight, threshold)
       self._assign_ops.append(
           pruning_utils.variable_assign(threshold, new_threshold))
@@ -507,22 +558,15 @@ class Pruning(object):
                                  no_update_op)
 
   def add_pruning_summaries(self):
-    """Adds summaries for this pruning spec.
-
-    Args: none
-
-    Returns: none
-    """
+    """Adds summaries of weight sparsities and thresholds."""
     with ops.name_scope(self._spec.name + '_summaries'):
       summary.scalar('sparsity', self._sparsity)
       summary.scalar('last_mask_update_step', self._last_update_step)
       masks = get_masks()
       thresholds = get_thresholds()
-      for index, mask in enumerate(masks):
-        if not self._exists_in_do_not_prune_list(mask.name):
-          summary.scalar(mask.name + '/sparsity', nn_impl.zero_fraction(mask))
-          summary.scalar(thresholds[index].op.name + '/threshold',
-                         thresholds[index])
+      for mask, threshold in zip(masks, thresholds):
+        summary.scalar(mask.op.name + '/sparsity', nn_impl.zero_fraction(mask))
+        summary.scalar(threshold.op.name + '/threshold', threshold)
 
   def print_hparams(self):
     logging.info(self._spec.to_json())

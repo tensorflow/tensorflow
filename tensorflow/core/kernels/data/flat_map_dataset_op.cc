@@ -56,14 +56,14 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           captured_func_(std::move(captured_func)),
@@ -91,11 +91,12 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "FlatMapDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       DataTypeVector other_arguments_types;
       other_arguments_types.reserve(captured_func_->captured_inputs().size());
@@ -174,7 +175,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("element_index"), element_index_));
           if (current_element_iterator_) {
@@ -186,7 +187,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
                   full_name(strings::StrCat("captured_func_inputs[", i, "]")),
                   captured_func_inputs_[i]));
             }
-            TF_RETURN_IF_ERROR(SaveParent(writer, current_element_iterator_));
+            TF_RETURN_IF_ERROR(SaveInput(writer, current_element_iterator_));
           } else {
             TF_RETURN_IF_ERROR(writer->WriteScalar(
                 full_name("current_element_iterator_uninitialized"), ""));
@@ -207,7 +208,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
         if (!reader->Contains(full_name("exhausted"))) {
           TF_RETURN_IF_ERROR(
               dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
           {
             int64 temp;
             TF_RETURN_IF_ERROR(
@@ -233,7 +234,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
             element_index_--;
             TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
             TF_RETURN_IF_ERROR(
-                RestoreParent(ctx, reader, current_element_iterator_));
+                RestoreInput(ctx, reader, current_element_iterator_));
           }
         }
         return Status::OK();

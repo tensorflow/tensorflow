@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -52,10 +53,10 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrCat;
-using ::xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
@@ -64,25 +65,25 @@ namespace {
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 Status RecordArguments(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    se::StreamExecutor* executor, TransferManager* transfer_manager,
+    se::Stream* stream, TransferManager* transfer_manager,
     HloSnapshot* module) {
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Literal> literal,
-        transfer_manager->TransferLiteralFromDevice(executor, *argument));
+        transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal->ToProto();
   }
   return Status::OK();
 }
 
 // Records the result of a computation in a HloSnapshot proto.
-Status RecordResult(const ShapedBuffer& result, se::StreamExecutor* executor,
+Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
                     TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_result();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Literal> literal,
-      transfer_manager->TransferLiteralFromDevice(executor, result));
+      transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal->ToProto();
   return Status::OK();
 }
@@ -169,7 +170,8 @@ Service::Service(const ServiceOptions& options,
 
 Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
                                     CreateChannelHandleResponse* result) {
-  *result->mutable_channel() = channel_tracker_.NewChannel();
+  TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
+                      channel_tracker_.NewChannel(arg->channel_type()));
   return Status::OK();
 }
 
@@ -191,21 +193,17 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
   return Status::OK();
 }
 
-Status Service::ValidateResultShapeWithLayout(const Shape& shape_with_layout,
-                                              const Shape& result_shape) const {
-  if (!ShapeUtil::Compatible(shape_with_layout, result_shape)) {
+Status Service::ValidateResultShape(const Shape& client_shape,
+                                    const Shape& result_shape) const {
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
+  if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
         "Shape used to set computation result layout %s is not compatible "
         "with result shape %s",
-        ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
+        ShapeUtil::HumanStringWithLayout(client_shape).c_str(),
         ShapeUtil::HumanString(result_shape).c_str());
   }
-  if (!LayoutUtil::HasLayout(shape_with_layout)) {
-    return InvalidArgument(
-        "Shape used to set computation result layout %s does not have layout",
-        ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str());
-  }
-  return ShapeUtil::ValidateShape(shape_with_layout);
+  return Status::OK();
 }
 
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
@@ -248,10 +246,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
     const ExecutionOptions* execution_options) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
-  ComputationLayout* host_computation_layout =
-      config->mutable_host_entry_computation_layout();
-  ComputationLayout* device_computation_layout =
-      config->mutable_device_entry_computation_layout();
+  ComputationLayout* computation_layout =
+      config->mutable_entry_computation_layout();
   if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
                            program_shape.parameters_size(),
@@ -268,32 +264,22 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
           ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
-    TF_RETURN_IF_ERROR(host_computation_layout->mutable_parameter_layout(i)
-                           ->CopyLayoutFromShape(*argument_shapes[i]));
-    TF_RETURN_IF_ERROR(device_computation_layout->mutable_parameter_layout(i)
-                           ->CopyLayoutFromShape(*argument_shapes[i]));
+    TF_RETURN_IF_ERROR(
+        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
+            *argument_shapes[i]));
   }
   if (execution_options != nullptr &&
       execution_options->has_shape_with_output_layout()) {
     const auto& shape_with_output_layout =
         execution_options->shape_with_output_layout();
-    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
-                                                     program_shape.result()));
     TF_RETURN_IF_ERROR(
-        host_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            shape_with_output_layout));
+        ValidateResultShape(shape_with_output_layout, program_shape.result()));
     TF_RETURN_IF_ERROR(
-        device_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
   } else {
     // If the result layout is not set, then choose the default.
-    // TODO(b/29118294): Allow the compiler to choose a better layout in this
-    // case.
-    // TODO(b/78356948): We are forcing the default layout here. We should fix
-    // clients which expect a default layout, to be explicit about it, by
-    // passing the proper ExecutionOptions with shape_with_output_layout set.
-    host_computation_layout->mutable_result_layout()->SetToDefaultLayout();
-    device_computation_layout->mutable_result_layout()->SetToDefaultLayout();
+    computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
   config->set_replica_count(options_.number_of_replicas());
@@ -348,8 +334,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
                  module_protos[i]->entry_computation_name().c_str());
       TF_RETURN_IF_ERROR(
           Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot));
-      hlo_snapshots.push_back(std::move(hlo_snapshot));
     }
+    hlo_snapshots.push_back(std::move(hlo_snapshot));
   }
 
   VLOG(1) << "Computations:";
@@ -381,22 +367,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   return std::move(executables);
 }
 
-Status Service::ValidateEntryComputationLayout(HloModule* module) {
-  const ComputationLayout& on_device =
-      module->device_entry_computation_layout();
-  for (int64 i = 0; i < on_device.parameter_count(); ++i) {
-    TF_RET_CHECK(ShapeUtil::Equal(
-        on_device.parameter_shape(i),
-        execute_backend_->transfer_manager()->HostShapeToDeviceShape(
-            module->host_entry_computation_layout().parameter_shape(i))));
-  }
-  TF_RET_CHECK(ShapeUtil::Equal(
-      module->device_entry_computation_layout().result_shape(),
-      execute_backend_->transfer_manager()->HostShapeToDeviceShape(
-          module->host_entry_computation_layout().result_shape())));
-  return Status::OK();
-}
-
 StatusOr<std::vector<GlobalDataHandle>>
 Service::ExecuteParallelAndRegisterResult(
     tensorflow::gtl::ArraySlice<Executable*> executables,
@@ -407,7 +377,7 @@ Service::ExecuteParallelAndRegisterResult(
     ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
-  std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<StreamPool::Ptr> streams;
   std::vector<std::unique_ptr<se::Timer>> timers;
 
   // Global data handles for the computation results, one for each computation.
@@ -434,12 +404,12 @@ Service::ExecuteParallelAndRegisterResult(
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
     for (int64 replica = 0; replica < replicas.size(); ++replica) {
-      TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+      TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
 
       if (replica == 0 && profile != nullptr) {
-        timers.emplace_back(new se::Timer(streams.back()->parent()));
+        timers.push_back(MakeUnique<se::Timer>(streams.back()->parent()));
         streams.back()
             ->InitTimer(timers.back().get())
             .ThenStartTimer(timers.back().get());
@@ -471,7 +441,7 @@ Service::ExecuteParallelAndRegisterResult(
         streams.back()->ThenStopTimer(timers.back().get());
       }
 
-      result_buffers.emplace_back(std::move(result));
+      result_buffers.push_back(std::move(result));
     }
     TF_ASSIGN_OR_RETURN(GlobalDataHandle handle,
                         allocation_tracker_.RegisterReplicatedBuffers(
@@ -498,7 +468,7 @@ Service::ExecuteParallelAndRegisterResult(
     HloExecutionProfile hlo_profile(&executable->hlo_profile_printer_data(),
                                     &executable->hlo_profile_index_map());
     TF_RETURN_IF_ERROR(
-        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
+        executable->PopulateExecutionProfile(&hlo_profile, stream));
     XLA_LOG_LINES(
         tensorflow::INFO,
         hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
@@ -546,13 +516,13 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         arguments,
     Backend* backend, const string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
-  std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<StreamPool::Ptr> streams;
 
   TF_ASSIGN_OR_RETURN(auto replicas,
                       Replicas(*backend, SingleComputationDeviceHandle()));
   TF_RET_CHECK(!replicas.empty());
   for (se::StreamExecutor* executor : replicas) {
-    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+    TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                         backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
@@ -564,7 +534,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
-  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
+  for (const StreamPool::Ptr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());
@@ -589,7 +559,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   std::vector<tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
       replicated_arguments;
   for (const auto& arg : arguments) {
-    replicated_arguments.emplace_back(arg);
+    replicated_arguments.push_back(arg);
   }
 
   TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
@@ -692,7 +662,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                            request.execution_options()));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
-        << module_config->host_entry_computation_layout().ToString();
+        << module_config->entry_computation_layout().ToString();
 
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(replicated_arguments);
@@ -721,6 +691,17 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     executable_ptrs.push_back(executable.get());
   }
 
+  for (int i = 0; i < executable_ptrs.size(); i++) {
+    if (executable_ptrs[i]->dumping_snapshot()) {
+      TF_ASSIGN_OR_RETURN(auto stream,
+                          execute_backend_->BorrowStream(
+                              all_executors[i][0]->device_ordinal()));
+      TF_RETURN_IF_ERROR(RecordArguments(all_arguments[i].front(), stream.get(),
+                                         execute_backend_->transfer_manager(),
+                                         executable_ptrs[i]->hlo_snapshot()));
+    }
+  }
+
   // Execute the generated executables in parallel and return the device
   // handles for each computation's output.
   ExecutionProfile profile;
@@ -734,6 +715,20 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     *response.mutable_output() = output;
     *response.mutable_profile() = profile;
     *result->add_responses() = response;
+  }
+
+  for (int i = 0; i < executable_ptrs.size(); i++) {
+    if (executable_ptrs[i]->dumping_snapshot()) {
+      TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
+                          allocation_tracker_.ResolveForReplica(outputs[i], 0));
+      TF_ASSIGN_OR_RETURN(auto stream,
+                          execute_backend_->BorrowStream(all_executors[i][0]));
+      TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
+                                      execute_backend_->transfer_manager(),
+                                      executable_ptrs[i]->hlo_snapshot()));
+      // Dump out the ith snapshot.
+      TF_RETURN_IF_ERROR(executable_ptrs[i]->DumpHloSnapshot());
+    }
   }
 
   VLOG(1) << "successfully completed 'execute-graph-parallel' request";
@@ -828,12 +823,14 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor,
                                                 device_allocator));
-  // Check that on-host and on-device shapes are consistent.
-  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend->compiler()->RunBackend(
                           std::move(module), executor, device_allocator));
+
+  if (!execution_directory_path.empty()) {
+    executable->set_hlo_snapshot(std::move(hlo_snapshot));
+  }
 
   return std::move(executable);
 }
@@ -872,12 +869,14 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
                       execute_backend_->default_stream_executor(),
                       /*device_allocator=*/nullptr));
 
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      execute_backend_->BorrowStream(
+                          execute_backend_->default_stream_executor()));
   if (executable->dumping_snapshot()) {
     executable->hlo_snapshot()->set_execution_platform(
         execute_backend_->platform()->Name());
     TF_RETURN_IF_ERROR(RecordArguments(
-        replicated_arguments.front(),
-        execute_backend_->default_stream_executor(),
+        replicated_arguments.front(), stream.get(),
         execute_backend_->transfer_manager(), executable->hlo_snapshot()));
   }
 
@@ -891,9 +890,9 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
     TF_ASSIGN_OR_RETURN(
         const ShapedBuffer* result_buffer,
         allocation_tracker_.ResolveForReplica(result->output(), 0));
-    TF_RETURN_IF_ERROR(RecordResult(
-        *result_buffer, execute_backend_->default_stream_executor(),
-        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+    TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
+                                    execute_backend_->transfer_manager(),
+                                    executable->hlo_snapshot()));
     TF_RETURN_IF_ERROR(executable->DumpHloSnapshot());
   }
 
@@ -931,14 +930,13 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     return_shape = &shaped_buffer->on_host_shape();
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      execute_backend_->stream_executor(shaped_buffer->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
+                                       shaped_buffer->device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Literal> result_literal,
       execute_backend_->transfer_manager()->TransferLiteralFromDevice(
-          executor, *shaped_buffer));
+          stream.get(), *shaped_buffer));
 
   if (LayoutUtil::LayoutsInShapesEqual(*return_shape,
                                        result_literal->shape())) {
@@ -988,9 +986,10 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
         execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
             shape, execute_backend_->memory_allocator(),
             executor->device_ordinal()));
+    TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            executor, *literal, shaped_buffer));
+            stream.get(), *literal, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_data(),
@@ -1054,11 +1053,12 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
-  Literal literal;
+  auto literal = Literal::CreateFromShape(arg->shape_with_layout());
+
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-          executor, arg->shape_with_layout(), &literal));
-  *result->mutable_literal() = literal.ToProto();
+          executor, arg->shape_with_layout(), *literal));
+  *result->mutable_literal() = literal->ToProto();
   return Status::OK();
 }
 

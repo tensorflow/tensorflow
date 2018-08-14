@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -107,7 +108,8 @@ FftThunk::FftThunk(FftType fft_type,
       output_shape_(output_shape) {}
 
 Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream) {
+                                 se::Stream* stream,
+                                 HloExecutionProfiler* profiler) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type_);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape_);
   VLOG(3) << "Output shape: "
@@ -116,6 +118,7 @@ Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   FftScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
                                         buffer_allocations.memory_allocator());
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (fft_plan_ == nullptr) {
     const int64 fft_rank = fft_length_.size();
     CHECK_LE(fft_rank, 3);

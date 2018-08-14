@@ -51,7 +51,7 @@ def for_stmt(iter_, extra_test, body, init_state):
   Args:
     iter_: The entity being iterated over.
     extra_test: Callable with the state as arguments, and boolean return type.
-        An additionnal loop condition.
+        An additional loop condition.
     body: Callable with the iterate and the state as arguments, and
         state as return type. The actual loop body.
     init_state: Tuple containing the initial state.
@@ -141,7 +141,7 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
         while_body,
         init_state=(epoch_number, iterate) + init_state,
         extra_deps=())
-  # Dropping the epoch number and iterate because they are not not syntactically
+  # Dropping the epoch number and iterate because they are not syntactically
   # visible.
   results = results[2:]
 
@@ -212,12 +212,12 @@ def if_stmt(cond, body, orelse):
     Tuple containing the statement outputs.
   """
   if tensor_util.is_tensor(cond):
-    return _tf_if_stmt(cond, body, orelse)
+    return tf_if_stmt(cond, body, orelse)
   else:
     return _py_if_stmt(cond, body, orelse)
 
 
-def _tf_if_stmt(cond, body, orelse):
+def tf_if_stmt(cond, body, orelse):
   """Overload of if_stmt that stages a TF cond."""
   return control_flow_ops.cond(cond, body, orelse)
 

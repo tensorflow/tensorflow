@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -89,7 +89,8 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
                                        cond_lt};
   module_sequence[body_computation] = {body_param};
   module_sequence[entry_computation] = {iter, data, tuple, while_op};
-  EXPECT_EQ(56, MinimumMemoryForModule(module_sequence, size_fn).ValueOrDie());
+  EXPECT_EQ(56, HeapSimulator::MinimumMemoryForModule(module_sequence, size_fn)
+                    .ValueOrDie());
 }
 
 const char kAlloc[] = "Alloc";
@@ -197,6 +198,11 @@ class HeapSimulatorTracker {
         .ConsumeValueOrDie();
   }
 
+  int64 OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
+    const BufferValue* buffer = BufferAt(instruction, index);
+    return result_.chunk_map.at(buffer).offset;
+  }
+
   // Ensures the expected sequence of Alloc/Free/Finish calls was performed.
   void ExpectCallSequence(const CallSequence& expected) const {
     EXPECT_EQ(expected, actual_calls_);
@@ -208,10 +214,9 @@ class HeapSimulatorTracker {
                            const ShapeIndex& index_a,
                            const HloInstruction* instruction_b,
                            const ShapeIndex& index_b) {
-    const BufferValue* a = BufferAt(instruction_a, index_a);
-    const BufferValue* b = BufferAt(instruction_b, index_b);
-    EXPECT_EQ(result_.chunk_map[a].offset, result_.chunk_map[b].offset)
-        << *a << ", " << *b;
+    int64 offset_a = OffsetAt(instruction_a, index_a);
+    int64 offset_b = OffsetAt(instruction_b, index_b);
+    EXPECT_EQ(offset_a, offset_b);
   }
 
  private:
@@ -234,7 +239,7 @@ class HeapSimulatorTest : public HloTestBase {
 TEST_F(HeapSimulatorTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
 
   // Constants aren't assigned.  See b/32248867
   HeapSimulatorTracker tracker(TestName(), builder.Build(), {const0});
@@ -308,6 +313,43 @@ TEST_F(HeapSimulatorTest, MultiplyAdd) {
       {kFinish, nullptr},
   });
   tracker.ExpectSharedBuffers(add, {}, mul, {});
+}
+
+TEST_F(HeapSimulatorTest, BufferReusedOnce) {
+  HeapSimulatorTracker tracker(TestName());
+  auto builder = HloComputation::Builder(TestName());
+
+  HloComputation::Builder fusion_builder("fusion");
+  {
+    HloComputation::Builder& builder = fusion_builder;
+    auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+        /*parameter_number=*/0, f32vec4_, "A"));
+    auto exp = builder.AddInstruction(
+        HloInstruction::CreateUnary(f32vec4_, HloOpcode::kExp, a_param));
+    auto neg = builder.AddInstruction(
+        HloInstruction::CreateUnary(f32vec4_, HloOpcode::kNegate, a_param));
+
+    builder.AddInstruction(HloInstruction::CreateTuple({exp, neg}));
+  }
+  auto fusion_computation =
+      tracker.module()->AddEmbeddedComputation(fusion_builder.Build());
+  auto a_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec4_, "paramA"));
+  auto neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec4_, HloOpcode::kNegate, a_param));
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      ShapeUtil::MakeTupleShape({f32vec4_, f32vec4_}),
+      HloInstruction::FusionKind::kLoop, {neg}, fusion_computation));
+  tracker.module()->AddEntryComputation(builder.Build());
+
+  tracker.RunWholeModule({a_param, neg, fusion});
+
+  auto neg_buffer = tracker.OffsetAt(neg, {});
+  int64 output_buffer_0 = tracker.OffsetAt(fusion, {0});
+  int64 output_buffer_1 = tracker.OffsetAt(fusion, {1});
+  // Only one buffer should be shared.
+  EXPECT_TRUE((neg_buffer == output_buffer_0) ^
+              (neg_buffer == output_buffer_1));
 }
 
 TEST_F(HeapSimulatorTest, MultiplyDot) {
@@ -632,7 +674,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const BufferValue* DummyBufferValue() {
     const BufferValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     buffers_.emplace_back(MakeUnique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import test
@@ -183,7 +182,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     def _dataset_fn():
       dataset = dataset_ops.Dataset.range(1000).map(math_ops.to_float)
       # Want to produce a fixed, known shape, so drop remainder when batching.
-      dataset = dataset.apply(batching.batch_and_drop_remainder(4))
+      dataset = dataset.batch(4, drop_remainder=True)
       return dataset
 
     def _expected_fn(num_batches):

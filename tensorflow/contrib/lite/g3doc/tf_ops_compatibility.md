@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common
@@ -42,6 +45,7 @@ counterparts:
     *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other) and the
     crops attribute is not used*
 *   [tf.exp](https://www.tensorflow.org/api_docs/python/tf/exp)
+*   [tf.fake_quant*](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
 *   [tf.matmul](https://www.tensorflow.org/api_docs/python/tf/matmul) - *as long
     as the second argument is constant and transposition is not used*
 *   [tf.nn.avg_pool](https://www.tensorflow.org/api_docs/python/tf/nn/avg_pool)
@@ -58,6 +62,7 @@ counterparts:
 *   [tf.nn.softmax](https://www.tensorflow.org/api_docs/python/tf/nn/softmax) -
     *as long as tensors are 2D and axis is the last dimension*
 *   [tf.nn.top_k](https://www.tensorflow.org/api_docs/python/tf/nn/top_k)
+*   [tf.one_hot](https://www.tensorflow.org/api_docs/python/tf/one_hot)
 *   [tf.pad](https://www.tensorflow.org/api_docs/python/tf/pad) - *as long as
     mode and constant_values are not used*
 *   [tf.reduce_mean](https://www.tensorflow.org/api_docs/python/tf/reduce_mean) -
@@ -584,6 +589,31 @@ Options {
 }
 ```
 
+**RSQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**SHAPE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 1D tensor representing the shape of the input tensor
+}
+Options {
+  out_type: the output type of the op (int32 or int64). Defaults to int32.
+}
+```
+
 **SLICE**
 
 ```
@@ -670,6 +700,17 @@ Options {
 }
 ```
 
+**SQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise square root of the input tensor
+}
+```
+
 **SQUEEZE**
 
 ```
@@ -739,6 +780,66 @@ Inputs {
 Outputs {
   0: tensor that contains the elementwise values of 'tensor 1' if the
   corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
+}
+```
+
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
+}
+```
+
+**ARG_MAX**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of maximum values.
+}
+```
+
+**ARG_MIN**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of minium values.
+}
+```
+
+**PACK**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: an integer.
+}
+Outputs {
+  0: A tensor of stacked tensors.
+}
+```
+
+**LOGICAL_OR**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: a list of tensors.
+}
+Outputs {
+  0: A tensor of logical_or output tensors.
 }
 ```
 

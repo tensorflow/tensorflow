@@ -16,17 +16,9 @@ include (ExternalProject)
 
 set(nsync_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/nsync/public)
 set(nsync_URL https://github.com/google/nsync)
-set(nsync_TAG 0559ce013feac8db639ee1bf776aca0325d28777)
+set(nsync_TAG 1.20.0)
 set(nsync_BUILD ${CMAKE_CURRENT_BINARY_DIR}/nsync/src/nsync)
 set(nsync_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/nsync/install)
-
-# put nsync includes in the directory where they are expected
-add_custom_target(nsync_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${nsync_INCLUDE_DIR}
-    DEPENDS nsync)
-
-add_custom_target(nsync_copy_headers_to_destination
-    DEPENDS nsync_create_destination_dir)
 
 if(WIN32)
   set(nsync_HEADERS "${nsync_BUILD}/public/*.h")
@@ -49,7 +41,35 @@ ExternalProject_Add(nsync
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${nsync_INSTALL}
-	-DNSYNC_LANGUAGE:STRING=c++11)
+    -DNSYNC_LANGUAGE:STRING=c++11)
 
-add_custom_command(TARGET nsync_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${nsync_INSTALL}/include/ ${nsync_INCLUDE_DIR}/)
+set(nsync_HEADERS
+    "${nsync_INSTALL}/include/nsync.h"
+    "${nsync_INSTALL}/include/nsync_atomic.h"
+    "${nsync_INSTALL}/include/nsync_counter.h"
+    "${nsync_INSTALL}/include/nsync_cpp.h"
+    "${nsync_INSTALL}/include/nsync_cv.h"
+    "${nsync_INSTALL}/include/nsync_debug.h"
+    "${nsync_INSTALL}/include/nsync_mu.h"
+    "${nsync_INSTALL}/include/nsync_mu_wait.h"
+    "${nsync_INSTALL}/include/nsync_note.h"
+    "${nsync_INSTALL}/include/nsync_once.h"
+    "${nsync_INSTALL}/include/nsync_time.h"
+    "${nsync_INSTALL}/include/nsync_time_internal.h"
+    "${nsync_INSTALL}/include/nsync_waiter.h"
+)
+                                                            
+# put nsync includes in the directory where they are expected
+add_custom_target(nsync_create_destination_dir
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${nsync_INCLUDE_DIR}
+    DEPENDS nsync)
+
+add_custom_target(nsync_copy_headers_to_destination
+    DEPENDS nsync_create_destination_dir)
+
+foreach(header_file ${nsync_HEADERS})
+  add_custom_command(TARGET nsync_copy_headers_to_destination PRE_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${nsync_INCLUDE_DIR}/)
+endforeach()
+
+

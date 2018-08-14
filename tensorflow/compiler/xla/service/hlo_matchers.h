@@ -187,6 +187,7 @@ HLO_MATCHER(Exp);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
+HLO_MATCHER(AfterAll);
 HLO_MATCHER(Gt);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
@@ -195,6 +196,7 @@ HLO_MATCHER(Log);
 HLO_MATCHER(And);
 HLO_MATCHER(Not);
 HLO_MATCHER(Or);
+HLO_MATCHER(Xor);
 HLO_MATCHER(Lt);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
@@ -229,6 +231,7 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
+HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 
 // The special cases below let you check additional information about the

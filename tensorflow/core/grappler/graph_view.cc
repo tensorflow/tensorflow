@@ -22,28 +22,37 @@ namespace grappler {
 GraphView::GraphView(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {
     auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second) << "Non unique node name detected: " << node->name();
+    AddUniqueNodeOrDie(node);
   }
+
   for (NodeDef& node : *graph_->mutable_node()) {
-    for (int i = 0; i < node.input_size(); ++i) {
-      OutputPort fanin;
-      string fanin_name = ParseNodeName(node.input(i), &fanin.port_id);
-      fanin.node = nodes_[fanin_name];
+    AddFanouts(&node);
+  }
+}
 
-      InputPort input;
-      input.node = &node;
-      if (fanin.port_id < 0) {
-        input.port_id = -1;
-      } else {
-        input.port_id = i;
-        num_regular_outputs_[fanin.node] =
-            std::max(num_regular_outputs_[fanin.node], fanin.port_id);
-      }
+void GraphView::AddUniqueNodeOrDie(NodeDef* node) {
+  auto result = nodes_.emplace(node->name(), node);
+  // Check that the graph doesn't contain multiple nodes with the same name.
+  CHECK(result.second) << "Non unique node name detected: " << node->name();
+}
 
-      fanouts_[fanin].insert(input);
+void GraphView::AddFanouts(NodeDef* node) {
+  for (int i = 0; i < node->input_size(); ++i) {
+    OutputPort fanin;
+    string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
+    fanin.node = nodes_[fanin_name];
+
+    InputPort input;
+    input.node = node;
+    if (fanin.port_id < 0) {
+      input.port_id = -1;
+    } else {
+      input.port_id = i;
+      num_regular_outputs_[fanin.node] =
+          std::max(num_regular_outputs_[fanin.node], fanin.port_id);
     }
+
+    fanouts_[fanin].insert(input);
   }
 }
 

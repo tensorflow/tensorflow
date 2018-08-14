@@ -45,7 +45,7 @@ namespace details {
 using TensorsMap = std::unordered_map<string, int>;
 
 // A key to identify an operator.
-// Only when `type` is `kTensorFlowUnsupported`, `custom_code` is filled to
+// Only when `type` is `kUnsupported`, `custom_code` is filled to
 // identify which operation is used.
 struct OperatorKey {
   OperatorKey(OperatorType type, const std::string& custom_code, int version)

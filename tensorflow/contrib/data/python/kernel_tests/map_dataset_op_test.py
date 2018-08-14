@@ -17,26 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import hashlib
+import itertools
 import os
+import time
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import error_ops
+from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
+
+_NUMPY_RANDOM_SEED = 42
 
 
 class MapDatasetTest(test.TestCase):
@@ -78,18 +80,21 @@ class MapDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testReadFileIgnoreError(self):
+
     def write_string_to_file(value, filename):
       with open(filename, "w") as f:
         f.write(value)
-    filenames = [os.path.join(self.get_temp_dir(), "file_%d.txt" % i)
-                 for i in range(5)]
+
+    filenames = [
+        os.path.join(self.get_temp_dir(), "file_%d.txt" % i) for i in range(5)
+    ]
     for filename in filenames:
       write_string_to_file(filename, filename)
 
     dataset = (
         dataset_ops.Dataset.from_tensor_slices(filenames).map(
-            io_ops.read_file, num_parallel_calls=2).prefetch(2).apply(
-                error_ops.ignore_errors()))
+            io_ops.read_file,
+            num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -143,228 +148,210 @@ class MapDatasetTest(test.TestCase):
           sess.run(get_next)
 
 
-class MapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def setUp(self):
-    self._tensor_slice_len = 7
-    self._num_epochs = 14
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
-
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (
-        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-        .repeat(self._num_epochs))
-
-  def testSaveRestoreCore(self):
-    self.run_core_tests(
-        self._build_ds,
-        lambda: self._build_ds(multiplier=15.0),
-        self._num_outputs)
-
-  def testSaveStatefulFunction(self):
-
-    def _build_ds():
-
-      def _map_fn(x):
-        return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(100).map(_map_fn)
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureVariableInMapFn(self):
-
-    def _build_ds():
-      counter_var = variable_scope.get_variable(
-          "counter", (), dtypes.int32, use_resource=True)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1)))
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureConstantInMapFn(self):
-
-    def _build_ds():
-      constant_var = constant_op.constant(5)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var))
-
-    self.run_core_tests(_build_ds, None, 10)
-
-  def testCaptureDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-  def testBuildDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-
-        @function.Defun(dtypes.int32)
-        def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
-
-        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
-
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-  def testSparseCore(self):
-
-    def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
-    def _build_ds(num_outputs):
-      return dataset_ops.Dataset.range(num_outputs).map(_sparse)
-
-    num_outputs = 10
-    self.run_core_tests(lambda: _build_ds(num_outputs),
-                        lambda: _build_ds(int(num_outputs / 2)), num_outputs)
-
-
-class ParallelMapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def setUp(self):
-    self._tensor_slice_len = 7
-    self._num_epochs = 1
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
-
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_parallel_calls=3).repeat(self._num_epochs))
-
-  def _build_ds_with_prefetch(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_parallel_calls=3).repeat(self._num_epochs).prefetch(5))
-
-  def testSaveRestoreCore(self):
-    for ds_fn in [self._build_ds, self._build_ds_with_prefetch]:
-      self.run_core_tests(
-          ds_fn,
-          lambda: ds_fn(multiplier=15.0),
-          self._num_outputs)
-
-  def testSaveStatefulFunction(self):
-
-    def _build_ds():
-
-      def _map_fn(x):
-        return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(100).map(
-          _map_fn, num_parallel_calls=2).prefetch(2)
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureVariableInMapFn(self):
-
-    def _build_ds():
-      counter_var = variable_scope.get_variable(
-          "counter", (), dtypes.int32, use_resource=True)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1),
-          num_parallel_calls=2).prefetch(2))
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureConstantInMapFn(self):
-
-    def _build_ds():
-      constant_var = constant_op.constant(5)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var, num_parallel_calls=2).prefetch(2))
-
-    self.run_core_tests(_build_ds, None, 10)
-
-  def testCaptureDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(num_outputs).map(
-          defun_fn, num_parallel_calls=2).prefetch(2)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-  def testBuildDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-
-        @function.Defun(dtypes.int32)
-        def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
-
-        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
-
-      return dataset_ops.Dataset.range(num_outputs).map(
-          defun_fn, num_parallel_calls=2).prefetch(2)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-
-class IgnoreErrorsSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_ds(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).map(
-        lambda x: array_ops.check_numerics(x, "message")).apply(
-            error_ops.ignore_errors())
-
-  def testIgnoreErrorsCore(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
-    diff_components = np.array([1., 2., 3., np.nan]).astype(np.float32)
-    num_outputs = 4
-    self.run_core_tests(lambda: self._build_ds(components),
-                        lambda: self._build_ds(diff_components), num_outputs)
+class MapDatasetBenchmark(test.Benchmark):
+
+  # The purpose of this benchmark is to compare the performance of chaining vs
+  # fusing of the map and batch transformations across various configurations.
+  #
+  # NOTE: It is recommended to build the benchmark with
+  # `-c opt --copt=-mavx --copt=-mavx2 --copt=-mfma --copt=-gmlt`
+  # and execute it on a machine with at least 32 CPU cores.
+  def benchmarkMapAndBatch(self):
+
+    # Sequential pipeline configurations.
+    seq_elem_size_series = itertools.product([1], [1], [1, 2, 4, 8], [16])
+    seq_batch_size_series = itertools.product([1], [1], [1], [8, 16, 32, 64])
+
+    # Parallel pipeline configuration.
+    par_elem_size_series = itertools.product([32], [32], [1, 2, 4, 8], [256])
+    par_batch_size_series = itertools.product([32], [32], [1],
+                                              [128, 256, 512, 1024])
+    par_num_calls_series = itertools.product([8, 16, 32, 64], [32], [1], [512])
+    par_inter_op_series = itertools.product([32], [8, 16, 32, 64], [1], [512])
+
+    def name(method, label, num_calls, inter_op, element_size, batch_size):
+      return ("%s_id_%s_num_calls_%d_inter_op_%d_elem_size_%d_batch_size_%d" % (
+          method,
+          hashlib.sha1(label).hexdigest(),
+          num_calls,
+          inter_op,
+          element_size,
+          batch_size,
+      ))
+
+    def benchmark(label, series):
+
+      print("%s:" % label)
+      for num_calls, inter_op, element_size, batch_size in series:
+
+        num_iters = 1024 // (
+            (element_size * batch_size) // min(num_calls, inter_op))
+        k = 1024 * 1024
+        dataset = dataset_ops.Dataset.from_tensors((np.random.rand(
+            element_size, 4 * k), np.random.rand(4 * k, 1))).repeat()
+
+        chained_dataset = dataset.map(
+            math_ops.matmul,
+            num_parallel_calls=num_calls).batch(batch_size=batch_size)
+        chained_iterator = chained_dataset.make_one_shot_iterator()
+        chained_get_next = chained_iterator.get_next()
+
+        chained_deltas = []
+        with session.Session(
+            config=config_pb2.ConfigProto(
+                inter_op_parallelism_threads=inter_op,
+                use_per_session_threads=True)) as sess:
+          for _ in range(5):
+            sess.run(chained_get_next.op)
+          for _ in range(num_iters):
+            start = time.time()
+            sess.run(chained_get_next.op)
+            end = time.time()
+            chained_deltas.append(end - start)
+
+        fused_dataset = dataset = dataset.apply(
+            batching.map_and_batch(
+                math_ops.matmul,
+                num_parallel_calls=num_calls,
+                batch_size=batch_size))
+        fused_iterator = fused_dataset.make_one_shot_iterator()
+        fused_get_next = fused_iterator.get_next()
+
+        fused_deltas = []
+        with session.Session(
+            config=config_pb2.ConfigProto(
+                inter_op_parallelism_threads=inter_op,
+                use_per_session_threads=True)) as sess:
+
+          for _ in range(5):
+            sess.run(fused_get_next.op)
+          for _ in range(num_iters):
+            start = time.time()
+            sess.run(fused_get_next.op)
+            end = time.time()
+            fused_deltas.append(end - start)
+
+        print(
+            "batch size: %d, num parallel calls: %d, inter-op parallelism: %d, "
+            "element size: %d, num iters: %d\nchained wall time: %f (median), "
+            "%f (mean), %f (stddev), %f (min), %f (max)\n  fused wall time: "
+            "%f (median), %f (mean), %f (stddev), %f (min), %f (max)\n    "
+            "chained/fused:    %.2fx (median),    %.2fx (mean)" %
+            (batch_size, num_calls, inter_op, element_size, num_iters,
+             np.median(chained_deltas), np.mean(chained_deltas),
+             np.std(chained_deltas), np.min(chained_deltas),
+             np.max(chained_deltas), np.median(fused_deltas),
+             np.mean(fused_deltas), np.std(fused_deltas), np.min(fused_deltas),
+             np.max(fused_deltas),
+             np.median(chained_deltas) / np.median(fused_deltas),
+             np.mean(chained_deltas) / np.mean(fused_deltas)))
+
+        self.report_benchmark(
+            iters=num_iters,
+            wall_time=np.median(chained_deltas),
+            name=name("chained", label, num_calls, inter_op, element_size,
+                      batch_size))
+
+        self.report_benchmark(
+            iters=num_iters,
+            wall_time=np.median(fused_deltas),
+            name=name("fused", label, num_calls, inter_op, element_size,
+                      batch_size))
+
+      print("")
+
+    np.random.seed(_NUMPY_RANDOM_SEED)
+    benchmark("Sequential element size evaluation", seq_elem_size_series)
+    benchmark("Sequential batch size evaluation", seq_batch_size_series)
+    benchmark("Parallel element size evaluation", par_elem_size_series)
+    benchmark("Parallel batch size evaluation", par_batch_size_series)
+    benchmark("Transformation parallelism evaluation", par_num_calls_series)
+    benchmark("Threadpool size evaluation", par_inter_op_series)
+
+  # This benchmark compares the performance of pipeline with multiple chained
+  # maps with and without map fusion.
+  def benchmarkChainOfMaps(self):
+    chain_lengths = [0, 1, 2, 5, 10, 20, 50]
+    for chain_length in chain_lengths:
+      self._benchmarkChainOfMaps(chain_length, False)
+      self._benchmarkChainOfMaps(chain_length, True)
+
+  def _benchmarkChainOfMaps(self, chain_length, optimize_dataset):
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+      for _ in range(chain_length):
+        dataset = dataset.map(lambda x: x)
+      if optimize_dataset:
+        dataset = dataset.apply(optimization.optimize(["map_fusion"]))
+
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
+
+      with session.Session() as sess:
+        for _ in range(5):
+          sess.run(next_element.op)
+        deltas = []
+        for _ in range(100):
+          start = time.time()
+          for _ in range(100):
+            sess.run(next_element.op)
+          end = time.time()
+          deltas.append(end - start)
+
+        median_wall_time = np.median(deltas) / 100
+        opt_mark = "opt" if optimize_dataset else "no-opt"
+        print("Map dataset {} chain length: {} Median wall time: {}".format(
+            opt_mark, chain_length, median_wall_time))
+        self.report_benchmark(
+            iters=1000,
+            wall_time=median_wall_time,
+            name="benchmark_map_dataset_chain_latency_{}_{}".format(
+                opt_mark, chain_length))
+
+
+class MapAndFilterBenchmark(test.Benchmark):
+
+  # This benchmark compares the performance of pipeline with multiple chained
+  # map + filter with and without map fusion.
+  def benchmarkMapAndFilter(self):
+    chain_lengths = [0, 1, 2, 5, 10, 20, 50]
+    for chain_length in chain_lengths:
+      self._benchmarkMapAndFilter(chain_length, False)
+      self._benchmarkMapAndFilter(chain_length, True)
+
+  def _benchmarkMapAndFilter(self, chain_length, optimize_dataset):
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+      for _ in range(chain_length):
+        dataset = dataset.map(lambda x: x + 5).filter(
+            lambda x: math_ops.greater_equal(x - 5, 0))
+      if optimize_dataset:
+        dataset = dataset.apply(
+            optimization.optimize(["map_and_filter_fusion"]))
+
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
+
+      with session.Session() as sess:
+        for _ in range(10):
+          sess.run(next_element.op)
+        deltas = []
+        for _ in range(100):
+          start = time.time()
+          for _ in range(100):
+            sess.run(next_element.op)
+          end = time.time()
+          deltas.append(end - start)
+
+        median_wall_time = np.median(deltas) / 100
+        opt_mark = "opt" if optimize_dataset else "no-opt"
+        print("Map and filter dataset {} chain length: {} Median wall time: {}".
+              format(opt_mark, chain_length, median_wall_time))
+        self.report_benchmark(
+            iters=1000,
+            wall_time=median_wall_time,
+            name="benchmark_map_and_filter_dataset_chain_latency_{}_{}".format(
+                opt_mark, chain_length))
 
 
 if __name__ == "__main__":

@@ -460,7 +460,7 @@ class PyFuncTest(test.TestCase):
     self.assertEqual(initial_size, script_ops._py_funcs.size())
 
   # ----- Tests for eager_py_func -----
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerSingleOutputInt32(self):
     a = array_ops.ones((3, 3), dtype=dtypes.int32)
     x = array_ops.ones((3, 1), dtype=dtypes.int32)
@@ -468,7 +468,7 @@ class PyFuncTest(test.TestCase):
     ret = self.evaluate(output)
     self.assertAllEqual(ret, [[3], [3], [3]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerSingleOutputFloat32(self):
     with test_util.device(use_gpu=True):
       a = array_ops.ones((3, 3), dtype=dtypes.float32)
@@ -477,7 +477,7 @@ class PyFuncTest(test.TestCase):
       ret = self.evaluate(output)
       self.assertAllClose(ret, [[3.0], [3.0], [3.0]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerArrayOutput(self):
     with test_util.device(use_gpu=True):
       a = array_ops.ones((3, 3), dtype=dtypes.float32)
@@ -487,7 +487,7 @@ class PyFuncTest(test.TestCase):
       ret = self.evaluate(output)
       self.assertAllEqual(ret, [[[3.0], [3.0], [3.0]]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerReturnNone(self):
     with test_util.device(use_gpu=True):
       def no_return_value():
@@ -500,7 +500,7 @@ class PyFuncTest(test.TestCase):
       else:
         self.assertIsNone(ret)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():
@@ -512,7 +512,7 @@ class PyFuncTest(test.TestCase):
       ret = self.evaluate(wrapped())
       self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerExceptionHandling(self):
     with test_util.device(use_gpu=True):
       self._testExceptionHandling(
@@ -531,7 +531,7 @@ class PyFuncTest(test.TestCase):
 
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerReturningVariableRaisesError(self):
     def return_variable():
       return resource_variable_ops.ResourceVariable(0.0)
@@ -542,7 +542,7 @@ class PyFuncTest(test.TestCase):
           return_variable, inp=[], Tout=dtypes.float32)
       self.evaluate(output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerGradientTape(self):
 
     def f(x):
@@ -565,7 +565,7 @@ class PyFuncTest(test.TestCase):
     dy_dx = gradients_impl.gradients(y, x)[0]
     self.assertEqual(self.evaluate(dy_dx), 6.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerGradientTapeMultipleArgs(self):
 
     def f(x, y):
@@ -615,6 +615,25 @@ class PyFuncTest(test.TestCase):
       y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
       self.assertEqual(y, 1.0)
       self.assertEqual(dy_dx, 2.0)
+
+  def testEagerRespectsDevicePlacmentOfOp(self):
+
+    def f(x):
+      return math_ops.square(x)
+
+    def g(x):
+      return math_ops.add(x, x)
+
+    with ops.device("/CPU:0"):
+      # Explicitly ask for the py_funcs to execute on CPU, even if
+      # a GPU is available.
+      x = array_ops.placeholder(dtypes.float32)
+      y = script_ops.eager_py_func(func=f, inp=[x], Tout=dtypes.float32)
+      z = script_ops.eager_py_func(func=g, inp=[y], Tout=dtypes.float32)
+
+    with self.test_session(use_gpu=True) as sess:
+      output = sess.run(z, feed_dict={x: 3.0})
+      self.assertEqual(output, 18.0)
 
 
 if __name__ == "__main__":

@@ -22,14 +22,14 @@ import unittest
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class NAryOpsTest(XLATestCase):
+class NAryOpsTest(xla_test.XLATestCase):
 
   def _testNAry(self, op, args, expected, equality_fn=None):
     with self.test_session() as session:
