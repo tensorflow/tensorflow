@@ -175,14 +175,6 @@ bool IsCompilableCall(const NodeDef& call_def,
   return true;
 }
 
-// Tests whether `node` has a DT_RESOURCE typed input or output.
-bool HasResourceInputOrOutput(const Node& node) {
-  return std::find(node.input_types().begin(), node.input_types().end(),
-                   DT_RESOURCE) != node.input_types().end() ||
-         std::find(node.output_types().begin(), node.output_types().end(),
-                   DT_RESOURCE) != node.output_types().end();
-}
-
 // Returns true if the op can be decomposed into XLA ops for which
 // there are fusable elemental implementations.
 //
