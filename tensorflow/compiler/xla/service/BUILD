@@ -1234,6 +1234,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "scatter_expander",
+    srcs = ["scatter_expander.cc"],
+    hdrs = ["scatter_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":while_util",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
 tf_cc_test(
     name = "batchnorm_expander_test",
     size = "small",

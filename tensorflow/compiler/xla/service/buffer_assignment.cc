@@ -139,6 +139,7 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
           case HloOpcode::kReduceWindow:
+          case HloOpcode::kScatter:
           case HloOpcode::kSelectAndScatter:
           case HloOpcode::kFusion:
             // Map/reduce etc computations are always thread-local.

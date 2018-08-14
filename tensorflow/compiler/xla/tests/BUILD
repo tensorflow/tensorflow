@@ -709,6 +709,21 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "scatter_test",
+    srcs = ["scatter_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 # Repeat dot_operation_runtime_test with single-threaded eigen.
 xla_test(
     name = "dot_operation_single_threaded_runtime_test",
