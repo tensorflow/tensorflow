@@ -2181,7 +2181,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
     ],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
