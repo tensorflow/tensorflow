@@ -146,22 +146,20 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   CHECK_NOTNULL(dst);
 
   Node* conversion_node = nullptr;
-  DataType src_datatype = DT_INVALID;
-  DataType dst_datatype = DT_INVALID;
+  DataType src_datatype = src->output_type(e->src_output());
+  DataType dst_datatype = dst->input_type(e->dst_input());
   string data_format;
 
-  TF_CHECK_OK(GetNodeAttr(src->def(), "T", &src_datatype));
-  bool dst_dtype_found =
-      GetNodeAttr(dst->def(), "T", &dst_datatype) == Status::OK();
   // We compare source and destination datatypes only when both are found.
-  if (dst_dtype_found && (src_datatype != dst_datatype)) {
-    string err_msg = "T attribute of " + src->name() + " and " + dst->name() +
-                     " do not match. Will not insert" +
-                     " MklToTf node in such case.";
+  if (src_datatype != dst_datatype) {
+    string err_msg = "T attribute of " + src->name() + ":" +
+                     std::to_string(e->src_output()) + " and " + dst->name() +
+                     ":" + std::to_string(e->dst_input()) +
+                     " do not"
+                     " match. Will not insert MklToTf node in such case.";
     return Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
   }
 
-  // Build the conversion node and specify src as input.
   TF_CHECK_OK(
       NodeBuilder((*g)->NewName("Mkl2Tf"), "_MklToTf")
           .Input(src, e->src_output())

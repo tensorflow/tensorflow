@@ -201,6 +201,7 @@ class MklToTfOp : public OpKernel {
                           MklToTfOp<CPUDevice, T>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 }  // namespace tensorflow
 #endif  // INTEL_MKL
