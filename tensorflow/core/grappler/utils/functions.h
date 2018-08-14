@@ -137,11 +137,14 @@ class GrapplerFunctionItem : public GrapplerItem {
  public:
   GrapplerFunctionItem() = default;
   GrapplerFunctionItem(
-      const string& func_name, const AttrValueMap& func_attr,
+      const string& func_name, const string& description,
+      const AttrValueMap& func_attr,
       const std::vector<InputArgExpansion>& input_arg_expansions,
       const std::vector<OutputArgExpansion>& output_arg_expansions,
       const std::vector<string>& keep_nodes, bool is_stateful,
       GraphDef&& function_body);
+
+  const string& description() const;
 
   bool IsInputPlaceholder(const string& node_name) const;
 
@@ -165,6 +168,7 @@ class GrapplerFunctionItem : public GrapplerItem {
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
 
+  string description_;
   AttrValueMap func_attr_;  // Attributes specific to function definition that
                             // produced this item (FuncDef.attr field).
 

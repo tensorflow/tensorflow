@@ -55,7 +55,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -68,25 +68,19 @@ def check_is_tensor_or_operation(x, name):
 
 
 def update_state_wrapper(update_state_fn):
-  """Decorator to wrap metric `update_state()` with `defun()`, `add_update()`.
+  """Decorator to wrap metric `update_state()` with `add_update()`.
 
   Args:
     update_state_fn: function that accumulates metric statistics.
 
   Returns:
-    If eager execution is enabled, returns None.
-    If graph execution is enabled, returns an update op. This op should be
-      executed to update the metric state with the given inputs.
+    Decorated function that wraps `update_state_fn()` with `add_update()`.
   """
 
   def decorated(metric_obj, *args, **kwargs):
-    """Decorated function with `defun()` and `add_update()`."""
+    """Decorated function with `add_update()`."""
 
-    # Converting update_state_fn() into a graph function, so that
-    # we can return a single op that performs all of the variable updates.
-    # Assigning to a different method name to avoid reference cycle.
-    defuned_update_state_fn = function.defun(update_state_fn)
-    update_op = defuned_update_state_fn(*args, **kwargs)
+    update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
       metric_obj.add_update(update_op, inputs=True)
       check_is_tensor_or_operation(
@@ -111,12 +105,13 @@ def result_wrapper(result_fn):
     result_fn: function that computes the metric result.
 
   Returns:
-    The metric result tensor.
+    Decorated function that wraps `result_fn()` in distribution strategy
+    `merge_call()`.
   """
 
   def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
-    tower_context = distribute_lib.get_tower_context()
+    tower_context = distribution_strategy_context.get_tower_context()
     if tower_context is None:  # if in cross tower context already
       result_t = result_fn(*args)
     else:
@@ -255,6 +250,28 @@ class Metric(Layer):
     print('Final result: ', sess.run(m.result()))
   ```
 
+  Usage with tf.keras API:
+
+  ```python
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Dense(64, activation='relu'))
+  model.add(tf.keras.layers.Dense(64, activation='relu'))
+  model.add(tf.keras.layers.Dense(10, activation='softmax'))
+
+  model.compile(optimizer=tf.train.RMSPropOptimizer(0.01),
+                loss=tf.keras.losses.categorical_crossentropy,
+                metrics=[tf.keras.metrics.CategoricalAccuracy()])
+
+  data = np.random.random((1000, 32))
+  labels = np.random.random((1000, 10))
+
+  dataset = tf.data.Dataset.from_tensor_slices((data, labels))
+  dataset = dataset.batch(32)
+  dataset = dataset.repeat()
+
+  model.fit(dataset, epochs=10, steps_per_epoch=30)
+  ```
+
   To be implemented by subclasses:
   * `__init__()`: All state variables should be created in this method by
     calling `self.add_weight()` like: `self.var = self.add_weight(...)`
@@ -267,7 +284,7 @@ class Metric(Layer):
 
   ```
   class BinaryTruePositives(Metric):
-    def __init__(self, name='binary-true-positives', dtype=None):
+    def __init__(self, name='binary_true_positives', dtype=None):
       super(BinaryTruePositives, self).__init__(name=name, dtype=dtype)
       self.true_positives = self.add_weight(
           'true_positives', initializer=init_ops.zeros_initializer)
@@ -299,9 +316,14 @@ class Metric(Layer):
     self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
 
   def __new__(cls, *args, **kwargs):
-    obj = super(Metric, cls).__new__(cls, *args, **kwargs)
+    obj = super(Metric, cls).__new__(cls)
+    # TODO(psv): Fix reference cycle issue here.
+
+    # Converting update_state_fn() into a graph function, so that
+    # we can return a single op that performs all of the variable updates.
+    defuned_update_state_fn = function.defun(obj.update_state)
     obj.update_state = types.MethodType(
-        update_state_wrapper(obj.update_state), obj)
+        update_state_wrapper(defuned_update_state_fn), obj)
     obj.result = types.MethodType(result_wrapper(obj.result), obj)
     return obj
 
@@ -358,6 +380,12 @@ class Metric(Layer):
     metric value using the state variables.
     """
     NotImplementedError('Must be implemented in subclasses.')
+
+  @classmethod
+  def from_config(cls, config):
+    if 'trainable' in config:
+      config.pop('trainable')
+    return cls(**config)
 
   ### For use by subclasses ###
   def add_weight(self,
@@ -502,7 +530,7 @@ class BinaryAccuracy(MeanMetricWrapper):
   Use `sample_weight` of 0 to mask values.
   """
 
-  def __init__(self, name='binary-accuracy', dtype=None, threshold=0.5):
+  def __init__(self, name='binary_accuracy', dtype=None, threshold=0.5):
     """Creates a `BinaryAccuracy` instance.
 
     Args:
@@ -513,6 +541,29 @@ class BinaryAccuracy(MeanMetricWrapper):
     """
     super(BinaryAccuracy, self).__init__(
         binary_accuracy, name, dtype=dtype, threshold=threshold)
+
+
+class CategoricalAccuracy(MeanMetricWrapper):
+  """Calculates how often predictions matches labels.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the frequency with which `y_pred` matches `y_true`. This frequency is
+  ultimately returned as `categorical accuracy`: an idempotent operation that
+  simply divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, name='categorical_accuracy', dtype=None):
+    """Creates a `CategoricalAccuracy` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(CategoricalAccuracy, self).__init__(
+        categorical_accuracy, name, dtype=dtype)
 
 
 @tf_export('keras.metrics.binary_accuracy')
@@ -578,8 +629,7 @@ def deserialize(config, custom_objects=None):
 @tf_export('keras.metrics.get')
 def get(identifier):
   if isinstance(identifier, dict):
-    config = {'class_name': str(identifier), 'config': {}}
-    return deserialize(config)
+    return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
     return deserialize(str(identifier))
   elif callable(identifier):

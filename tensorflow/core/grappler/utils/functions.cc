@@ -303,12 +303,14 @@ Status GrapplerFunctionItemInstantiation::GetArgType(
 }
 
 GrapplerFunctionItem::GrapplerFunctionItem(
-    const string& func_name, const AttrValueMap& func_attr,
+    const string& func_name, const string& description,
+    const AttrValueMap& func_attr,
     const std::vector<InputArgExpansion>& input_arg_expansions,
     const std::vector<OutputArgExpansion>& output_arg_expansions,
     const std::vector<string>& keep_nodes, bool is_stateful,
     GraphDef&& function_body)
-    : func_attr_(func_attr),
+    : description_(description),
+      func_attr_(func_attr),
       input_arg_expansions_(input_arg_expansions),
       output_arg_expansions_(output_arg_expansions),
       is_stateful_(is_stateful) {
@@ -336,6 +338,8 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     }
   }
 }
+
+const string& GrapplerFunctionItem::description() const { return description_; }
 
 const std::vector<InputArgExpansion>& GrapplerFunctionItem::inputs() const {
   return input_arg_expansions_;
@@ -589,7 +593,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   bool is_stateful = signature.is_stateful();
 
   *item = GrapplerFunctionItem(
-      /*func_name=*/signature.name(),
+      /*func_name=*/signature.name(), /*description=*/signature.description(),
       /*func_attr=*/AttrValueMap(func.attr().begin(), func.attr().end()),
       inputs, outputs, keep_nodes, is_stateful, std::move(function_body));
   return Status::OK();
@@ -674,6 +678,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
                        const FunctionLibraryDefinition& flib,
                        FunctionDef* func) {
   func->mutable_signature()->set_name(item.id);
+  func->mutable_signature()->set_description(item.description());
   func->mutable_signature()->set_is_stateful(item.is_stateful());
 
   // Build a GrapplerFunctionConnectivity from inputs and new function body.

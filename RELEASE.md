@@ -3,7 +3,7 @@
 ## Major Features And Improvements
 
 * The `tf.lite` runtime now supports `complex64`.
-* Initial Bigtable integration for `tf.data`.
+* Initial [Google Cloud Bigtable integration](https://github.com/tensorflow/tensorflow/tree/r1.10/tensorflow/contrib/bigtable) for `tf.data`.
 * Improved local run behavior in `tf.estimator.train_and_evaluate` which does not reload checkpoints for evaluation.
 * `RunConfig` now sets device_filters to restrict how workers and PS can communicate. This can speed up training and ensure clean shutdowns in some situations. But if you have jobs that require communication between workers, you will have to set custom session_options in your `RunConfig`.
 * Moved Distributions and Bijectors from `tf.contrib.distributions` to [Tensorflow Probability (TFP)](https://github.com/tensorflow/probability). `tf.contrib.distributions` is now deprecated and will be removed by the end of 2018.
@@ -19,7 +19,7 @@
 * `tf.data`:
   * `tf.contrib.data.group_by_reducer()` is now available via the public API.
   * `tf.contrib.data.choose_from_datasets()` is now available via the public API.
-  * Adding `drop_remainder` argument to `tf.data.Dataset.batch()` and `tf.data.Dataset.padded_batch()`, deprecating tf.contrib.data.batch_and_drop_remainder()` and `tf.contrib.data.padded_batch_and_drop_remainder()`.
+  * Adding `drop_remainder` argument to `tf.data.Dataset.batch()` and `tf.data.Dataset.padded_batch()`, deprecating `tf.contrib.data.batch_and_drop_remainder()` and `tf.contrib.data.padded_batch_and_drop_remainder()`.
 * `tf.estimator`:
   * `Estimator`s now use custom savers included in `EstimatorSpec` scaffolds for saving SavedModels during export.
   * `EstimatorSpec` will now add a default prediction output for export if no `export_output` is provided, eliminating the need to explicitly include a `PredictOutput` object in the `model_fn` for simple use-cases.

@@ -27,7 +27,7 @@ load(
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkl_open_source_only",
+    "if_mkl_open_source_only"
 )
 def register_extension_info(**kwargs):
     pass
@@ -149,14 +149,12 @@ def if_not_lgpl_restricted(a):
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": a,
   })
 
 def if_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): a,
-      clean_dep("//tensorflow:windows_msvc"): a,
       "//conditions:default": [],
   })
 
@@ -230,7 +228,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
-      + if_mkl_open_source_only(["-DDO_NOT_USE_ML"])
+      + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
@@ -243,7 +241,6 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
-            clean_dep("//tensorflow:windows_msvc"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): ["-std=c++11"],
             clean_dep("//tensorflow:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"]
@@ -304,7 +301,6 @@ def _rpath_linkopts(name):
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
       ],
@@ -691,7 +687,6 @@ def tf_cc_test(name,
             "-pie",
         ],
         clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:windows_msvc"): [],
         clean_dep("//tensorflow:darwin"): [
             "-lm",
         ],
@@ -877,7 +872,6 @@ def tf_cc_test_mkl(srcs,
             "-pie",
           ],
         clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:windows_msvc"): [],
         "//conditions:default": [
             "-lpthread",
             "-lm"
@@ -1404,7 +1398,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
               "-lm",
           ],
           clean_dep("//tensorflow:windows"): [],
-          clean_dep("//tensorflow:windows_msvc"): [],
           clean_dep("//tensorflow:darwin"): [],
       }),)
 
@@ -1514,7 +1507,6 @@ def tf_py_wrap_cc(name,
           "$(location %s.lds)"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
           "$(location %s.lds)"%vscriptname,
@@ -1525,7 +1517,6 @@ def tf_py_wrap_cc(name,
           "%s.lds"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "%s.lds"%vscriptname,
       ]

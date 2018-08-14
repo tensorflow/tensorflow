@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -41,9 +40,10 @@ class GenericTransferManager : public TransferManager {
 
   se::Platform::Id PlatformId() const override;
 
-  void TransferLiteralFromDevice(
-      se::Stream* stream, const ShapedBuffer& device_buffer,
-      std::function<void(StatusOr<std::unique_ptr<Literal>>)> done) override;
+  void TransferLiteralFromDevice(se::Stream* stream,
+                                 const ShapedBuffer& device_buffer,
+                                 MutableBorrowingLiteral literal,
+                                 std::function<void(Status)> done) override;
 
   Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
@@ -53,7 +53,7 @@ class GenericTransferManager : public TransferManager {
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
-                                    Literal* literal) override;
+                                    MutableBorrowingLiteral literal) override;
 
   Status ResetDevices(
       tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
@@ -67,8 +67,9 @@ class GenericTransferManager : public TransferManager {
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDeviceInternal(
-      se::StreamExecutor* executor, const ShapedBuffer& device_buffer);
+  Status TransferLiteralFromDeviceInternal(se::StreamExecutor* executor,
+                                           const ShapedBuffer& device_buffer,
+                                           MutableBorrowingLiteral literal);
 
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;

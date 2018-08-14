@@ -543,6 +543,19 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  // TODO(b/110096724): Compute correct cost here.
+  double flops = 0.0;
+  ShapeUtil::ForEachSubshape(hlo->shape(),
+                             [&](const Shape& subshape, const ShapeIndex&) {
+                               if (ShapeUtil::IsArray(subshape)) {
+                                 flops += ShapeUtil::ElementsIn(subshape);
+                               }
+                             });
+  current_properties_[kFlopsKey] = flops;
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume

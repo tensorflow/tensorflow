@@ -320,13 +320,13 @@ class Variable(six.with_metaclass(VariableMetaclass,
        a resource variable is always created.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -388,7 +388,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See @{tf.Session} for more
+    passed, the default session is used.  See `tf.Session` for more
     information on launching a graph and on sessions.
 
     ```python
@@ -551,7 +551,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See @{tf.Session} for more
+    passed, the default session is used.  See `tf.Session` for more
     information on launching a graph and on sessions.
 
     ```python
@@ -1106,7 +1106,7 @@ class RefVariable(Variable):
   def _AsTensor(self):  # pylint: disable=invalid-name
     """Converts this variable to a Tensor.
 
-    See @{tf.Variable.value}.
+    See `tf.Variable.value`.
 
     Returns:
       A `Tensor` containing the value of the variable.
@@ -1163,7 +1163,7 @@ class RefVariable(Variable):
 
     Returns is a `Tensor` which holds a reference to the variable.  You can
     assign a new value to the variable by passing the tensor to an assign op.
-    See @{tf.Variable.value} if you want to get the value of the
+    See `tf.Variable.value` if you want to get the value of the
     variable.
 
     Returns:
@@ -1191,7 +1191,7 @@ class RefVariable(Variable):
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See @{tf.Session} for more
+    passed, the default session is used.  See `tf.Session` for more
     information on launching a graph and on sessions.
 
     ```python
@@ -1386,7 +1386,7 @@ class RefVariable(Variable):
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See @{tf.Session} for more
+    passed, the default session is used.  See `tf.Session` for more
     information on launching a graph and on sessions.
 
     ```python
@@ -1917,15 +1917,10 @@ class PartitionedVariable(object):
   def as_tensor(self):
     """Returns the overall concatenated value as a `Tensor`.
 
-    The returned tensor will not inherit the control dependencies from the scope
-    where the value is used, which is similar to getting the value of
-    `Variable`.
-
     Returns:
       `Tensor` containing the concatenated value.
     """
-    with ops.control_dependencies(None):
-      return self._concat()
+    return self._concat()
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
@@ -1979,7 +1974,7 @@ def global_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to global variables are local variables. See
-  @{tf.local_variables}
+  `tf.local_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2032,7 +2027,7 @@ def local_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to local variables are global variables. See
-  @{tf.global_variables}
+  `tf.global_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered

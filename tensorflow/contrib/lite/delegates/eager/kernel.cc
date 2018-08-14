@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/delegates/eager/kernel.h"
 
-#include "third_party/flatbuffers/include/flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/contrib/lite/builtin_ops.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
 #include "tensorflow/contrib/lite/delegates/eager/util.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
+#include "tensorflow/contrib/lite/string.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -149,8 +150,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->eager_context =
       reinterpret_cast<DelegateData*>(params->delegate->data_)
           ->GetEagerContext();
-  op_data->buffer_map =
-      reinterpret_cast<DelegateData*>(params->delegate->data_)->GetBufferMap();
+  op_data->buffer_map = reinterpret_cast<DelegateData*>(params->delegate->data_)
+                            ->GetBufferMap(context);
 
   CHECK(params->output_tensors);
   for (auto tensor_index : TfLiteIntArrayView(params->output_tensors)) {

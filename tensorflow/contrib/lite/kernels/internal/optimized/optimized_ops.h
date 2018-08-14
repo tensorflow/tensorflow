@@ -893,6 +893,7 @@ inline void FullyConnectedAsGEMV(
   const int input_size = FlatSizeSkipDim(input_dims, 3);
   const int output_size = MatchingArraySize(filter_dims, 1, output_dims, 0);
   static constexpr int kPeel = 4;
+  const bool shift_left = (output_shift <= 0);
   for (int k = 0; k < input_size; k += 64) {
     optimized_ops_preload_l1_stream(input_data + k);
   }
@@ -1004,11 +1005,17 @@ inline void FullyConnectedAsGEMV(
     int32x4_t bias_vec = vld1q_s32(bias_ptr);
     bias_ptr += 4;
     reduced = vaddq_s32(reduced, bias_vec);
-    // Multiply by the fixed-point multiplier.
-    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
-    // Rounding-shift-right.
-    using gemmlowp::RoundingDivideByPOT;
-    reduced = RoundingDivideByPOT(reduced, output_shift);
+    if (shift_left) {
+      const int32 multiplier_power_of_two = 1 << -output_shift;
+      reduced = vmulq_n_s32(reduced, multiplier_power_of_two);
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+    } else {
+      // Multiply by the fixed-point multiplier.
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+      // Rounding-shift-right.
+      using gemmlowp::RoundingDivideByPOT;
+      reduced = RoundingDivideByPOT(reduced, output_shift);
+    }
     // Add the output offset.
     const int32x4_t output_offset_vec = vdupq_n_s32(output_offset);
     reduced = vaddq_s32(reduced, output_offset_vec);

@@ -317,7 +317,7 @@ optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0).minimize(loss)
 
 Training the model is then as simple as using a `feed_dict` to push data into
 the placeholders and calling
-@{tf.Session.run} with this new data
+`tf.Session.run` with this new data
 in a loop.
 
 ```python

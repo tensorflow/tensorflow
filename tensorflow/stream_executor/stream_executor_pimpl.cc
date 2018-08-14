@@ -699,6 +699,11 @@ bool StreamExecutor::HostCallback(Stream *stream,
   return implementation_->HostCallback(stream, std::move(callback));
 }
 
+bool StreamExecutor::HostCallback(Stream *stream,
+                                  std::function<port::Status()> callback) {
+  return implementation_->HostCallback(stream, std::move(callback));
+}
+
 port::Status StreamExecutor::AllocateEvent(Event *event) {
   return implementation_->AllocateEvent(event);
 }

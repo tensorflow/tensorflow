@@ -85,6 +85,7 @@ py_library(
 
 cuda_py_test(
     name = "control_flow_ops_test",
+    size = "large",
     srcs = ["control_flow_ops_test.py"],
     additional_deps = [
         ":control_flow_ops",

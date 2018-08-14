@@ -473,5 +473,19 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf_result, expanded_nums)
 
 
+class UnsafeDivTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    nums = np.arange(-10, 10, .25).reshape(80, 1)
+    divs = np.arange(-3, 3, .25).reshape(1, 24)
+
+    np_result = np.true_divide(nums, divs)
+    np_result[:, divs[0] == 0] = 0
+
+    with self.test_session():
+      tf_result = math_ops.unsafe_div(nums, divs).eval()
+      self.assertAllEqual(tf_result, np_result)
+
+
 if __name__ == "__main__":
   googletest.main()

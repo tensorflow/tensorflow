@@ -371,6 +371,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
     case OperatorType::kReshape:
+    case OperatorType::kExpandDims:
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:

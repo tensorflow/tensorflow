@@ -1161,8 +1161,7 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
         strings::StrCat("replace_encapsulate_fdef_", name), fdef);
   }
 
-  TF_RETURN_IF_ERROR(library->RemoveFunction(name));
-  TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+  TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   return Status::OK();
 }
 

@@ -561,3 +561,11 @@ message OpSharding {
   // to.
   repeated OpSharding tuple_shardings = 5;
 }
+
+// Describes the replica groups in a cross replica op (e.g., all-reduce and
+// all-to-all).
+message ReplicaGroup {
+  // The ids of the replicas that belongs to the same group. The ordering of the
+  // ids matters in some op (e.g., all-to-all).
+  repeated int64 replica_ids = 1;
+}

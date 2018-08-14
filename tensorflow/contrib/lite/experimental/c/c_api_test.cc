@@ -18,22 +18,28 @@ limitations under the License.
 #include "tensorflow/contrib/lite/experimental/c/c_api.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace {
 
 TEST(CApiSimple, Smoke) {
-  tflite::FileCopyAllocation model_file(
-      "tensorflow/contrib/lite/testdata/add.bin",
-      tflite::DefaultErrorReporter());
+  TFL_Model* model = TFL_NewModelFromFile(
+      "tensorflow/contrib/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
 
-  TFL_Interpreter* interpreter =
-      TFL_NewInterpreter(model_file.base(), model_file.bytes());
+  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
+  ASSERT_NE(options, nullptr);
+  TFL_InterpreterOptionsSetNumThreads(options, 2);
+
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
   ASSERT_NE(interpreter, nullptr);
-  ASSERT_EQ(TFL_InterpreterAllocateTensors(interpreter), kTfLiteOk);
 
+  // The options/model can be deleted immediately after interpreter creation.
+  TFL_DeleteInterpreterOptions(options);
+  TFL_DeleteModel(model);
+
+  ASSERT_EQ(TFL_InterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TFL_InterpreterGetInputTensorCount(interpreter), 1);
   ASSERT_EQ(TFL_InterpreterGetOutputTensorCount(interpreter), 1);
 
