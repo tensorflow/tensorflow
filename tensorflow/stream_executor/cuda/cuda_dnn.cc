@@ -1988,8 +1988,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
-    const CudnnTensorDescriptor& output_nd,
-    dnn::AlgorithmDesc* algorithm_desc,
+    const CudnnTensorDescriptor& output_nd, dnn::AlgorithmDesc* algorithm_desc,
     ScratchAllocator* scratch_allocator) {
   // TODO(csigg): This has side effects on the convolution descriptor. It is
   // functionally correct because the convolution is run with the algorithm of
@@ -2036,8 +2035,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
-    const CudnnTensorDescriptor& output_nd,
-    dnn::AlgorithmDesc* algorithm_desc,
+    const CudnnTensorDescriptor& output_nd, dnn::AlgorithmDesc* algorithm_desc,
     ScratchAllocator* scratch_allocator) {
   // TODO(csigg): This has side effects on the convolution descriptor. It is
   // functionally correct because the convolution is run with the algorithm of
@@ -2086,8 +2084,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
-    const CudnnTensorDescriptor& output_nd,
-    dnn::AlgorithmDesc* algorithm_desc,
+    const CudnnTensorDescriptor& output_nd, dnn::AlgorithmDesc* algorithm_desc,
     ScratchAllocator* scratch_allocator) {
   // TODO(csigg): This has side effects on the convolution descriptor. It is
   // functionally correct because the convolution is run with the algorithm of
@@ -2174,10 +2171,9 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
   }
 
   algo_desc = algorithm_config.algorithm_no_scratch();
-  SE_ASSIGN_OR_RETURN(
-      *scratch, AllocateCudnnConvolutionForwardWorkspace(
-                    stream, cudnn,
-                    input_nd, filter, conv, output_nd, &algo_desc, scratch_allocator));
+  SE_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionForwardWorkspace(
+                                    stream, cudnn, input_nd, filter, conv,
+                                    output_nd, &algo_desc, scratch_allocator));
   return algo_desc;
 }
 
@@ -2224,10 +2220,9 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
   }
 
   algo_desc = algorithm_config.algorithm_no_scratch();
-  SE_ASSIGN_OR_RETURN(
-      *scratch, AllocateCudnnConvolutionBackwardDataWorkspace(
-                    stream, cudnn,
-                    input_nd, filter, conv, output_nd, &algo_desc, scratch_allocator));
+  SE_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionBackwardDataWorkspace(
+                                    stream, cudnn, input_nd, filter, conv,
+                                    output_nd, &algo_desc, scratch_allocator));
   return algo_desc;
 }
 
@@ -2274,10 +2269,9 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
   }
 
   algo_desc = algorithm_config.algorithm_no_scratch();
-  SE_ASSIGN_OR_RETURN(*scratch,
-                      AllocateCudnnConvolutionBackwardFilterWorkspace(
-                          stream, cudnn, input_nd,
-                          filter, conv, output_nd, &algo_desc, scratch_allocator));
+  SE_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionBackwardFilterWorkspace(
+                                    stream, cudnn, input_nd, filter, conv,
+                                    output_nd, &algo_desc, scratch_allocator));
   return algo_desc;
 }
 

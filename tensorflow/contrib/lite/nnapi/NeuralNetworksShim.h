@@ -44,6 +44,19 @@ inline void* loadLibrary(const char* name) {
   return handle;
 }
 
+typedef int (*ASharedMemory_create_fn)(const char* name, size_t size);
+
+// ASharedMemory_create was added in Android 8.0, so safe to use with NNAPI
+// which was added in 8.1.
+inline int ASharedMemory_create(const char* name, size_t size) {
+  static void* handle = loadLibrary("libandroid.so");
+  static ASharedMemory_create_fn fn =
+      handle != nullptr ? reinterpret_cast<ASharedMemory_create_fn>(
+                              dlsym(handle, "ASharedMemory_create"))
+                        : nullptr;
+  return fn(name, size);
+}
+
 inline void* getLibraryHandle() {
   static void* handle = loadLibrary("libneuralnetworks.so");
   return handle;

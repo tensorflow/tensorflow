@@ -193,8 +193,7 @@ class MNISTModel(tf.keras.Model):
   def call(self, input):
     """Run the model."""
     result = self.dense1(input)
-    result = self.dense2(result)
-    result = self.dense2(result)  # reuse variables from dense2 layer
+    result = self.dense2(result)  # reuse variables from dense1 layer
     return result
 
 model = MNISTModel()
@@ -727,7 +726,13 @@ def measure(x, steps):
   start = time.time()
   for i in range(steps):
     x = tf.matmul(x, x)
-    _ = x.numpy()  # Make sure to execute op and not just enqueue it
+  # tf.matmul can return before completing the matrix multiplication
+  # (e.g., can return after enqueing the operation on a CUDA stream).
+  # The x.numpy() call below will ensure that all enqueued operations
+  # have completed (and will also copy the result to host memory,
+  # so we're including a little more than just the matmul operation
+  # time).
+  _ = x.numpy()
   end = time.time()
   return end - start
 
@@ -751,8 +756,8 @@ Output (exact numbers depend on hardware):
 
 ```
 Time to multiply a (1000, 1000) matrix by itself 200 times:
-CPU: 4.614904403686523 secs
-GPU: 0.5581181049346924 secs
+CPU: 1.46628093719 secs
+GPU: 0.0593810081482 secs
 ```
 
 A `tf.Tensor` object can be copied to a different device to execute its

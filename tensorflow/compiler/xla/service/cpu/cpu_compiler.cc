@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
@@ -103,6 +104,7 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+using BufferInfo = ::tensorflow::cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     string triple, string cpu_name, string features, string entry_point_name,
@@ -120,11 +122,11 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
-    ObjectFileData object_file_data, BufferSizes buffer_sizes,
+    ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
     int64 result_buffer_index,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
     : object_file_data_(std::move(object_file_data)),
-      buffer_sizes_(std::move(buffer_sizes)),
+      buffer_infos_(std::move(buffer_infos)),
       result_buffer_index_(result_buffer_index),
       hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
 
@@ -838,39 +840,14 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     ObjectFileData object_file_data(object_file->getBufferStart(),
                                     object_file->getBufferEnd());
 
-    BufferSizes buffer_sizes;
-    for (const BufferAllocation& allocation : assignment->Allocations()) {
-      // Callers don't need to allocate anything for thread-local temporary
-      // buffers.  They are lowered to allocas.
-      if (allocation.is_thread_local()) {
-        buffer_sizes.push_back(-1);
-        continue;
-      }
-
-      // Callers don't need to allocate anything for constant buffers.  They are
-      // lowered to globals.
-      if (allocation.is_constant()) {
-        buffer_sizes.push_back(-1);
-        continue;
-      }
-
-      // Callers don't need to allocate anything for entry computation buffers,
-      // but they do need to stash the pointer to the entry computation buffer
-      // in the temp buffer table.  See the comment on
-      // XlaCompiledCpuFunction::StaticData::temp_sizes.
-      if (allocation.is_entry_computation_parameter()) {
-        buffer_sizes.push_back(-allocation.parameter_number() - 2);
-        continue;
-      }
-
-      buffer_sizes.push_back(allocation.size());
-    }
+    std::vector<BufferInfo> buffer_infos =
+        CreateBufferInfosFromBufferAssignment(*assignment);
 
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment->GetUniqueTopLevelOutputSlice());
 
     results.emplace_back(MakeUnique<CpuAotCompilationResult>(
-        std::move(object_file_data), std::move(buffer_sizes),
+        std::move(object_file_data), std::move(buffer_infos),
         result_slice.index(), std::move(hlo_profile_printer_data)));
   }
 

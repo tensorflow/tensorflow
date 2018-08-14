@@ -1,6 +1,6 @@
 # TF Lite Experimental Unity Plugin
 
-This directoryy contains an experimental sample Unity (2017) Plugin, based on
+This directory contains an experimental sample Unity (2017) Plugin, based on
 the experimental TF Lite C API. The sample demonstrates running inference within
 Unity by way of a C# `Interpreter` wrapper.
 
@@ -25,3 +25,5 @@ bazel build -c opt --cxxopt=--std=c++11 \
 
 If you encounter issues with native plugin discovery on Mac ("Darwin")
 platforms, try renaming `libtensorflowlite_c.so` to `tensorflowlite_c.bundle`.
+Similarly, on Windows you'll likely need to rename `libtensorflowlite_c.so` to
+`tensorflowlite_c.dll`.

@@ -643,10 +643,9 @@ Status GraphExecutionState::OptimizeGraph(
     for (const FunctionDef& fdef : new_graph.library().function()) {
       const string& func_name = fdef.signature().name();
 
-      if ((*optimized_flib)->Find(func_name)) {
+      if ((*optimized_flib)->Contains(func_name)) {
         VLOG(3) << "Replace function: name=" << func_name;
-        TF_RETURN_IF_ERROR((*optimized_flib)->RemoveFunction(func_name));
-        TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
+        TF_RETURN_IF_ERROR((*optimized_flib)->ReplaceFunction(func_name, fdef));
       } else {
         VLOG(3) << "Add new function: name=" << func_name;
         TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));

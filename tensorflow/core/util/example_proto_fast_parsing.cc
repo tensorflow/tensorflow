@@ -495,7 +495,8 @@ Status FastParseSerializedExample(
     const PresizedCuckooMap<std::pair<size_t, Type>>& config_index,
     SeededHasher hasher, std::vector<Tensor>* output_dense,
     std::vector<SparseBuffer>* output_varlen_dense,
-    std::vector<SparseBuffer>* output_sparse) {
+    std::vector<SparseBuffer>* output_sparse,
+    PerExampleFeatureStats* output_stats) {
   DCHECK(output_dense != nullptr);
   DCHECK(output_sparse != nullptr);
   parsed::Example parsed_example;
@@ -508,6 +509,14 @@ Status FastParseSerializedExample(
 
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
+
+  if (output_stats) {
+    // TODO(b/111553342): This may over-count the number of features if there
+    // are duplicate keys in the feature map. Consider deduplicating the keys
+    // before computing the count.
+    output_stats->features_count = parsed_example_size;
+  }
+
   for (size_t i = 0; i < parsed_example_size; ++i) {
     // This is a logic that standard protobuf parsing is implementing.
     // I.e. last entry in the map overwrites all the previous ones.
@@ -567,6 +576,13 @@ Status FastParseSerializedExample(
         Tensor& out = (*output_dense)[d];
 
         const std::size_t num_elements = config.dense[d].elements_per_stride;
+        if (output_stats) {
+          // TODO(b/111553342): If desirable, we could add support for counting
+          // elements in the features that aren't parsed, but this could add
+          // considerable runtime cost.
+          output_stats->feature_values_count += num_elements;
+        }
+
         const std::size_t offset = example_index * num_elements;
 
         auto shape_error = [&](size_t size, StringPiece type_str) {
@@ -669,6 +685,23 @@ Status FastParseSerializedExample(
           default:
             LOG(FATAL) << "Should not happen.";
         }
+
+        if (output_stats) {
+          // Use `out.example_end_indices` to determine the feature-value count
+          // for this feature, because the preceding switch statement pushes
+          // the length of the appropriate feature list to that vector.
+          // TODO(b/111553342): If desirable, we could add support for counting
+          // elements in the features that aren't parsed, but this could add
+          // considerable runtime cost.
+          const size_t out_examples_count = out.example_end_indices.size();
+          if (out_examples_count == 1) {
+            output_stats->feature_values_count += out.example_end_indices[0];
+          } else {
+            output_stats->feature_values_count +=
+                out.example_end_indices[out_examples_count - 1] -
+                out.example_end_indices[out_examples_count - 2];
+          }
+        }
       }
     } else {
       // If feature was already visited, skip.
@@ -719,6 +752,23 @@ Status FastParseSerializedExample(
         }
         default:
           LOG(FATAL) << "Should not happen.";
+      }
+
+      if (output_stats) {
+        // Use `out.example_end_indices` to determine the feature-value count
+        // for this feature, because the preceding switch statement pushes
+        // the length of the appropriate feature list to that vector.
+        // TODO(b/111553342): If desirable, we could add support for counting
+        // elements in the features that aren't parsed, but this could add
+        // considerable runtime cost.
+        const size_t out_examples_count = out.example_end_indices.size();
+        if (out_examples_count == 1) {
+          output_stats->feature_values_count += out.example_end_indices[0];
+        } else {
+          output_stats->feature_values_count +=
+              out.example_end_indices[out_examples_count - 1] -
+              out.example_end_indices[out_examples_count - 2];
+        }
       }
     }
   }
@@ -877,6 +927,10 @@ Status FastParseExample(const Config& config,
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
   }
 
+  if (config.collect_feature_stats) {
+    result->feature_stats.resize(serialized.size());
+  }
+
   size_t config_size = config.dense.size() + config.sparse.size();
   SeededHasher hasher;
   // Build config index.
@@ -962,11 +1016,15 @@ Status FastParseExample(const Config& config,
     size_t start = first_example_of_minibatch(minibatch);
     size_t end = first_example_of_minibatch(minibatch + 1);
     for (size_t e = start; e < end; ++e) {
+      PerExampleFeatureStats* stats = nullptr;
+      if (config.collect_feature_stats) {
+        stats = &result->feature_stats[e];
+      }
       status_of_minibatch[minibatch] = FastParseSerializedExample(
           serialized[e],
           (!example_names.empty() ? example_names[e] : "<unknown>"), e, config,
           config_index, hasher, &fixed_dense_values,
-          &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch]);
+          &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch], stats);
       if (!status_of_minibatch[minibatch].ok()) break;
     }
   };
@@ -1079,7 +1137,7 @@ Status FastParseExample(const Config& config,
     const size_t stride_size = config.dense[d].elements_per_stride;
     const size_t max_num_elements = max_num_features / stride_size;
     TensorShape values_shape;
-    DCHECK(max_num_features % config.dense[d].elements_per_stride == 0);
+    DCHECK_EQ(max_num_features % config.dense[d].elements_per_stride, 0);
     const size_t batch_size = serialized.size();
     values_shape.AddDim(batch_size);
     values_shape.AddDim(max_num_elements);
@@ -1136,6 +1194,12 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
   }
   for (auto& c : config.dense) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+  }
+
+  PerExampleFeatureStats* stats = nullptr;
+  if (config.collect_feature_stats) {
+    result->feature_stats.emplace_back();
+    stats = &result->feature_stats.back();
   }
 
   // TODO(mrry): Cache the construction of this map at Op construction time.
@@ -1196,6 +1260,13 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
   std::vector<bool> sparse_feature_already_seen(config.sparse.size(), false);
   std::vector<bool> dense_feature_already_seen(config.dense.size(), false);
 
+  if (stats) {
+    // TODO(b/111553342): This may over-count the number of features if there
+    // are duplicate keys in the feature map. Consider deduplicating the keys
+    // before computing the count.
+    stats->features_count = parsed_example.size();
+  }
+
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
   for (size_t i = 0; i < parsed_example_size; ++i) {
@@ -1254,7 +1325,12 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
 
       Tensor* out = &result->dense_values[d];
       const std::size_t num_elements = config.dense[d].elements_per_stride;
-
+      if (stats) {
+        // TODO(b/111553342): If desirable, we could add support for counting
+        // elements in the features that aren't parsed, but this could add
+        // considerable runtime cost.
+        stats->feature_values_count += num_elements;
+      }
       switch (example_dtype) {
         case DT_INT64: {
           auto out_p = out->flat<int64>().data();
@@ -1360,6 +1436,10 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
 
       if (num_elements % num_elements_divisor != 0) {
         return parse_error();
+      }
+
+      if (stats) {
+        stats->feature_values_count += num_elements;
       }
 
       Tensor* out;
@@ -1636,6 +1716,7 @@ inline bool SkipEmptyFeature(protobuf::io::CodedInputStream* stream,
 }
 
 // TODO(sundberg): Use the threadpool to parallelize example parsing.
+// TODO(b/111553342): Support extracting feature statistics from the examples.
 Status FastParseSequenceExample(
     const FastParseExampleConfig& context_config,
     const FastParseExampleConfig& feature_list_config,

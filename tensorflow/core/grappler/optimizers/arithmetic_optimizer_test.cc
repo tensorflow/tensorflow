@@ -2489,6 +2489,11 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   auto tensors = EvaluateNodes(got, item.fetch);
   EXPECT_EQ(7, tensors.size());
 
+  for (int i = 0; i < 7; ++i) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
+
   GraphDef want;
   AddNode("x", "Const", {}, {}, &want);
   AddNode("y2", "Const", {}, {}, &want);
@@ -2533,6 +2538,11 @@ TEST_F(ArithmeticOptimizerTest, Log1p) {
   OptimizeAndPrune(&optimizer, &item, &got);
   auto tensors = EvaluateNodes(got, item.fetch);
   EXPECT_EQ(2, tensors.size());
+
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
+  }
 
   GraphDef want;
   AddNode("x1", "Const", {}, {}, &want);

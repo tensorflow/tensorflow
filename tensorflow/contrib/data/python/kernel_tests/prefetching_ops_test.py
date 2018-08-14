@@ -1021,7 +1021,7 @@ class MultiDeviceIteratorTest(test.TestCase):
   def testUneven(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = prefetching_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, ["/cpu:1", "/cpu:2"], max_buffer_size=4)
     elem_on_1, elem_on_2 = multi_device_iterator.get_next()
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
@@ -1079,7 +1079,7 @@ class MultiDeviceIteratorTest(test.TestCase):
     with compat.forward_compatibility_horizon(2018, 8, 4):
       dataset = dataset_ops.Dataset.range(10)
       multi_device_iterator = prefetching_ops.MultiDeviceIterator(
-          dataset, ["/cpu:1", "/gpu:0"])
+          dataset, ["/cpu:1", "/gpu:0"], max_buffer_size=4)
       elem_on_1, elem_on_2 = multi_device_iterator.get_next()
 
       config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})

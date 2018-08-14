@@ -38,8 +38,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -526,6 +528,54 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_defun_without_signature(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(func)
+    t = constant_op.constant(0.0)
+    cache_computation = lambda: defined(t, t, t, t, t, t, t, t)
+    self._run(cache_computation, 30000)
+
+  def benchmark_defun_without_signature_and_with_kwargs(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(func)
+    t = constant_op.constant(0.0)
+    def cache_computation():
+      return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+    self._run(cache_computation, 30000)
+
+  def benchmark_defun_with_signature(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(
+        func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
+    t = constant_op.constant(0.0)
+    signature_computation = lambda: defined(t, t, t, t, t, t, t, t)
+    self._run(signature_computation, 30000)
+
+  def benchmark_defun_with_signature_and_kwargs(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(
+        func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
+    t = constant_op.constant(0.0)
+    def signature_computation():
+      return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+    self._run(signature_computation, 30000)
 
   def benchmark_matmul_read_variable_op_2_by_2_CPU(self):
     with context.device(CPU):

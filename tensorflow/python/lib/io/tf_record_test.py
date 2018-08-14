@@ -318,7 +318,6 @@ class TFRecordIteratorTest(TFCompressionTestCase):
       for _ in tf_record.tf_record_iterator(fn_truncated):
         pass
 
-
 class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
   def setUp(self, compression_type=TFRecordCompressionType.NONE):
@@ -337,6 +336,34 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
       self._writer.write(record)
 
     # Verify no segfault if writer isn't explicitly closed.
+
+  def testWriteAndRead(self):
+    records = list(map(self._Record, range(self._num_records)))
+    for record in records:
+      self._writer.write(record)
+    self._writer.close()
+
+    actual = list(tf_record.tf_record_iterator(self._fn, self._options))
+    self.assertListEqual(actual, records)
+
+  def testDoubleClose(self):
+    self._writer.write(self._Record(0))
+    self._writer.close()
+    self._writer.close()
+
+  def testFlushAfterCloseIsError(self):
+    self._writer.write(self._Record(0))
+    self._writer.close()
+
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      self._writer.flush()
+
+  def testWriteAfterClose(self):
+    self._writer.write(self._Record(0))
+    self._writer.close()
+
+    # TODO(sethtroisi): No way to know this failed, changed that.
+    self._writer.write(self._Record(1))
 
 
 class TFRecordWriterCloseAndFlushGzipTests(TFRecordWriterCloseAndFlushTests):

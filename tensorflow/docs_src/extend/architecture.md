@@ -81,7 +81,7 @@ implementation from all client languages. Most of the training libraries are
 still Python-only, but C++ does have support for efficient inference.
 
 The client creates a session, which sends the graph definition to the
-distributed master as a @{tf.GraphDef}
+distributed master as a `tf.GraphDef`
 protocol buffer. When the client evaluates a node or nodes in the
 graph, the evaluation triggers a call to the distributed master to initiate
 computation.
@@ -96,7 +96,7 @@ feature vector (x), adds a bias term (b) and saves the result in a variable
 
 ### Code
 
-*  @{tf.Session}
+*  `tf.Session`
 
 ## Distributed master
 

@@ -73,6 +73,24 @@ FunctionDef NonZero() {
       });
 }
 
+FunctionDef IsZero() {
+  const Tensor kZero = test::AsScalar<int64>(0);
+  return FDH::Define(
+      // Name
+      "IsZero",
+      // Args
+      {"x: T"},
+      // Return values
+      {"equal: T"},
+      // Attr def
+      {"T:{float, double, int32, int64, string}"},
+      {
+          {{"zero"}, "Const", {}, {{"value", kZero}, {"dtype", DT_INT64}}},
+          {{"cast"}, "Cast", {"zero"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"equal"}, "Equal", {"x", "cast"}, {{"T", "$T"}}},
+      });
+}
+
 FunctionDef XTimesTwo() {
   const Tensor kTwo = test::AsScalar<int64>(2);
   return FDH::Define(

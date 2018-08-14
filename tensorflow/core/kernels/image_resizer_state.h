@@ -142,7 +142,7 @@ struct ImageResizerGradientState {
     // always be a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
                 errors::InvalidArgument("input_grad must be of type float",
-                                        input.dtype()));
+                                        DataTypeString(input.dtype())));
 
     OP_REQUIRES(context, original_image.dims() == 4,
                 errors::InvalidArgument("original_image must be 4-dimensional",

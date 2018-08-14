@@ -500,13 +500,13 @@ class Layer(checkpointable.CheckpointableBase):
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
       getter: Variable getter argument to be passed to the `Checkpointable` API.
 
     Returns:
@@ -773,7 +773,6 @@ class Layer(checkpointable.CheckpointableBase):
 
       if build_graph:
         self._handle_activity_regularization(inputs, outputs)
-        # TODO(fchollet): consider enabling masking for Eager mode.
         self._set_mask_metadata(inputs, outputs, previous_mask)
 
       if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
@@ -830,21 +829,27 @@ class Layer(checkpointable.CheckpointableBase):
         pass
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    if hasattr(self, 'compute_mask'):
+    # In some cases the mask of the outputs has already been computed by
+    # inner layers and does not need to be recomputed by this layer.
+    mask_already_computed = all(
+        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
+    if hasattr(self, 'compute_mask') and not mask_already_computed:
       output_mask = self.compute_mask(inputs, previous_mask)
-      if isinstance(outputs, (list, tuple)):
-        if output_mask is None:
-          output_mask = [None for _ in range(len(outputs))]
-        for x, m in zip(outputs, output_mask):
-          try:
-            x._keras_mask = m  # pylint: disable=protected-access
-          except AttributeError:
-            pass  # C type such as dict. Masking not supported in this case.
-      else:
+    else:
+      output_mask = None
+    if isinstance(outputs, (list, tuple)):
+      if output_mask is None:
+        output_mask = [None for _ in range(len(outputs))]
+      for x, m in zip(outputs, output_mask):
         try:
-          outputs._keras_mask = output_mask  # pylint: disable=protected-access
+          x._keras_mask = m  # pylint: disable=protected-access
         except AttributeError:
           pass  # C type such as dict. Masking not supported in this case.
+    else:
+      try:
+        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+      except AttributeError:
+        pass  # C type such as dict. Masking not supported in this case.
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(self, '_call_convention',
@@ -1916,13 +1921,13 @@ def make_variable(name,
     use_resource: Whether to use a `ResourceVariable`.
     synchronization: Indicates when a distributed a variable will be
       aggregated. Accepted values are constants defined in the class
-      @{tf.VariableSynchronization}. By default the synchronization is set to
+      `tf.VariableSynchronization`. By default the synchronization is set to
       `AUTO` and the current `DistributionStrategy` chooses
       when to synchronize. If `synchronization` is set to `ON_READ`,
       `trainable` must not be set to `True`.
     aggregation: Indicates how a distributed variable will be aggregated.
       Accepted values are constants defined in the class
-      @{tf.VariableAggregation}.
+      `tf.VariableAggregation`.
     partitioner: Not handled at this time.
 
   Returns:

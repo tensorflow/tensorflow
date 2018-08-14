@@ -103,7 +103,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
 
     Args:
       opt: The actual optimizer that will be used to compute and apply the
-        gradients. Must be an implementation of the @{tf.train.Optimizer}
+        gradients. Must be an implementation of the `tf.train.Optimizer`
         interface.
       loss_scale_manager: A LossScaleManager object.
     """
@@ -117,7 +117,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
                         aggregation_method=None,
                         colocate_gradients_with_ops=False,
                         grad_loss=None):
-    """Compute gradients. See base class @{tf.train.Optimizer}."""
+    """Compute gradients. See base class `tf.train.Optimizer`."""
     loss_scale = self._loss_scale_manager.get_loss_scale()
     if context.executing_eagerly():
 
@@ -141,7 +141,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
     return self._down_scale(grads_and_vars, loss_scale)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-    """Apply gradients. See base class @{tf.train.Optimizer}."""
+    """Apply gradients. See base class `tf.train.Optimizer`."""
     grads = [g for (g, _) in grads_and_vars]
 
     is_finite_grad = []

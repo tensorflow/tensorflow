@@ -487,6 +487,9 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/saved_model_estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":export",
         ":saved_model_estimator",

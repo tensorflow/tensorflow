@@ -101,34 +101,27 @@ Status XlaTransferManager::TransferLiteralToDevice(
   // Unref the host tensor, and capture the literal shared_ptr too so it goes
   // out of scope when the lambda completes.
   host_to_device_stream_->ThenDoHostCallback([ref, literal]() { ref.Unref(); });
+
   return Status::OK();
 }
 
 void XlaTransferManager::TransferLiteralFromDevice(
     Tensor* host_tensor, const Tensor& device_tensor,
     const StatusCallback& done) const {
+  xla::MutableBorrowingLiteral literal;
+  TF_CHECK_OK(HostTensorToMutableBorrowingLiteral(host_tensor, &literal));
+
   const xla::ShapedBuffer& shaped_buffer =
       XlaTensor::FromTensor(&device_tensor)->shaped_buffer();
 
   TensorReference ref(device_tensor);
   transfer_manager_->TransferLiteralFromDevice(
-      device_to_host_stream_, shaped_buffer,
-      [=, &shaped_buffer](
-          xla::StatusOr<std::unique_ptr<xla::Literal> > literal_or) {
+      device_to_host_stream_, shaped_buffer, literal,
+      [=, &shaped_buffer, &literal](xla::Status status) {
         ref.Unref();
         done([&]() -> Status {
-          TF_ASSIGN_OR_RETURN(auto literal, std::move(literal_or));
-          VLOG(1) << "Transfer from device as literal: " << literal->ToString()
+          VLOG(1) << "Transfer from device as literal: " << literal.ToString()
                   << " " << shaped_buffer.ToString();
-          Tensor tensor;
-          TF_RETURN_IF_ERROR(
-              LiteralToHostTensor(*literal, host_tensor->dtype(), &tensor));
-          // Reshape the tensor back to its declared shape.
-          Status status;
-          if (!host_tensor->CopyFrom(tensor, device_tensor.shape())) {
-            status = errors::Internal(
-                "Tensor::CopyFrom failed when copying from XLA device to CPU");
-          }
           return status;
         }());
       });
