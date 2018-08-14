@@ -31,26 +31,26 @@ new ideas and experimenting with new techniques.
 The CIFAR-10 tutorial demonstrates several important constructs for
 designing larger and more sophisticated models in TensorFlow:
 
-* Core mathematical components including @{tf.nn.conv2d$convolution}
+* Core mathematical components including `tf.nn.conv2d`
 ([wiki](https://en.wikipedia.org/wiki/Convolution)),
-@{tf.nn.relu$rectified linear activations}
+`tf.nn.relu`
 ([wiki](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))),
-@{tf.nn.max_pool$max pooling}
+`tf.nn.max_pool`
 ([wiki](https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
-and @{tf.nn.local_response_normalization$local response normalization}
+and `tf.nn.local_response_normalization`
 (Chapter 3.3 in
 [AlexNet paper](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
 * @{$summaries_and_tensorboard$Visualization}
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
 * Routines for calculating the
-@{tf.train.ExponentialMovingAverage$moving average}
+`tf.train.ExponentialMovingAverage`
 of learned parameters and using these averages
 during evaluation to boost predictive performance.
 * Implementation of a
-@{tf.train.exponential_decay$learning rate schedule}
+`tf.train.exponential_decay`
 that systematically decrements over time.
-* Prefetching @{tf.train.shuffle_batch$queues}
+* Prefetching `tf.train.shuffle_batch`
 for input
 data to isolate the model from disk latency and expensive image pre-processing.
 
@@ -113,27 +113,27 @@ gradients, variable updates and visualization summaries.
 The input part of the model is built by the functions `inputs()` and
 `distorted_inputs()` which read images from the CIFAR-10 binary data files.
 These files contain fixed byte length records, so we use
-@{tf.FixedLengthRecordReader}.
+`tf.FixedLengthRecordReader`.
 See @{$reading_data#reading-from-files$Reading Data} to
 learn more about how the `Reader` class works.
 
 The images are processed as follows:
 
 *  They are cropped to 24 x 24 pixels, centrally for evaluation or
-   @{tf.random_crop$randomly} for training.
-*  They are @{tf.image.per_image_standardization$approximately whitened}
+   `tf.random_crop` for training.
+*  They are `tf.image.per_image_standardization`
    to make the model insensitive to dynamic range.
 
 For training, we additionally apply a series of random distortions to
 artificially increase the data set size:
 
-* @{tf.image.random_flip_left_right$Randomly flip} the image from left to right.
-* Randomly distort the @{tf.image.random_brightness$image brightness}.
-* Randomly distort the @{tf.image.random_contrast$image contrast}.
+* `tf.image.random_flip_left_right` the image from left to right.
+* Randomly distort the `tf.image.random_brightness`.
+* Randomly distort the `tf.image.random_contrast`.
 
 Please see the @{$python/image$Images} page for the list of
 available distortions. We also attach an
-@{tf.summary.image} to the images
+`tf.summary.image` to the images
 so that we may visualize them in @{$summaries_and_tensorboard$TensorBoard}.
 This is a good practice to verify that inputs are built correctly.
 
@@ -144,7 +144,7 @@ This is a good practice to verify that inputs are built correctly.
 Reading images from disk and distorting them can use a non-trivial amount of
 processing time. To prevent these operations from slowing down training, we run
 them inside 16 separate threads which continuously fill a TensorFlow
-@{tf.train.shuffle_batch$queue}.
+`tf.train.shuffle_batch`.
 
 ### Model Prediction
 
@@ -154,12 +154,12 @@ the model is organized as follows:
 
 Layer Name | Description
 --- | ---
-`conv1` | @{tf.nn.conv2d$convolution} and @{tf.nn.relu$rectified linear} activation.
-`pool1` | @{tf.nn.max_pool$max pooling}.
-`norm1` | @{tf.nn.local_response_normalization$local response normalization}.
-`conv2` | @{tf.nn.conv2d$convolution} and @{tf.nn.relu$rectified linear} activation.
-`norm2` | @{tf.nn.local_response_normalization$local response normalization}.
-`pool2` | @{tf.nn.max_pool$max pooling}.
+`conv1` | `tf.nn.conv2d` and `tf.nn.relu` activation.
+`pool1` | `tf.nn.max_pool`.
+`norm1` | `tf.nn.local_response_normalization`.
+`conv2` | `tf.nn.conv2d` and `tf.nn.relu` activation.
+`norm2` | `tf.nn.local_response_normalization`.
+`pool2` | `tf.nn.max_pool`.
 `local3` | @{$python/nn$fully connected layer with rectified linear activation}.
 `local4` | @{$python/nn$fully connected layer with rectified linear activation}.
 `softmax_linear` | linear transformation to produce logits.
@@ -172,7 +172,7 @@ Here is a graph generated from TensorBoard describing the inference operation:
 
 > **EXERCISE**: The output of `inference` are un-normalized logits. Try editing
 the network architecture to return normalized predictions using
-@{tf.nn.softmax}.
+`tf.nn.softmax`.
 
 The `inputs()` and `inference()` functions provide all the components
 necessary to perform an evaluation of a model. We now shift our focus towards
@@ -190,16 +190,16 @@ architecture in the top layer.
 The usual method for training a network to perform N-way classification is
 [multinomial logistic regression](https://en.wikipedia.org/wiki/Multinomial_logistic_regression),
 aka. *softmax regression*. Softmax regression applies a
-@{tf.nn.softmax$softmax} nonlinearity to the
+`tf.nn.softmax` nonlinearity to the
 output of the network and calculates the
-@{tf.nn.sparse_softmax_cross_entropy_with_logits$cross-entropy}
+`tf.nn.sparse_softmax_cross_entropy_with_logits`
 between the normalized predictions and the label index.
 For regularization, we also apply the usual
-@{tf.nn.l2_loss$weight decay} losses to all learned
+`tf.nn.l2_loss` losses to all learned
 variables.  The objective function for the model is the sum of the cross entropy
 loss and all these weight decay terms, as returned by the `loss()` function.
 
-We visualize it in TensorBoard with a @{tf.summary.scalar}:
+We visualize it in TensorBoard with a `tf.summary.scalar`:
 
 ![CIFAR-10 Loss](https://www.tensorflow.org/images/cifar_loss.png "CIFAR-10 Total Loss")
 
@@ -207,14 +207,14 @@ We train the model using standard
 [gradient descent](https://en.wikipedia.org/wiki/Gradient_descent)
 algorithm (see @{$python/train$Training} for other methods)
 with a learning rate that
-@{tf.train.exponential_decay$exponentially decays}
+`tf.train.exponential_decay`
 over time.
 
 ![CIFAR-10 Learning Rate Decay](https://www.tensorflow.org/images/cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
 
 The `train()` function adds the operations needed to minimize the objective by
 calculating the gradient and updating the learned variables (see
-@{tf.train.GradientDescentOptimizer}
+`tf.train.GradientDescentOptimizer`
 for details).  It returns an operation that executes all the calculations
 needed to train and update the model for one batch of images.
 
@@ -263,7 +263,7 @@ training step can take so long. Try decreasing the number of images that
 initially fill up the queue.  Search for `min_fraction_of_examples_in_queue`
 in `cifar10_input.py`.
 
-`cifar10_train.py` periodically @{tf.train.Saver$saves}
+`cifar10_train.py` periodically uses a  `tf.train.Saver` to save
 all model parameters in
 @{$guide/saved_model$checkpoint files}
 but it does *not* evaluate the model. The checkpoint file
@@ -285,7 +285,7 @@ how the model is training. We want more insight into the model during training:
 @{$summaries_and_tensorboard$TensorBoard} provides this
 functionality, displaying data exported periodically from `cifar10_train.py` via
 a
-@{tf.summary.FileWriter}.
+`tf.summary.FileWriter`.
 
 For instance, we can watch how the distribution of activations and degree of
 sparsity in `local3` features evolve during training:
@@ -300,7 +300,7 @@ interesting to track over time. However, the loss exhibits a considerable amount
 of noise due to the small batch size employed by training.  In practice we find
 it extremely useful to visualize their moving averages in addition to their raw
 values.  See how the scripts use
-@{tf.train.ExponentialMovingAverage}
+`tf.train.ExponentialMovingAverage`
 for this purpose.
 
 ## Evaluating a Model
@@ -336,8 +336,8 @@ exports summaries that may be visualized in TensorBoard. These summaries
 provide additional insight into the model during evaluation.
 
 The training script calculates the
-@{tf.train.ExponentialMovingAverage$moving average}
-version of all learned variables. The evaluation script substitutes
+`tf.train.ExponentialMovingAverage` of all learned variables.
+The evaluation script substitutes
 all learned model parameters with the moving average version. This
 substitution boosts model performance at evaluation time.
 
@@ -401,17 +401,17 @@ gradients for a single model replica. In the code we term this abstraction
 a "tower". We must set two attributes for each tower:
 
 * A unique name for all operations within a tower.
-@{tf.name_scope} provides
+`tf.name_scope` provides
 this unique name by prepending a scope. For instance, all operations in
 the first tower are prepended with `tower_0`, e.g. `tower_0/conv1/Conv2D`.
 
 * A preferred hardware device to run the operation within a tower.
-@{tf.device} specifies this. For
+`tf.device` specifies this. For
 instance, all operations in the first tower reside within `device('/device:GPU:0')`
 scope indicating that they should be run on the first GPU.
 
 All variables are pinned to the CPU and accessed via
-@{tf.get_variable}
+`tf.get_variable`
 in order to share them in a multi-GPU version.
 See how-to on @{$variables$Sharing Variables}.
 

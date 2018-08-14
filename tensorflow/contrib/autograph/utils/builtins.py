@@ -44,6 +44,8 @@ def dynamic_builtin(f, *args, **kwargs):
     return dynamic_int(*args, **kwargs)
   if f is float:
     return dynamic_float(*args, **kwargs)
+  if f is abs:
+    return dynamic_abs(*args, **kwargs)
 
   raise NotImplementedError(
       'The "%s" builtin is not yet supported.' % f.__name__)
@@ -79,6 +81,13 @@ def dynamic_float(num_or_tensor, **kwargs):
   if tensor_util.is_tensor(num_or_tensor):
     return math_ops.cast(num_or_tensor, dtype=dtypes.float32, **kwargs)
   return float(num_or_tensor)
+
+
+def dynamic_abs(num_or_tensor, **kwargs):
+  if tensor_util.is_tensor(num_or_tensor):
+    return math_ops.abs(num_or_tensor, **kwargs)
+  else:
+    return abs(num_or_tensor, **kwargs)
 
 
 def dynamic_range(start_or_stop, stop=None, step=None):

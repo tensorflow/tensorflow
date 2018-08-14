@@ -119,9 +119,20 @@ class ShapeInference {
       const Shape& in, FftType fft_type,
       tensorflow::gtl::ArraySlice<int64> fft_length);
 
-  // Infers the shape produced a cross replica sum with the given operand
+  // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferCrossReplicaSumShape(
+      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
+
+  // Infers final shape of an Alltoall operation that is created by the xla
+  // builder.
+  static StatusOr<Shape> InferAllToAllShape(const Shape& shape,
+                                            int64 split_dimension,
+                                            int64 concat_dimension,
+                                            int64 split_count);
+
+  // Infers the shape of an HLO all-to-all instruction.
+  static StatusOr<Shape> InferAllToAllTupleShape(
       tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
 
   // Infers the shape produced by applying the given reduction computation

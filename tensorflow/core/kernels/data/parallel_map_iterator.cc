@@ -78,7 +78,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       cond_var_.wait(l);
     }
     CHECK_EQ(num_calls_, 0);
-    TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+    TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(full_name("invocation_results.size"),
                             invocation_results_.size()));
@@ -107,7 +107,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+    TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     int64 invocation_results_size;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         full_name("invocation_results.size"), &invocation_results_size));

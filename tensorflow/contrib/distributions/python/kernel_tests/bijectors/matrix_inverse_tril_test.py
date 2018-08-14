@@ -29,6 +29,17 @@ from tensorflow.python.platform import test
 class MatrixInverseTriLBijectorTest(test.TestCase):
   """Tests the correctness of the Y = inv(tril) transformation."""
 
+  #The inverse of 0 is undefined, as the numbers above the main
+  #diagonal must be zero, we zero out these numbers after running inverse.
+  #See: https://github.com/numpy/numpy/issues/11445
+  def _inv(self, x):
+    y = np.linalg.inv(x)
+    #triu_indices only works on 2d arrays
+    #need to iterate over all the 2d arrays in a x-dimensional array.
+    for idx in np.ndindex(y.shape[0:-2]):
+      y[idx][np.triu_indices(y[idx].shape[-1], 1)] = 0
+    return y
+
   @test_util.run_in_graph_and_eager_modes
   def testComputesCorrectValues(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
@@ -98,7 +109,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
                      [2., 3.]]],
                    [[[4., 0.],
                      [5., -6.]]]], dtype=np.float32)
-    x_inv_ = np.linalg.inv(x_)
+    x_inv_ = self._inv(x_)
     expected_fldj_ = -4. * np.sum(
         np.log(np.abs(np.diagonal(x_, axis1=-2, axis2=-1))), axis=-1)
 

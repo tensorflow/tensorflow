@@ -78,6 +78,20 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  def testMultipleOutputs(self):
+    x = constant_op.constant(1.0, name="x")
+    y = constant_op.constant(3.0, name="y")
+
+    def true_fn():
+      return x * y, y
+
+    def false_fn():
+      return x, y * 3.0
+
+    self._testCond(true_fn, false_fn, [x])
+    self._testCond(true_fn, false_fn, [x, y])
+    self._testCond(true_fn, false_fn, [y])
+
   def testBasic2(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -104,8 +118,8 @@ class CondV2Test(test.TestCase):
 
       out = cond_v2.cond_v2(pred, true_fn, false_fn)
 
-      self.assertEqual(sess.run(out, {pred: True}), [1.0])
-      self.assertEqual(sess.run(out, {pred: False}), [2.0])
+      self.assertEqual(sess.run(out, {pred: True}), (1.0,))
+      self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
     pred = constant_op.constant(True, name="pred")
@@ -231,6 +245,32 @@ class CondV2Test(test.TestCase):
             return x * 5.0
 
           return _cond(pred, false_true_fn, false_false_fn, "inside_false_fn")
+
+        return x, y, pred, true_fn, false_fn
+
+      with ops.Graph().as_default():
+        x, y, pred, true_fn, false_fn = build_graph()
+        self._testCond(true_fn, false_fn, [x, y], {pred: pred_value})
+        self._testCond(true_fn, false_fn, [x], {pred: pred_value})
+        self._testCond(true_fn, false_fn, [y], {pred: pred_value})
+
+    run_test(True)
+    run_test(False)
+
+  def testNestedCondBothBranches(self):
+
+    def run_test(pred_value):
+
+      def build_graph():
+        pred = array_ops.placeholder(dtypes.bool, name="pred")
+        x = constant_op.constant(1.0, name="x")
+        y = constant_op.constant(2.0, name="y")
+
+        def true_fn():
+          return _cond(pred, lambda: x + y, lambda: x * x, name=None)
+
+        def false_fn():
+          return _cond(pred, lambda: x - y, lambda: y * y, name=None)
 
         return x, y, pred, true_fn, false_fn
 

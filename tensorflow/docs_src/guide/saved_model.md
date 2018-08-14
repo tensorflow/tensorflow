@@ -1,8 +1,8 @@
 # Save and Restore
 
-The @{tf.train.Saver} class provides methods to save and restore models. The
-@{tf.saved_model.simple_save} function is an easy way to build a
-@{tf.saved_model$saved model} suitable for serving. [Estimators](./estimators)
+The `tf.train.Saver` class provides methods to save and restore models. The
+`tf.saved_model.simple_save` function is an easy way to build a
+`tf.saved_model` suitable for serving. [Estimators](./estimators)
 automatically save and restore variables in the `model_dir`.
 
 ## Save and restore variables
@@ -145,13 +145,13 @@ Notes:
 
 *  If you only restore a subset of the model variables at the start of a
    session, you have to run an initialize op for the other variables.  See
-   @{tf.variables_initializer} for more information.
+   `tf.variables_initializer` for more information.
 
 *  To inspect the variables in a checkpoint, you can use the
    [`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py)
    library, particularly the `print_tensors_in_checkpoint_file` function.
 
-*  By default, `Saver` uses the value of the @{tf.Variable.name} property
+*  By default, `Saver` uses the value of the `tf.Variable.name` property
    for each variable.  However, when you create a `Saver` object, you may
    optionally choose names for the variables in the checkpoint files.
 
@@ -196,15 +196,15 @@ Use `SavedModel` to save and load your model—variables, the graph, and the
 graph's metadata. This is a language-neutral, recoverable, hermetic
 serialization format that enables higher-level systems and tools to produce,
 consume, and transform TensorFlow models. TensorFlow provides several ways to
-interact with `SavedModel`, including the @{tf.saved_model} APIs,
-@{tf.estimator.Estimator}, and a command-line interface.
+interact with `SavedModel`, including the `tf.saved_model` APIs,
+`tf.estimator.Estimator`, and a command-line interface.
 
 
 ## Build and load a SavedModel
 
 ### Simple save
 
-The easiest way to create a `SavedModel` is to use the @{tf.saved_model.simple_save}
+The easiest way to create a `SavedModel` is to use the `tf.saved_model.simple_save`
 function:
 
 ```python
@@ -218,14 +218,14 @@ This configures the `SavedModel` so it can be loaded by
 [TensorFlow serving](/serving/serving_basic) and supports the
 [Predict API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
 To access the classify, regress, or multi-inference APIs, use the manual
-`SavedModel` builder APIs or an @{tf.estimator.Estimator}.
+`SavedModel` builder APIs or an `tf.estimator.Estimator`.
 
 ### Manually build a SavedModel
 
-If your use case isn't covered by @{tf.saved_model.simple_save}, use the manual
-@{tf.saved_model.builder$builder APIs} to create a `SavedModel`.
+If your use case isn't covered by `tf.saved_model.simple_save`, use the manual
+`tf.saved_model.builder` to create a `SavedModel`.
 
-The @{tf.saved_model.builder.SavedModelBuilder} class provides functionality to
+The `tf.saved_model.builder.SavedModelBuilder` class provides functionality to
 save multiple `MetaGraphDef`s.  A **MetaGraph** is a dataflow graph, plus
 its associated variables, assets, and signatures.  A **`MetaGraphDef`**
 is the protocol buffer representation of a MetaGraph.  A **signature** is
@@ -272,16 +272,16 @@ builder.save()
 Following the guidance below gives you forward compatibility only if the set of
 Ops has not changed.
 
-The @{tf.saved_model.builder.SavedModelBuilder$`SavedModelBuilder`} class allows
+The `tf.saved_model.builder.SavedModelBuilder` class allows
 users to control whether default-valued attributes must be stripped from the
 @{$extend/tool_developers#nodes$`NodeDefs`}
 while adding a meta graph to the SavedModel bundle. Both
-@{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`SavedModelBuilder.add_meta_graph_and_variables`}
-and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`SavedModelBuilder.add_meta_graph`}
+`tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables`
+and `tf.saved_model.builder.SavedModelBuilder.add_meta_graph`
 methods accept a Boolean flag `strip_default_attrs` that controls this behavior.
 
-If `strip_default_attrs` is `False`, the exported @{tf.MetaGraphDef} will have
-the default valued attributes in all its @{tf.NodeDef} instances.
+If `strip_default_attrs` is `False`, the exported `tf.MetaGraphDef` will have
+the default valued attributes in all its `tf.NodeDef` instances.
 This can break forward compatibility with a sequence of events such as the
 following:
 
@@ -304,7 +304,7 @@ for more information.
 ### Loading a SavedModel in Python
 
 The Python version of the SavedModel
-@{tf.saved_model.loader$loader}
+`tf.saved_model.loader`
 provides load and restore capability for a SavedModel. The `load` operation
 requires the following information:
 
@@ -423,20 +423,20 @@ the model.  This function has the following purposes:
 *  To add any additional ops needed to convert data from the input format
    into the feature `Tensor`s expected by the model.
 
-The function returns a @{tf.estimator.export.ServingInputReceiver} object,
+The function returns a `tf.estimator.export.ServingInputReceiver` object,
 which packages the placeholders and the resulting feature `Tensor`s together.
 
 A typical pattern is that inference requests arrive in the form of serialized
 `tf.Example`s, so the `serving_input_receiver_fn()` creates a single string
 placeholder to receive them.  The `serving_input_receiver_fn()` is then also
-responsible for parsing the `tf.Example`s by adding a @{tf.parse_example} op to
+responsible for parsing the `tf.Example`s by adding a `tf.parse_example` op to
 the graph.
 
 When writing such a `serving_input_receiver_fn()`, you must pass a parsing
-specification to @{tf.parse_example} to tell the parser what feature names to
+specification to `tf.parse_example` to tell the parser what feature names to
 expect and how to map them to `Tensor`s. A parsing specification takes the
-form of a dict from feature names to @{tf.FixedLenFeature}, @{tf.VarLenFeature},
-and @{tf.SparseFeature}.  Note this parsing specification should not include
+form of a dict from feature names to `tf.FixedLenFeature`, `tf.VarLenFeature`,
+and `tf.SparseFeature`.  Note this parsing specification should not include
 any label or weight columns, since those will not be available at serving
 time&mdash;in contrast to a parsing specification used in the `input_fn()` at
 training time.
@@ -457,7 +457,7 @@ def serving_input_receiver_fn():
   return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
 ```
 
-The @{tf.estimator.export.build_parsing_serving_input_receiver_fn} utility
+The `tf.estimator.export.build_parsing_serving_input_receiver_fn` utility
 function provides that input receiver for the common case.
 
 > Note: when training a model to be served using the Predict API with a local
@@ -468,7 +468,7 @@ Even if you require no parsing or other input processing&mdash;that is, if the
 serving system will feed feature `Tensor`s directly&mdash;you must still provide
 a `serving_input_receiver_fn()` that creates placeholders for the feature
 `Tensor`s and passes them through.  The
-@{tf.estimator.export.build_raw_serving_input_receiver_fn} utility provides for
+`tf.estimator.export.build_raw_serving_input_receiver_fn` utility provides for
 this.
 
 If these utilities do not meet your needs, you are free to write your own
@@ -488,7 +488,7 @@ By contrast, the *output* portion of the signature is determined by the model.
 ### Specify the outputs of a custom model
 
 When writing a custom `model_fn`, you must populate the `export_outputs` element
-of the @{tf.estimator.EstimatorSpec} return value. This is a dict of
+of the `tf.estimator.EstimatorSpec` return value. This is a dict of
 `{name: output}` describing the output signatures to be exported and used during
 serving.
 
@@ -498,9 +498,9 @@ is represented by an entry in this dict.  In this case the `name` is a string
 of your choice that can be used to request a specific head at serving time.
 
 Each `output` value must be an `ExportOutput` object  such as
-@{tf.estimator.export.ClassificationOutput},
-@{tf.estimator.export.RegressionOutput}, or
-@{tf.estimator.export.PredictOutput}.
+`tf.estimator.export.ClassificationOutput`,
+`tf.estimator.export.RegressionOutput`, or
+`tf.estimator.export.PredictOutput`.
 
 These output types map straightforwardly to the
 [TensorFlow Serving APIs](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/prediction_service.proto),
@@ -520,7 +520,7 @@ does not specify one.
 ### Perform the export
 
 To export your trained Estimator, call
-@{tf.estimator.Estimator.export_savedmodel} with the export base path and
+`tf.estimator.Estimator.export_savedmodel` with the export base path and
 the `serving_input_receiver_fn`.
 
 ```py

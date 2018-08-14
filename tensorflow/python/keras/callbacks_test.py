@@ -728,6 +728,8 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator without validation data
+      # histogram_freq must be zero
+      tsb.histogram_freq = 0
       model.fit_generator(
           data_generator(True),
           len(x_train),
@@ -736,6 +738,7 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator with validation data and accuracy
+      tsb.histogram_freq = 1
       model.fit_generator(
           data_generator(True),
           len(x_train),
@@ -745,6 +748,7 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator without validation data and accuracy
+      tsb.histogram_freq = 0
       model.fit_generator(
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)

@@ -31,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
@@ -377,6 +378,20 @@ class ExportTest(test_util.TensorFlowTestCase):
     serving_input_receiver_fn = export.build_raw_serving_input_receiver_fn(f)
     v = serving_input_receiver_fn()
     self.assertTrue(isinstance(v, export.ServingInputReceiver))
+
+  def test_build_raw_serving_input_receiver_fn_without_shape(self):
+    """Test case for issue #21178."""
+    f = {"feature_1": array_ops.placeholder(dtypes.float32),
+         "feature_2": array_ops.placeholder(dtypes.int32)}
+    serving_input_receiver_fn = export.build_raw_serving_input_receiver_fn(f)
+    v = serving_input_receiver_fn()
+    self.assertTrue(isinstance(v, export.ServingInputReceiver))
+    self.assertEqual(
+        tensor_shape.unknown_shape(),
+        v.receiver_tensors["feature_1"].shape)
+    self.assertEqual(
+        tensor_shape.unknown_shape(),
+        v.receiver_tensors["feature_2"].shape)
 
   def test_build_raw_serving_input_receiver_fn(self):
     features = {"feature_1": constant_op.constant(["hello"]),

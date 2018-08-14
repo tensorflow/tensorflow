@@ -99,7 +99,7 @@ IrEmitter::IrEmitter(
       target_machine_features_(*target_machine_features) {
   b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
-          .xla_enable_fast_math()));
+          .xla_cpu_enable_fast_math()));
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -158,11 +158,11 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
   // Create and initialize new IrFunction.
-  compute_function_.reset(
-      new IrFunction(function_name, linkage,
-                     options::OptimizeForSizeRequested(hlo_module_config_),
-                     hlo_module_config_.debug_options().xla_enable_fast_math(),
-                     module_, &b_, num_dynamic_loop_bounds_));
+  compute_function_.reset(new IrFunction(
+      function_name, linkage,
+      options::OptimizeForSizeRequested(hlo_module_config_),
+      hlo_module_config_.debug_options().xla_cpu_enable_fast_math(), module_,
+      &b_, num_dynamic_loop_bounds_));
 }
 
 IrEmitter::~IrEmitter() {}
@@ -577,7 +577,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*reduce_window,
       /*operands=*/{reduce_window->operand(0)},
-      /*supported_types=*/{F32, BF16, S32}));
+      /*supported_types=*/{F32, BF16, S32, F16}));
 
   // TODO(b/31410564): Implement dilation for reduce-window.
   if (window_util::HasDilation(reduce_window->window())) {
@@ -1756,6 +1756,10 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
+  // TODO(b/112040122): Support variadic reduce.
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return Unimplemented("Variadic reduce is not supported on CPU");
+  }
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
   gtl::ArraySlice<int64> dimensions(reduce->dimensions());

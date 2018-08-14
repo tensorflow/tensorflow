@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python import keras
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
@@ -44,7 +45,7 @@ class TrainingTest(test.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
     loss_weights = [1., 0.5]
-    metrics = ['mae']
+    metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(
         optimizer,
         loss,
@@ -109,7 +110,7 @@ class TrainingTest(test.TestCase):
 
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
-    metrics = ['mae']
+    metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics)
 
     inputs = keras.backend.zeros(shape=(10, 3))
@@ -128,7 +129,9 @@ class TrainingTest(test.TestCase):
     model = keras.Sequential()
     model.add(keras.layers.Dense(4, input_shape=(3,)))
     optimizer = RMSPropOptimizer(learning_rate=0.001)
-    model.compile(optimizer, 'mse', metrics=['mae'])
+    model.compile(
+        optimizer, 'mse', metrics=['mae',
+                                   metrics_module.CategoricalAccuracy()])
 
     x = np.random.random((10, 3))
     y = np.random.random((10, 4))

@@ -231,6 +231,7 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
+HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 
 // The special cases below let you check additional information about the

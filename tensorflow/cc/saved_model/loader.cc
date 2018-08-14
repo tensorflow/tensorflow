@@ -170,7 +170,8 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
   if (!Env::Default()->FileExists(variables_index_path).ok()) {
     LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
-                 "were restored.";
+                 "were restored. File does not exist: "
+              << variables_index_path;
     return Status::OK();
   }
   const string variables_path =

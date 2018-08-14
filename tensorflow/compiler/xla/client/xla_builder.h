@@ -195,8 +195,13 @@ class XlaBuilder {
 
   // Builds the computation with the requested operations, or returns a non-ok
   // status. Note that all ops that have been enqueued will be moved to the
-  // computation being returned.
+  // computation being returned. The root of the computation will be the last
+  // added operation.
   StatusOr<XlaComputation> Build();
+
+  // Overload of Build which specifies a particular root instruction for the
+  // computation.
+  StatusOr<XlaComputation> Build(XlaOp root);
 
   // Builds the computation with the requested operations, or notes an error in
   // the parent XlaBuilder and returns an empty computation if building failed.
@@ -225,8 +230,13 @@ class XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
-  // Returns the (inferred) result for the current computation's shape.
+  // Returns the (inferred) result for the current computation's shape. This
+  // assumes the root instruction is the last added instruction.
   StatusOr<ProgramShape> GetProgramShape() const;
+
+  // Returns the (inferred) result for the current computation's shape using the
+  // given operation as the root.
+  StatusOr<ProgramShape> GetProgramShape(XlaOp root) const;
 
   // Reports an error to the builder, by
   // * storing it internally and capturing a backtrace if it's the first error
@@ -255,6 +265,9 @@ class XlaBuilder {
   StatusOr<bool> IsConstant(const XlaOp& operand) const;
 
  private:
+  // Build helper which takes the id of the root operation..
+  StatusOr<XlaComputation> Build(int64 root_id);
+
   // Enqueues a "retrieve parameter value" instruction for a parameter that was
   // passed to the computation.
   XlaOp Parameter(int64 parameter_number, const Shape& shape,
@@ -686,9 +699,9 @@ class XlaBuilder {
   // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // - `channel_id`: for Allreduce nodes from different models, if they have the
-  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-  // applied cross models.
+  // - `channel_id`: for Allreduce nodes from different modules, if they have
+  // the same channel_id, they will be 'Allreduce'd. If empty, Allreduce will
+  // not be applied cross modules.
   //
   // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
   XlaOp CrossReplicaSum(
@@ -696,6 +709,13 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
       const tensorflow::gtl::optional<ChannelHandle>& channel_id =
           tensorflow::gtl::nullopt);
+
+  // Enqueues an operation that do an Alltoall of the operand cross cores.
+  //
+  // TODO(b/110096724): This is NOT YET ready to use.
+  XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
+                 int64 concat_dimension, int64 split_count,
+                 const std::vector<ReplicaGroup>& replica_groups);
 
   // Enqueues an operation that scatters the `source` array to the selected
   // indices of each window.
@@ -969,9 +989,8 @@ class XlaBuilder {
   // shape.
   StatusOr<XlaOp> Reshape(const Shape& shape, const XlaOp& operand);
 
-  // Returns the (inferred) result for the program shape for the current
-  // computation and fills the root_id in the pointer.
-  StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
+  // Returns the (inferred) result for the program shape using the given root.
+  StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
 
   // Returns shapes for the operands.
   StatusOr<std::vector<Shape>> GetOperandShapes(
@@ -1234,6 +1253,9 @@ class XlaBuilder {
       const XlaOp& operand, const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       const tensorflow::gtl::optional<ChannelHandle>& channel_id);
+  friend XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
+                        int64 concat_dimension, int64 split_count,
+                        const std::vector<ReplicaGroup>& replica_groups);
   friend XlaOp SelectAndScatter(
       const XlaOp& operand, const XlaComputation& select,
       tensorflow::gtl::ArraySlice<int64> window_dimensions,
@@ -1820,15 +1842,22 @@ XlaOp CrossReplicaSum(
 // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
 // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
 //
-// - `channel_id`: for Allreduce nodes from different models, if they have the
+// - `channel_id`: for Allreduce nodes from different modules, if they have the
 // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-// applied cross models.
+// applied cross modules.
 //
 // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
 XlaOp CrossReplicaSum(const XlaOp& operand, const XlaComputation& computation,
                       tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
                       const tensorflow::gtl::optional<ChannelHandle>&
                           channel_id = tensorflow::gtl::nullopt);
+
+// Enqueues an operation that do an Alltoall of the operand cross cores.
+//
+// TODO(b/110096724): This is NOT YET ready to use.
+XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
+               int64 concat_dimension, int64 split_count,
+               const std::vector<ReplicaGroup>& replica_groups = {});
 
 // Enqueues an operation that scatters the `source` array to the selected
 // indices of each window.

@@ -1563,7 +1563,7 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
   // and the computation result. The latter two are specified in
   // computation_layout, so we only need to keep the existing layouts for
   // infeeds.  Clearing the layouts here avoids hiding potential bugs in the
-  // layout assignment pass that may accidently use the existing layout.
+  // layout assignment pass that may accidentally use the existing layout.
   for (HloInstruction* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kBitcast) {
       // bitcasts are inherently layout sensitive and so a bitcast instruction

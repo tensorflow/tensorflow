@@ -79,12 +79,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
  private:
   const int graph_def_version_;
 
-  class FilterDatasetBase : public GraphDatasetBase {
+  class FilterDatasetBase : public DatasetBase {
    public:
     FilterDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
                       const NameAttrList& func,
                       std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           captured_func_(std::move(captured_func)) {
@@ -109,11 +109,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "FilterDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
       Node* input_graph_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       DataTypeVector other_arguments_types;
       other_arguments_types.reserve(captured_func_->captured_inputs().size());
@@ -190,7 +191,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -203,7 +204,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         if (reader->Contains(full_name("input_impls_empty")))
           input_impl_.reset();
         else
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 

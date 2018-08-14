@@ -898,8 +898,8 @@ def pool(
   ```
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
-  and pad_before is defined based on the value of `padding` as described in the
-  @{tf.nn.convolution$comment here}.
+  and pad_before is defined based on the value of `padding` as described in
+  the "returns" section of `tf.nn.convolution` for details.
   The reduction never includes out-of-bounds positions.
 
   In the case that `data_format` starts with `"NC"`, the `input` and output are
@@ -921,7 +921,7 @@ def pool(
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
     padding: The padding algorithm, must be "SAME" or "VALID".
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
       Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
       of strides must be 1.
@@ -1045,8 +1045,8 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   This function is a simpler wrapper around the more general
-  @{tf.nn.convolution}, and exists only for backwards compatibility. You can
-  use @{tf.nn.convolution} to perform 1-D, 2-D, or 3-D atrous convolution.
+  `tf.nn.convolution`, and exists only for backwards compatibility. You can
+  use `tf.nn.convolution` to perform 1-D, 2-D, or 3-D atrous convolution.
 
 
   Computes a 2-D atrous convolution, also known as convolution with holes or
@@ -1205,7 +1205,7 @@ def conv2d_transpose(
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the returned tensor.
 
@@ -1430,7 +1430,7 @@ def conv3d_transpose(
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string, either `'NDHWC'` or `'NCDHW`' specifying the layout
       of the input and output tensors. Defaults to `'NDHWC'`.
     name: Optional name for the returned tensor.
@@ -1819,7 +1819,7 @@ def softmax_cross_entropy_with_logits_v2(
   or `float64`).
 
   Backpropagation will happen into both `logits` and `labels`.  To disallow
-  backpropagation into `labels`, pass label tensors through @{tf.stop_gradient}
+  backpropagation into `labels`, pass label tensors through `tf.stop_gradient`
   before feeding it to this function.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
@@ -1909,7 +1909,7 @@ _XENT_DEPRECATION = """
 Future major versions of TensorFlow will allow gradients to flow
 into the labels input on backprop by default.
 
-See @{tf.nn.softmax_cross_entropy_with_logits_v2}.
+See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 """
 
 
@@ -1946,7 +1946,7 @@ def softmax_cross_entropy_with_logits(
 
   Backpropagation will happen only into `logits`.  To calculate a cross entropy
   loss that allows backpropagation into both `logits` and `labels`, see
-  @{tf.nn.softmax_cross_entropy_with_logits_v2}.
+  `tf.nn.softmax_cross_entropy_with_logits_v2`.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
@@ -2003,8 +2003,8 @@ def sparse_softmax_cross_entropy_with_logits(
   A common use case is to have logits and labels of shape
   `[batch_size, num_classes]`, but higher dimensions are supported, in which
   case the `dim`-th dimension is assumed to be of size `num_classes`.
-  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
-  or `float64`).
+  `logits` must have the dtype of `float16`, `float32`, or `float64`, and
+  `labels` must have the dtype of `int32` or `int64`.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
@@ -2114,7 +2114,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list or tuple of 4 ints. The stride of the sliding window for
       each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -2143,7 +2143,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list or tuple of 4 ints. The stride of the sliding window for
       each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
@@ -2301,7 +2301,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for this operation (optional).
 
@@ -2521,7 +2521,7 @@ def conv1d_transpose(
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the returned tensor.
 

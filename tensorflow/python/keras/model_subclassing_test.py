@@ -425,9 +425,10 @@ class ModelSubclassingTest(test.TestCase):
     model = SimpleTestModel(num_classes=num_classes,
                             use_dp=True,
                             use_bn=True)
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'])
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(learning_rate=0.001),
+        metrics=['acc', keras.metrics.CategoricalAccuracy()])
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))

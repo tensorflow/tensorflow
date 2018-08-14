@@ -51,8 +51,8 @@ def get_filtered_grad_fn(grad_fn):
   # those variables are accessed in another thread during the gradient
   # computation. To get a consistent set of variables, we filter out
   # those with `None` gradients.
-  def filtered_grad_fn(x=None):
-    return [(g, v) for g, v in grad_fn(x) if g is not None]
+  def filtered_grad_fn(*args, **kwargs):
+    return [(g, v) for g, v in grad_fn(*args, **kwargs) if g is not None]
 
   return filtered_grad_fn
 
@@ -555,7 +555,7 @@ class Optimizer(
     # always calling _distributed_apply(), using the default distribution
     # as needed.
     if distribute_lib.has_distribution_strategy():
-      grads_and_vars = get_filtered_grad_fn(lambda _: grads_and_vars)()
+      grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
       return distribute_lib.get_tower_context().merge_call(
           self._distributed_apply, grads_and_vars, global_step, name)
 
