@@ -28,6 +28,7 @@ import six
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
+from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import parser
 from tensorflow.tools.docs import pretty_docs
@@ -108,6 +109,9 @@ def write_docs(output_dir,
     # Methods and some routines are documented only as part of their class.
     if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
             _is_free_function(py_object, full_name, parser_config.index)):
+      continue
+
+    if doc_controls.should_skip(py_object):
       continue
 
     sitepath = os.path.join('api_docs/python',
