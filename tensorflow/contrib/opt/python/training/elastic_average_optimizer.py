@@ -20,11 +20,9 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -130,7 +128,12 @@ class ElasticAverageCustomGetter(object):
               = list(global_center_variable)[i]
       return local_var
     else:
-      return getter(name, trainable=trainable, collections=collections, *args, **kwargs)
+      return getter(
+          name,
+          trainable=trainable,
+          collections=collections,
+          *args,
+          **kwargs)
 
 
 class ElasticAverageOptimizer(optimizer.Optimizer):
@@ -172,11 +175,11 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
         rho=0.0 is suggested in async mode.
       use_locking: If True use locks for update operations.
       synchronous: Add_sync_queues_and_barrier or not.
-                 True: all workers will wait for each other before start training
-                 False: worker can start training when its initilization is done,
-                        no need to wait for everyone is ready.
-                        in case one worker is restarted, it can join and continue
-                        training without being blocked.
+              True: all workers will wait for each other before start training
+              False: worker can start training when its initilization is done,
+                     no need to wait for everyone is ready.
+                     in case one worker is restarted, it can join and continue
+                     training without being blocked.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "ElasticAverageOptimizer".
     """
@@ -393,13 +396,14 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
 
   def swapping_saver(self, var_list=None, name='swapping_saver', **kwargs):
     """Create a saver copy global_center_variable to trainable variables
-    Please call this function after all your variables created with EACustomGetter.
-    For evaluations or inference, use this saver during training.  It will save the
-    global_center_variable of the trained parameters under the original parameter names.
+    Please call this function after all your variables created with
+    ElasticAverageCustomGetter. For evaluations or inference, use this saver
+    during training.  It will save the global_center_variable of the trained
+    parameters under the original parameter names.
     Args:
       var_list: List of variables to save, as per `Saver()`.
-                If set to None, will save all the trainable_variables that have been
-                created before this call.
+                If set to None, save all the trainable_variables that have
+                been created before this call.
       name: The name of the saver.
       **kwargs: Keyword arguments of `Saver()`.
     Returns:
@@ -407,12 +411,13 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     Raises:
       RuntimeError: global_center_variable is empty, please make sure
                     this is called after model created and
-                    EACustomGetter is used when declaring you model
+                    ElasticAverageCustomGetter is used when declaring you model
     """
     if not self._global_map:
       raise RuntimeError('global_center_variable is empty, please make sure '
                          'this is called after model created and '
-                         'ElasticAverageCustomGetter is used when declaring you model')
+                         'ElasticAverageCustomGetter is used when declaring '
+                         'you model')
 
     if var_list is None:
       var_list = variables.trainable_variables()
