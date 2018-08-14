@@ -628,7 +628,6 @@ tf_cc_binary(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//tensorflow:darwin": [
             "-lm",
             "-lpthread",

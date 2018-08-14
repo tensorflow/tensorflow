@@ -356,7 +356,7 @@ llvm::TargetOptions CompilerTargetOptions(
   llvm::TargetOptions target_options;
   llvm_ir::SetTargetOptions(
       /*fast_math_enabled=*/module_config.debug_options()
-          .xla_enable_fast_math(),
+          .xla_cpu_enable_fast_math(),
       &target_options);
   return target_options;
 }
@@ -523,7 +523,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
-      module->config().debug_options().xla_enable_fast_math(),
+      module->config().debug_options().xla_cpu_enable_fast_math(),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
       pre_optimization_ir_hook, post_optimization_ir_hook);
   llvm_module->setDataLayout(jit->data_layout());
@@ -653,9 +653,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   // so we bail if the configs have conflicting flags. At the moment, the only
   // flag that needs to be consistent is fast-math.
   const bool fast_math_enabled =
-      modules[0]->config().debug_options().xla_enable_fast_math();
+      modules[0]->config().debug_options().xla_cpu_enable_fast_math();
   for (const auto& module : modules) {
-    if (module->config().debug_options().xla_enable_fast_math() !=
+    if (module->config().debug_options().xla_cpu_enable_fast_math() !=
         fast_math_enabled) {
       return InvalidArgument(
           "All HLO module configs must have the same value for "
@@ -832,7 +832,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     CompilerFunctor compiler_functor(
         target_machine.get(), &disassembler, opt_level,
         options::OptimizeForSizeRequested(module->config()),
-        module->config().debug_options().xla_enable_fast_math(),
+        module->config().debug_options().xla_cpu_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
         pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
     std::unique_ptr<llvm::MemoryBuffer> object_file =

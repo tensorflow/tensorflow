@@ -312,7 +312,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   return Status::OK();
 }
 
-// We add copies for all the indices of the true and false computaiton roots,
+// We add copies for all the indices of the true and false computation roots,
 // in order to resolve interference. We later rely on the CopyRemover to drop
 // the unnecessary ones.
 Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
@@ -648,7 +648,12 @@ class CopyRemover {
       //  We can only perform copy elision if the resulting merged values have
       //  totally ordered live ranges; otherwise the merged buffer would have
       //  live range interference.
-      if (IsHead(*dest)) {
+      if (src->next == dest) {
+        // In the process of eliding copies, its possible for a copy to have the
+        // same source and destination buffer. In this case, the copy can be
+        // safely removed.
+        VLOG(2) << copy->name() << " source and destination buffers are same.";
+      } else if (IsHead(*dest)) {
         // The copy copies an arbitrary value in the source buffer (call it s_x)
         // and defines d_0, the first value in the destination buffer. After
         // merging, the values in the combined buffer must be strictly ordered

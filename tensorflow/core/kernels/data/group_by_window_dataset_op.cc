@@ -93,7 +93,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& key_func, const NameAttrList& reduce_func,
@@ -103,7 +103,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_window_size_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           key_func_(key_func),
           reduce_func_(reduce_func),

@@ -1824,7 +1824,6 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
         break;
       }
       case TokKind::kComma:
-      case TokKind::kComment:
         // Skip.
         lexer_.Lex();
         break;

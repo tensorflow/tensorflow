@@ -98,12 +98,12 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
             std::vector<PartialTensorShape> padded_shapes,
             std::vector<Tensor> padding_values, const DatasetBase* input)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
           drop_remainder_(drop_remainder),
           padded_shapes_(std::move(padded_shapes)),

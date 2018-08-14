@@ -539,7 +539,10 @@ cc_test(
 cc_test(
     name = "depthwiseconv_quantized_test",
     srcs = ["depthwiseconv_quantized_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":optimized_base",
         ":reference_base",

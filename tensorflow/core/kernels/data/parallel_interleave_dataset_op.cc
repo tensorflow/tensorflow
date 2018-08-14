@@ -92,7 +92,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
@@ -100,7 +100,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             int64 block_length, bool sloppy, int64 buffer_output_elements,
             int64 prefetch_input_elements, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           interleave_func_(func),
           captured_func_(std::move(captured_func)),

@@ -17,6 +17,24 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/../../.."
+cd "$SCRIPT_DIR/../../../../.."
 
-CC_PREFIX=arm-linux-gnueabihf- make -j 3 -f tensorflow/contrib/lite/Makefile TARGET=RPI TARGET_ARCH=armv7
+# Build library for supported architectures and packs them in a fat binary.
+make_library() {
+    for arch in x86_64 armv7 armv7s arm64
+    do
+        make -f tensorflow/contrib/lite/tools/make/Makefile TARGET=ios TARGET_ARCH=${arch} \
+        -j 8
+    done
+    mkdir -p tensorflow/contrib/lite/tools/make/gen/lib
+    lipo \
+    tensorflow/contrib/lite/tools/make/gen/ios_x86_64/lib/${1} \
+    tensorflow/contrib/lite/tools/make/gen/ios_armv7/lib/${1} \
+    tensorflow/contrib/lite/tools/make/gen/ios_armv7s/lib/${1} \
+    tensorflow/contrib/lite/tools/make/gen/ios_arm64/lib/${1} \
+    -create \
+    -output tensorflow/contrib/lite/tools/make/gen/lib/${1}
+}
+
+make_library libtensorflow-lite.a
+make_library benchmark-lib.a

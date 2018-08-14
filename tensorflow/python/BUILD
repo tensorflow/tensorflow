@@ -1870,6 +1870,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":nn_ops_gen",
+        ":numerics",
         "@six_archive//:six",
     ],
 )
@@ -1883,7 +1884,6 @@ py_test(
         ":client_testlib",
         ":clip_ops",
         ":framework_for_generated_wrappers",
-        ":numerics",
         "//third_party/py/numpy",
     ],
 )

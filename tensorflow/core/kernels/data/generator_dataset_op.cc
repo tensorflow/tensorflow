@@ -26,14 +26,14 @@ namespace tensorflow {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
+class GeneratorDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, std::unique_ptr<CapturedFunction> init_func,
           std::unique_ptr<CapturedFunction> next_func,
           std::unique_ptr<CapturedFunction> finalize_func,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
-      : GraphDatasetBase(ctx),
+      : DatasetBase(DatasetContext(ctx)),
         init_func_(std::move(init_func)),
         next_func_(std::move(next_func)),
         finalize_func_(std::move(finalize_func)),
@@ -47,11 +47,20 @@ class GeneratorDatasetOp::Dataset : public GraphDatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
+
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return output_shapes_;
   }
 
   string DebugString() const override { return "GeneratorDatasetOp::Dataset"; }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    return errors::Unimplemented("%s does not support serialization",
+                                 DebugString());
+  }
 
  private:
   class Iterator : public DatasetIterator<Dataset> {
