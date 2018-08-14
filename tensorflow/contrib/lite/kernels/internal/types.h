@@ -129,6 +129,13 @@ class RuntimeShape {
     }
   }
 
+  RuntimeShape(int shape_size, int32 value) : size_(0) {
+    Resize(shape_size);
+    for (int i = 0; i < shape_size; ++i) {
+      SetDim(i, value);
+    }
+  }
+
   RuntimeShape(int dimensions_count, const int32* dims_data) : size_(0) {
     ReplaceWith(dimensions_count, dims_data);
   }

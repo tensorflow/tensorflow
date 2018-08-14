@@ -93,7 +93,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         input1->params.scale * input2->params.scale / output->params.scale;
     QuantizeMultiplierSmallerThanOneExp(
         real_multiplier, &data->output_multiplier, &data->output_shift);
-    data->output_shift *= -1;
   }
 
   return context->ResizeTensor(context, output, output_size);
@@ -161,9 +160,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     // The quantized version of Mul doesn't support activations, so we
     // always use BroadcastMul.
     if (kernel_type == kReference) {
-      TF_LITE_MUL(reference_ops, BroadcastMul);
+      TF_LITE_MUL(reference_ops, BroadcastMul4DSlow);
     } else {
-      TF_LITE_MUL(optimized_ops, BroadcastMul);
+      TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow);
     }
 #undef TF_LITE_MUL
   } else if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&

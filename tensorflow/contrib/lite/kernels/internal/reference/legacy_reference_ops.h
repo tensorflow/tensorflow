@@ -316,6 +316,37 @@ inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
               DimsToShape(output_dims), output_data);
 }
 
+inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
+                         int32 input1_offset, const uint8* input2_data,
+                         const Dims<4>& input2_dims, int32 input2_offset,
+                         int32 output_offset, int32 output_multiplier,
+                         int output_shift, int32 output_activation_min,
+                         int32 output_activation_max, uint8* output_data,
+                         const Dims<4>& output_dims) {
+  BroadcastMul4DSlow(
+      input1_data, input1_dims, input1_offset, input2_data, input2_dims,
+      input2_offset, output_offset, output_multiplier,
+      //
+      kReverseShift * output_shift,
+      //
+      output_activation_min, output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
+                         int32 input1_offset, const uint8* input2_data,
+                         const Dims<4>& input2_dims, int32 input2_offset,
+                         int32 output_offset, int32 output_multiplier,
+                         int output_shift, int32 output_activation_min,
+                         int32 output_activation_max, uint8* output_data,
+                         const Dims<4>& output_dims) {
+  BroadcastMul(input1_data, input1_dims, input1_offset, input2_data,
+               input2_dims, input2_offset, output_offset, output_multiplier,
+               output_shift, output_activation_min, output_activation_max,
+               output_data, output_dims);
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void AveragePool(const float* input_data, const Dims<4>& input_dims,
