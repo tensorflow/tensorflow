@@ -446,6 +446,22 @@ class FunctionTest(test.TestCase):
       op = call()
       self.assertAllEqual(sess.run(op), 2.0)
 
+  def testSymbolicGradientVariableZerosLike(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      @function.defun
+      def f(x, v):
+        v.read_value()
+        return x * x
+
+      x = constant_op.constant(1.0)
+      l = f(x, v)
+      _, dv = gradients_impl.gradients(l, [x, v])
+      with self.test_session():
+        v.initializer.run()
+        self.assertAllEqual(dv.eval(), 0.0)
+
   def testGraphModeManyFunctions(self):
     with context.graph_mode(), self.test_session():
 
