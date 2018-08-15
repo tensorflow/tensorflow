@@ -50,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "merge_all"
-    argspec: "args=[\'key\', \'scope\'], varargs=None, keywords=None, defaults=[\'summaries\', \'None\'], "
+    argspec: "args=[\'key\', \'scope\', \'name\'], varargs=None, keywords=None, defaults=[\'summaries\', \'None\', \'None\'], "
   }
   member_method {
     name: "scalar"
