@@ -772,7 +772,7 @@ def _ExtractImagePatchesGrad(op, grad):
   sp_shape = (input_indices_num, output_indices_num)
   sp_mat_full = sparse_tensor.SparseTensor(
       idx_map,
-      array_ops.ones_like(idx_map[:, 0], dtype=grad.dtype),
+      array_ops.ones([output_indices_num], dtype=grad.dtype),
       sp_shape)
   # Remove all padding locations [0, :].
   sp_mat = sparse_ops.sparse_slice(sp_mat_full,
