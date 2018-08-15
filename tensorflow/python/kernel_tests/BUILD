@@ -73,6 +73,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "batch_gather_op_test",
+    srcs = ["batch_gather_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_py_test(
     name = "bcast_ops_test",
     size = "small",
     srcs = ["bcast_ops_test.py"],
