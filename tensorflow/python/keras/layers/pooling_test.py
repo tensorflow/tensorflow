@@ -126,8 +126,7 @@ class Pooling3DTest(test.TestCase):
   def test_maxpooling_3d(self):
 
     if test.is_built_with_rocm():
-      # 5D tensors are not yet supported in ROCm
-      return
+      self.skipTest("5D tensors are not yet supported in ROCm")
 
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
@@ -150,8 +149,7 @@ class Pooling3DTest(test.TestCase):
   def test_averagepooling_3d(self):
 
     if test.is_built_with_rocm():
-      # 5D tensors are not yet supported in ROCm
-      return
+      self.skipTest("5D tensors are not yet supported in ROCm")
 
     pool_size = (3, 3, 3)
     testing_utils.layer_test(

@@ -3159,7 +3159,7 @@ class AssertTest(test.TestCase):
       # That name assignment currently only happens for tensorflow build with CUDA, 
       # ROCm support for the same is still in the process of being implemented
       # Disabling this test for ROCm for the time being
-      return
+      self.skipTest("GPU device/stream tracing is not yet fully supported in ROCm")
     
     with self.test_session(use_gpu=True) as sess:
       with ops.device(test.gpu_device_name()):
