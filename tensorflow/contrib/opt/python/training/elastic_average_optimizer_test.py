@@ -117,7 +117,7 @@ def _get_workers(num_workers, period, workers, moving_rate, num_ps=1):
         if num_ps == 1:
           train_op = [
               opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
-                                global_step)
+                                  global_step)
           ]
         else:
           train_op = [
@@ -125,7 +125,7 @@ def _get_workers(num_workers, period, workers, moving_rate, num_ps=1):
                                    [grads_1, var_1],
                                    [grads_part_0, part_0],
                                    [grads_part_1, part_1]),
-                                global_step)
+                                  global_step)
           ]
         easgd_hook = opt.make_session_run_hook(is_chief, worker_id)
         saver = opt.swapping_saver()
@@ -197,7 +197,7 @@ class ElasticAverageOptimizerTest(test.TestCase):
 
     # save, data will be global value
     savers[0].save(sessions[0]._sess._sess._sess._sess,
-        save_path='./model/model')
+                   save_path='./model/model')
     ops.reset_default_graph()   # restore on a new graph
     with session.Session() as sess:
       v0 = variable_scope.get_variable(initializer=0.0, name="v0")
@@ -250,7 +250,7 @@ class ElasticAverageOptimizerTest(test.TestCase):
     part_0_g = sessions[0].run(part_0_g)
 
     savers[0].save(sessions[0]._sess._sess._sess._sess,
-        save_path='./model/model')
+                   save_path='./model/model')
 
     # verify restore of partitioned_variables
     ops.reset_default_graph()   # restore on a new graph
