@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_CONSTANT_OP_H_
-#define TENSORFLOW_CORE_KERNELS_CONSTANT_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HOST_CONSTANT_OP_H_
+#define TENSORFLOW_CORE_KERNELS_HOST_CONSTANT_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -23,28 +23,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-// ConstantOp returns a tensor specified by ConstantOpDef.
-class ConstantOp : public OpKernel {
+// HostConstantOp differs from ConstantOp in that its output is always
+// in host memory.
+class _HostConstantOp : public OpKernel {
  public:
-  explicit ConstantOp(OpKernelConstruction* ctx);
+  explicit _HostConstantOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
   bool IsExpensive() override { return false; }
-  ~ConstantOp() override;
+  ~_HostConstantOp() override {}
 
  private:
   Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ConstantOp);
-};
-
-class PlaceholderOp : public OpKernel {
- public:
-  explicit PlaceholderOp(OpKernelConstruction* ctx);
-  void Compute(OpKernelContext* ctx) override;
-
- private:
-  PartialTensorShape expected_shape_;
+  TF_DISALLOW_COPY_AND_ASSIGN(_HostConstantOp);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_CONSTANT_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_HOST_CONSTANT_OP_H_
