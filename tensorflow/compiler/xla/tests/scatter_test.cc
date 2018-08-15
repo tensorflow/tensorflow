@@ -594,21 +594,20 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 }
 
 ENTRY main {
-  operand = s32[3,3] parameter(0)
+  operand = s32[3] parameter(0)
   indices = s32[0] parameter(1)
-  updates = s32[0,0] parameter(2)
-  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+  updates = s32[0] parameter(2)
+  ROOT scatter = s32[3] scatter(operand, indices, updates),
       to_apply=update_s32,
-      update_window_dims={1},
+      update_window_dims={},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
 }
 )";
-  std::unique_ptr<Literal> operand =
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({1, 2, 3});
   std::unique_ptr<Literal> scatter_indices = LiteralUtil::CreateR1<int32>({});
-  std::unique_ptr<Literal> updates = LiteralUtil::CreateR2<int32>({{}});
+  std::unique_ptr<Literal> updates = LiteralUtil::CreateR1<int32>({});
   RunTest(hlo_text, operand.get(), scatter_indices.get(), updates.get());
 }
 
