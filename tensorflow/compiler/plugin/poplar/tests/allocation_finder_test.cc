@@ -724,6 +724,63 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
   EXPECT_EQ(t2.path.size(), 1);
 }
 
+
+// Check it goes through call sites
+TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
+  Shape half_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 1});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
+
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
+
+  /* Create sub-computation which contains an unacceptable op */
+  std::unique_ptr<Literal> literal = Literal::CreateFromShape(half_shape);
+  auto builder_sub = HloComputation::Builder(TestName());
+  HloInstruction* op0_sub = builder_sub.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "input"));
+  HloInstruction* op1_sub = builder_sub.AddInstruction(
+    HloInstruction::CreateConstant(std::move(literal)));
+  HloInstruction* op2_sub = builder_sub.AddInstruction(
+    HloInstruction::CreateConcatenate(input_shape, {op0_sub, op1_sub}, 3));
+  auto computation_sub = builder_sub.Build();
+
+  /* Create main computation */
+  auto builder_main = HloComputation::Builder(TestName());
+  HloInstruction* op0 = builder_main.AddInstruction(
+      HloInstruction::CreateParameter(0, half_shape, "op0"));
+  HloInstruction* op1 = builder_main.AddInstruction(
+      HloInstruction::CreateParameter(1, weight_shape, "op1"));
+  HloInstruction* call = builder_main.AddInstruction(
+      HloInstruction::CreateCall(input_shape, {op0}, computation_sub.get()));
+  HloInstruction* conv = builder_main.AddInstruction(
+      HloInstruction::CreateConvolve(conv_shape, call, op1, GetConv1Window(),
+                                     GetConvDimensions()));
+
+  builder_main.AddInstruction(HloInstruction::CreateTuple({conv}));
+
+  auto computation_main = builder_main.Build();
+
+  auto hlo_module = CreateNewModule();
+  hlo_module->AddEmbeddedComputation(std::move(computation_sub));
+  hlo_module->AddEntryComputation(std::move(computation_main));
+
+  CompilerAnnotations annotations;
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
+
+  const HloInstruction* c_conv = conv;
+
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 1);
+  auto t1 = annotations.tensor_allocation_map.at(std::make_pair(op1, 0));
+  EXPECT_EQ(t1.tgt, conv);
+  EXPECT_EQ(t1.input_index, 1ll);
+  EXPECT_EQ(t1.path.size(), 1);
+}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
