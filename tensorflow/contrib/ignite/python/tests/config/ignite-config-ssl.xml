@@ -1,0 +1,28 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:util="http://www.springframework.org/schema/util"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/util
+       http://www.springframework.org/schema/util/spring-util.xsd">  
+
+  <bean id="client-connector-configuration" class="org.apache.ignite.configuration.ClientConnectorConfiguration">
+    <property name="host" value="localhost" />
+    <property name="port" value="10800" />
+    <property name="sslClientAuth" value="false" />
+    <property name="sslEnabled" value="true" />
+    <property name="useIgniteSslContextFactory" value="true" />
+  </bean>
+
+  <bean id="ssl-context-factory" class="org.apache.ignite.ssl.SslContextFactory">
+    <property name="keyStoreFilePath" value="/data/keystore/server.jks"/>
+    <property name="keyStorePassword" value="123456"/>
+    <property name="trustStoreFilePath" value="/data/keystore/trust.jks"/>
+    <property name="trustStorePassword" value="123456"/>
+  </bean>
+
+  <bean id="ignite-configuration" class="org.apache.ignite.configuration.IgniteConfiguration">
+    <property name="clientConnectorConfiguration" ref="client-connector-configuration" />
+    <property name="sslContextFactory" ref="ssl-context-factory" />
+  </bean>
+
+</beans>
