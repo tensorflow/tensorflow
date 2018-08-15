@@ -1319,7 +1319,7 @@ class ExecutorState {
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
-  StepStatsCollector* stats_collector_;
+  StepStatsCollectorInterface* const stats_collector_;
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
