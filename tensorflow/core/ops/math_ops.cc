@@ -393,7 +393,10 @@ REGISTER_OP("Div").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("DivNoNan")
-    .BINARY_MORE()
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("FloorDiv")
