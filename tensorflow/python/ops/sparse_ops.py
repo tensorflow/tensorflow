@@ -796,6 +796,11 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   with a single element is returned.  Additionally, the axes can be negative,
   similar to the indexing rules in Python.
 
+  The values not defined in `sp_input` don't participate in the reduce max,
+  as opposed to be implicitly assumed 0 -- hence it can return negative values
+  for sparse `reduction_axes`. But, in case there are no values in
+  `reduction_axes`, it will reduce to 0. See second example below.
+
   For example:
 
   ```python
@@ -807,6 +812,11 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   tf.sparse_reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
   tf.sparse_reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
   tf.sparse_reduce_max(x, [0, 1]) ==> 3
+
+  # 'y' represents [[-7, ?]
+  #                 [ 4, 3]
+  #                 [ ?, ?]
+  tf.sparse_reduce_max(x, 1) ==> [-7, 4, 0]
   ```
 
   Args:
