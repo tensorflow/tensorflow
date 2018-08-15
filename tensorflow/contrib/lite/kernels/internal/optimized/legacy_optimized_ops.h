@@ -30,11 +30,6 @@ namespace optimized_ops {
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 
-inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
-  return RuntimeShape(
-      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
-}
-
 template <FusedActivationFunctionType Ac>
 void L2Normalization(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {

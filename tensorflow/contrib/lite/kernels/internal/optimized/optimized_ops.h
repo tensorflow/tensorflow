@@ -76,6 +76,11 @@ using reference_ops::Transpose;
 // Used mainly to convert from old-style shifts (right) to new-style (left).
 static constexpr int kReverseShift = -1;
 
+inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
+  return RuntimeShape(
+      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
+}
+
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
 // construct the suitable Eigen type for the constness of the
@@ -5477,31 +5482,53 @@ void TypedMemset(void* ptr, T value, size_t num) {
   }
 }
 
-template <typename T>
-inline void PadV2(const T* input_data, const Dims<4>& input_dims,
-                  const std::vector<int>& left_paddings,
-                  const std::vector<int>& right_paddings, T* output_data,
-                  const Dims<4>& output_dims, const T pad_value) {
+// There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
+// scalar input that provides the padding value.  Therefore pad_value_ptr can be
+// equivalent to a simple input1_data.  For Pad, it should point to a zero
+// value.
+//
+// Note that two typenames are required, so that T=P=int32 is considered a
+// specialization distinct from P=int32.
+template <typename T, typename P>
+inline void PadImpl(const tflite::PadParams& op_params,
+                    const RuntimeShape& input_shape, const T* input_data,
+                    const P* pad_value_ptr, const RuntimeShape& output_shape,
+                    T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Pad");
-  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
-  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
+  RuntimeShape ext_input_shape = RuntimeShape::ExtendedShape(4, input_shape);
+  RuntimeShape ext_output_shape = RuntimeShape::ExtendedShape(4, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
-  const int output_batch = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_depth = ArraySize(output_dims, 0);
+  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
+  // we can pad them to 4 dims (yes, we are "padding the padding").
+  std::vector<int> left_padding_copy(4, 0);
+  for (int i = 0; i < op_params.left_padding_count; ++i) {
+    left_padding_copy[i] = op_params.left_padding[i];
+  }
+  std::vector<int> right_padding_copy(4, 0);
+  for (int i = 0; i < op_params.right_padding_count; ++i) {
+    right_padding_copy[i] = op_params.right_padding[i];
+  }
 
-  const int left_b_padding = left_paddings[3];
-  const int left_h_padding = left_paddings[2];
-  const int left_w_padding = left_paddings[1];
-  const int left_d_padding = left_paddings[0];
+  const int output_batch = ext_output_shape.Dims(0);
+  const int output_height = ext_output_shape.Dims(1);
+  const int output_width = ext_output_shape.Dims(2);
+  const int output_depth = ext_output_shape.Dims(3);
 
-  const int right_b_padding = right_paddings[3];
-  const int right_h_padding = right_paddings[2];
-  const int right_w_padding = right_paddings[1];
-  const int right_d_padding = right_paddings[0];
+  const int left_b_padding = left_padding_copy[0];
+  const int left_h_padding = left_padding_copy[1];
+  const int left_w_padding = left_padding_copy[2];
+  const int left_d_padding = left_padding_copy[3];
 
-  const int input_depth = ArraySize(input_dims, 0);
+  const int right_b_padding = right_padding_copy[0];
+  const int right_h_padding = right_padding_copy[1];
+  const int right_w_padding = right_padding_copy[2];
+  const int right_d_padding = right_padding_copy[3];
+
+  const int input_depth = ext_input_shape.Dims(3);
+  // const T pad_value = ExtractFloatOrInt<T>(op_params.pad_value);
+  const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
     TypedMemset<T>(
@@ -5511,61 +5538,113 @@ inline void PadV2(const T* input_data, const Dims<4>& input_dims,
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0),
                      pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
-                       pad_value, left_w_padding * output_depth);
+        TypedMemset<T>(
+            output_data + Offset(ext_output_shape, out_b, out_h, 0, 0),
+            pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              output_data + Offset(ext_output_shape, out_b, out_h, out_w, 0),
               pad_value, left_d_padding);
         }
 
         T* out = output_data +
-                 Offset(output_dims, left_d_padding, out_w, out_h, out_b);
-        const T* in =
-            input_data + Offset(input_dims, 0, out_w - left_w_padding,
-                                out_h - left_h_padding, out_b - left_b_padding);
+                 Offset(ext_output_shape, out_b, out_h, out_w, left_d_padding);
+        const T* in = input_data +
+                      Offset(ext_input_shape, out_b - left_b_padding,
+                             out_h - left_h_padding, out_w - left_w_padding, 0);
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(output_dims, output_depth - right_d_padding,
-                                   out_w, out_h, out_b),
+              output_data + Offset(ext_output_shape, out_b, out_h, out_w,
+                                   output_depth - right_d_padding),
               pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        TypedMemset<T>(
-            output_data + Offset(output_dims, 0, output_width - right_w_padding,
-                                 out_h, out_b),
-            pad_value, right_w_padding * output_depth);
+        TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_h,
+                                            output_width - right_w_padding, 0),
+                       pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
       TypedMemset<T>(
-          output_data +
-              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          output_data + Offset(ext_output_shape, out_b,
+                               output_height - right_h_padding, 0, 0),
           pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
     TypedMemset<T>(
         output_data +
-            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+            Offset(ext_output_shape, output_batch - right_b_padding, 0, 0, 0),
         pad_value,
         right_b_padding * output_height * output_width * output_depth);
   }
 }
 
-// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T, typename P>
+inline void Pad(const tflite::PadParams& op_params,
+                const RuntimeShape& input_shape, const T* input_data,
+                const P* pad_value_ptr, const RuntimeShape& output_shape,
+                T* output_data) {
+  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+          output_data);
+}
+
+// The second (pad-value) input can be int32 when, say, the first is uint8.
+template <typename T>
+inline void Pad(const tflite::PadParams& op_params,
+                const RuntimeShape& input_shape, const T* input_data,
+                const int32* pad_value_ptr, const RuntimeShape& output_shape,
+                T* output_data) {
+  const T converted_pad_value = static_cast<T>(*pad_value_ptr);
+  PadImpl(op_params, input_shape, input_data, &converted_pad_value,
+          output_shape, output_data);
+}
+
+// This version avoids conflicting template matching.
+template <>
+inline void Pad(const tflite::PadParams& op_params,
+                const RuntimeShape& input_shape, const int32* input_data,
+                const int32* pad_value_ptr, const RuntimeShape& output_shape,
+                int32* output_data) {
+  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+          output_data);
+}
+
+// Legacy signature, function covered both Pad and PadV2.
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
+  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
+  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
+  tflite::PadParams op_params;
+  op_params.left_padding_count = 4;
+  op_params.right_padding_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    op_params.left_padding[i] = left_paddings[3 - i];
+    op_params.right_padding[i] = right_paddings[3 - i];
+  }
+  // SetFloatOrInt(pad_value, &op_params.pad_value);
+  const T pad_value_copy = pad_value;
+
+  Pad(op_params, DimsToShape(input_dims), input_data, &pad_value_copy,
+      DimsToShape(output_dims), output_data);
+}
+
+// Old Pad that calls legacy PadV2.
 template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
@@ -5576,34 +5655,45 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
            output_dims, converted_pad_value);
 }
 
+// Old Pad that only padded with 0.
 template <typename T>
 inline void Pad(const T* input_data, const Dims<4>& input_dims,
                 const std::vector<int>& left_paddings,
                 const std::vector<int>& right_paddings, T* output_data,
                 const Dims<4>& output_dims) {
-  Pad(input_data, input_dims, left_paddings, right_paddings, output_data,
-      output_dims, 0);
+  const T pad_value = static_cast<T>(0);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, pad_value);
 }
 
 template <typename T>
-inline void Slice(const T* input_data, const Dims<4>& input_dims,
-                  const std::vector<int>& begin, const std::vector<int>& size,
-                  T* output_data, const Dims<4>& output_dims) {
-  // TODO(dkalenichenko): This op only supports 4D tensors.
-  TFLITE_DCHECK_EQ(begin.size(), 4);
-  TFLITE_DCHECK_EQ(size.size(), 4);
-  const int start_b = begin[3];
-  const int stop_b =
-      size[3] == -1 ? input_dims.sizes[3] - start_b : start_b + size[3];
-  const int start_h = begin[2];
-  const int stop_h =
-      size[2] == -1 ? input_dims.sizes[2] - start_h : start_h + size[2];
-  const int start_w = begin[1];
-  const int stop_w =
-      size[1] == -1 ? input_dims.sizes[1] - start_w : start_w + size[1];
-  const int start_d = begin[0];
-  const int stop_d =
-      size[0] == -1 ? input_dims.sizes[0] - start_d : start_d + size[0];
+inline void Slice(const tflite::SliceParams& op_params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Slice");
+  RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
+  // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
+  TFLITE_DCHECK_LE(op_params.begin_count, 4);
+  TFLITE_DCHECK_LE(op_params.size_count, 4);
+  const int begin_count = op_params.begin_count;
+  const int size_count = op_params.size_count;
+  // We front-pad the begin and size vectors.
+  const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
+  const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
+                         ? ext_shape.Dims(0) - start_b
+                         : start_b + op_params.size[0];
+  const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
+  const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
+                         ? ext_shape.Dims(1) - start_h
+                         : start_h + op_params.size[size_count - 3];
+  const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
+  const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
+                         ? ext_shape.Dims(2) - start_w
+                         : start_w + op_params.size[size_count - 2];
+  const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
+  const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
+                         ? ext_shape.Dims(3) - start_d
+                         : start_d + op_params.size[size_count - 1];
 
   T* out_ptr = output_data;
   for (int in_b = start_b; in_b < stop_b; ++in_b) {
@@ -5611,7 +5701,7 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
       for (int in_w = start_w; in_w < stop_w; ++in_w) {
         const int len = stop_d - start_d;
         memcpy(out_ptr,
-               input_data + Offset(input_dims, start_d, in_w, in_h, in_b),
+               input_data + Offset(ext_shape, in_b, in_h, in_w, start_d),
                len * sizeof(T));
         out_ptr += len;
       }
@@ -5620,25 +5710,57 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Slice(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& begin, const std::vector<int>& size,
+                  T* output_data, const Dims<4>& output_dims) {
+  tflite::SliceParams op_params;
+  op_params.begin_count = 4;
+  op_params.size_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    op_params.begin[i] = begin[3 - i];
+    op_params.size[i] = size[3 - i];
+  }
+
+  Slice(op_params, DimsToShape(input_dims), input_data,
+        DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
+             const T* input2_data, const RuntimeShape& output_shape,
+             T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("TensorFlowMinimum");
+  auto input1_map = MapAsVector(input1_data, input1_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  auto min_value = input2_data[0];
+  output_map.array() = input1_map.array().min(min_value);
+}
+
+template <typename T>
+void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
+             const T* input2_data, const RuntimeShape& output_shape,
+             T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("TensorFlowMaximum");
+  auto input1_map = MapAsVector(input1_data, input1_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  auto max_value = input2_data[0];
+  output_map.array() = input1_map.array().max(max_value);
+}
+
+template <typename T>
 void TensorFlowMinimum(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, T* output_data,
                        const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowMinimum");
-  auto input1_map = MapAsVector(input1_data, input1_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  auto min_value = input2_data[0];
-  output_map.array() = input1_map.array().min(min_value);
+  Minimum(DimsToShape(input1_dims), input1_data, input2_data,
+          DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
 void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, T* output_data,
                        const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowMaximum");
-  auto input1_map = MapAsVector(input1_data, input1_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  auto max_value = input2_data[0];
-  output_map.array() = input1_map.array().max(max_value);
+  Maximum(DimsToShape(input1_dims), input1_data, input2_data,
+          DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
