@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -49,6 +50,8 @@ int PrimitiveTypeToNumpyType(PrimitiveType primitive_type) {
       return NPY_FLOAT32;
     case F64:
       return NPY_FLOAT64;
+    case C64:
+      return NPY_COMPLEX64;
     case TUPLE:
       return NPY_OBJECT;
     default:
@@ -82,6 +85,8 @@ PrimitiveType NumpyTypeToPrimitiveType(int np_type) {
       return F32;
     case NPY_FLOAT64:
       return F64;
+    case NPY_COMPLEX64:
+      return C64;
     case NPY_OBJECT:
       return TUPLE;
     default:
@@ -103,6 +108,7 @@ bool NumpyTypeIsValid(int np_type) {
     case NPY_FLOAT16:
     case NPY_FLOAT32:
     case NPY_FLOAT64:
+    case NPY_COMPLEX64:
     case NPY_OBJECT:
       return true;
     default:
@@ -374,7 +380,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
       TF_ASSIGN_OR_RETURN(auto literal, XlaLiteralFromPyObject(element));
       elements.push_back(std::move(literal));
     }
-    return Literal::MakeTupleOwned(std::move(elements));
+    return LiteralUtil::MakeTupleOwned(std::move(elements));
   } else if (PyArray_Check(o)) {
     PyArrayObject* py_array = reinterpret_cast<PyArrayObject*>(o);
     int rank = PyArray_NDIM(py_array);
@@ -383,7 +389,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
       dimensions[i] = PyArray_DIM(py_array, i);
     }
     int np_type = PyArray_TYPE(py_array);
-    auto literal = Literal::CreateFromDimensions(
+    auto literal = LiteralUtil::CreateFromDimensions(
         NumpyTypeToPrimitiveType(np_type), dimensions);
     TF_RETURN_IF_ERROR(
         CopyNumpyArrayToLiteral(np_type, py_array, literal.get()));
@@ -424,6 +430,9 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
     case NPY_FLOAT64:
       CopyNumpyArrayToLiteral<double>(py_array, literal);
       break;
+    case NPY_COMPLEX64:
+      CopyNumpyArrayToLiteral<complex64>(py_array, literal);
+      break;
     default:
       return InvalidArgument(
           "No XLA literal container for Numpy type number: %d", np_type);
@@ -460,6 +469,9 @@ void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
       break;
     case NPY_FLOAT64:
       CopyLiteralToNumpyArray<double>(literal, py_array);
+      break;
+    case NPY_COMPLEX64:
+      CopyLiteralToNumpyArray<complex64>(literal, py_array);
       break;
     default:
       LOG(FATAL) << "No XLA literal container for Numpy type" << np_type;

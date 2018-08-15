@@ -36,10 +36,8 @@ void GetQuantizationParamsFromArray(const Array& array,
   const std::vector<float>& float_vals =
       array.GetBuffer<ArrayDataType::kFloat>().data;
   auto minmax = std::minmax_element(float_vals.begin(), float_vals.end());
-  MinMax toco_minmax;
-  toco_minmax.min = *minmax.first;
-  toco_minmax.max = *minmax.second;
-  GetQuantizationParams(ArrayDataType::kUint8, toco_minmax, params);
+  *params = tflite::ChooseQuantizationParams<uint8>(
+      *minmax.first, *minmax.second, array.narrow_range);
 }
 
 }  // namespace

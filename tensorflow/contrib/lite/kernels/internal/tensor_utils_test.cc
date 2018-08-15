@@ -32,6 +32,22 @@ TEST(uKernels, ClipTest) {
                   {0.0, -0.5, 1.0, -1.5, 2.0, -2.0, 2.0, -2.0, 2.0, -2.0})));
 }
 
+TEST(uKernels, VectorScalarMultiply) {
+  constexpr int kVectorSize = 29;
+  static int8_t input[kVectorSize];
+  for (int i = 0; i < 29; ++i) {
+    input[i] = static_cast<int8_t>(i - 14);
+  }
+  const float scale = 0.1f;
+  std::vector<float> output(kVectorSize, 0.0f);
+  VectorScalarMultiply(input, kVectorSize, scale, output.data());
+  EXPECT_THAT(output,
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.4, -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5,
+                   -0.4, -0.3, -0.2, -0.1, 0,    0.1,  0.2,  0.3,  0.4,  0.5,
+                   0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
+}
+
 TEST(uKernels, IsZeroTest) {
   constexpr int kVectorSize = 21;
   static float zeros[kVectorSize] = {0.0};
@@ -56,14 +72,15 @@ TEST(uKernels, SymmetricQuantizeFloatsTest) {
   static float input[kVectorSize] = {-640, -635.0, -630, 10.0,  2.0,
                                      -5.0, -10.0,  0.0,  1000.0};
 
-  int8 output[kVectorSize];
+  int8_t output[kVectorSize];
   float min, max, scaling_factor;
   SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
                           &scaling_factor);
 
   EXPECT_EQ(min, -640);
   EXPECT_EQ(max, 1000);
-  EXPECT_NEAR(scaling_factor, 0.127, 1e-6);  // EQ won't work due to fpoint.
+  // EQ won't work due to fpoint.
+  EXPECT_NEAR(scaling_factor, 1000 / 127.0, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-81, -81, -80, 1, 0, -1, -1, 0, 127}));
 }
@@ -72,7 +89,7 @@ TEST(uKernels, SymmetricQuantizeFloatsAllZerosTest) {
   constexpr int kVectorSize = 9;
   static float input[kVectorSize] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-  int8 output[kVectorSize];
+  int8_t output[kVectorSize];
   float min, max, scaling_factor;
   SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
                           &scaling_factor);
@@ -88,14 +105,14 @@ TEST(uKernels, SymmetricQuantizeFloatsAllAlmostZeroTest) {
   static float input[kVectorSize] = {-1e-5, 3e-5, -7e-6, -9e-5, 1e-6,
                                      4e-5,  9e-6, 2e-4,  0};
 
-  int8 output[kVectorSize];
+  int8_t output[kVectorSize];
   float min, max, scaling_factor;
   SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
                           &scaling_factor);
 
   EXPECT_NEAR(min, -9e-05, 1e-6);
   EXPECT_NEAR(max, 0.0002, 1e-6);
-  EXPECT_EQ(scaling_factor, 635000);
+  EXPECT_NEAR(scaling_factor, 1.57e-6, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-6, 19, -4, -57, 1, 25, 6, 127, 0}));
 }
@@ -126,6 +143,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
                                                -1., 3., 7., 3., 23., 3.})));
 }
 
+#ifdef __ANDROID__
 TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   // Note we use 29 columns as this exercises all the neon kernel: the
   // 16-block SIMD code, the 8-block postamble, and the leftover postamble.
@@ -149,13 +167,13 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
       -13.13, 14.14, -15.15, 16.16, -17.17, 18.18, -19.19, 20.2, -21.21, 22.22,
       -23.23, 24.24, -25.25, 26.26, -27.27, 28.28, 0};
 
-  int8* a_int8_data = reinterpret_cast<int8*>(
+  int8_t* a_int8_data = reinterpret_cast<int8_t*>(
       aligned_malloc(a_rows * a_cols, kWeightsPerUint32));
   float a_min, a_max;
   float scaling_factor_a;
   SymmetricQuantizeFloats(a_float_data, a_rows * a_cols, a_int8_data, &a_min,
                           &a_max, &scaling_factor_a);
-  const int8 expected_a_int8_data[] = {
+  const int8_t expected_a_int8_data[] = {
       /* 1st row */
       5,
       10,
@@ -346,7 +364,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   };
 
   // Quantized values of B:
-  int8 b_int8_data[b_rows * b_cols * batches];
+  int8_t b_int8_data[b_rows * b_cols * batches];
   float b_min, b_max;
   float scaling_factor_b[batches];
   SymmetricQuantizeFloats(b_float_data, b_rows * b_cols, b_int8_data, &b_min,
@@ -355,7 +373,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
                           &b_int8_data[b_rows * b_cols], &b_min, &b_max,
                           &scaling_factor_b[1]);
 
-  const int8 expected_b_int8_data[] = {
+  const int8_t expected_b_int8_data[] = {
       /* batch 1 */
       127,
       -127,
@@ -448,6 +466,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
 
   aligned_free(a_int8_data);
 }
+#endif  // __ANDROID__
 
 TEST(uKernels, VectorVectorCwiseProductTest) {
   constexpr int kVectorSize = 10;

@@ -16,10 +16,12 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "tensorflow/core/kernels/cwise_ops_gpu_gradients.cu.h"
 
 namespace tensorflow {
 namespace functor {
 DEFINE_BINARY2(igamma, float, double);
+DEFINE_BINARY2(igamma_grad_a, float, double);
 DEFINE_BINARY2(igammac, float, double);
 }  // namespace functor
 }  // namespace tensorflow

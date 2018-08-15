@@ -57,89 +57,7 @@ from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
 
-def _OpsBetween(to_ops, from_ops):
-  """Build the list of operations between two lists of Operations.
-
-  Args:
-    to_ops: list of Operations.
-    from_ops: list of Operations.
-
-  Returns:
-    The list of operations between "from_ops" and "to_ops", sorted by
-    decreasing operation id. This list contains all elements of to_ops.
-
-    TODO(touts): Think about returning an empty list if from_ops are not
-    reachable from to_ops.  Presently it returns to_ops in that case.
-  """
-  # Ops that are reachable from the output of "input_ops".
-  reached_ops = set()
-  # We only care to reach up to "output_ops" so we mark the
-  # output ops as reached to avoid recursing past them.
-  for op in to_ops:
-    reached_ops.add(op)
-  gradients_impl._MarkReachedOps(from_ops, reached_ops)
-  between_ops = gradients_impl._GatherInputs(to_ops, reached_ops)
-  between_ops.sort(key=lambda x: -x._id)
-  return between_ops
-
-
 class GradientsTest(test_util.TensorFlowTestCase):
-
-  def _OpNames(self, op_list):
-    return ["%s/%d" % (str(op.name), op._id) for op in op_list]
-
-  def _assertOpListEqual(self, ops1, ops2):
-    self.assertEquals(self._OpNames(ops1), self._OpNames(ops2))
-
-  def testOpsBetweenSimple(self):
-    with ops.Graph().as_default():
-      t1 = constant(1.0)
-      t2 = constant(2.0)
-      t3 = array_ops.stack([t1, t2])
-    # Full graph
-    self._assertOpListEqual([t3.op, t2.op, t1.op],
-                            _OpsBetween([t3.op], [t1.op, t2.op]))
-    # Only t1, t3.
-    self._assertOpListEqual([t3.op, t1.op], _OpsBetween([t3.op], [t1.op]))
-
-  def testOpsBetweenUnreachable(self):
-    with ops.Graph().as_default():
-      t1 = constant(1.0)
-      t2 = constant(2.0)
-      _ = array_ops.stack([t1, t2])
-      t4 = constant(1.0)
-      t5 = constant(2.0)
-      t6 = array_ops.stack([t4, t5])
-    # Elements of to_ops are always listed.
-    self._assertOpListEqual([t6.op], _OpsBetween([t6.op], [t1.op]))
-
-  def testOpsBetweenCut(self):
-    with ops.Graph().as_default():
-      t1 = constant(1.0)
-      t2 = constant(2.0)
-      t3 = array_ops.stack([t1, t2])
-      t4 = constant([1.0])
-      t5 = array_ops.concat([t4, t3], 0)
-      t6 = constant([2.0])
-      t7 = array_ops.concat([t5, t6], 0)
-    self._assertOpListEqual([t7.op, t5.op, t4.op],
-                            _OpsBetween([t7.op], [t4.op]))
-
-  def testOpsBetweenCycle(self):
-    with ops.Graph().as_default():
-      t1 = constant(1.0)
-      t2 = constant(2.0)
-      t3 = array_ops.stack([t1, t2])
-      t4 = array_ops.concat([t3, t3, t3], 0)
-      t5 = constant([1.0])
-      t6 = array_ops.concat([t4, t5], 0)
-      t7 = array_ops.concat([t6, t3], 0)
-    self._assertOpListEqual([t6.op, t4.op, t3.op],
-                            _OpsBetween([t6.op], [t3.op]))
-    self._assertOpListEqual([t7.op, t6.op, t5.op, t4.op, t3.op, t1.op],
-                            _OpsBetween([t7.op], [t1.op, t5.op]))
-    self._assertOpListEqual([t6.op, t5.op, t4.op, t3.op, t2.op],
-                            _OpsBetween([t6.op], [t2.op, t5.op]))
 
   def testGradients(self):
     with ops.Graph().as_default():
@@ -518,6 +436,96 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
         f = self._GetFunc(
             grad_func=grad_func, python_grad_func=self._PythonGradient)
         f.add_to_graph(ops.Graph())
+
+  def testGradientWrtCaptured(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1.0, name="x")
+
+      @function.Defun()
+      def Foo():
+        y = math_ops.multiply(x, 2.0, name="y")
+        g = gradients_impl.gradients(y, x)
+        return g[0]
+
+      f = Foo()
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(f), 2.0)
+
+  def testGradientOfCaptured(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1.0, name="x")
+      y = math_ops.multiply(x, 2.0, name="y")
+
+      @function.Defun()
+      def Foo():
+        g = gradients_impl.gradients(y, x)
+        return g[0]
+
+      f = Foo()
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(f), 2.0)
+
+  def testCapturedResourceVariable(self):
+    with ops.Graph().as_default():
+      var = resource_variable_ops.ResourceVariable(1.0, name="var")
+
+      @function.Defun()
+      def Foo():
+        y = math_ops.multiply(var, 2.0, name="y")
+        g = gradients_impl.gradients(y, var)
+        return g[0]
+
+      f = Foo()
+      with self.test_session() as sess:
+        sess.run(variables.global_variables_initializer())
+        self.assertEqual(sess.run(f), 2.0)
+
+  def testCapturedNested(self):
+    with ops.Graph().as_default():
+      x1 = constant_op.constant(1.0, name="x1")
+      x2 = constant_op.constant(2.0, name="x2")
+      x3 = math_ops.multiply(x1, x2, name="x3")
+
+      @function.Defun()
+      def Outer():
+        outer1 = array_ops.identity(x1, name="outer1")
+
+        @function.Defun()
+        def Inner():
+          inner1 = array_ops.identity(outer1, name="inner1")
+          inner2 = array_ops.identity(x2, name="inner2")
+          inner3 = array_ops.identity(x3, name="inner3")
+          return gradients_impl.gradients([inner1, inner2, inner3, x1],
+                                          [x1, x2])
+
+        return Inner()
+
+      x1_grad, x2_grad = Outer()
+      with self.test_session() as sess:
+        # 1.0 + None + 2.0 + 1.0 = 4.0
+        self.assertEqual(sess.run(x1_grad), 4.0)
+        # None + 1.0 + 1.0 + None = 2.0
+        self.assertEqual(sess.run(x2_grad), 2.0)
+
+  def testCapturedFromFunction(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1.0, name="x")
+
+      @function.Defun()
+      def Outer():
+        y = math_ops.multiply(x, 2.0, name="y")
+
+        @function.Defun()
+        def Inner():
+          z = math_ops.multiply(y, 3.0, name="z")
+          g = gradients_impl.gradients(z, y)
+          return g[0]
+
+        return Inner()
+
+      z_grad = Outer()
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(z_grad), 3.0)
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):

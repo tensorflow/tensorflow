@@ -97,6 +97,8 @@ tf_cc_test(
     ],
     deps = [
         ":all_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],

@@ -25,10 +25,10 @@ the appropriate repository for the project. Major repositories include:
   
 ### Security
 
-Before using TensorFlow, please take a look at our security model, list of
-recent security announcements, and ways you can report security issues to the
-TensorFlow team at the
-[Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md) page on GitHub.
+Before using TensorFlow, please take a look at our [security model](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md#tensorflow-models-are-programs),
+[list of recent security advisories and announcements](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md),
+and [ways you can report security issues](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md#reporting-vulnerabilities)
+to the TensorFlow team at the [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md) page on GitHub.
 
 ## Stay Informed
 
@@ -54,7 +54,7 @@ with content from the TensorFlow team and the best articles from the community.
 
 ### YouTube
 
-Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learing
+Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learning
 and AI with TensorFlow. On it we have a number of new shows, including:
 
 - TensorFlow Meets: meet with community contributors to learn and share what they're doing

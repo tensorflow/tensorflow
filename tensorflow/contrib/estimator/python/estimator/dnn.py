@@ -53,6 +53,18 @@ class DNNEstimator(estimator.Estimator):
         l1_regularization_strength=0.001
       ))
 
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = DNNEstimator(
+      head=tf.contrib.estimator.multi_label_head(n_classes=3),
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=lambda: tf.AdamOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
+
   # Or estimator with warm-starting from a previous checkpoint.
   estimator = DNNEstimator(
       head=tf.contrib.estimator.multi_label_head(n_classes=3),
@@ -100,7 +112,8 @@ class DNNEstimator(estimator.Estimator):
                dropout=None,
                input_layer_partitioner=None,
                config=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               batch_norm=False):
     """Initializes a `DNNEstimator` instance.
 
     Args:
@@ -115,8 +128,9 @@ class DNNEstimator(estimator.Estimator):
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to Adagrad optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
       dropout: When not `None`, the probability we will drop out a given
@@ -129,6 +143,7 @@ class DNNEstimator(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      batch_norm: Whether to use batch normalization after each hidden layer.
     """
     def _model_fn(features, labels, mode, config):
       return dnn_lib._dnn_model_fn(  # pylint: disable=protected-access
@@ -142,7 +157,8 @@ class DNNEstimator(estimator.Estimator):
           activation_fn=activation_fn,
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm)
     super(DNNEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
         warm_start_from=warm_start_from)

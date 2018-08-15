@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
 
-class MomentumOptimizerTest(XLATestCase):
+class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def _update_nesterov_momentum_numpy(self, var, accum, g, lr, momentum):
     var += accum * lr * momentum

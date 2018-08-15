@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:safe_ptr",
+        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -248,6 +249,7 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -321,6 +323,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -403,6 +406,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
     tags = [
         "optonly",  # The test is too slow in non-opt mode

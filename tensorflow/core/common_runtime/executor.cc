@@ -127,36 +127,52 @@ bool SetTimelineLabel(const Node* node, NodeExecStatsWrapper* stats) {
 // Helper routines for collecting step stats.
 namespace nodestats {
 inline int64 NowInUsec() { return Env::Default()->NowMicros(); }
+inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
 
-void SetScheduled(NodeExecStatsWrapper* stats, int64 t) {
+void SetScheduled(NodeExecStatsWrapper* stats, int64 nanos) {
   if (!stats) return;
-  stats->stats()->set_scheduled_micros(t);
+  stats->stats()->set_scheduled_micros(nanos / EnvTime::kMicrosToNanos);
+  stats->stats()->set_scheduled_nanos(nanos);
 }
 
 void SetAllStart(NodeExecStatsWrapper* stats) {
   if (!stats) return;
-  stats->stats()->set_all_start_micros(NowInUsec());
+  int64 now_nanos = NowInNsec();
+  stats->stats()->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
+  stats->stats()->set_all_start_nanos(now_nanos);
 }
 
 void SetOpStart(NodeExecStatsWrapper* stats) {
   if (!stats) return;
   NodeExecStats* nt = stats->stats();
   DCHECK_NE(nt->all_start_micros(), 0);
-  nt->set_op_start_rel_micros(NowInUsec() - nt->all_start_micros());
+  DCHECK_NE(nt->all_start_nanos(), 0);
+  int64 now_nanos = NowInNsec();
+  nt->set_op_start_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                              nt->all_start_micros());
+  nt->set_op_start_rel_nanos(now_nanos - nt->all_start_nanos());
 }
 
 void SetOpEnd(NodeExecStatsWrapper* stats) {
   if (!stats) return;
   NodeExecStats* nt = stats->stats();
   DCHECK_NE(nt->all_start_micros(), 0);
-  nt->set_op_end_rel_micros(NowInUsec() - nt->all_start_micros());
+  DCHECK_NE(nt->all_start_nanos(), 0);
+  int64 now_nanos = NowInNsec();
+  nt->set_op_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                            nt->all_start_micros());
+  nt->set_op_end_rel_nanos(now_nanos - nt->all_start_nanos());
 }
 
 void SetAllEnd(NodeExecStatsWrapper* stats) {
   if (!stats) return;
   NodeExecStats* nt = stats->stats();
   DCHECK_NE(nt->all_start_micros(), 0);
-  nt->set_all_end_rel_micros(NowInUsec() - nt->all_start_micros());
+  DCHECK_NE(nt->all_start_nanos(), 0);
+  int64 now_nanos = NowInNsec();
+  nt->set_all_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                             nt->all_start_micros());
+  nt->set_all_end_rel_nanos(now_nanos - nt->all_start_nanos());
 }
 
 void SetOutput(NodeExecStatsWrapper* stats, int slot, const Tensor* v) {
@@ -1357,7 +1373,7 @@ class ExecutorState {
                                TaggedNodeSeq* ready);
 
   // Process a ready node in current thread.
-  void Process(TaggedNode node, int64 scheduled_usec);
+  void Process(TaggedNode node, int64 scheduled_nsec);
 
   // Before invoking item->kernel, fills in its "inputs".
   Status PrepareInputs(const NodeItem& item, Entry* first_input,
@@ -1615,7 +1631,7 @@ struct ExecutorState::AsyncState {
   }
 };
 
-void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
+void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -1680,7 +1696,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       params.track_allocations = true;
       stats = new NodeExecStatsWrapper;
       stats->stats()->set_node_name(node->name());
-      nodestats::SetScheduled(stats, scheduled_usec);
+      nodestats::SetScheduled(stats, scheduled_nsec);
       nodestats::SetAllStart(stats);
     }
 
@@ -1823,7 +1839,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         device->ConsumeListOfAccessedTensors(device_context, accessed_tensors);
       }
       if (stats) {
-        scheduled_usec = nodestats::NowInUsec();
+        scheduled_nsec = nodestats::NowInNsec();
       }
       // Postprocess.
       completed = NodeDone(s, item.node, ready, stats, &inline_ready);
@@ -1966,17 +1982,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     device_context = device_context_map_[node->id()];
   }
 
-  // Experimental: debugger (tfdb) access to intermediate node completion.
-  if (item.num_outputs == 0 && impl_->params_.node_outputs_cb != nullptr) {
-    // If the node has no output, invoke the callback with output slot set to
-    // -1, signifying that this is a no-output node.
-    s.Update(impl_->params_.node_outputs_cb(item.node->name(), -1, nullptr,
-                                            false, ctx));
-  }
-
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
-    if (*ctx->is_output_dead() || val.tensor == nullptr) {
+    if (val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, the node must produce a
       // tensor value at i-th output.
       if (!IsSwitch(node) && !IsRecv(node)) {
@@ -2018,13 +2026,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, to_log);
           }
-
-          // Experimental: debugger (tfdb) access to intermediate node
-          // outputs.
-          if (impl_->params_.node_outputs_cb != nullptr) {
-            s.Update(impl_->params_.node_outputs_cb(item.node->name(), i,
-                                                    out->ref, true, ctx));
-          }
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
           // uninitialized state (val.tensor->IsInitialized return false).
@@ -2035,12 +2036,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
           if (log_memory_) {
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, *out->val);
-          }
-
-          // Experimental: debugger access to intermediate node outputs.
-          if (impl_->params_.node_outputs_cb != nullptr) {
-            s.Update(impl_->params_.node_outputs_cb(
-                item.node->name(), i, out->val.get(), false, ctx));
           }
         }
       } else {
@@ -2219,14 +2214,14 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
                                   TaggedNodeReadyQueue* inline_ready) {
   if (ready.empty()) return;
 
-  int64 scheduled_usec = 0;
+  int64 scheduled_nsec = 0;
   if (stats_collector_) {
-    scheduled_usec = nodestats::NowInUsec();
+    scheduled_nsec = nodestats::NowInNsec();
   }
   if (inline_ready == nullptr) {
     // Schedule to run all the ready ops in thread pool.
     for (auto& tagged_node : ready) {
-      runner_([=]() { Process(tagged_node, scheduled_usec); });
+      runner_([=]() { Process(tagged_node, scheduled_nsec); });
     }
     return;
   }
@@ -2242,7 +2237,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
         // Dispatch to another thread since there is plenty of work to
         // do for this thread.
         runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
-                          scheduled_usec));
+                          scheduled_nsec));
       }
       curr_expensive_node = &tagged_node;
     }
@@ -2255,7 +2250,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
       // There are inline nodes to run already. We dispatch this expensive
       // node to other thread.
       runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
-                        scheduled_usec));
+                        scheduled_nsec));
     }
   }
 }

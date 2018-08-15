@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_JAVA_SRC_GEN_CC_JAVA_DEFS_H_
 #define TENSORFLOW_JAVA_SRC_GEN_CC_JAVA_DEFS_H_
 
-#include <string>
 #include <list>
 #include <map>
+#include <string>
 #include <utility>
 
 namespace tensorflow {

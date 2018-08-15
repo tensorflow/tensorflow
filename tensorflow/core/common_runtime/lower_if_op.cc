@@ -206,7 +206,7 @@ Status InlineCallInGraph(Node* n, Graph* g) {
                               &fbody));
   // TODO(jpienaar): Improve this interface to make the need to delete it
   // explicit.
-  InlineFunctionBody(g->flib_def(), g, n, fbody);
+  InlineFunctionBody(g->flib_def(), g, n, fbody, false);
   delete fbody;
   return Status::OK();
 }

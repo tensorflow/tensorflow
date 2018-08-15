@@ -167,7 +167,7 @@ NodeProperties GetPropertiesForArray(const Model& model,
     node_properties.label += "]";
 
     int buffer_size = 0;
-    if (IsValid(array.shape())) {
+    if (IsNonEmpty(array.shape())) {
       buffer_size = RequiredBufferSizeForShape(array.shape());
       node_properties.log2_buffer_size =
           std::log2(static_cast<float>(buffer_size));
@@ -227,7 +227,7 @@ NodeProperties GetPropertiesForArray(const Model& model,
 
 NodeProperties GetPropertiesForOperator(const Operator& op) {
   NodeProperties node_properties;
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     node_properties.label =
         static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op;
   } else {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -110,7 +111,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
                           MakeFakeLiteralInternal(element_shape, engine));
       elements.push_back(std::move(element));
     }
-    return Literal::MakeTupleOwned(std::move(elements));
+    return LiteralUtil::MakeTupleOwned(std::move(elements));
   }
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
@@ -161,6 +162,9 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
           }));
       break;
     }
+    // Token requires no data.
+    case TOKEN:
+      break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape).c_str());
@@ -217,7 +221,7 @@ std::unique_ptr<Literal> MakeRandomNonwrappingSliceIndex(
       start_indices[i] = generator(*engine);
     }
   }
-  return Literal::CreateR1<int32>(start_indices);
+  return LiteralUtil::CreateR1<int32>(start_indices);
 }
 
 // Use dataflow analysis on each parameter to see if there are uses that would
@@ -270,14 +274,22 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
-        if (needs_index != nullptr &&
-            !ShapeUtil::Equal(needs_index->shape(), use->shape())) {
-          return Unimplemented(
-              "Conflicting operand generation slice index constraints\n");
+        if (needs_index != nullptr) {
+          auto needs_index_shape = needs_index->shape();
+          auto use_shape = use->shape();
+          if (needs_index->opcode() == HloOpcode::kDynamicSlice) {
+            needs_index_shape = needs_index->operand(0)->shape();
+          }
+          if (use->opcode() == HloOpcode::kDynamicSlice) {
+            use_shape = use->operand(0)->shape();
+          }
+          if (!ShapeUtil::Equal(needs_index_shape, use_shape)) {
+            return Unimplemented(
+                "Conflicting operand generation slice index constraints\n");
+          }
         }
         needs_index = use;
         break;
-
       case HloOpcode::kReduce:
       case HloOpcode::kReduceWindow:
         needs_constant = use;
@@ -307,9 +319,9 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
   } else if (needs_constant != nullptr) {
     switch (constant_type) {
       case ConstantType::kZero:
-        return Literal::Zero(param.shape().element_type()).CloneToUnique();
+        return LiteralUtil::Zero(param.shape().element_type()).CloneToUnique();
       case ConstantType::kOne:
-        return Literal::One(param.shape().element_type()).CloneToUnique();
+        return LiteralUtil::One(param.shape().element_type()).CloneToUnique();
       case ConstantType::kUnknown:
         // We want the identity element for the computation, but we don't really
         // know what it is - so any value we generate will be just as wrong.

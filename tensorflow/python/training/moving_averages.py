@@ -300,7 +300,7 @@ class ExponentialMovingAverage(object):
      for a given variable.
   *  Build a model normally but load the checkpoint files to evaluate by using
      the shadow variable names.  For this use the `average_name()` method.  See
-     the @{tf.train.Saver} for more
+     the `tf.train.Saver` for more
      information on restoring saved variables.
 
   Example of restoring the shadow variable values:

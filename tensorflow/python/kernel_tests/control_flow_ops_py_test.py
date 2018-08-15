@@ -647,7 +647,8 @@ class ControlFlowTest(test.TestCase):
     # feeding into the fill is dominated by a Switch.
     zero = graph.get_operation_by_name("gradients/zeros/Const")
     self.assertEqual(len(zero.control_inputs), 1)
-    self.assertEqual(zero.control_inputs[0].type, "Switch")
+    self.assertEqual(zero.control_inputs[0].type, "Identity")
+    self.assertEqual(zero.control_inputs[0].inputs[0].op.type, "Switch")
 
   def testCondGrad_2(self):
     with self.test_session():
@@ -734,11 +735,11 @@ class ControlFlowTest(test.TestCase):
 
       def body_fn(i):
         with ops.control_dependencies([increment]):
-          return i + i
+          return i + 1
 
-      result = control_flow_ops.while_loop(cond=lambda i: i < 1,
+      result = control_flow_ops.while_loop(cond=lambda i: i < 2,
                                            body=body_fn, loop_vars=[1])
-      result.eval()
+      self.assertAllEqual(result.eval(), 2)
       self.assertAllEqual(v.eval(), 1.0)
 
   def testWhileExternalControlDependenciesNoInput(self):

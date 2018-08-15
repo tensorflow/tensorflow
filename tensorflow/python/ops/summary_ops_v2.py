@@ -110,8 +110,8 @@ class SummaryWriter(object):
   """Encapsulates a stateful summary writer resource.
 
   See also:
-  - @{tf.contrib.summary.create_file_writer}
-  - @{tf.contrib.summary.create_db_writer}
+  - `tf.contrib.summary.create_file_writer`
+  - `tf.contrib.summary.create_db_writer`
   """
 
   def  __init__(self, resource, init_op_fn):
@@ -174,22 +174,22 @@ def initialize(
   """Initializes summary writing for graph execution mode.
 
   This helper method provides a higher-level alternative to using
-  @{tf.contrib.summary.summary_writer_initializer_op} and
-  @{tf.contrib.summary.graph}.
+  `tf.contrib.summary.summary_writer_initializer_op` and
+  `tf.contrib.summary.graph`.
 
-  Most users will also want to call @{tf.train.create_global_step}
+  Most users will also want to call `tf.train.create_global_step`
   which can happen before or after this function is called.
 
   Args:
-    graph: A @{tf.Graph} or @{tf.GraphDef} to output to the writer.
+    graph: A `tf.Graph` or `tf.GraphDef` to output to the writer.
       This function will not write the default graph by default. When
       writing to an event log file, the associated step will be zero.
-    session: So this method can call @{tf.Session.run}. This defaults
-      to @{tf.get_default_session}.
+    session: So this method can call `tf.Session.run`. This defaults
+      to `tf.get_default_session`.
 
   Raises:
     RuntimeError: If  the current thread has no default
-      @{tf.contrib.summary.SummaryWriter}.
+      `tf.contrib.summary.SummaryWriter`.
     ValueError: If session wasn't passed and no default session.
   """
   if context.executing_eagerly():
@@ -278,10 +278,10 @@ def create_db_writer(db_uri,
       Experiment will not be associated with a User. Must be valid as
       both a DNS label and Linux username.
     name: Shared name for this SummaryWriter resource stored to default
-      @{tf.Graph}.
+      `tf.Graph`.
 
   Returns:
-    A @{tf.contrib.summary.SummaryWriter} instance.
+    A `tf.contrib.summary.SummaryWriter` instance.
   """
   with ops.device("cpu:0"):
     if experiment_name is None:
@@ -306,10 +306,11 @@ def create_db_writer(db_uri,
 def _make_summary_writer(name, factory, **kwargs):
   resource = gen_summary_ops.summary_writer(shared_name=name)
   init_op_fn = lambda: factory(resource, **kwargs)
-  # TODO(apassos): Consider doing this instead.
-  # if not context.executing_eagerly():
-  #   ops.get_default_session().run(init_op)
-  ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op_fn())
+  init_op = init_op_fn()
+  if not context.executing_eagerly():
+    # TODO(apassos): Consider doing this instead.
+    #   ops.get_default_session().run(init_op)
+    ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op)
   return SummaryWriter(resource, init_op_fn)
 
 
@@ -327,7 +328,7 @@ def _nothing():
 def all_summary_ops():
   """Graph-mode only. Returns all summary ops.
 
-  Please note this excludes @{tf.contrib.summary.graph} ops.
+  Please note this excludes `tf.contrib.summary.graph` ops.
 
   Returns:
     The summary ops.
@@ -380,7 +381,8 @@ def summary_writer_function(name, tensor, function, family=None):
   with ops.device("cpu:0"):
     op = smart_cond.smart_cond(
         should_record_summaries(), record, _nothing, name="")
-    ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
 
 
@@ -408,20 +410,20 @@ def generic(name, tensor, metadata=None, family=None, step=None):
 def scalar(name, tensor, family=None, step=None):
   """Writes a scalar summary if possible.
 
-  Unlike @{tf.contrib.summary.generic} this op may change the dtype
+  Unlike `tf.contrib.summary.generic` this op may change the dtype
   depending on the writer, for both practical and efficiency concerns.
 
   Args:
     name: An arbitrary name for this summary.
-    tensor: A @{tf.Tensor} Must be one of the following types:
+    tensor: A `tf.Tensor` Must be one of the following types:
       `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`,
       `int8`, `uint16`, `half`, `uint32`, `uint64`.
     family: Optional, the summary's family.
     step: The `int64` monotonic step variable, which defaults
-      to @{tf.train.get_global_step}.
+      to `tf.train.get_global_step`.
 
   Returns:
-    The created @{tf.Operation} or a @{tf.no_op} if summary writing has
+    The created `tf.Operation` or a `tf.no_op` if summary writing has
     not been enabled for this context.
   """
 
@@ -492,31 +494,31 @@ def graph(param, step=None, name=None):
   """Writes a TensorFlow graph to the summary interface.
 
   The graph summary is, strictly speaking, not a summary. Conditions
-  like @{tf.contrib.summary.never_record_summaries} do not apply. Only
+  like `tf.contrib.summary.never_record_summaries` do not apply. Only
   a single graph can be associated with a particular run. If multiple
   graphs are written, then only the last one will be considered by
   TensorBoard.
 
   When not using eager execution mode, the user should consider passing
-  the `graph` parameter to @{tf.contrib.summary.initialize} instead of
+  the `graph` parameter to `tf.contrib.summary.initialize` instead of
   calling this function. Otherwise special care needs to be taken when
   using the graph to record the graph.
 
   Args:
-    param: A @{tf.Tensor} containing a serialized graph proto. When
+    param: A `tf.Tensor` containing a serialized graph proto. When
       eager execution is enabled, this function will automatically
-      coerce @{tf.Graph}, @{tf.GraphDef}, and string types.
+      coerce `tf.Graph`, `tf.GraphDef`, and string types.
     step: The global step variable. This doesn't have useful semantics
       for graph summaries, but is used anyway, due to the structure of
       event log files. This defaults to the global step.
     name: A name for the operation (optional).
 
   Returns:
-    The created @{tf.Operation} or a @{tf.no_op} if summary writing has
+    The created `tf.Operation` or a `tf.no_op` if summary writing has
     not been enabled for this context.
 
   Raises:
-    TypeError: If `param` isn't already a @{tf.Tensor} in graph mode.
+    TypeError: If `param` isn't already a `tf.Tensor` in graph mode.
   """
   if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
     raise TypeError("graph() needs a tf.Tensor (e.g. tf.placeholder) in graph "
@@ -537,21 +539,21 @@ _graph = graph  # for functions with a graph parameter
 
 
 def import_event(tensor, name=None):
-  """Writes a @{tf.Event} binary proto.
+  """Writes a `tf.Event` binary proto.
 
   When using create_db_writer(), this can be used alongside
-  @{tf.TFRecordReader} to load event logs into the database. Please
+  `tf.TFRecordReader` to load event logs into the database. Please
   note that this is lower level than the other summary functions and
   will ignore any conditions set by methods like
-  @{tf.contrib.summary.should_record_summaries}.
+  `tf.contrib.summary.should_record_summaries`.
 
   Args:
-    tensor: A @{tf.Tensor} of type `string` containing a serialized
-      @{tf.Event} proto.
+    tensor: A `tf.Tensor` of type `string` containing a serialized
+      `tf.Event` proto.
     name: A name for the operation (optional).
 
   Returns:
-    The created @{tf.Operation}.
+    The created `tf.Operation`.
   """
   return gen_summary_ops.import_event(
       context.context().summary_writer_resource, tensor, name=name)
@@ -563,13 +565,13 @@ def flush(writer=None, name=None):
   This operation blocks until that finishes.
 
   Args:
-    writer: The @{tf.contrib.summary.SummaryWriter} resource to flush.
+    writer: The `tf.contrib.summary.SummaryWriter` resource to flush.
       The thread default will be used if this parameter is None.
-      Otherwise a @{tf.no_op} is returned.
+      Otherwise a `tf.no_op` is returned.
     name: A name for the operation (optional).
 
   Returns:
-    The created @{tf.Operation}.
+    The created `tf.Operation`.
   """
   if writer is None:
     writer = context.context().summary_writer_resource
@@ -591,7 +593,7 @@ def eval_dir(model_dir, name=None):
 
 
 def create_summary_file_writer(*args, **kwargs):
-  """Please use @{tf.contrib.summary.create_file_writer}."""
+  """Please use `tf.contrib.summary.create_file_writer`."""
   logging.warning("Deprecation Warning: create_summary_file_writer was renamed "
                   "to create_file_writer")
   return create_file_writer(*args, **kwargs)

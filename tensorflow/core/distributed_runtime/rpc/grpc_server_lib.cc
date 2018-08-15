@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -81,6 +83,7 @@ GrpcServer::~GrpcServer() {
 
   delete master_service_;
   delete worker_service_;
+  delete eager_service_;
 
   // TODO(mrry): Refactor the *Env classes so that it is less fiddly
   // to destroy them.
@@ -117,6 +120,34 @@ Status GrpcServer::Init(
   master_env_.env = env_;
   worker_env_.env = env_;
 
+  // Check parameters before DeviceFactory::AddDevices,
+  // otherwise if 'task_index=-1' the program will abort.
+
+  // Look up the port that has been requested for this task in `server_def_`.
+  int requested_port = -1;
+  for (const auto& job : server_def_.cluster().job()) {
+    if (job.name() == server_def_.job_name()) {
+      auto iter = job.tasks().find(server_def_.task_index());
+      if (iter == job.tasks().end()) {
+        return errors::InvalidArgument("Task ", server_def_.task_index(),
+                                       " was not defined in job \"",
+                                       server_def_.job_name(), "\"");
+      }
+      auto colon_index = iter->second.find_last_of(':');
+      if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                 &requested_port)) {
+        return errors::InvalidArgument(
+            "Could not parse port for local server from \"", iter->second,
+            "\".");
+      }
+      break;
+    }
+  }
+  if (requested_port == -1) {
+    return errors::Internal("Job \"", server_def_.job_name(),
+                            "\" was not defined in cluster");
+  }
+
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
   sess_opts.config = config;
@@ -137,33 +168,6 @@ Status GrpcServer::Init(
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
                                         &default_worker_name, &unused)) {
     return errors::Internal("Could not parse worker name.");
-  }
-
-  // Look up the port that has been requested for this task in `server_def_`.
-  int requested_port = -1;
-  for (const auto& job : server_def_.cluster().job()) {
-    if (job.name() == server_def_.job_name()) {
-      auto iter = job.tasks().find(server_def_.task_index());
-      if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def_.task_index(),
-                                       " was not defined in job \"",
-                                       server_def_.job_name(), "\"");
-      }
-      const std::vector<string> hostname_port =
-          str_util::Split(iter->second, ':');
-      if (hostname_port.size() != 2 ||
-          !strings::safe_strto32(hostname_port[1], &requested_port)) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\"");
-      } else {
-        break;
-      }
-    }
-  }
-  if (requested_port == -1) {
-    return errors::Internal("Job \"", server_def_.job_name(),
-                            "\" was not defined in cluster");
   }
 
   // N.B. The order of initialization here is intricate, because we
@@ -192,6 +196,8 @@ Status GrpcServer::Init(
       worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
+  eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+
   // extra service:
   if (service_func != nullptr) {
     service_func(&worker_env_, &builder);
@@ -241,6 +247,7 @@ Status GrpcServer::Init(
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
+  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   master_env_.master_session_factory =
       [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
@@ -284,12 +291,10 @@ Status GrpcServer::Init(
               nullptr);
 }
 
-
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, nullptr,
-              nullptr);
+  return Init(std::move(service_func), rendezvous_mgr_func, nullptr, nullptr);
 }
 
 Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
@@ -340,11 +345,13 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
-  if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
+  auto colon_index = host_port.find_last_of(':');
+  if (!strings::safe_strto32(host_port.substr(colon_index + 1),
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            channel_cache_->TranslateTask(name_prefix), "\".");
+                            host_port, "\".");
   }
+
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);
@@ -365,6 +372,9 @@ Status GrpcServer::Start() {
       worker_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_worker_service",
                             [this] { worker_service_->HandleRPCsLoop(); }));
+      eager_thread_.reset(
+          env_->StartThread(ThreadOptions(), "TF_eager_service",
+                            [this] { eager_service_->HandleRPCsLoop(); }));
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
@@ -407,6 +417,7 @@ Status GrpcServer::Join() {
     case STOPPED:
       master_thread_.reset();
       worker_thread_.reset();
+      eager_thread_.reset();
       return Status::OK();
     default:
       LOG(FATAL);
@@ -435,6 +446,17 @@ std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
+  std::unique_ptr<GrpcServer> ret(
+      new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
+  ServiceInitFunction service_func = nullptr;
+  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  *out_server = std::move(ret);
+  return Status::OK();
+}
+
+/* static */
+Status GrpcServer::Create(const ServerDef& server_def, Env* env,
+                          std::unique_ptr<GrpcServer>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;

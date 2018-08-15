@@ -100,7 +100,7 @@ GpuHloOrdering::GpuHloOrdering(
       if (last_instruction_per_stream[stream_no] != nullptr) {
         immediate_preds.push_back(last_instruction_per_stream[stream_no]);
       }
-      predecessor_map->SetReachabilityToUnion(immediate_preds, hlo);
+      predecessor_map->FastSetReachabilityToUnion(immediate_preds, hlo);
       last_instruction_per_stream[stream_no] = hlo;
     } else {
       // Only parameters and constants don't have an assigned stream, since they

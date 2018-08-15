@@ -15,7 +15,7 @@
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/programmers_guide/saved_model_cli
+https://www.tensorflow.org/guide/saved_model_cli
 
 """
 
@@ -720,7 +720,7 @@ def create_parser():
              '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' \\\n'
              '   --outdir=/out\n\n'
              'For more information about input file format, please see:\n'
-             'https://www.tensorflow.org/programmers_guide/saved_model_cli\n')
+             'https://www.tensorflow.org/guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
       'run', description=run_msg, formatter_class=argparse.RawTextHelpFormatter)
   parser_run.add_argument(

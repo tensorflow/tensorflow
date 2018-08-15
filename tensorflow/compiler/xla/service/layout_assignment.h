@@ -432,7 +432,12 @@ class LayoutAssignment : public HloPassInterface {
   Status PropagateComputationLayouts(HloComputation* computation,
                                      ComputationLayout* computation_layout);
 
+  // The pointer to the ComputationLayout passed as constructor parameter.
   ComputationLayout* entry_computation_layout_;
+
+  // A copy of entry_computation_layout_ used to reset it to the initial values
+  // during the multiple passes done by the layout assignment operation.
+  ComputationLayout saved_entry_computation_layout_;
 
  protected:
   // Sets up the copy instruction according to the characteristic (sharding,
@@ -483,6 +488,9 @@ class LayoutAssignment : public HloPassInterface {
     }
   }
 
+  // Adds constraints related to host Send/Recv instructions.
+  Status BuildHostChannelConstraints(HloComputation* computation);
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
@@ -501,6 +509,15 @@ class LayoutAssignment : public HloPassInterface {
   // case we have to undo operations due to the multiple passes over the
   // computations/instructions.
   ChannelLayoutConstraints channel_constraints_;
+
+  // Layout constraints for send/recv instructions which communicate with the
+  // host.
+  ChannelLayoutConstraints host_channel_constraints_;
+
+  // The set of HLO instructions which lacked any layout constraint, thus
+  // receiving propagated default layouts.
+  tensorflow::gtl::FlatSet<const HloInstruction*>
+      unconstrained_layout_instructions_;
 };
 
 }  // namespace xla

@@ -51,7 +51,7 @@ class CoreLayersTest(test.TestCase):
       dropout = keras.layers.Dropout(0.5)
       self.assertEqual(True, dropout.supports_masking)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_spatial_dropout(self):
     testing_utils.layer_test(
         keras.layers.SpatialDropout1D,
@@ -78,7 +78,7 @@ class CoreLayersTest(test.TestCase):
         kwargs={'rate': 0.5, 'data_format': 'channels_first'},
         input_shape=(2, 3, 4, 4, 5))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_activation(self):
     # with string argument
     testing_utils.layer_test(
@@ -92,7 +92,7 @@ class CoreLayersTest(test.TestCase):
         kwargs={'activation': keras.backend.relu},
         input_shape=(3, 2))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_reshape(self):
     testing_utils.layer_test(
         keras.layers.Reshape,
@@ -114,12 +114,26 @@ class CoreLayersTest(test.TestCase):
         kwargs={'target_shape': (-1, 1)},
         input_shape=(None, None, 2))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_permute(self):
     testing_utils.layer_test(
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_permute_errors_on_invalid_starting_dims_index(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+      testing_utils.layer_test(
+          keras.layers.Permute,
+          kwargs={'dims': (0, 1, 2)}, input_shape=(3, 2, 4))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_permute_errors_on_invalid_set_of_dims_indices(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+      testing_utils.layer_test(
+          keras.layers.Permute,
+          kwargs={'dims': (1, 4, 2)}, input_shape=(3, 2, 4))
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_flatten(self):
     testing_utils.layer_test(
         keras.layers.Flatten, kwargs={}, input_shape=(3, 2, 4))
@@ -134,7 +148,7 @@ class CoreLayersTest(test.TestCase):
         np.transpose(inputs, (0, 2, 3, 1)), (-1, 5 * 5 * 3))
     self.assertAllClose(outputs, target_outputs)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_repeat_vector(self):
     testing_utils.layer_test(
         keras.layers.RepeatVector, kwargs={'n': 3}, input_shape=(3, 2))
@@ -173,7 +187,15 @@ class CoreLayersTest(test.TestCase):
     config = ld.get_config()
     ld = keras.layers.Lambda.from_config(config)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_multiple_inputs(self):
+    ld = keras.layers.Lambda(lambda x: x[0], output_shape=lambda x: x[0])
+    x1 = np.ones([3, 2], np.float32)
+    x2 = np.ones([3, 5], np.float32)
+    out = ld([x1, x2])
+    self.assertAllEqual(out.shape, [3, 2])
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dense(self):
     testing_utils.layer_test(
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 2))

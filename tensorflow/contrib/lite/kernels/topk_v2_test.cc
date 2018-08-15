@@ -42,32 +42,32 @@ class TopKV2OpModel : public SingleOpModel {
     PopulateTensor<float>(input_, data);
   }
 
-  void SetInputUInt8(std::initializer_list<uint8> data) {
-    PopulateTensor<uint8>(input_, data);
+  void SetInputUInt8(std::initializer_list<uint8_t> data) {
+    PopulateTensor<uint8_t>(input_, data);
   }
 
-  void SetInputInt32(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(input_, data);
+  void SetInputInt32(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(input_, data);
   }
 
   void SetInputInt64(std::initializer_list<int64_t> data) {
     PopulateTensor<int64_t>(input_, data);
   }
 
-  std::vector<int32> GetIndexes() {
-    return ExtractVector<int32>(output_indexes_);
+  std::vector<int32_t> GetIndexes() {
+    return ExtractVector<int32_t>(output_indexes_);
   }
 
   std::vector<float> GetValuesFloat() {
     return ExtractVector<float>(output_values_);
   }
 
-  std::vector<uint8> GetValuesUInt8() {
-    return ExtractVector<uint8>(output_values_);
+  std::vector<uint8_t> GetValuesUInt8() {
+    return ExtractVector<uint8_t>(output_values_);
   }
 
-  std::vector<int32> GetValuesInt32() {
-    return ExtractVector<int32>(output_values_);
+  std::vector<int32_t> GetValuesInt32() {
+    return ExtractVector<int32_t>(output_values_);
   }
 
   std::vector<int64_t> GetValuesInt64() {
@@ -119,7 +119,7 @@ TEST(TopKV2OpTest, VectorFloat) {
   EXPECT_THAT(m.GetValuesFloat(), ElementsAreArray(ArrayFloatNear({0.8, 0.2})));
 }
 
-// Check that uint8 works.
+// Check that uint8_t works.
 TEST(TopKV2OpTest, TypeUint8) {
   TopKV2OpModel m({2, 3}, TensorType_UINT8, 2);
   m.SetInputUInt8({1, 2, 3, 251, 250, 249});
@@ -128,7 +128,7 @@ TEST(TopKV2OpTest, TypeUint8) {
   EXPECT_THAT(m.GetValuesUInt8(), ElementsAreArray({3, 2, 251, 250}));
 }
 
-// Check that int32 works.
+// Check that int32_t works.
 TEST(TopKV2OpTest, TypeInt32) {
   TopKV2OpModel m({2, 3}, TensorType_INT32, 2);
   m.SetInputInt32({1, 2, 3, 10251, 10250, 10249});

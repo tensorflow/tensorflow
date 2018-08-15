@@ -74,11 +74,21 @@ inline int StartForAxis(int begin_mask,
 // size 4, this function would return 4 as the stop, because it is one past the
 // "real" indices of 0, 1, 2 & 3.
 template <typename IntType>
-inline int StopForAxis(int end_mask, std::vector<IntType> const& stop_indices,
+inline int StopForAxis(int end_mask, int shrink_axis_mask,
+                       std::vector<IntType> const& stop_indices,
                        std::vector<IntType> const& strides,
-                       int const* input_shape, int axis) {
+                       int const* input_shape, int axis, int start_for_axis) {
   // Begin with the specified index
+  const bool shrink_axis = shrink_axis_mask & (1 << axis);
   int stop = stop_indices[axis];
+
+  // When shrinking an axis, the end position does not matter (and can be
+  // incorrect when negative indexing is used, see Issue #19260). Always use
+  // start_for_axis + 1 to generate a length 1 slice, since start_for_axis has
+  // already been adjusted for negative indices.
+  if (shrink_axis) {
+    stop = start_for_axis + 1;
+  }
 
   // end_mask override
   if (end_mask & (1 << axis)) {
@@ -93,7 +103,7 @@ inline int StopForAxis(int end_mask, std::vector<IntType> const& stop_indices,
   }
 
   // Handle negative indices
-  int axis_size = input_shape[axis];
+  const int axis_size = input_shape[axis];
   if (stop < 0) {
     stop += axis_size;
   }

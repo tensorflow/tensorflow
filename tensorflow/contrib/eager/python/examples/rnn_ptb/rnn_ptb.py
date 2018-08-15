@@ -310,12 +310,12 @@ def main(_):
   with tf.device("/device:GPU:0" if have_gpu else None):
     # Make learning_rate a Variable so it can be included in the checkpoint
     # and we can resume training with the last saved learning_rate.
-    learning_rate = tfe.Variable(20.0, name="learning_rate")
+    learning_rate = tf.Variable(20.0, name="learning_rate")
     model = PTBModel(corpus.vocab_size(), FLAGS.embedding_dim,
                      FLAGS.hidden_dim, FLAGS.num_layers, FLAGS.dropout,
                      use_cudnn_rnn)
     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-    checkpoint = tfe.Checkpoint(
+    checkpoint = tf.train.Checkpoint(
         learning_rate=learning_rate, model=model,
         # GradientDescentOptimizer has no state to checkpoint, but noting it
         # here lets us swap in an optimizer that does.
