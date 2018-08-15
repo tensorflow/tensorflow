@@ -499,6 +499,10 @@ NVPTXCompiler::NVPTXCompiler()
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
+  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
+  VLOG(2) << "*** HLO Before Optimization";
+  XLA_VLOG_LINES(2, module->ToString());
+
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   tracing::ScopedActivity activity("HLO Transforms", module->name(),
                                    /*is_expensive=*/true);
@@ -555,6 +559,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
+  VLOG(2) << "*** HLO After Optimization";
   XLA_VLOG_LINES(2, module->ToString());
   const string xla_dump_optimized_hlo_proto_to =
       module->config().debug_options().xla_dump_optimized_hlo_proto_to();
