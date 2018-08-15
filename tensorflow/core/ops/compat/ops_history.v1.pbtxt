@@ -25613,6 +25613,21 @@ op {
   }
 }
 op {
+  name: "HostConst"
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "value"
+    type: "tensor"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}
+op {
   name: "IFFT"
   input_arg {
     name: "input"
