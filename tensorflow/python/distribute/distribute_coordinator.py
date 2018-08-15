@@ -186,13 +186,13 @@ class _WorkerContext(object):
   def _is_chief(self):
     """Return whether the task is the chief worker."""
     if (not self._cluster_spec or
-        self._task_type in [_TaskType.CHIEF, _TaskType.EVALUATOR, None]):
+            self._task_type in [_TaskType.CHIEF, _TaskType.EVALUATOR, None]):
       return True
 
     # If not local and chief not in the cluster_spec, use the first worker as
     # chief.
     if (_TaskType.CHIEF not in self._cluster_spec.jobs and
-        self._task_type == _TaskType.WORKER and self._task_id == 0):
+            self._task_type == _TaskType.WORKER and self._task_id == 0):
       return True
     return False
 
@@ -256,11 +256,11 @@ def _run_single_worker(worker_fn,
                        worker_barrier=None):
   """Runs a single worker by calling `worker_fn` under context."""
   with _WorkerContext(
-      cluster_spec,
-      task_type,
-      task_id,
-      rpc_layer=rpc_layer,
-      worker_barrier=worker_barrier):
+          cluster_spec,
+          task_type,
+          task_id,
+          rpc_layer=rpc_layer,
+          worker_barrier=worker_barrier):
     worker_fn()
 
 
@@ -268,7 +268,7 @@ def _run_std_server(cluster_spec=None,
                     task_type=None,
                     task_id=None,
                     session_config=None,
-                    rpc_layer=None):
+                    rpc_layer="grpc"):
   """Runs a standard server."""
   server = server_lib.Server(
       cluster_spec,
@@ -460,7 +460,8 @@ def run_distribute_coordinator(worker_fn,
     else:
       # If not a client job, run the standard server.
       server = _run_std_server(
-          cluster_spec=cluster_spec, task_type=task_type, task_id=task_id)
+          cluster_spec=cluster_spec, task_type=task_type, task_id=task_id,
+          rpc_layer=rpc_layer)
       server.join()
   else:
     if mode != CoordinatorMode.INDEPENDENT_WORKER:
@@ -468,7 +469,8 @@ def run_distribute_coordinator(worker_fn,
 
     # Every one starts a standard server.
     server = _run_std_server(
-        cluster_spec=cluster_spec, task_type=task_type, task_id=task_id)
+        cluster_spec=cluster_spec, task_type=task_type, task_id=task_id,
+        rpc_layer=rpc_layer)
 
     if task_type in [_TaskType.CHIEF, _TaskType.WORKER]:
       if between_graph:
@@ -483,7 +485,8 @@ def run_distribute_coordinator(worker_fn,
         else:
           server.join()
     elif task_type == _TaskType.EVALUATOR:
-      _run_single_worker(worker_fn, cluster_spec, task_type, task_id, rpc_layer)
+      _run_single_worker(worker_fn, cluster_spec,
+                         task_type, task_id, rpc_layer)
     else:
       if task_type != _TaskType.PS:
         raise ValueError("Unexpected task_type: %r" % task_type)
