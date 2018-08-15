@@ -226,8 +226,7 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 // base/logging.h provides its own #defines for the simpler names EQ, NE, etc.
 // This happens if, for example, those are used as token names in a
 // yacc grammar.
-TF_DEFINE_CHECK_OP_IMPL(Check_EQ,
-                        ==)  // Compilation error with CHECK_EQ(NULL, x)?
+TF_DEFINE_CHECK_OP_IMPL(Check_EQ, ==)  // Compilation error with CHECK_EQ(NULL, x)?
 TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)  // Use CHECK(x == NULL) instead.
 TF_DEFINE_CHECK_OP_IMPL(Check_LE, <=)
 TF_DEFINE_CHECK_OP_IMPL(Check_LT, <)
