@@ -431,7 +431,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
         [
-            "//third_party/intel_mkl_ml",
+            "//third_party/mkl:intel_binary_blob",
         ],
     ),
 )
