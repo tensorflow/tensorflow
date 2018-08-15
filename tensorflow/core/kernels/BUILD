@@ -630,6 +630,7 @@ cc_library(
         ":gather_nd_op",
         ":gather_op",
         ":guarantee_const_op",
+        ":host_constant_op",
         ":identity_n_op",
         ":identity_op",
         ":inplace_ops",
@@ -700,6 +701,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "constant_op",
     prefix = "constant_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "host_constant_op",
+    prefix = "host_constant_op",
     deps = ARRAY_DEPS,
 )
 
