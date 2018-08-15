@@ -263,9 +263,9 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
   // Get normalization term of softmax: log(sum(exp(logit[j]-max_coeff))).
   float logsumexp = 0.0;
   for (int j = 0; j < raw_input.size(); ++j) {
-    logsumexp += expf(raw_input(j) - max_coeff);
+    logsumexp += Eigen::numext::exp(raw_input(j) - max_coeff);
   }
-  logsumexp = logf(logsumexp);
+  logsumexp = Eigen::numext::log(logsumexp);
   // Final normalization offset to get correct log probabilities.
   float norm_offset = max_coeff + logsumexp;
 
