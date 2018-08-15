@@ -29,6 +29,17 @@ bb0:
   return
 }
 
+// CHECK-LABEL: cfgfunc @dealloc() {
+cfgfunc @dealloc() {
+bb0:
+  // CHECK: %0 = alloc() : memref<1024x64xf32, #map0>
+  %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 0>
+
+  // CHECK: dealloc %0 : memref<1024x64xf32, #map0>
+  dealloc %0 : memref<1024x64xf32, (d0, d1) -> (d0, d1), 0>
+  return
+}
+
 // CHECK-LABEL: cfgfunc @load_store
 cfgfunc @load_store() {
 bb0:

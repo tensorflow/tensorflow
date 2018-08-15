@@ -268,6 +268,28 @@ OperationState ConstantAffineIntOp::build(Builder *builder, int64_t value) {
 }
 
 //===----------------------------------------------------------------------===//
+// DeallocOp
+//===----------------------------------------------------------------------===//
+
+void DeallocOp::print(OpAsmPrinter *p) const {
+  *p << "dealloc " << *getMemRef() << " : " << *getMemRef()->getType();
+}
+
+bool DeallocOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType memrefInfo;
+  MemRefType *type;
+
+  return parser->parseOperand(memrefInfo) || parser->parseColonType(type) ||
+         parser->resolveOperand(memrefInfo, type, result->operands);
+}
+
+const char *DeallocOp::verify() const {
+  if (!isa<MemRefType>(getMemRef()->getType()))
+    return "operand must be a memref";
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // DimOp
 //===----------------------------------------------------------------------===//
 
@@ -466,7 +488,7 @@ const char *StoreOp::verify() const {
 
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
-  opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DimOp, LoadOp,
-                      ReturnOp, StoreOp>(
+  opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DeallocOp,
+                      DimOp, LoadOp, ReturnOp, StoreOp>(
       /*prefix=*/"");
 }

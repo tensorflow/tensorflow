@@ -198,6 +198,34 @@ private:
   explicit ConstantAffineIntOp(const Operation *state) : ConstantOp(state) {}
 };
 
+/// The "dealloc" operation frees the region of memory referenced by a memref
+/// which was originally created by the "alloc" operation.
+/// The "dealloc" operation should not be called on memrefs which alias an
+//  alloc'd memref (i.e. memrefs returned by the "view" and "reshape"
+/// operations).
+///
+///   %0 = alloc() : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
+///
+///   dealloc %0 : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
+///
+class DeallocOp
+    : public OpBase<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
+public:
+  SSAValue *getMemRef() { return getOperand(); }
+  const SSAValue *getMemRef() const { return getOperand(); }
+
+  static StringRef getOperationName() { return "dealloc"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+
+private:
+  friend class Operation;
+  explicit DeallocOp(const Operation *state) : OpBase(state) {}
+};
+
 /// The "dim" operation takes a memref or tensor operand and returns an
 /// "affineint".  It requires a single integer attribute named "index".  It
 /// returns the size of the specified dimension.  For example:
