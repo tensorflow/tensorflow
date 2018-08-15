@@ -112,7 +112,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
 )
