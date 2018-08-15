@@ -2884,7 +2884,7 @@ tf_kernel_library(
     copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     prefix = "batch_matmul_op",
     deps = MATH_DEPS + if_mkl_ml([
-        "//third_party/intel_mkl_ml",
+        "//third_party/mkl:intel_binary_blob",
     ]),
 )
 

@@ -214,7 +214,7 @@ sh_binary(
             "//tensorflow/contrib/lite/python:tflite_convert",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         ],
-    }) + if_mkl_ml(["//third_party/intel_mkl_ml"]),
+    }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows
