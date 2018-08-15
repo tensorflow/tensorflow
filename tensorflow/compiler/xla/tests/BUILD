@@ -2076,6 +2076,8 @@ tf_cc_test(
 xla_test(
     name = "test_utils_test",
     srcs = ["test_utils_test.cc"],
+    # There is nothing backend specific in this test, so just pick an arbitrary backend.
+    backends = ["cpu"],
     deps = [
         ":local_client_test_base",
         ":test_utils",
