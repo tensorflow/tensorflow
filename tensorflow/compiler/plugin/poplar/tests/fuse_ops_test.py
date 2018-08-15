@@ -287,7 +287,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       sess.run([train,loss], {x: np.zeros([1,4,4,2])})
 
       result = sess.run(report)
-      self.assertEqual(len(result), 12) # 2xcompile, 4xupload, 1xload, 4xdownload, 1xexecute
+      self.assertEqual(len(result), 6) # 2xcompile, 1xupload, 1xload, 1xdownload, 1xexecute
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)

@@ -16,8 +16,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 
 import contextlib
-import re
 import fnmatch
+import json
+import re
 
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
@@ -110,7 +111,9 @@ def extract_all_io_events(events):
     if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
                     IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
       try:
-        result += [(evt.type, evt.data_str.decode('utf-8'))]
+        payload = json.loads(evt.data_str.decode('utf-8'))
+        for t in payload["tensors"]:
+          result += [(evt.type, t["name"])]
       except UnicodeDecodeError:
         pass
   return result

@@ -163,9 +163,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@jsoncpp_git//:jsoncpp",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = True,
 )
