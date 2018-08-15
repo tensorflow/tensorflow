@@ -1297,10 +1297,14 @@ class Estimator(object):
           assert hooks_list
           return hooks_list[0]
 
-        training_hooks = get_hooks_from_the_first_device(
-            grouped_estimator_spec.training_hooks)
-        training_chief_hooks = get_hooks_from_the_first_device(
-            grouped_estimator_spec.training_chief_hooks)
+        training_hooks = [
+            get_hooks_from_the_first_device(per_device_hook)
+            for per_device_hook in grouped_estimator_spec.training_hooks
+        ]
+        training_chief_hooks = [
+            get_hooks_from_the_first_device(per_device_chief_hook)
+            for per_device_chief_hook in grouped_estimator_spec.training_chief_hooks
+        ]
 
         # TODO(sourabhbajaj): Merge the two code paths and clean up the code
         if is_tpu_strategy:
