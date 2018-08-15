@@ -31,10 +31,9 @@ bool AffineMap::isIdentity() const {
   if (getNumDims() != getNumResults())
     return false;
   ArrayRef<AffineExpr *> results = getResults();
-  for (unsigned i = 0; i < getNumDims(); ++i) {
-    auto *expr = results[i];
-    if (!isa<AffineDimExpr>(expr) ||
-        cast<AffineDimExpr>(expr)->getPosition() != i)
+  for (unsigned i = 0, numDims = getNumDims(); i < numDims; ++i) {
+    auto *expr = dyn_cast<AffineDimExpr>(results[i]);
+    if (!expr || expr->getPosition() != i)
       return false;
   }
   return true;
