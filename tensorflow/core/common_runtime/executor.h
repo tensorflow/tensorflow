@@ -83,7 +83,7 @@ class Executor {
   struct Args {
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     SessionState* session_state = nullptr;
