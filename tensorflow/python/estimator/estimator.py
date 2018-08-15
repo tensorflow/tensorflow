@@ -957,18 +957,17 @@ class Estimator(object):
             init_fn=init_fn)
 
         def get_hooks_from_the_first_device(per_device_hooks):
-          hooks_list = self._distribution.unwrap(per_device_hooks)
-          assert hooks_list
-          return hooks_list[0]
+          hooks_list = []
+          for per_device_hook in per_device_hooks:
+            hooks = self._distribution.unwrap(per_device_hook)
+            assert hooks
+            hooks_list.append(hooks[0])
+          return hooks_list
 
-        training_hooks = [
-            get_hooks_from_the_first_device(per_device_hook)
-            for per_device_hook in grouped_estimator_spec.training_hooks
-        ]
-        training_chief_hooks = [
-            get_hooks_from_the_first_device(per_device_chief_hook)
-            for per_device_chief_hook in grouped_estimator_spec.training_chief_hooks
-        ]
+        training_hooks = get_hooks_from_the_first_device(
+            grouped_estimator_spec.training_hooks)
+        training_chief_hooks = get_hooks_from_the_first_device(
+            grouped_estimator_spec.training_chief_hooks)
 
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
