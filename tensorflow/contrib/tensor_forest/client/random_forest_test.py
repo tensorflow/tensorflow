@@ -140,7 +140,8 @@ class TensorForestTrainerTests(test.TestCase):
 
   def _assert_checkpoint(self, model_dir, global_step):
     reader = checkpoint_utils.load_checkpoint(model_dir)
-    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
+    self.assertLessEqual(
+        reader.get_tensor(ops.GraphKeys.GLOBAL_STEP), global_step)
 
   def testEarlyStopping(self):
     """Tests multi-class classification using matrix data as input."""
@@ -325,7 +326,8 @@ class CoreTensorForestTests(test.TestCase):
 
   def _assert_checkpoint(self, model_dir, global_step):
     reader = checkpoint_utils.load_checkpoint(model_dir)
-    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
+    self.assertLessEqual(
+        reader.get_tensor(ops.GraphKeys.GLOBAL_STEP), global_step)
 
   def testEarlyStopping(self):
     head_fn = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -349,7 +351,7 @@ class CoreTensorForestTests(test.TestCase):
     input_fn, _ = _get_classification_input_fns()
     est.train(input_fn=input_fn, steps=100)
     # We stopped early.
-    self._assert_checkpoint(est.model_dir, global_step=5)
+    self._assert_checkpoint(est.model_dir, global_step=8)
 
 
 if __name__ == "__main__":
