@@ -82,8 +82,10 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
       /*AddressSpace=*/llvm_ir::kAMDGPUGlobalMemoryAddrSpace,
       /*isExternallyInitialized=*/false);
-  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-      global, llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
+  llvm::Constant* shape_constant =
+      llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+          global,
+          llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
   generators_[constant] = [=](const IrArray::Index& index) {
     return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, b_);
