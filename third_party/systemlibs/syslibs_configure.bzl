@@ -14,6 +14,7 @@ VALID_LIBS = [
     "com_googlesource_code_re2",
     "curl",
     "cython",
+    "double_conversion",
     "flatbuffers",
     "gif_archive",
     "grpc",
