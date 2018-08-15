@@ -1494,6 +1494,7 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
+  // The input shapes are extended as part of NdArrayDesc initialization.
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
                                       &desc2);
   RuntimeShape extended_output_shape =
