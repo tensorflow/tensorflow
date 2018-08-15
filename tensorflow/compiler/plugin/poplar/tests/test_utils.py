@@ -34,6 +34,20 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
       config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
     yield sess
 
+def get_total_memory_from_report(report):
+  lines = report.split('\n')
+  found = False
+  for x in lines:
+    if not found:
+      m = re.search('Memory Usage\s+:', x)
+      if m:
+        found = True
+    else:
+      m = re.search('Total\s*:\s+(\d+) bytes', x)
+      if m:
+        return int(m.group(1))
+  return None
+
 def get_compute_sets_from_report(report):
   lines = report.split('\n')
   cs = [x for x in lines if re.search('  Step #\d+:', x)]
