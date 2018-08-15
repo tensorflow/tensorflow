@@ -114,7 +114,6 @@ private:
 ///
 /// This operation returns a single ssa value of memref type, which can be used
 /// by subsequent load and store operations.
-
 class AllocOp
     : public OpBase<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
@@ -140,8 +139,7 @@ private:
 ///   %2 = "constant"(){value: @foo} : (f32)->f32
 ///
 class ConstantOp
-    : public OpBase<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult/*,
-                         OpTrait::HasAttributeBase<"foo">::Impl*/> {
+    : public OpBase<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult> {
 public:
   Attribute *getValue() const { return getAttr("value"); }
 

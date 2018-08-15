@@ -181,8 +181,10 @@ mlfunc @ifstmt(%N: i32) {
       %y = "add"(%x, %i) : (i32, affineint) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, affineint) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
     } else if ((i)[N] : (i - 2 >= 0, 4 - i >= 0))  {      // CHECK     } else if (@@set1) {
-      %u = constant 1 : affineint // CHECK: %c1 = constant 1 : affineint
-      %w = affine_apply (d0,d1)[s0] -> (d0+d1+1) (%i, %i) [%u] // CHECK: %2 = affine_apply (d0, d1)[s0] -> (d0 + d1 + 1)(%i0, %i0)[%c1]
+      // CHECK: %c1 = constant 1 : affineint
+      %u = constant 1 : affineint
+      // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
+      %w = affine_apply (d0,d1)[s0] -> (d0+d1+1) (%i, %i) [%u] 
     } else {            // CHECK     } else {
       %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
     }       // CHECK     }
@@ -319,7 +321,15 @@ bb0:
 // CHECK-LABEL: cfgfunc @stringquote
 cfgfunc @stringquote() -> () {
 bb0:
-// CHECK: "foo"() {bar: "a\"quoted\"string"} : () -> ()
+  // CHECK: "foo"() {bar: "a\22quoted\22string"} : () -> ()
   "foo"(){bar: "a\"quoted\"string"} : () -> ()
+  return
+}
+
+// CHECK-LABEL: cfgfunc @floatAttrs
+cfgfunc @floatAttrs() -> () {
+bb0:
+  // CHECK: "foo"() {a: 4.000000e+00, b: 2.000000e+00, c: 7.100000e+00, d: -0.000000e+00} : () -> ()
+  "foo"(){a: 4.0, b: 2.0, c: 7.1, d: -0.0} : () -> ()
   return
 }

@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Token.h"
+#include "llvm/ADT/StringExtras.h"
 using namespace mlir;
 using llvm::SMLoc;
 using llvm::SMRange;
@@ -79,11 +80,47 @@ Optional<unsigned> Token::getIntTypeBitwidth() const {
 }
 
 /// Given a 'string' token, return its value, including removing the quote
-/// characters and unescaping the contents of the string.
+/// characters and unescaping the contents of the string.  The lexer has already
+/// verified that this token is valid.
 std::string Token::getStringValue() const {
+  assert(getKind() == string);
   // Start by dropping the quotes.
-  // TODO: Un-escape the string here instead of passing through the raw content.
-  return getSpelling().drop_front().drop_back().str();
+  StringRef bytes = getSpelling().drop_front().drop_back();
+
+  std::string result;
+  result.reserve(bytes.size());
+  for (unsigned i = 0, e = bytes.size(); i != e;) {
+    auto c = bytes[i++];
+    if (c != '\\') {
+      result.push_back(c);
+      continue;
+    }
+
+    assert(i + 1 < e && "invalid string should be caught by lexer");
+    auto c1 = bytes[i++];
+    switch (c1) {
+    case '"':
+    case '\\':
+      result.push_back(c1);
+      continue;
+    case 'n':
+      result.push_back('\n');
+      continue;
+    case 't':
+      result.push_back('\t');
+      continue;
+    default:
+      break;
+    }
+
+    assert(i + 1 < e && "invalid string should be caught by lexer");
+    auto c2 = bytes[i++];
+
+    assert(llvm::isHexDigit(c1) && llvm::isHexDigit(c2) && "invalid escape");
+    result.push_back((llvm::hexDigitValue(c1) << 4) | llvm::hexDigitValue(c2));
+  }
+
+  return result;
 }
 
 /// Given a hash_identifier token like #123, try to parse the number out of

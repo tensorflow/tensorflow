@@ -21,6 +21,7 @@
 
 #include "Lexer.h"
 #include "llvm/Support/SourceMgr.h"
+#include <cctype>
 using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
@@ -324,10 +325,14 @@ Token Lexer::lexString(const char *tokStart) {
     case '\f':
       return emitError(curPtr-1, "expected '\"' in string literal");
     case '\\':
-      // Handle explicitly \" -> ".
-      // TODO(someone): define more escaping rules.
-      if (*curPtr == '"')
+      // Handle explicitly a few escapes.
+      if (*curPtr == '"' || *curPtr == '\\' || *curPtr == 'n' || *curPtr == 't')
         ++curPtr;
+      else if (llvm::isHexDigit(*curPtr) && llvm::isHexDigit(curPtr[1]))
+        // Support \xx for two hex digits.
+        curPtr += 2;
+      else
+        return emitError(curPtr - 1, "unknown escape in string literal");
       continue;
 
     default:
