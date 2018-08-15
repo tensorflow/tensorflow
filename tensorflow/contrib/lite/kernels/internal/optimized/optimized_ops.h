@@ -1979,12 +1979,12 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
                  int32 input_offset, const uint8* filter_data,
                  const Dims<4>& filter_dims, int32 filter_offset,
                  const int32* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, int32 output_offset, int32 output_multiplier,
-                 int output_shift, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims, uint8* im2col_data,
-                 const Dims<4>& im2col_dims,
+                 int stride_width, int stride_height, int dilation_width_factor,
+                 int dilation_height_factor, int pad_width, int pad_height,
+                 int32 output_offset, int32 output_multiplier, int output_shift,
+                 int32 output_activation_min, int32 output_activation_max,
+                 uint8* output_data, const Dims<4>& output_dims,
+                 uint8* im2col_data, const Dims<4>& im2col_dims,
                  gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
 
@@ -1996,9 +1996,22 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   const Dims<4>* gemm_input_dims = nullptr;
   const int filter_width = ArraySize(filter_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    TFLITE_DCHECK(im2col_data);
+    const int input_zero_point = -input_offset;
+    TFLITE_DCHECK_GE(input_zero_point, 0);
+    TFLITE_DCHECK_LE(input_zero_point, 255);
+    DilatedIm2col(input_data, input_dims, filter_dims, stride_width,
+                  stride_height, dilation_width_factor, dilation_height_factor,
+                  pad_width, pad_height, output_dims, input_zero_point,
+                  im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_dims = &im2col_dims;
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     const int input_zero_point = -input_offset;
     TFLITE_DCHECK_GE(input_zero_point, 0);
@@ -2052,6 +2065,24 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
       gemm_context, filter_matrix, input_matrix, &output_matrix, filter_offset,
       input_offset, output_pipeline);
+}
+
+inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
+                 int32 input_offset, const uint8* filter_data,
+                 const Dims<4>& filter_dims, int32 filter_offset,
+                 const int32* bias_data, const Dims<4>& bias_dims,
+                 int stride_width, int stride_height, int pad_width,
+                 int pad_height, int32 output_offset, int32 output_multiplier,
+                 int output_shift, int32 output_activation_min,
+                 int32 output_activation_max, uint8* output_data,
+                 const Dims<4>& output_dims, uint8* im2col_data,
+                 const Dims<4>& im2col_dims,
+                 gemmlowp::GemmContext* gemm_context) {
+  Conv(input_data, input_dims, input_offset, filter_data, filter_dims,
+       filter_offset, bias_data, bias_dims, stride_width, stride_height, 1, 1,
+       pad_width, pad_height, output_offset, output_multiplier, output_shift,
+       output_activation_min, output_activation_max, output_data, output_dims,
+       im2col_data, im2col_dims, gemm_context);
 }
 
 // legacy, for compatibility with old checked-in code
