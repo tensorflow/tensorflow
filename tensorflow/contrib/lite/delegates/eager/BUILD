@@ -18,18 +18,21 @@ cc_library(
         "//tensorflow/c:c_api_internal",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
 )
 
 tf_cc_test(
     name = "buffer_map_test",
     size = "small",
     srcs = ["buffer_map_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":buffer_map",
         "//tensorflow/contrib/lite:framework",
@@ -55,17 +58,20 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:util",
-        "//tensorflow/core:lib",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":delegate",
         ":test_util",
@@ -80,19 +86,22 @@ cc_library(
     hdrs = ["delegate_data.h"],
     deps = [
         ":buffer_map",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cc_test(
     name = "delegate_data_test",
     size = "small",
     srcs = ["delegate_data_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":delegate_data",
         "//tensorflow/contrib/lite:framework",
@@ -109,25 +118,28 @@ cc_library(
     deps = [
         ":delegate_data",
         ":util",
+        "@flatbuffers",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:string",
         "//tensorflow/contrib/lite/kernels:kernel_util",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "@flatbuffers",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
 )
 
 tf_cc_test(
     name = "kernel_test",
     size = "small",
     srcs = ["kernel_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":delegate_data",
         ":kernel",
@@ -159,18 +171,21 @@ cc_library(
         "//tensorflow/c:c_api_internal",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":util",
         "//tensorflow/contrib/lite:string",
