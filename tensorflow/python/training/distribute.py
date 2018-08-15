@@ -930,9 +930,37 @@ class DistributionStrategy(object):
   def _worker_device_index(self):
     raise NotImplementedError("must be implemented in descendants")
 
-  def configure(self, session_config=None):
-    """Find the best configuration given a tensorflow session config."""
-    del session_config
+  @property
+  def between_graph(self):
+    """Whether the strategy uses between-graph replication or not.
+
+      This is expected to return a constant value that will not be changed
+      throughout its life cycle.
+    """
+    raise NotImplementedError("must be implemented in descendants")
+
+  def configure(self,
+                session_config=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    """Configures the strategy class."""
+    del session_config, cluster_spec, task_type, task_id
+
+  @property
+  def should_init(self):
+    """Whether initialization is needed."""
+    raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def should_checkpoint(self):
+    """Whether checkpointing is needed."""
+    raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def should_save_summary(self):
+    """Whether saving summaries is needed."""
+    raise NotImplementedError("must be implemented in descendants")
 
 
 # A note about the difference between the context managers
