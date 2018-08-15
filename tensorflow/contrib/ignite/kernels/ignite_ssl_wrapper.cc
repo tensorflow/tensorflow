@@ -13,22 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_ssl_client.h"
-
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/socket.h>
-
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <map>
-
-#include <iostream>
+#include "ignite_ssl_wrapper.h"
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+// #include <map>
+// #include <iostream>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -40,23 +31,27 @@ static int PasswordCb(char *buf, int size, int rwflag, void *password) {
   return(strlen(buf));
 }
 
-SslClient::SslClient(std::string host, int port, std::string certfile, std::string keyfile, std::string cert_password) :
-  host(host),
-  port(port),
+SslWrapper::SslWrapper(std::shared_ptr<Client> client, std::string certfile, std::string keyfile, std::string cert_password) :
+  client(client),
   certfile(certfile),
   keyfile(keyfile),
   cert_password(cert_password),
-  sock(-1),
   ctx(NULL) {}
 
-SslClient::~SslClient() {
+SslWrapper::~SslWrapper() {
+  if (IsConnected()) {
+    tensorflow::Status status = Disconnect();
+    if (!status.ok())
+      LOG(WARNING) << status.ToString();
+  }
+
   if (ctx != NULL) {
     SSL_CTX_free(ctx);
     ctx = NULL;
   }
 }
 
-tensorflow::Status SslClient::InitSslContext() {
+tensorflow::Status SslWrapper::InitSslContext() {
   OpenSSL_add_all_algorithms();
   SSL_load_error_strings();
 
@@ -77,132 +72,114 @@ tensorflow::Status SslClient::InitSslContext() {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status SslClient::Connect() {
-  if (sock == -1) {
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1)
-      return tensorflow::errors::Internal("Failed not create socket");
-  }
-
-  struct sockaddr_in server;
-
-  if (inet_addr(host.c_str()) == -1) {
-    struct hostent *he;
-    struct in_addr **addr_list;
-
-    if ((he = gethostbyname(host.c_str())) == NULL)
-      return tensorflow::errors::Internal("Failed to resolve hostname \"", host, "\"");
-
-    addr_list = (struct in_addr **)he->h_addr_list;
-    for (int i = 0; addr_list[i] != NULL; i++) {
-      server.sin_addr = *addr_list[i];
-      break;
-    }
-  } else {
-    server.sin_addr.s_addr = inet_addr(host.c_str());
-  }
-
-  server.sin_family = AF_INET;
-  server.sin_port = htons(port);
+tensorflow::Status SslWrapper::Connect() {
+  tensorflow::Status status;
 
   if (ctx == NULL) {
-    tensorflow::Status status = InitSslContext();
+    status = InitSslContext();
     if (!status.ok())
       return status;
   }
 
-  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) 
-    return tensorflow::errors::Internal("Failed to connect to \"", host, ":", port, "\"");
-
   ssl = SSL_new(ctx);
   if (ssl == NULL)
-    return tensorflow::errors::Internal("Failed to establish SSL connection to \"", host, ":", port, "\"");
+    return tensorflow::errors::Internal("Failed to establish SSL connection");
 
-  SSL_set_fd(ssl, sock);
+  status = client->Connect();
+  if (!status.ok())
+    return status;
+
+  SSL_set_fd(ssl, client->GetSocketDescriptor());
   if (SSL_connect(ssl) != 1)
-    return tensorflow::errors::Internal("Failed to establish SSL connection to \"", host, ":", port, "\"");
+    return tensorflow::errors::Internal("Failed to establish SSL connection");
 
-  LOG(INFO) << "Connection to \"" << host << ":" << port << "\" established";
+  LOG(INFO) << "SSL connection established";
 
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status SslClient::Disconnect() {
-  int close_res = close(sock);
+tensorflow::Status SslWrapper::Disconnect() {
   SSL_free(ssl);
-  sock = -1;
 
-  LOG(INFO) << "Connection to \"" << host << ":" << port << "\" is closed";
- 
-  return close_res == 0 ? tensorflow::Status::OK() : tensorflow::errors::Internal("Failed to correctly close connection");
+  LOG(INFO) << "SSL connection closed";
+
+  return client->Disconnect();
 }
 
-bool SslClient::IsConnected() {
-  return sock != -1;
+bool SslWrapper::IsConnected() {
+  return client->IsConnected();
 }
 
-char SslClient::ReadByte() {
+int SslWrapper::GetSocketDescriptor() {
+  return client->GetSocketDescriptor();
+}
+
+char SslWrapper::ReadByte() {
   char res;
   int a = SSL_read(ssl, &res, 1);
   return res;
 }
 
-short SslClient::ReadShort() {
+short SslWrapper::ReadShort() {
   short res;
   int a = SSL_read(ssl, &res, 2);
   return res;
 }
 
-int SslClient::ReadInt() {
+int SslWrapper::ReadInt() {
   int res;
   int a = SSL_read(ssl, &res, 4);
   return res;
 }
 
-long SslClient::ReadLong() {
+long SslWrapper::ReadLong() {
   long res;
   int a = SSL_read(ssl, &res, 8);
   return res;
 }
 
-void SslClient::ReadData(char *buf, int length) {
+void SslWrapper::ReadData(char *buf, int length) {
   int recieved = 0;
+
   while (recieved < length) {
     int res = SSL_read(ssl, buf, length - recieved);
+
+    
+
     recieved += res;
     buf += res;
   }
 }
 
-void SslClient::WriteByte(char data) { 
+void SslWrapper::WriteByte(char data) { 
   int res = 0;
   while (res <= 0) {
     res = SSL_write(ssl, &data, 1); 
   }
 }
 
-void SslClient::WriteShort(short data) { 
+void SslWrapper::WriteShort(short data) { 
   int res = 0;
   while (res <= 0) {
     res = SSL_write(ssl, &data, 2); 
   }
 }
 
-void SslClient::WriteInt(int data) { 
+void SslWrapper::WriteInt(int data) { 
   int res = 0;
   while (res <= 0) {
     res = SSL_write(ssl, &data, 4);
   }
 }
 
-void SslClient::WriteLong(long data) {
+void SslWrapper::WriteLong(long data) {
   int res = 0;
   while (res <= 0) {
     res = SSL_write(ssl, &data, 8); 
   }
 }
 
-void SslClient::WriteData(char *buf, int length) { 
+void SslWrapper::WriteData(char *buf, int length) { 
   int res = 0;
   while (res <= 0) {
     res = SSL_write(ssl, buf, length); 

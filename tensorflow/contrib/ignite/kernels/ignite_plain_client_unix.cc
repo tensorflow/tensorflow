@@ -36,6 +36,10 @@ PlainClient::PlainClient(std::string host, int port) :
   port(port),
   sock(-1) {}
 
+PlainClient::~PlainClient() {
+  // do nothing.
+}
+
 tensorflow::Status PlainClient::Connect() {
   if (sock == -1) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -83,6 +87,10 @@ tensorflow::Status PlainClient::Disconnect() {
 
 bool PlainClient::IsConnected() {
   return sock != -1;
+}
+
+int PlainClient::GetSocketDescriptor() {
+  return sock;
 }
 
 char PlainClient::ReadByte() {

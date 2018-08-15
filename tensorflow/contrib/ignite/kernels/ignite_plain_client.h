@@ -24,11 +24,13 @@ namespace ignite {
 
 class PlainClient: public Client {
  public:
-  PlainClient(std::string host, int port); 
+  PlainClient(std::string host, int port);
+  ~PlainClient(); 
 
   virtual tensorflow::Status Connect();
   virtual tensorflow::Status Disconnect();
   virtual bool IsConnected();
+  virtual int GetSocketDescriptor();
 
   virtual char ReadByte();
   virtual short ReadShort();

@@ -22,6 +22,7 @@ class Client {
   virtual tensorflow::Status Connect() = 0;
   virtual tensorflow::Status Disconnect() = 0;
   virtual bool IsConnected() = 0;
+  virtual int GetSocketDescriptor() = 0;
 
   virtual char ReadByte() = 0;
   virtual short ReadShort() = 0;
