@@ -43,6 +43,27 @@ py_library(
     ],
 )
 
+py_library(
+    name = "resnet_preprocessing",
+    srcs = ["resnet_preprocessing.py"],
+    srcs_version = "PY2AND3",
+    tags = ["local"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "imagenet_input",
+    srcs = ["imagenet_input.py"],
+    srcs_version = "PY2AND3",
+    tags = ["local"],
+    deps = [
+        ":resnet_preprocessing",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 # Tests
 cuda_py_test(
     name = "ops_test",
@@ -72,11 +93,13 @@ cuda_py_test(
     size = "large",
     srcs = ["revnet_test.py"],
     additional_deps = [
+        ":blocks_test",
         ":config",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
     tags = [
+        "no_pip",  # depends on blocks_test, which is not available in pip package
         "optonly",
     ],
 )
@@ -87,7 +110,6 @@ py_library(
     srcs = ["cifar_input.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":revnet",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -108,6 +130,42 @@ py_binary(
     deps = [
         ":cifar_input",
         ":config",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "main_estimator",
+    srcs = ["main_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "main_estimator_lib",
+    srcs = ["main_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "main_estimator_tpu_lib",
+    srcs = ["main_estimator_tpu.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],

@@ -28,8 +28,8 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{gtl::ArraySlice<int64>{
-      reinterpret_cast<const int64*>(dim.data()), dim.size()}};
+  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
+      reinterpret_cast<const tensorflow::int64*>(dim.data()), dim.size()}};
   return {type, shape};
 }
 
@@ -179,7 +179,9 @@ void TfDriver::Invoke() {
   auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
                               output_names_, {}, &output_tensors_);
   if (!status.ok()) {
-    Invalidate("Failed to invoke interpreter");
+    Invalidate(
+        "Failed to run input data on graph. Make sure the correct value is "
+        "defined for the input and output arrays.");
   }
 }
 

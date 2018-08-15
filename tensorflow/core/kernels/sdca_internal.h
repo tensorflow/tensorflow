@@ -43,8 +43,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
-#include "tensorflow/core/util/sparse/group_iterator.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {

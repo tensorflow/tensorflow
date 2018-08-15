@@ -24,6 +24,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -63,7 +65,7 @@ class MemoryTest(test.TestCase):
 
       initial = memory_profiler.memory_usage(-1)[0]
 
-      for _ in xrange(num_iters):
+      for _ in six.moves.range(num_iters):
         f()
 
       increase = memory_profiler.memory_usage(-1)[0] - initial

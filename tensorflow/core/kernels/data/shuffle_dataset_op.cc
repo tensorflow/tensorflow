@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -39,11 +40,11 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
 
  protected:
   // Abstract base dataset that implements a shuffling iterator.
-  class ShuffleDatasetBase : public GraphDatasetBase {
+  class ShuffleDatasetBase : public DatasetBase {
    public:
     ShuffleDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
                        int64 buffer_size, int64 count)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           buffer_size_(buffer_size),
           count_(count) {
@@ -75,7 +76,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             parent_generator_(seed, seed2),
             generator_(&parent_generator_) {
         buffer_.reset(new std::vector<Tensor>[params.dataset->buffer_size_]);
-        slices_.emplace_back(new Slice{0, 0});
+        slices_.push_back(MakeUnique<Slice>(0, 0));
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -118,7 +119,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             }
             epoch_++;
             int64 n = slices_.back()->end;
-            slices_.emplace_back(new Slice{n, n});
+            slices_.push_back(MakeUnique<Slice>(n, n));
             TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
                 ctx, this->prefix(), &input_impl_));
           }
@@ -178,7 +179,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               this->full_name("end_of_input_sequence"), ""));
         } else {
-          TF_RETURN_IF_ERROR(this->SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(this->SaveInput(writer, input_impl_));
         }
 
         // Save the epoch counter, buffer, and buffer slices.
@@ -226,7 +227,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
         if (!reader->Contains(this->full_name("end_of_input_sequence"))) {
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
               ctx, this->prefix(), &input_impl_));
-          TF_RETURN_IF_ERROR(this->RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -251,7 +252,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           int64 end;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               this->full_name(strings::StrCat("slices_end_", i)), &end));
-          slices_.emplace_back(new Slice{start, end});
+          slices_.push_back(MakeUnique<Slice>(start, end));
           for (size_t j = start; j < end; ++j) {
             size_t index = j % this->dataset()->buffer_size_;
             int64 list_size;
@@ -428,11 +429,12 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
       }
     };
 
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       mutex_lock l(mu_);
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
       Node* seed = nullptr;
       Node* seed2 = nullptr;
@@ -498,10 +500,11 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
       Node* seed = nullptr;
       Node* seed2 = nullptr;
@@ -583,10 +586,11 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
       Node* seed = nullptr;
       Node* seed2 = nullptr;

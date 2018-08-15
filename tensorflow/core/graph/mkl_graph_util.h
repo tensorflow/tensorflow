@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_MKL_GRAPH_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

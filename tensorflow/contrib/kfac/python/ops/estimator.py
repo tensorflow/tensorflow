@@ -97,8 +97,8 @@ class FisherEstimator(object):
           and to regularize the update direction by making it closer to the
           gradient. (Higher damping means the update looks more like a standard
           gradient update - see Tikhonov regularization.)
-      layer_collection: The layer collection object, which holds the fisher
-          blocks, kronecker factors, and losses associated with the
+      layer_collection: The layer collection object, which holds the Fisher
+          blocks, Kronecker factors, and losses associated with the
           graph.
       exps: List of floats or ints. These represent the different matrix
           powers of the approximate Fisher that the FisherEstimator will be able
@@ -464,7 +464,7 @@ class FisherEstimator(object):
 
   def _get_grads_lists_empirical(self, tensors):
     # Passing in a list of loss values is better than passing in the sum as
-    # the latter creates unnessesary ops on the default device
+    # the latter creates unnecessary ops on the default device
     grads_flat = gradients_impl.gradients(
         self._layers.eval_losses(),
         nest.flatten(tensors),

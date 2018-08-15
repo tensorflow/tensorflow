@@ -90,7 +90,7 @@ TEST_F(HloTfGraphBuilderTest, CheckConcatenateDimsAndShapes) {
 TEST_F(HloTfGraphBuilderTest, CheckScalarValue) {
   auto builder = HloComputation::Builder("Const");
   HloInstruction *instruction = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(123)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(123)));
   OpMetadata metadata;
   metadata.set_op_name("x");
   metadata.set_op_type("y");

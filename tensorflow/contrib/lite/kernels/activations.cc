@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -41,6 +40,11 @@ struct OpData {
   int diff_min = 0;
 };
 
+struct LogSoftmaxOpData : public OpData {
+  int32_t reverse_scaling_divisor = 0;
+  int32_t reverse_scaling_right_shift = 0;
+};
+
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
@@ -48,8 +52,17 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return new OpData;
 }
 
+void* LogSoftmaxInit(TfLiteContext* context, const char* buffer,
+                     size_t length) {
+  return new LogSoftmaxOpData;
+}
+
 void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
+}
+
+void LogSoftmaxFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<LogSoftmaxOpData*>(buffer);
 }
 
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -186,8 +199,8 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  TF_LITE_ENSURE(context,
-                 NumDimensions(input) == 2 || NumDimensions(input) == 4);
+  const int num_dims = NumDimensions(input);
+  TF_LITE_ENSURE(context, num_dims == 1 || num_dims == 2 || num_dims == 4);
 
   if (input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
@@ -206,6 +219,34 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(input->dims));
 }
 
+TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
+  LogSoftmaxOpData* data = reinterpret_cast<LogSoftmaxOpData*>(node->user_data);
+
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  if (input->type == kTfLiteUInt8) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 255);
+    TF_LITE_ENSURE_EQ(context, output->params.scale, 16.0 / 256);
+
+    static const double kBeta = 1.0;
+    static const int kScaledDiffIntegerBits = 5;
+    tflite::PreprocessLogSoftmaxScalingExp(
+        kBeta, input->params.scale, kScaledDiffIntegerBits,
+        &data->input_multiplier, &data->input_left_shift,
+        &data->reverse_scaling_divisor, &data->reverse_scaling_right_shift);
+    data->reverse_scaling_right_shift *= -1;
+    data->diff_min = -1.0 * tflite::CalculateInputRadius(
+                                kScaledDiffIntegerBits, data->input_left_shift);
+  }
+
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(input->dims));
+}
+
 TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -213,25 +254,25 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
 
-  output->type = input->type;
-
   // Currently only Float32 is supported
   // TODO(ycling): Support other data types.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, alpha->type, kTfLiteFloat32);
+  output->type = input->type;
 
-  // Currently, only support 4D `input` and 3D `alpha` with shape
-  // (1, 1, channels).
-  // TODO(impjdi): Support other cases where `alpha` is broadcastable
-  // to `input`.
-  TF_LITE_ENSURE_EQ(context, input->dims->size, 4);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->size, 3);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[0], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[1], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[2], input->dims->data[3]);
+  // PRelu (parameteric Relu) shares the same alpha value on "shared axis".
+  // This means it's always required to "broadcast" alpha values in PRelu.
+  TfLiteIntArray* output_size = nullptr;
+  TF_LITE_ENSURE_OK(
+      context, CalculateShapeForBroadcast(context, input, alpha, &output_size));
 
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, output_size));
+  // After broadcasting, the output shape should always be the same as the
+  // input shape.
+  TF_LITE_ENSURE(context, HaveSameShapes(input, output));
+
+  return kTfLiteOk;
 }
 
 TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
@@ -365,13 +406,9 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-// Takes a 2D tensor and perform softmax along the second dimension.
-void Softmax2DFloat(const TfLiteTensor* input, TfLiteTensor* output,
-                    TfLiteSoftmaxParams* params) {
-  const int batch_size = input->dims->data[0];
-  const int input_size = input->dims->data[1];
-  float* in = input->data.f;
-  float* out = output->data.f;
+// Performs softmax along the input of size (input_size * batch_size).
+void Softmax(const float* in, const int input_size, const int batch_size,
+             const float beta, float* out) {
   TF_LITE_ASSERT(input_size > 0);
 
   // For each batch
@@ -385,7 +422,7 @@ void Softmax2DFloat(const TfLiteTensor* input, TfLiteTensor* output,
     // Compute the normalized sum of exps.
     float exp_sum = 0.0;
     for (int i = 0; i < input_size; i++) {
-      out[i] = std::exp((in[i] - max_coeff) * params->beta);
+      out[i] = std::exp((in[i] - max_coeff) * beta);
       exp_sum += out[i];
     }
 
@@ -401,6 +438,33 @@ void Softmax2DFloat(const TfLiteTensor* input, TfLiteTensor* output,
   }
 }
 
+// Takes a 1D tensor and performs softmax along it.
+void Softmax1DFloat(const TfLiteTensor* input, TfLiteTensor* output,
+                    TfLiteSoftmaxParams* params) {
+  const int input_size = input->dims->data[0];
+  Softmax(input->data.f, input_size, 1, params->beta, output->data.f);
+}
+
+// Takes a 2D tensor and perform softmax along the last dimension.
+void Softmax2DFloat(const TfLiteTensor* input, TfLiteTensor* output,
+                    TfLiteSoftmaxParams* params) {
+  const int batch_size = input->dims->data[0];
+  const int input_size = input->dims->data[1];
+  Softmax(input->data.f, input_size, batch_size, params->beta, output->data.f);
+}
+
+void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                        TfLiteSoftmaxParams* params, OpData* data) {
+  // TODO(ahentz): this is arguably a dirty trick. Since the implementation
+  // always traverses the last dimension of a 4D tensor, we will pretend our 1D
+  // tensor is 4D in a special way. We will convert a (Y) shape into a (1,
+  // 1, 1, Y) shape.
+  const int input_size = input->dims->data[0];
+  optimized_ops::Softmax(
+      GetTensorData<uint8_t>(input), GetTensorShape({1, 1, 1, input_size}),
+      data->input_multiplier, data->input_left_shift, data->diff_min,
+      GetTensorData<uint8_t>(output), GetTensorShape({1, 1, 1, input_size}));
+}
 void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                         TfLiteSoftmaxParams* params, OpData* data) {
   // TODO(ahentz): this is arguably a dirty trick. Since the implementation
@@ -443,6 +507,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   // dimensions.
   switch (input->type) {
     case kTfLiteFloat32: {
+      if (NumDimensions(input) == 1) {
+        Softmax1DFloat(input, output, params);
+        return kTfLiteOk;
+      }
       if (NumDimensions(input) == 2) {
         Softmax2DFloat(input, output, params);
         return kTfLiteOk;
@@ -452,11 +520,15 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteOk;
       }
       context->ReportError(
-          context, "Only 2D and 4D tensors supported currently, got %dD.",
+          context, "Only 1D, 2D and 4D tensors supported currently, got %dD.",
           NumDimensions(input));
       return kTfLiteError;
     }
     case kTfLiteUInt8: {
+      if (NumDimensions(input) == 1) {
+        Softmax1DQuantized(input, output, params, data);
+        return kTfLiteOk;
+      }
       if (NumDimensions(input) == 2) {
         Softmax2DQuantized(input, output, params, data);
         return kTfLiteOk;
@@ -479,6 +551,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
+  const LogSoftmaxOpData* data =
+      reinterpret_cast<LogSoftmaxOpData*>(node->user_data);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
@@ -487,6 +561,14 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorData<float>(input), GetTensorShape(input),
           GetTensorData<float>(output), GetTensorShape(output));
       return kTfLiteOk;
+    case kTfLiteUInt8:
+      optimized_ops::LogSoftmax(
+          GetTensorData<uint8_t>(input), GetTensorShape(input),
+          data->input_multiplier, data->input_left_shift,
+          data->reverse_scaling_divisor, data->reverse_scaling_right_shift,
+          data->diff_min, GetTensorData<uint8_t>(output),
+          GetTensorShape(output));
+      return kTfLiteOk;
     default:
       context->ReportError(context, "Only float32 supported currently., got %d",
                            input->type);
@@ -494,33 +576,24 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <typename T>
+T ApplyPrelu(T input, T alpha) {
+  return input >= 0.0 ? input : input * alpha;
+}
+
 TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
-  const TfLiteTensor* output = GetOutput(context, node, 0);
-
+  TfLiteTensor* output = GetOutput(context, node, 0);
   if (input->type != kTfLiteFloat32) {
     context->ReportError(context, "Only float32 supported currently, got %d.",
                          input->type);
     return kTfLiteError;
   }
-  TF_LITE_ENSURE_EQ(context, input->dims->size, 4);
-  const int batches = input->dims->data[0];
-  const int height = input->dims->data[1];
-  const int width = input->dims->data[2];
-  const int channels = input->dims->data[3];
-
-  TF_LITE_ENSURE_EQ(context, alpha->dims->size, 3);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[0], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[1], 1);
-  TF_LITE_ENSURE_EQ(context, alpha->dims->data[2], channels);
-
-  const int n = batches * height * width * channels;
-  for (int i = 0; i < n; ++i) {
-    const float x = input->data.f[i];
-    output->data.f[i] = x >= 0.0f ? x : alpha->data.f[i % channels] * x;
-  }
-
+  reference_ops::BroadcastBinaryFunction<float, float, float>(
+      GetTensorData<float>(input), GetTensorDims(input),
+      GetTensorData<float>(alpha), GetTensorDims(alpha),
+      GetTensorData<float>(output), GetTensorDims(output), ApplyPrelu<float>);
   return kTfLiteOk;
 }
 
@@ -569,9 +642,9 @@ TfLiteRegistration* Register_SOFTMAX() {
 }
 
 TfLiteRegistration* Register_LOG_SOFTMAX() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::GenericPrepare,
-                                 activations::LogSoftmaxEval};
+  static TfLiteRegistration r = {
+      activations::LogSoftmaxInit, activations::LogSoftmaxFree,
+      activations::LogSoftmaxPrepare, activations::LogSoftmaxEval};
   return &r;
 }
 

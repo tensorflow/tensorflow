@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "write_file"
-    deprecation_message: "tf.write_file is deprecated, please use tf.io.write_file instead."
+    deprecated: true
   }
 }

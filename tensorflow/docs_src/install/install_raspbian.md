@@ -1,4 +1,4 @@
-# Installing TensorFlow on Raspbian
+# Install TensorFlow on Raspbian
 
 This guide explains how to install TensorFlow on a Raspberry Pi running
 Raspbian. Although these instructions might also work on other Pi variants, we
@@ -60,7 +60,7 @@ If it gives the error "Command not found", then the package has not been
 installed yet. To install if for the first time, run:
 
 <pre>$ sudo apt-get install python3-pip # for Python 3.n
-sudo apt-get install python-pip # for Python 2.7</pre>
+$ sudo apt-get install python-pip # for Python 2.7</pre>
 
 You can find more help on installing and upgrading pip in
 [the Raspberry Pi documentation](https://www.raspberrypi.org/documentation/linux/software/python.md).
@@ -78,8 +78,8 @@ your system, run the following command:
 Assuming the prerequisite software is installed on your Pi, install TensorFlow
 by invoking **one** of the following commands:
 
-     <pre> $ <b>pip3 install tensorflow</b>     # Python 3.n
-     $ <b>pip install tensorflow</b>      # Python 2.7</pre>
+<pre>$ <b>pip3 install tensorflow</b>     # Python 3.n
+$ <b>pip install tensorflow</b>      # Python 2.7</pre>
 
 This can take some time on certain platforms like the Pi Zero, where some Python
 packages like scipy that TensorFlow depends on need to be compiled before the
@@ -230,7 +230,7 @@ problems, despite the log message.
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 ## Common installation problems
 

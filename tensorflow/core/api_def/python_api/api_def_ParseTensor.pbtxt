@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "parse_tensor"
-    deprecation_message: "tf.parse_tensor is deprecated, please use tf.io.parse_tensor instead."
+    deprecated: true
   }
 }

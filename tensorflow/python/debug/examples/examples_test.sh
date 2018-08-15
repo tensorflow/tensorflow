@@ -99,7 +99,7 @@ if [[ -d "${CUSTOM_DUMP_ROOT}" ]]; then
 fi
 
 # Test debugging of tf.keras.
-cat << EOF | "${DEBUG_KERAS_BIN}" --debug --ui_type=readline
+cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline
 run -f has_inf_or_nan
 EOF
 

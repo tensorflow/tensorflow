@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -24,6 +24,24 @@ namespace xla {
 
 // Returns a rank 1 tensor of `type` containing values [0, 1, 2, ...].
 XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
+
+// Returns an m x n matrix with 1s on the diagonal elements, zeros everywhere
+// else.
+XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
+
+// Get the diagonals of the last two dimensions. If 'x' has shape
+// [..., M, N], then the output has shape [..., min(M, N)], containing the
+// diagonal elements (i.e., with indices [..., i, i]).
+XlaOp GetMatrixDiagonal(XlaOp x);
+
+// Get the upper or lower triangle part of the last two dimensions
+XlaOp Triangle(XlaOp x, bool lower);
+
+// Get the upper triangle part of the last two dimensions
+XlaOp UpperTriangle(XlaOp x);
+
+// Get the lower triangle part of the last two dimensions
+XlaOp LowerTriangle(XlaOp x);
 
 }  // namespace xla
 

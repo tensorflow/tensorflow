@@ -312,10 +312,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   #       hidden_units=[1024, 512, 256])
 
   # Input pipeline for train and evaluate.
-  def train_input_fn: # returns x, y
+  def train_input_fn(): # returns x, y
     # please shuffle the data.
     pass
-  def eval_input_fn_eval: # returns x, y
+  def eval_input_fn(): # returns x, y
     pass
 
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=1000)
@@ -323,6 +323,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
   ```
+  Note that in current implementation `estimator.evaluate` will be called
+  multiple times. This means that evaluation graph (including eval_input_fn)
+  will be re-created for each `evaluate` call. `estimator.train` will be called
+  only once.
 
   Example of distributed training:
 
@@ -732,7 +736,8 @@ class _TrainingExecutor(object):
         job_name=config.task_type,
         task_index=config.task_id,
         config=session_config,
-        start=False)
+        start=False,
+        protocol=config.protocol)
     server.start()
     return server
 

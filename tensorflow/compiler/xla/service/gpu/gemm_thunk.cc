@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,16 +32,19 @@ namespace {
 // dimensions.
 struct MatrixDescriptor {
   MatrixDescriptor(se::DeviceMemoryBase matrix_data, bool needs_transpose,
-                   int64 matrix_num_rows, int64 matrix_num_cols)
+                   int64 matrix_num_rows, int64 matrix_num_cols,
+                   int64 matrix_batch_size)
       : data(matrix_data),
         transpose(needs_transpose),
         num_rows(matrix_num_rows),
-        num_cols(matrix_num_cols) {}
+        num_cols(matrix_num_cols),
+        batch_size(matrix_batch_size) {}
 
   se::DeviceMemoryBase data;
   bool transpose;  // Whether this matrix needs to be transposed.
   int64 num_rows;
   int64 num_cols;
+  int64 batch_size;
 };
 
 // Performs a gemm call without an explicit algorithm on lhs_matrix and
@@ -50,6 +54,9 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
             MatrixDescriptor output_matrix, double alpha, se::Stream* stream) {
   DCHECK(!output_matrix.transpose);
 
+  const int64 batch_size = lhs_matrix.batch_size;
+  CHECK_EQ(batch_size, rhs_matrix.batch_size);
+  CHECK_EQ(batch_size, output_matrix.batch_size);
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
@@ -60,13 +67,30 @@ bool DoGemm(MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
                                             : se::blas::Transpose::kNoTranspose;
   auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
+  if (batch_size == 1) {
+    return stream
+        ->ThenBlasGemm(
+            lhs_transpose, rhs_transpose, output_matrix.num_rows,
+            output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
+            lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+            /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
+            &output_data, /*leading dim of output=*/output_matrix.num_rows)
+        .ok();
+  }
+
+  int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
+  int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
+  int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
   return stream
-      ->ThenBlasGemm(
+      ->ThenBlasGemmStridedBatched(
           lhs_transpose, rhs_transpose, output_matrix.num_rows,
-          output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
-          lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
-          &output_data, /*leading dim of output=*/output_matrix.num_rows)
+          output_matrix.num_cols, /*size of reduce dim=*/k,
+          /*alpha=*/alpha, lhs_data,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, lhs_stride, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
+          /*beta=*/0.0, &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, output_stride,
+          batch_size)
       .ok();
 }
 
@@ -92,6 +116,10 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
                          se::blas::AlgorithmType algorithm, se::Stream* stream,
                          se::blas::ProfileResult* output_profile_result) {
   DCHECK(!output_matrix.transpose);
+
+  CHECK_EQ(1, lhs_matrix.batch_size);
+  CHECK_EQ(1, rhs_matrix.batch_size);
+  CHECK_EQ(1, output_matrix.batch_size);
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
@@ -141,9 +169,15 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
                                        alpha, computation_type, algorithm,
                                        stream, &profile_result));
 
-    if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
-                                         best_result.elapsed_time_in_ms()) {
-      best_result = profile_result;
+    if (profile_result.is_valid()) {
+      VLOG(3) << "cublas gemm algorithm " << algorithm << " took "
+              << profile_result.elapsed_time_in_ms() << "ms";
+      if (profile_result.elapsed_time_in_ms() <
+          best_result.elapsed_time_in_ms()) {
+        best_result = profile_result;
+      }
+    } else {
+      VLOG(4) << "cublas gemm algorithm " << algorithm << " failed.";
     }
   }
 
@@ -167,6 +201,8 @@ auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
       return &DoGemm<float>;
     case F64:
       return &DoGemm<double>;
+    case C64:
+      return &DoGemm<std::complex<float>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -180,6 +216,8 @@ auto GetGemmWithAlgorithmFn(PrimitiveType type)
       return &DoGemmWithAlgorithm<float>;
     case F64:
       return &DoGemmWithAlgorithm<double>;
+    case C64:
+      return &DoGemmWithAlgorithm<std::complex<float>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -192,6 +230,8 @@ auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
       return &DoGemmAutotune<float>;
     case F64:
       return &DoGemmAutotune<double>;
+    case C64:
+      return &DoGemmAutotune<std::complex<float>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -210,6 +250,8 @@ se::blas::ComputationType GetBlasComputationType(PrimitiveType type) {
       return se::blas::ComputationType::kF32;
     case F64:
       return se::blas::ComputationType::kF64;
+    case C64:
+      return se::blas::ComputationType::kComplexF32;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -252,7 +294,8 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       alpha_(alpha) {}
 
 Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                  se::Stream* stream) {
+                                  se::Stream* stream,
+                                  HloExecutionProfiler* profiler) {
   VLOG(2) << "Executing a GemmThunk";
 
   se::DeviceMemoryBase lhs_data =
@@ -262,12 +305,37 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   se::DeviceMemoryBase output_data =
       buffer_allocations.GetDeviceAddress(output_buffer_);
 
+  DotDimensionNumbers dim_nums = GetDimensionNumbers(*hlo_instruction());
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
+           dim_nums.rhs_batch_dimensions_size());
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
+           ShapeUtil::Rank(output_shape_));
+
+  int64 row_dim = dim_nums.lhs_batch_dimensions_size();
+  int64 col_dim = dim_nums.lhs_batch_dimensions_size() + 1;
+  int64 batch_size = std::accumulate(output_shape_.dimensions().begin(),
+                                     output_shape_.dimensions().end() - 2, 1,
+                                     std::multiplies<int64>());
+
+  // Check that the batch dims don't cover the last two dims.
+  for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+    CHECK_NE(row_dim, batch_dim);
+    CHECK_NE(col_dim, batch_dim);
+  }
+
+  // Verify that the non-batch dimensions are minor-most. This is required for
+  // efficient access.
+  for (const auto* shape : {&lhs_shape_, &rhs_shape_, &output_shape_}) {
+    CHECK_LT(shape->layout().minor_to_major(row_dim), 2);
+    CHECK_LT(shape->layout().minor_to_major(col_dim), 2);
+  }
+
   // BLAS gemm reduces rows of LHS and columns of RHS. The Dot operator between
   // matrices reduces dimension 1 of LHS and dimension 0 of RHS regardless of
   // their layout. Therefore, we should treat dimension 0 as row and dimension 1
   // as column when mapping a matrix Dot to BLAS gemm.
-  int64 output_num_rows = output_shape_.dimensions(0);
-  int64 output_num_cols = output_shape_.dimensions(1);
+  int64 output_num_rows = output_shape_.dimensions(row_dim);
+  int64 output_num_cols = output_shape_.dimensions(col_dim);
 
   // BLAS gemm expects the inputs and the output are in column-major order.
   // Therefore, we need to convert dot between row-major matrices to that
@@ -290,34 +358,46 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   // the leading dimension of the LHS matrix of gemm is the number of rows in
   // B^T and thus the number of columns in B.
 
-  auto make_descriptor = [this](se::DeviceMemoryBase data, const Shape& shape,
-                                bool transpose) -> MatrixDescriptor {
-    bool is_row_major = LayoutUtil::Minor(shape.layout(), 0) != 0;
-    bool layout_mismatch = LayoutUtil::Minor(shape.layout(), 0) !=
-                           LayoutUtil::Minor(output_shape_.layout(), 0);
-    return MatrixDescriptor(data, transpose ^ layout_mismatch,
-                            shape.dimensions(is_row_major),
-                            shape.dimensions(!is_row_major));
+  auto make_descriptor = [&](se::DeviceMemoryBase data, const Shape& shape,
+                             bool transpose) -> MatrixDescriptor {
+    bool is_row_major = LayoutUtil::Minor(shape.layout(), row_dim) != 0;
+    bool layout_mismatch = LayoutUtil::Minor(shape.layout(), row_dim) !=
+                           LayoutUtil::Minor(output_shape_.layout(), row_dim);
+    return MatrixDescriptor(
+        data, transpose ^ layout_mismatch,
+        shape.dimensions(row_dim + static_cast<int64>(is_row_major)),
+        shape.dimensions(row_dim + static_cast<int64>(!is_row_major)),
+        batch_size);
   };
 
-  DotDimensionNumbers dim_nums = GetDimensionNumbers(*hlo_instruction());
-
   const MatrixDescriptor lhs_descriptor = make_descriptor(
-      lhs_data, lhs_shape_, dim_nums.lhs_contracting_dimensions(0) == 0);
+      lhs_data, lhs_shape_, dim_nums.lhs_contracting_dimensions(0) == row_dim);
   const MatrixDescriptor rhs_descriptor = make_descriptor(
-      rhs_data, rhs_shape_, dim_nums.rhs_contracting_dimensions(0) == 1);
+      rhs_data, rhs_shape_, dim_nums.rhs_contracting_dimensions(0) == col_dim);
 
   // Dispatches to a regular cublas gemm, a gemm-with-algorithm, or attempts to
   // autotune this gemm to figure out the best algorithm.
-  auto launch = [this](MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-                       MatrixDescriptor output_matrix, se::Stream* stream) {
+  auto launch = [&](MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+                    MatrixDescriptor output_matrix, se::Stream* stream) {
     PrimitiveType element_type = output_shape_.element_type();
     se::blas::ComputationType computation_type =
         GetBlasComputationType(element_type);
 
+    // TODO(b/112111608): Implement auto tune for batched gemm.
+    if (batch_size != 1) {
+      return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
+                                     alpha_, stream);
+    }
+
+    auto thunk_name = [&] {
+      return hlo_instruction() != nullptr ? hlo_instruction()->ToString()
+                                          : "<null>";
+    };
+
     const string& device_name = stream->parent()->GetDeviceDescription().name();
     auto autotune_it = autotune_results_.find(device_name);
     if (autotune_it == autotune_results_.end()) {
+      VLOG(3) << "Starting autotune of GemmThunk " << thunk_name();
       StatusOr<se::blas::AlgorithmType> best_algorithm =
           GetGemmAutotuneFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
                                           alpha_, computation_type, stream);
@@ -325,11 +405,11 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
           autotune_results_.insert({device_name, best_algorithm}).first;
 
       if (autotune_it->second.ok()) {
-        VLOG(2) << "Autotune on GemmThunk " << this
+        VLOG(2) << "Autotune on GemmThunk " << thunk_name()
                 << " successful; best algorithm is "
                 << best_algorithm.ValueOrDie();
       } else {
-        VLOG(2) << "Autotune on GemmThunk " << this
+        VLOG(2) << "Autotune on GemmThunk " << thunk_name()
                 << " unsuccessful.  Will use generic gemm.";
       }
     }
@@ -339,7 +419,7 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     if (best_algorithm.ok()) {
       auto algorithm = best_algorithm.ValueOrDie();
       VLOG(2) << "Using algorithm " << algorithm
-              << " chosen by autotuning on GemmThunk " << this;
+              << " chosen by autotuning on GemmThunk " << thunk_name();
       return GetGemmWithAlgorithmFn(element_type)(
           lhs_matrix, rhs_matrix, output_matrix, alpha_, computation_type,
           algorithm, stream,
@@ -352,17 +432,18 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                    alpha_, stream);
   };
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   bool launch_ok;
-  if (LayoutUtil::Minor(output_shape_.layout(), 0) == 0) {
-    launch_ok = launch(
-        lhs_descriptor, rhs_descriptor,
-        MatrixDescriptor(output_data, false, output_num_rows, output_num_cols),
-        stream);
+  if (LayoutUtil::Minor(output_shape_.layout(), row_dim) == 0) {
+    launch_ok = launch(lhs_descriptor, rhs_descriptor,
+                       MatrixDescriptor(output_data, false, output_num_rows,
+                                        output_num_cols, batch_size),
+                       stream);
   } else {
-    launch_ok = launch(
-        rhs_descriptor, lhs_descriptor,
-        MatrixDescriptor(output_data, false, output_num_cols, output_num_rows),
-        stream);
+    launch_ok = launch(rhs_descriptor, lhs_descriptor,
+                       MatrixDescriptor(output_data, false, output_num_cols,
+                                        output_num_rows, batch_size),
+                       stream);
   }
 
   if (!launch_ok) {

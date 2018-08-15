@@ -28,16 +28,16 @@ namespace llvm_ir {
 // Sentry allocation used to represent parameters of the entry computation in
 // alias_scope_metadata_ and noalias_metadata_.
 static const BufferAllocation* kParameterAllocation = new BufferAllocation(
-    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false,
-    LogicalBuffer::Color(0));
+    /*index=*/-1, /*size=*/0, LogicalBuffer::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     llvm_ir::IrArray* array,
                                                     const ShapeIndex& index) {
   BufferAllocation::Slice buffer_slice;
-  if (hlo.opcode() == HloOpcode::kParameter) {
-    // Parameters may alias with each other but may not alias with our temporary
-    // buffers.
+  if (hlo.opcode() == HloOpcode::kParameter &&
+      hlo.parent() == hlo.parent()->parent()->entry_computation()) {
+    // Entry computation parameters may alias with each other but may not alias
+    // with our temporary buffers.
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
   } else {
     const std::set<BufferAllocation::Slice> slices =

@@ -47,6 +47,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":data_structures",
     ],
 )
 
@@ -117,20 +118,21 @@ py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO: needs investigation on Windows
-        "notsan",  # b/74395663
-    ],
+    tags = ["notsan"],  # b/74395663
     deps = [
         ":base",
+        ":tracking",
         ":util",
+        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:template",

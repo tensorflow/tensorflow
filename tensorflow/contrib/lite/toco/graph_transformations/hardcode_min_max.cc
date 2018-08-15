@@ -228,6 +228,14 @@ bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
   return true;
 }
 
+bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
+  const double magnitude =
+      std::min(minmax1.max - minmax1.min, minmax2.max - minmax2.min);
+  const double tolerated = 1e-6 * magnitude;
+  return std::abs(minmax1.min - minmax2.min) < tolerated &&
+         std::abs(minmax1.max - minmax2.max) < tolerated;
+}
+
 // Propagates MinMax from any of the listed arrays, to all others.
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
@@ -250,7 +258,7 @@ bool PropagateMinMaxAmongArrays(Model* model,
   for (const string& array_name : array_names) {
     auto& array = model->GetArray(array_name);
     if (array.minmax) {
-      CHECK(*array.minmax == *reference_minmax)
+      CHECK(MinMaxApproximatelyEqual(*array.minmax, *reference_minmax))
           << "Both the following arrays have minmax, and they disagree: "
           << reference_array_name << " (" << reference_minmax->min << ","
           << reference_minmax->max << ") and " << array_name << " ("
@@ -363,11 +371,25 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
     case OperatorType::kReshape:
+    case OperatorType::kExpandDims:
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:
     case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
+      break;
+    case OperatorType::kSum:
+      // reduce_sum is expected to change the output range. Hence
+      // a fake_quant op is necessary in the output to minimize error. However
+      // in special circumstances like when computing expected value using
+      // reduce_sum the input range and the output range matches. Hence the
+      // below code would act as a fallback. If a fake_quant node is observed in
+      // the output that takes precendence over the hard coding logic below.
+      changed = HardcodeMinMaxFromFirstInput(model, op);
+      if (changed) {
+        LOG(WARNING) << "Using the input range for output in reduce_sum op."
+                     << "This could have an impact on your model accuracy.";
+      }
       break;
     case OperatorType::kSelect:
       changed = HardcodeMinMaxForSelect(model, op);

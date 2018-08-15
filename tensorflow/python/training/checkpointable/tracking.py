@@ -18,31 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.training.checkpointable import base
-
-
-class NoDependency(object):
-  """Allows attribute assignment to `Checkpointable` objects with no dependency.
-
-  Example usage:
-  ```python
-  obj = Checkpointable()
-  obj.has_dependency = tf.Variable(0., name="dep")
-  obj.no_dependency = NoDependency(tf.Variable(1., name="nodep"))
-  assert obj.no_dependency.name == "nodep:0"
-  ```
-
-  `obj` in this example has a dependency on the variable "dep", and both
-  attributes contain un-wrapped `Variable` objects.
-
-  `NoDependency` also works with `tf.keras.Model`, but only for checkpoint
-  dependencies: wrapping a `Layer` in `NoDependency` will assign the (unwrapped)
-  `Layer` to the attribute without a checkpoint dependency, but the `Model` will
-  still track the `Layer` (so it will appear in `Model.layers`, and its
-  variables will appear in `Model.variables`).
-  """
-
-  def __init__(self, value):
-    self.value = value
+from tensorflow.python.training.checkpointable import data_structures
 
 
 class NotCheckpointable(object):
@@ -86,18 +62,11 @@ class Checkpointable(base.CheckpointableBase):
 
   def __setattr__(self, name, value):
     """Support self.foo = checkpointable syntax."""
-    # Perform the attribute assignment, and potentially call other __setattr__
-    # overrides such as that for tf.keras.Model.
-    no_dependency = isinstance(value, NoDependency)
-    if no_dependency:
-      value = value.value
+    if getattr(self, "_setattr_tracking", True):
+      value = data_structures.sticky_attribute_assignment(
+          checkpointable=self, value=value, name=name)
     super(Checkpointable, self).__setattr__(name, value)
-    if not no_dependency and isinstance(value, base.CheckpointableBase):
-      self._track_checkpointable(
-          value, name=name,
-          # Allow the user to switch the Checkpointable which is tracked by this
-          # name, since assigning a new variable to an attribute has
-          # historically been fine (e.g. Adam did this).
-          # TODO(allenl): Should this be a warning once Checkpointable save/load
-          # is usable?
-          overwrite=True)
+
+  def _no_dependency(self, value):
+    """Override to allow CheckpointableBase to disable dependency tracking."""
+    return data_structures.NoDependency(value)

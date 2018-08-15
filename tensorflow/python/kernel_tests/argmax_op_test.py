@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -114,6 +115,12 @@ class ArgMaxTest(test.TestCase):
       for op in math_ops.argmin, math_ops.argmax:
         ans = op([1]).eval()
         self.assertAllEqual(ans, 0)
+
+  def testOutputEmpty(self):
+    with self.test_session():
+      for op in math_ops.argmin, math_ops.argmax:
+        ret = op(array_ops.zeros(shape=[1, 0, 2]), axis=-1).eval()
+        self.assertEqual(ret.shape, (1, 0))
 
 
 if __name__ == "__main__":

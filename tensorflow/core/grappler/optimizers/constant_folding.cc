@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -71,44 +72,6 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-};
-
-class DeviceSimple : public DeviceBase {
- public:
-  DeviceSimple() : DeviceBase(Env::Default()) {
-    eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
-    eigen_worker_threads_.workers = new thread::ThreadPool(
-        Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
-    eigen_threadpool_wrapper_.reset(
-        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
-    eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
-    set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
-    set_eigen_cpu_device(eigen_device_.get());
-  }
-  ~DeviceSimple() override {
-    eigen_threadpool_wrapper_.reset();
-    eigen_device_.reset();
-    delete eigen_worker_threads_.workers;
-  }
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
-    Tensor parsed(tensor_proto.dtype());
-    if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
-    }
-    *tensor = parsed;
-    return Status::OK();
-  }
-  Allocator* GetAllocator(AllocatorAttributes attr) override {
-    return cpu_allocator();
-  }
-
- private:
-  DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
-  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
 template <typename T>
@@ -983,33 +946,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
                                      const TensorVector& inputs,
                                      TensorVector* output) const {
-  Status status;
-  auto op_kernel =
-      CreateOpKernel("CPU", cpu_device_, cpu_device_->GetAllocator({}), node,
-                     TF_GRAPH_DEF_VERSION, &status);
-  TF_RETURN_IF_ERROR(status);
-  OpKernelContext::Params params;
-  params.device = cpu_device_;
-  params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
-  params.op_kernel = op_kernel.get();
-  params.resource_manager = resource_mgr_.get();
-
-  gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
-  const int num_outputs = op_kernel->num_outputs();
-  for (int i = 0; i < num_outputs; i++) {
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    output_attrs.push_back(attr);
-  }
-  params.output_attr_array = output_attrs.data();
-
-  OpKernelContext op_context(&params);
-  op_kernel->Compute(&op_context);
-  for (int i = 0; i < num_outputs; i++) {
-    output->push_back(op_context.release_output(i));
-  }
-  return op_context.status();
+  return ::tensorflow::grappler::EvaluateNode(node, inputs, cpu_device_,
+                                              resource_mgr_.get(), output);
 }
 
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
@@ -1305,17 +1243,12 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
   }
 
   // Delete the newly created nodes that don't feed anything.
-  int last = output->node_size() - 1;
-  for (int i = output->node_size() - 1; i >= 0; --i) {
-    const NodeDef& node = output->node(i);
-    auto fanout = node_map_->GetOutputs(node.name());
-    if (fanout.empty()) {
-      output->mutable_node()->SwapElements(i, last);
-      last--;
-    }
+  std::vector<int> nodes_to_delete;
+  for (int i = 0; i < output->node_size(); i++) {
+    auto fanout = node_map_->GetOutputs(output->node(i).name());
+    if (fanout.empty()) nodes_to_delete.push_back(i);
   }
-  output->mutable_node()->DeleteSubrange(last + 1,
-                                         output->node_size() - last - 1);
+  EraseNodesFromGraph(std::move(nodes_to_delete), output);
 
   for (const auto& node : graph_->node()) {
     // If no fetch nodes is provided, we conservatively

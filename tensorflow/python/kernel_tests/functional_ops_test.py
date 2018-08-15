@@ -35,6 +35,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
@@ -977,6 +978,8 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(sess.run(bvals), [17., 16.])
 
 
+# TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
+# below test cases.
 class PartitionedCallTest(test.TestCase):
 
   def testBasicSingleDevice(self):
@@ -1052,7 +1055,7 @@ class PartitionedCallTest(test.TestCase):
     self.assertEqual(output, 6.)
 
   def testShardsRunOnRequestedDevices(self):
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    config = config_pb2.ConfigProto(device_count={"CPU": 4})
 
     @function.Defun()
     def Body():
@@ -1072,13 +1075,80 @@ class PartitionedCallTest(test.TestCase):
       with ops.device("/cpu:2"):
         s3 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
-      return s1, s2, s3
+      with ops.device(""):
+        # TODO(akshayka): This is unfortunate and brittle. It prevents
+        # `Iterator.from_structure` from assigning the iterator op to 'cpu:0'.
+        #  Remove this hack once we have a way of obtaining metadata about
+        #  function execution.
+        s4 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3, s4
 
-    with self.test_session(config=config):
-      outputs = functional_ops.partitioned_call(args=[], f=Body)
-      self.assertTrue(compat.as_bytes("CPU:0") in outputs[0].eval())
-      self.assertTrue(compat.as_bytes("CPU:1") in outputs[1].eval())
-      self.assertTrue(compat.as_bytes("CPU:2") in outputs[2].eval())
+    with self.test_session(config=config, use_gpu=True) as sess:
+      with ops.device("/cpu:3"):
+        outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
+    self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
+    self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
+    self.assertIn(compat.as_bytes("CPU:3"), outputs[3])
+
+    with self.test_session(config=config, use_gpu=True):
+      with ops.device("/cpu:0"):
+        outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
+    self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
+    self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[3])
+
+  def testAssignAddResourceVariable(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.Defun()
+    def AssignAdd():
+      v.assign_add(1.0)
+
+    op = functional_ops.partitioned_call(
+        args=AssignAdd.captured_inputs, f=AssignAdd)
+    _ = self.evaluate(variables.global_variables_initializer())
+    _ = self.evaluate(op)
+    value = self.evaluate(v.read_value())
+    self.assertEqual(value, 2.0)
+
+  def testFunctionWithResourcesOnDifferentDevices(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPUs available.")
+
+    with ops.device("/cpu:0"):
+      v_cpu_zero = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_cpu_zero")
+
+    with ops.device("/cpu:1"):
+      v_cpu_one = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_cpu_one")
+
+    with ops.device("/gpu:0"):
+      v_gpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_gpu")
+
+    def sum_gather():
+      cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu_zero, [1, 2]))
+      also_cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu_one, [1, 2]))
+      gpu_result = math_ops.reduce_sum(array_ops.gather(v_gpu, [1, 2]))
+      return cpu_result, also_cpu_result, gpu_result
+
+    defined = function.Defun()(sum_gather)
+    with self.test_session(
+        config=config_pb2.ConfigProto(
+            allow_soft_placement=False,
+            log_device_placement=True,
+            device_count={"CPU": 2})) as sess:
+      sess.run(variables.global_variables_initializer())
+      expected = sess.run(sum_gather())
+      result = sess.run(
+          functional_ops.partitioned_call(
+              args=defined.captured_inputs, f=defined))
+      self.assertAllEqual(expected, result)
 
 
 if __name__ == "__main__":
