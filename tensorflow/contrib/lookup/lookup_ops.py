@@ -419,11 +419,10 @@ class MutableHashTable(LookupInterface):
       TypeError: when `keys` or `values` doesn't match the table data
         types.
     """
-    # pylint: disable=protected-access
-    lookup_ops._check_table_dtypes(self, keys.dtype, values.dtype)
-    # pylint: enable=protected-access
     with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
                         [self._table_ref, keys, values]) as name:
+      keys = ops.convert_to_tensor(keys, self._key_dtype, name="keys")
+      values = ops.convert_to_tensor(values, self._value_dtype, name="values")
       with ops.colocate_with(self._table_ref):
         # pylint: disable=protected-access
         op = gen_lookup_ops.lookup_table_insert_v2(
