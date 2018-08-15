@@ -11,6 +11,7 @@ _TF_SYSTEM_LIBS = "TF_SYSTEM_LIBS"
 
 VALID_LIBS = [
     "astor_archive",
+    "boringssl",
     "com_googlesource_code_re2",
     "curl",
     "cython",
