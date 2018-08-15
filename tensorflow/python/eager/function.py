@@ -411,11 +411,6 @@ class _EagerDefinedFunction(object):
       return outputs
 
 
-def _map_sequence_obj_to_idx(sequence):
-  """Maps objs in the sequence from id(obj) to sequence index."""
-  return {id(x): i for i, x in enumerate(sequence)}
-
-
 def _flatten(sequence):
   """A wrapper around `nest.flatten` that also unpacks `IndexedSlices`."""
   # TODO(akshayka): Support `SparseTensor` in a similar fashion.
