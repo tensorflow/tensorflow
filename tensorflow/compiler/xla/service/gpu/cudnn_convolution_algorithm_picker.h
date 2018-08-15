@@ -46,7 +46,7 @@ class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  tensorflow::gtl::optional<std::tuple<int64, bool, int64>> PickBestAlgorithm(
+  StatusOr<std::tuple<int64, bool, int64>> PickBestAlgorithm(
       CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
       const Shape& output_shape, const Window& window,
       const ConvolutionDimensionNumbers& dnums, HloInstruction* instr);
