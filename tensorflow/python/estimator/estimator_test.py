@@ -158,16 +158,7 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
       def __init__(self):
         super(_Estimator, self).__init__(model_fn=dummy_model_fn)
 
-      def _call_input_fn(self, input_fn, mode):
-        return input_fn()
-
-      def _create_global_step(self, graph):
-        pass
-
-      def _convert_train_steps_to_hooks(self, steps, max_steps):
-        pass
-
-      def _convert_eval_steps_to_hooks(self, steps):
+      def _tf_api_names(self):
         pass
 
     _Estimator()
