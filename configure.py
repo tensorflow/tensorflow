@@ -1399,10 +1399,6 @@ def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
 
-def set_build_strip_flag():
-  write_to_bazelrc('build --strip=always')
-
-
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
   # The non-monolithic build is not supported yet
@@ -1559,7 +1555,6 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
-  set_build_strip_flag()
   if is_windows():
     set_windows_build_flags(environ_cp)
 
