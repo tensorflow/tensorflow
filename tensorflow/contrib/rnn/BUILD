@@ -149,7 +149,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "core_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/kernel_tests/core_rnn_test.py"],
     additional_deps = [
         ":rnn_py",
