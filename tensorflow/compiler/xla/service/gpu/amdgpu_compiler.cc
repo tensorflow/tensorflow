@@ -442,14 +442,6 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
            "Rerun with --xla_dump_ir_to to get the IR. ";
   }
 
-  // Reserve space for the HSACO to be generated for this module.
-  std::vector<char>* hsaco;
-  {
-    tensorflow::mutex_lock lock(mutex_);
-    generated_hsaco_.emplace_back(absl::make_unique<std::vector<char>>());
-    hsaco = generated_hsaco_.back().get();
-  }
-  
   int isa_version = 0;
   if (!stream_exec->GetDeviceDescription().
                     rocm_amdgpu_isa_version(&isa_version)) {
@@ -462,10 +454,11 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     rocdl_dir_ = GetROCDLDir(module->config());
   }
 
+  std::vector<uint8> hsaco;
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::Runbackend - CompileToHsaco");
-    TF_ASSIGN_OR_RETURN(*hsaco, CompileToHsaco(&llvm_module, isa_version,
-                                               module->config(), rocdl_dir_));
+    TF_ASSIGN_OR_RETURN(hsaco, CompileToHsaco(&llvm_module, isa_version,
+                                              module->config(), rocdl_dir_));
   }
 
   if (!ir_dump_directory.empty()) {
@@ -501,7 +494,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   }
  
   auto* amdgpu_executable = new AMDGPUExecutable(
-        std::move(hsaco->data()), isa_version, std::move(thunk_schedule),
+        "", std::move(hsaco), isa_version, std::move(thunk_schedule),
         std::move(module), std::move(buffer_assignment),
         std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {

@@ -48,9 +48,9 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class NVPTXExecutable : public GpuExecutable {
  public:
-  // cubin (i.e. the compiled text) may be empty, in which case we leave
+  // binary (i.e. the compiled text) may be empty, in which case we leave
   // compilation up to the GPU driver.
-  NVPTXExecutable(const string& text, const std::vector<uint8>& cubin,
+  NVPTXExecutable(const string& text, const std::vector<uint8>& binary,
                   std::pair<int, int> compute_capability,
                   std::unique_ptr<const ThunkSchedule> thunk_schedule,
                   std::unique_ptr<const HloModule> hlo_module,
@@ -61,17 +61,7 @@ class NVPTXExecutable : public GpuExecutable {
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options) override;
 
-  // Returns the cubin (compiled PTX) stored in this GpuExecutable.  May be
-  // empty, in which case compilation is left up to the GPU driver.
-  const std::vector<uint8>& cubin() const { return cubin_; }
-
  private:
-  // The GPU machine code for the computation, targeting GPUs at
-  // compute_capability_.
-  //
-  // May be empty, in which case we leave compilation up to the GPU driver.
-  const std::vector<uint8> cubin_;
-
   // The compute capability of the GPU we're targeting with this GpuExecutable.
   std::pair<int, int> compute_capability_;
 

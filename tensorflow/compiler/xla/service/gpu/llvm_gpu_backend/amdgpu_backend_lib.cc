@@ -208,7 +208,7 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
+std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
   char tempdir_template[] = "/tmp/amdgpu_xla-XXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
 
@@ -317,9 +317,9 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   std::ifstream hsaco_file(hsaco_path, std::ios::binary|std::ios::ate);
   std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
 
-  std::vector<char> hsaco(hsaco_file_size);
+  std::vector<uint8> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
-  hsaco_file.read(&hsaco[0], hsaco_file_size);
+  hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
 
   return std::move(hsaco);
 }
@@ -387,7 +387,7 @@ tensorflow::Status LinkROCDLIfNecessary(
   return tensorflow::Status::OK();
 }
 
-StatusOr<std::vector<char>> CompileModuleToHsaco(llvm::Module* module,
+StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
                                       int amdgpu_version,
                                       const HloModuleConfig& hlo_module_config,
                                       const string& rocdl_dir_path) {
@@ -492,14 +492,14 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
 
 }  // namespace
 
-StatusOr<std::vector<char>> CompileToHsaco(llvm::Module* module,
+StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                 int amdgpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
 
-  std::vector<char> hsaco;
+  std::vector<uint8> hsaco;
   {
     tensorflow::tracing::ScopedActivity activity(
         "Compiling IR", llvm_ir::AsString(module->getName()),

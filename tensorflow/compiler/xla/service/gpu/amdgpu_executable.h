@@ -48,7 +48,7 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class AMDGPUExecutable : public GpuExecutable {
  public:
-  AMDGPUExecutable(const string& text,
+  AMDGPUExecutable(const string& text, const std::vector<uint8>& binary,
                    int isa_version,
                    std::unique_ptr<const ThunkSchedule> thunk_schedule,
                    std::unique_ptr<const HloModule> hlo_module,

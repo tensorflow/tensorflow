@@ -37,18 +37,18 @@ namespace xla {
 namespace gpu {
 
 NVPTXExecutable::NVPTXExecutable(
-    const string& text, const std::vector<uint8>& cubin,
+    const string& text, const std::vector<uint8>& binary,
     std::pair<int, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : GpuExecutable(std::move(text), std::move(thunk_schedule),
+    : GpuExecutable(std::move(text), std::move(binary),
+                    std::move(thunk_schedule),
                     std::move(hlo_module), std::move(assignment),
                     std::move(hlo_profile_printer_data),
                     std::move(hlo_profile_index_map)),
-      cubin_(cubin),
       compute_capability_(compute_capability) {}
 
 Status NVPTXExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
