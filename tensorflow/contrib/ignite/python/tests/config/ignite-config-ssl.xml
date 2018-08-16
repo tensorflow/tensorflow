@@ -6,8 +6,6 @@
        http://www.springframework.org/schema/util/spring-util.xsd">  
 
   <bean id="client-connector-configuration" class="org.apache.ignite.configuration.ClientConnectorConfiguration">
-    <property name="host" value="localhost" />
-    <property name="port" value="10800" />
     <property name="sslClientAuth" value="false" />
     <property name="sslEnabled" value="true" />
     <property name="useIgniteSslContextFactory" value="true" />
@@ -23,6 +21,21 @@
   <bean id="ignite-configuration" class="org.apache.ignite.configuration.IgniteConfiguration">
     <property name="clientConnectorConfiguration" ref="client-connector-configuration" />
     <property name="sslContextFactory" ref="ssl-context-factory" />
+
+    <property name="discoverySpi">
+    <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+      <property name="ipFinder">
+        <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
+          <property name="addresses">
+            <list>
+              <value>127.0.0.1</value>
+            </list>
+          </property>
+        </bean>
+      </property>
+    </bean>
+  </property>
+
   </bean>
 
 </beans>

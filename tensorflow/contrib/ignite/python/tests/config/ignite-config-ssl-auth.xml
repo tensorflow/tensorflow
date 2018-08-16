@@ -6,8 +6,6 @@
        http://www.springframework.org/schema/util/spring-util.xsd">  
 
   <bean id="client-connector-configuration" class="org.apache.ignite.configuration.ClientConnectorConfiguration">
-    <property name="host" value="localhost" />
-    <property name="port" value="10800" />
     <property name="sslClientAuth" value="true" />
     <property name="sslEnabled" value="true" />
     <property name="useIgniteSslContextFactory" value="true" />
