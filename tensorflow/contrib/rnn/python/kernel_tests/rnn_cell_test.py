@@ -1312,9 +1312,9 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         sess.run([variables.global_variables_initializer()])
         res = sess.run(
           [g, out_m], {
-            x.name: np.array([[1., 1., 1.]]),
-            c.name: 0.1 * np.asarray([[0, 1]]),
-            h.name: 0.1 * np.asarray([[2, 3]]),
+              x.name: np.array([[1., 1., 1.]]),
+              c.name: 0.1 * np.asarray([[0, 1]]),
+              h.name: 0.1 * np.asarray([[2, 3]]),
           })
 
         expected_h = np.array([[0.56668288, 0.60858742]])
