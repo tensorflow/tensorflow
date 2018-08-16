@@ -294,6 +294,29 @@ tf_cuda_library(
     ]) + tf_custom_op_library_additional_deps(),
 )
 
+tf_cuda_cc_test(
+    name = "convert_graph_test",
+    size = "medium",
+    srcs = ["convert/convert_graph_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_conversion",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
     name = "segment",
@@ -399,7 +422,6 @@ cuda_py_tests(
         # "test/vgg_block_nchw_test.py",
         # "test/vgg_block_test.py",
         "test/memory_alignment_test.py",
-        "test/no_device_assignment_test.py",
     ],
     additional_deps = [
         ":tf_trt_integration_test_base",
