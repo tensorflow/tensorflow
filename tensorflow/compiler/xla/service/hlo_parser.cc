@@ -825,9 +825,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kConvolution: {
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
+      optional<int64> feature_group_count;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
+      attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                      &feature_group_count};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -835,8 +838,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!window) {
         window.emplace();
       }
+      if (!feature_group_count) {
+        feature_group_count = 1;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
-          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
+          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums,
+          feature_group_count.value()));
       break;
     }
     case HloOpcode::kFft: {

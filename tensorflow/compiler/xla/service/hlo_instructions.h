@@ -955,7 +955,8 @@ class HloConvolutionInstruction : public HloInstruction {
   explicit HloConvolutionInstruction(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const Window& window,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -965,6 +966,9 @@ class HloConvolutionInstruction : public HloInstruction {
       const ConvolutionDimensionNumbers& dnums) {
     convolution_dimension_numbers_ = dnums;
   }
+  // The number of feature groups. Must be a divisor of the input feature
+  // dimension and output feature dimension.
+  int64 feature_group_count() const { return feature_group_count_; }
   string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -984,6 +988,9 @@ class HloConvolutionInstruction : public HloInstruction {
   Window window_;
   // Describes the dimension numbers used for a convolution.
   ConvolutionDimensionNumbers convolution_dimension_numbers_;
+  // The number of feature groups. Must be a divisor of the input feature
+  // dimension and output feature dimension.
+  int64 feature_group_count_;
 };
 
 class HloReduceWindowInstruction : public HloInstruction {

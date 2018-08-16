@@ -882,24 +882,28 @@ Status XlaBuilder::VerifyConvolution(
 
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
-                       Padding padding) {
+                       Padding padding, int64 feature_group_count) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
-      CreateDefaultConvDimensionNumbers(window_strides.size()));
+      CreateDefaultConvDimensionNumbers(window_strides.size()),
+      feature_group_count);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    int64 feature_group_count) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
-                     CreateDefaultConvDimensionNumbers(window_strides.size()));
+                     CreateDefaultConvDimensionNumbers(window_strides.size()),
+                     feature_group_count);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
@@ -926,7 +930,7 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
     return ConvGeneral(lhs, rhs, window_strides,
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
-                       dimension_numbers);
+                       dimension_numbers, feature_group_count);
   });
 }
 
@@ -934,9 +938,10 @@ XlaOp XlaBuilder::ConvGeneral(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
-                            dimension_numbers);
+                            dimension_numbers, feature_group_count);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -945,7 +950,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -964,12 +970,13 @@ XlaOp XlaBuilder::ConvGeneralDilated(
                         MakeWindow(window_dimensions, window_strides, padding,
                                    lhs_dilation, rhs_dilation));
 
-    TF_ASSIGN_OR_RETURN(
-        *instr.mutable_shape(),
-        ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, instr.window(),
-                                           dimension_numbers));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferConvolveShape(
+                            lhs_shape, rhs_shape, instr.window(),
+                            dimension_numbers, feature_group_count));
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
+    instr.set_feature_group_count(feature_group_count);
 
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
@@ -2562,32 +2569,38 @@ XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
-  return lhs.builder()->Conv(lhs, rhs, window_strides, padding);
+           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+           int64 feature_group_count) {
+  return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
+                             feature_group_count);
 }
 
 XlaOp ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    int64 feature_group_count) {
   return lhs.builder()->ConvWithGeneralPadding(lhs, rhs, window_strides,
-                                               padding);
+                                               padding, feature_group_count);
 }
 
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return lhs.builder()->ConvWithGeneralDimensions(lhs, rhs, window_strides,
-                                                  padding, dimension_numbers);
+                                                  padding, dimension_numbers,
+                                                  feature_group_count);
 }
 
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   tensorflow::gtl::ArraySlice<int64> window_strides,
                   tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-                  const ConvolutionDimensionNumbers& dimension_numbers) {
+                  const ConvolutionDimensionNumbers& dimension_numbers,
+                  int64 feature_group_count) {
   return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
-                                    dimension_numbers);
+                                    dimension_numbers, feature_group_count);
 }
 
 XlaOp ConvGeneralDilated(
@@ -2596,10 +2609,11 @@ XlaOp ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return lhs.builder()->ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                           lhs_dilation, rhs_dilation,
-                                           dimension_numbers);
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
+  return lhs.builder()->ConvGeneralDilated(
+      lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+      dimension_numbers, feature_group_count);
 }
 
 XlaOp Fft(const XlaOp& operand, FftType fft_type,

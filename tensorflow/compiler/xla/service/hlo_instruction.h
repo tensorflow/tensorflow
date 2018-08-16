@@ -402,7 +402,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const Window& window,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -1454,6 +1455,10 @@ class HloInstruction {
   // numbers when you create the instruction.
   void set_convolution_dimension_numbers(
       const ConvolutionDimensionNumbers& dnums);
+
+  // The number of feature groups. Must be a divisor of the input feature
+  // dimension and output feature dimension.
+  int64 feature_group_count() const;
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;
