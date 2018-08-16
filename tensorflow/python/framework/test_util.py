@@ -718,7 +718,7 @@ def run_in_graph_and_eager_modes(func=None,
 
     def decorated(self, **kwargs):
       try:
-        with ops.Graph().as_default():
+        with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
             f(self, **kwargs)
       except unittest.case.SkipTest:
