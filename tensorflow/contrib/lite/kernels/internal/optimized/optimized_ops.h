@@ -3016,9 +3016,53 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
 inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
                                const uint8 broadcast_value,
                                const uint8* input2_data, uint8* output_data) {
-  const int32 input1_val = params.input1_offset + broadcast_value;
+  const int16 input1_val = params.input1_offset + broadcast_value;
 
-  for (int i = 0; i < size; ++i) {
+  int i = 0;
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+#ifdef USE_NEON
+  const auto input2_offset_vector = vdupq_n_s16(params.input2_offset);
+  const auto output_offset_vector = vdupq_n_s16(params.output_offset);
+  const auto output_activation_min_vector =
+      vdup_n_u8(params.quantized_activation_min);
+  const auto output_activation_max_vector =
+      vdup_n_u8(params.quantized_activation_max);
+  for (; i <= size - 8; i += 8) {
+    // We load / store 8 at a time, multiplying as two sets of 4 int32s.
+    const auto input2_val_original = vld1_u8(input2_data + i);
+    const auto input2_val_s16 =
+        vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
+    const auto input2_val = vaddq_s16(input2_val_s16, input2_offset_vector);
+
+    const auto input2_val_low = vget_low_s16(input2_val);
+    const auto input2_val_high = vget_high_s16(input2_val);
+
+    auto p1 = vmull_n_s16(input2_val_low, input1_val);
+    auto p2 = vmull_n_s16(input2_val_high, input1_val);
+
+    p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
+    p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
+    using gemmlowp::RoundingDivideByPOT;
+    p1 = RoundingDivideByPOT(p1, -params.output_shift);
+    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+
+    const auto p1_narrowed = vmovn_s32(p1);
+    const auto p2_narrowed = vmovn_s32(p2);
+    const auto p =
+        vaddq_s16(vcombine_s16(p1_narrowed, p2_narrowed), output_offset_vector);
+    const auto clamped =
+        vmax_u8(output_activation_min_vector,
+                vmin_u8(output_activation_max_vector, vqmovun_s16(p)));
+    vst1_u8(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  for (; i < size; ++i) {
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
