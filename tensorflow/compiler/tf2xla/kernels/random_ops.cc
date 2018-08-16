@@ -58,8 +58,9 @@ class RandomUniformOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformOp);
 };
 
-REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstInput("shape"),
-                RandomUniformOp);
+// XXX
+//REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstInput("shape"),
+//                RandomUniformOp);
 
 class RandomShuffleOp : public XlaOpKernel {
  public:
