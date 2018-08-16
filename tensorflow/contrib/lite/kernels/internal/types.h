@@ -129,6 +129,13 @@ class RuntimeShape {
     }
   }
 
+  RuntimeShape(int shape_size, int32 value) : size_(0) {
+    Resize(shape_size);
+    for (int i = 0; i < shape_size; ++i) {
+      SetDim(i, value);
+    }
+  }
+
   RuntimeShape(int dimensions_count, const int32* dims_data) : size_(0) {
     ReplaceWith(dimensions_count, dims_data);
   }
@@ -237,7 +244,7 @@ class RuntimeShape {
   bool operator!=(const RuntimeShape& comp) const { return !((*this) == comp); }
 
  private:
-  // For use only by ExtendFrom(), written to guarantee (return-value) copy
+  // For use only by ExtendedShape(), written to guarantee (return-value) copy
   // elision in C++17.
   // This creates a shape padded to the desired size with the specified value.
   RuntimeShape(int new_shape_size, const RuntimeShape& shape, int pad_value)
@@ -645,22 +652,6 @@ void ComputeStrides(Dims<N>* dims) {
   }
 }
 
-struct PoolParams {
-  FusedActivationFunctionType activation;
-  PaddingType padding_type;
-  PaddingValues padding_values;
-  int stride_height;
-  int stride_width;
-  int filter_height;
-  int filter_width;
-  // uint8, etc, activation params.
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
-  // float activation params.
-  float float_activation_min;
-  float float_activation_max;
-};
-
 enum class BroadcastableOpCategory : uint8 {
   kNone,
   kNonBroadcast,               // Matching input shapes.
@@ -720,6 +711,37 @@ inline void SetActivationParams(int32 min, int32 max,
   params->quantized_activation_min = min;
   params->quantized_activation_max = max;
 }
+
+struct PadParams {
+  int8 left_padding_count;
+  int32 left_padding[4];
+  int8 right_padding_count;
+  int32 right_padding[4];
+  // FloatOrInt pad_value;
+};
+
+struct PoolParams {
+  FusedActivationFunctionType activation;
+  PaddingType padding_type;
+  PaddingValues padding_values;
+  int stride_height;
+  int stride_width;
+  int filter_height;
+  int filter_width;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
+struct SliceParams {
+  int8 begin_count;
+  int32 begin[4];
+  int8 size_count;
+  int32 size[4];
+};
 
 }  // namespace tflite
 

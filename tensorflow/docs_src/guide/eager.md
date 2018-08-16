@@ -193,7 +193,8 @@ class MNISTModel(tf.keras.Model):
   def call(self, input):
     """Run the model."""
     result = self.dense1(input)
-    result = self.dense2(result)  # reuse variables from dense1 layer
+    result = self.dense2(result)
+    result = self.dense2(result)  # reuse variables from dense2 layer
     return result
 
 model = MNISTModel()
@@ -567,9 +568,8 @@ inserted during model construction. For example, to record summaries once every
 100 global steps:
 
 ```py
+global_step = tf.train.get_or_create_global_step()
 writer = tf.contrib.summary.create_file_writer(logdir)
-global_step=tf.train.get_or_create_global_step()  # return global step var
-
 writer.set_as_default()
 
 for _ in range(iterations):

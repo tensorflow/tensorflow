@@ -8,7 +8,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "if_mkl_ml",
 )
 
 # Appends a suffix to a list of deps.
@@ -467,7 +467,6 @@ def tf_platform_srcs(files):
 
   return select({
     "//tensorflow:windows" : native.glob(windows_set),
-    "//tensorflow:windows_msvc" : native.glob(windows_set),
     "//conditions:default" : native.glob(posix_set),
   })
 
@@ -479,7 +478,6 @@ def tf_additional_lib_hdrs(exclude = []):
   ], exclude = exclude)
   return select({
     "//tensorflow:windows" : windows_hdrs,
-    "//tensorflow:windows_msvc" : windows_hdrs,
     "//conditions:default" : native.glob([
         "platform/default/*.h",
         "platform/posix/*.h",
@@ -494,7 +492,6 @@ def tf_additional_lib_srcs(exclude = []):
   ], exclude = exclude)
   return select({
     "//tensorflow:windows" : windows_srcs,
-    "//tensorflow:windows_msvc" : windows_srcs,
     "//conditions:default" : native.glob([
         "platform/default/*.cc",
         "platform/posix/*.cc",
@@ -703,8 +700,8 @@ def tf_additional_binary_deps():
       # core).
       "//tensorflow/core/kernels:lookup_util",
       "//tensorflow/core/util/tensor_bundle",
-  ] + if_mkl(
+  ] + if_mkl_ml(
       [
-          "//third_party/mkl:intel_binary_blob",
+          "//third_party/intel_mkl_ml",
       ],
   )

@@ -32,6 +32,7 @@ import six
 from google.protobuf.message import Message as ProtoMessage
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 
 
 # A regular expression capturing a python identifier.
@@ -1175,14 +1176,17 @@ class _ClassPageInfo(object):
 
       # Don't document anything that is defined in object or by protobuf.
       defining_class = _get_defining_class(py_class, short_name)
-      if (defining_class is object or
-          defining_class is type or defining_class is tuple or
-          defining_class is BaseException or defining_class is Exception or
-          # The following condition excludes most protobuf-defined symbols.
-          defining_class and defining_class.__name__ in ['CMessage', 'Message',
-                                                         'MessageMeta']):
+      if defining_class in [object, type, tuple, BaseException, Exception]:
+        continue
+
+      # The following condition excludes most protobuf-defined symbols.
+      if (defining_class and
+          defining_class.__name__ in ['CMessage', 'Message', 'MessageMeta']):
         continue
       # TODO(markdaoust): Add a note in child docs showing the defining class.
+
+      if doc_controls.should_skip_class_attr(py_class, short_name):
+        continue
 
       child_doc = _parse_md_docstring(child, relative_path,
                                       parser_config.reference_resolver)

@@ -49,10 +49,12 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input, string tag)
-        : GraphDatasetBase(ctx), input_(input), tag_(std::move(tag)) {
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          tag_(std::move(tag)) {
       input_->Ref();
     }
 
@@ -149,10 +151,12 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input, string tag)
-        : GraphDatasetBase(ctx), input_(input), tag_(std::move(tag)) {
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          tag_(std::move(tag)) {
       input_->Ref();
     }
 
@@ -255,10 +259,12 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input, string tag)
-        : GraphDatasetBase(ctx), input_(input), tag_(std::move(tag)) {
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          tag_(std::move(tag)) {
       input_->Ref();
     }
 

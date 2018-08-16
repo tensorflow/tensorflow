@@ -227,6 +227,7 @@ def generated_test_models():
         "constant",
         "control_dep",
         "conv",
+        "conv_with_shared_weights",
         "depthwiseconv",
         "div",
         "equal",

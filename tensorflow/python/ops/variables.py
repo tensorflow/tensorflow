@@ -1917,15 +1917,10 @@ class PartitionedVariable(object):
   def as_tensor(self):
     """Returns the overall concatenated value as a `Tensor`.
 
-    The returned tensor will not inherit the control dependencies from the scope
-    where the value is used, which is similar to getting the value of
-    `Variable`.
-
     Returns:
       `Tensor` containing the concatenated value.
     """
-    with ops.control_dependencies(None):
-      return self._concat()
+    return self._concat()
 
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
