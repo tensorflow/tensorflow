@@ -1,6 +1,7 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 
 licenses(["notice"])  # Apache 2.0
@@ -361,10 +362,12 @@ cc_library(
     hdrs = ["cudnn_convolution_algorithm_picker.h"],
     deps = [
         ":backend_configs",
+        ":buffer_comparator",
         ":cudnn_convolution_runner",
         ":gpu_executable",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -652,6 +655,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
@@ -850,5 +854,37 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "buffer_comparator",
+    srcs = ["buffer_comparator.cc"],
+    hdrs = ["buffer_comparator.h"],
+    deps = [
+        ":gpu_executable",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+xla_test(
+    name = "buffer_comparator_test",
+    srcs = ["buffer_comparator_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":buffer_comparator",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service:backend",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

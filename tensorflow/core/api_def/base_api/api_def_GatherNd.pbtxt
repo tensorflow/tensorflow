@@ -123,5 +123,7 @@ Batched indexing into a 3-tensor:
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [['b0', 'b1'], ['d0', 'c1']]
 ```
+
+See also `tf.gather` and `tf.batch_gather`.
 END
 }

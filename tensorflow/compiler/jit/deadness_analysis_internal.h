@@ -26,6 +26,14 @@ namespace deadness_analysis_internal {
 // testing purposes only.
 using PredicateMapTy = gtl::FlatMap<TensorId, string, TensorId::Hasher>;
 Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map);
+
+// Returns a map describing the predicate each Tensor was mapped to.  For
+// testing purposes only.  Makes deadness analysis visit the graph in the order
+// specified in `reverse_post_order` which must be a valid RPO for the graph
+// minus NextIteration->Merge edges.
+Status ComputePredicates(const Graph& graph,
+                         gtl::ArraySlice<Node*> reverse_post_order,
+                         PredicateMapTy* out_predicate_map);
 }  // namespace deadness_analysis_internal
 }  // namespace tensorflow
 

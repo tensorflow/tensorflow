@@ -112,7 +112,8 @@ class ShapeInference {
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(
       const Shape& lhs, const Shape& rhs, const Window& window,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static StatusOr<Shape> InferFftShape(

@@ -14,5 +14,11 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "executor_type"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
   }
 }

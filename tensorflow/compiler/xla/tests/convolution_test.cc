@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -763,6 +764,45 @@ XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   ComputeAndCompare(&builder,
                     {std::move(*LiteralUtil::CreateFromArray(input_data)),
                      std::move(*LiteralUtil::CreateFromArray(filter_data))});
+}
+
+class ConvolutionHloTest : public HloTestBase {};
+
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64Forward)) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %arg0 = f64[3,56,56,16] parameter(0)
+  %arg1 = f64[3,3,3,64] parameter(1)
+  ROOT %conv = f64[54,54,16,64] convolution(%arg0, %arg1), window={size=3x3}, dim_labels=f01b_i01o->01bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64BackwardFilter)) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %arg0 = f64[2,5,8,1] parameter(0)
+  %arg1 = f64[2,5,8,2] parameter(1)
+  ROOT %conv = f64[4,4,1,2] convolution(%arg0, %arg1), window={size=5x8 pad=1_2x1_2}, dim_labels=f01b_i01o->01bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_CPU(ConvolveF64BackwardInput)) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %output = f64[4,5,16,16] parameter(0)
+  %kernel = f64[5,3,7,7] parameter(1)
+  %reverse = f64[5,3,7,7] reverse(f64[5,3,7,7] %kernel), dimensions={2,3}
+  ROOT %convolution = f64[4,3,16,16] convolution(%output, %reverse), window={size=7x7 pad=3_3x3_3}, dim_labels=bf01_io01->bf01
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
 }  // namespace

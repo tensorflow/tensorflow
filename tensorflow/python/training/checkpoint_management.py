@@ -33,7 +33,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
+from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -622,13 +624,19 @@ class CheckpointManager(object):
     """
     return self._checkpoint_prefix
 
-  def save(self, session=None):
+  def save(self, session=None, checkpoint_number=None):
     """Creates a new checkpoint and manages it.
 
     Args:
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
+      checkpoint_number: An optional integer, or an integer-dtype `Variable` or
+        `Tensor`, used to number the checkpoint. If `None` (default),
+        checkpoints are numbered using `checkpoint.save_counter`. Even if
+        `checkpoint_number` is provided, `save_counter` is still incremented. A
+        user-provided `checkpoint_number` is not incremented even if it is a
+        `Variable`.
 
     Returns:
       The path to the new checkpoint. It is also recorded in the `checkpoints`
@@ -639,7 +647,6 @@ class CheckpointManager(object):
     if context.executing_eagerly():
       save_counter = self._checkpoint.save_counter
       save_counter.assign_add(1)
-      checkpoint_number = save_counter.numpy()
     else:
       if session is None:
         session = ops.get_default_session()
@@ -653,8 +660,13 @@ class CheckpointManager(object):
       with variable_scope.variable_creator_scope(_initializing_creator):
         save_counter = self._checkpoint.save_counter
       if self._save_counter_assign is None:
-        self._save_counter_assign = save_counter.assign_add(1, read_value=True)
-      checkpoint_number = session.run(self._save_counter_assign)
+        self._save_counter_assign = save_counter.assign_add(1, read_value=False)
+      session.run(self._save_counter_assign)
+    if checkpoint_number is None:
+      checkpoint_number = save_counter
+    if not isinstance(checkpoint_number, compat.integral_types):
+      checkpoint_number = training_util.global_step(
+          sess=session, global_step_tensor=checkpoint_number)
     prefix = "%s-%d" % (self._prefix, checkpoint_number)
     save_path = self._checkpoint.write(prefix)
     timestamp = time.time()

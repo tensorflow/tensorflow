@@ -41,7 +41,7 @@ class ProcessFunctionLibraryRuntime;
 class ResourceMgr;
 class Rendezvous;
 class ScopedStepContainer;
-class StepStatsCollector;
+class StepStatsCollectorInterface;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -527,7 +527,7 @@ class FunctionLibraryRuntime {
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 

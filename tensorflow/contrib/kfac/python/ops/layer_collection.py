@@ -609,7 +609,7 @@ class LayerCollection(object):
                                outputs,
                                approx=None,
                                reuse=VARIABLE_SCOPE):
-    """Registers a fully connnected layer.
+    """Registers a fully connected layer.
 
     Args:
       params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
@@ -975,7 +975,7 @@ class LayerCollection(object):
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
         word `use` here has a completely different meaning to "use in the graph"
-        as it perturns to the `inputs`, `outputs`, and `num_uses` arguments.)
+        as it pertains to the `inputs`, `outputs`, and `num_uses` arguments.)
         (Default: "VARIABLE_SCOPE")
 
     Raises:
@@ -1045,7 +1045,7 @@ class LayerCollection(object):
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
         word `use` here has a completely different meaning to "use in the graph"
-        as it perturns to the `inputs`, `outputs`, and `num_uses` arguments.)
+        as it pertains to the `inputs`, `outputs`, and `num_uses` arguments.)
         (Default: "VARIABLE_SCOPE")
 
     Raises:
@@ -1116,7 +1116,7 @@ class LayerCollection(object):
         block for this layer (which must have already been registered). If
         "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
         word `use` here has a completely different meaning to "use in the graph"
-        as it perturns to the `inputs`, `outputs`, and `num_uses` arguments.)
+        as it pertains to the `inputs`, `outputs`, and `num_uses` arguments.)
         (Default: "VARIABLE_SCOPE")
 
     Raises:

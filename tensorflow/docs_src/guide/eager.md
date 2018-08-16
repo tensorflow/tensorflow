@@ -568,9 +568,8 @@ inserted during model construction. For example, to record summaries once every
 100 global steps:
 
 ```py
+global_step = tf.train.get_or_create_global_step()
 writer = tf.contrib.summary.create_file_writer(logdir)
-global_step=tf.train.get_or_create_global_step()  # return global step var
-
 writer.set_as_default()
 
 for _ in range(iterations):

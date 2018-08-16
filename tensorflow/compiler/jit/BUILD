@@ -315,6 +315,7 @@ cc_library(
         "encapsulate_subgraphs_pass.cc",
         "mark_for_compilation_pass.cc",
         "mark_for_compilation_pass_test_helper.cc",
+        "partially_decluster_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
@@ -322,6 +323,7 @@ cc_library(
         "encapsulate_subgraphs_pass.h",
         "mark_for_compilation_pass.h",
         "mark_for_compilation_pass_test_helper.h",
+        "partially_decluster_pass.h",
     ],
     deps = [
         ":common",
@@ -356,6 +358,7 @@ cc_library(
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
     ],
@@ -420,10 +423,12 @@ tf_cc_test(
     srcs = [
         "encapsulate_subgraphs_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
+        "partially_decluster_pass_test.cc",
     ],
     deps = [
         ":common",
         ":compilation_passes",
+        ":xla_cluster_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

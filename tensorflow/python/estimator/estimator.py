@@ -568,14 +568,10 @@ class Estimator(object):
       return
 
     allowed_overrides = set([
-        '_call_input_fn', '_call_model_fn',
-        '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_create_global_step', '_create_and_assert_global_step',
+        '_create_and_assert_global_step',
         '_tf_api_names', '_tf_api_names_v1', '_estimator_api_names',
         '_estimator_api_names_v1', '_estimator_api_constants',
         '_estimator_api_constants_v1',
-        '_validate_features_in_predict_input',
-        '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
@@ -1249,9 +1245,8 @@ class Estimator(object):
               self._train_distribution.read_var(global_step_tensor))
 
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(ctx, inputs):
+          def step_fn(ctx, features, labels):
             """A single step that is passed to run_on_dataset."""
-            features, labels = inputs
             estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
                 features,

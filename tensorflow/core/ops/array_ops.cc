@@ -702,6 +702,16 @@ REGISTER_OP("Const")
       return Status::OK();
     });
 
+// Returns a constant tensor on the host.  Useful for writing C++ tests
+// and benchmarks which run on GPU but require arguments pinned to the host.
+// Used by test::graph::HostConstant.
+// value: Attr `value` is the tensor to return.
+REGISTER_OP("HostConst")
+    .Output("output: dtype")
+    .Attr("value: tensor")
+    .Attr("dtype: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 // --------------------------------------------------------------------------
 // TODO(mgubin): Update the doc when the freeze_graph script supports converting
 // into memmapped format.

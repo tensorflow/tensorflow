@@ -121,6 +121,7 @@ load(
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_proto_hdrs",
+    "tf_additional_proto_compiler_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
@@ -128,6 +129,7 @@ load(
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
+    "tf_lib_proto_compiler_deps",
     "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
@@ -149,6 +151,7 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "mkl_deps",
 )
 
 exports_files(["ops/ops.pbtxt"])
@@ -609,6 +612,17 @@ cc_library(
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
         "@double_conversion//:double-conversion",
+    ],
+)
+
+cc_library(
+    name = "lib_proto_compiler",
+    hdrs = [
+        "platform/protobuf_compiler.h",
+    ] + tf_additional_proto_compiler_hdrs(),
+    copts = tf_copts(),
+    deps = tf_lib_proto_compiler_deps() + [
+        ":lib_proto_parsing",
     ],
 )
 
@@ -2514,12 +2528,7 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = ["@protobuf_archive//:protobuf"],
         otherwise = ["@protobuf_archive//:protobuf_headers"],
-    ) + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn",
-        ],
-    ),
+    ) + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -2800,12 +2809,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn",
-        ],
-    ),
+    ] + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -2845,12 +2849,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn",
-        ],
-    ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
+    ] + mkl_deps() + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
 
@@ -3857,11 +3856,7 @@ tf_cuda_only_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+    ] + mkl_deps(),
 )
 
 tf_cc_test_gpu(

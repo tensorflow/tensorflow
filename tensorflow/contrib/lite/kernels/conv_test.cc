@@ -370,6 +370,65 @@ TEST_P(ConvolutionOpTest, HandCalculatedValidFloat32) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({312, 357}));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestFloatWithDilation) {
+  const int depth = 1;
+  const int image_width = 9;
+  const int image_height = 9;
+  const int image_batch_count = 1;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const int dilation_width_factor = 3;
+  const int dilation_height_factor = 3;
+  const Padding padding = Padding_VALID;
+  ConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_FLOAT32,
+       {image_batch_count, image_height, image_width, depth}},
+      {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  // The image matrix is:
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  // The filter matrix is:
+  // | 1 | 2 | 3 |
+  // | 4 | 5 | 6 |
+  // | 7 | 8 | 9 |
+  m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // No bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Since the dilation rate is 3 this will reduce the size of the output from
+  // 10x10 to 3x3 of all 5s. Specifically:
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
+}
+
 class QuantizedConvolutionOpModel : public BaseConvolutionOpModel {
  public:
   using BaseConvolutionOpModel::BaseConvolutionOpModel;
@@ -498,6 +557,71 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithAnisotropicStrides) {
                                  157, 103,  //
                                  167, 93,   //
                              }));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithDilation) {
+  const int depth = 1;
+  const int image_width = 9;
+  const int image_height = 9;
+  const int image_batch_count = 1;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const int dilation_width_factor = 3;
+  const int dilation_height_factor = 3;
+  const Padding padding = Padding_VALID;
+  QuantizedConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {image_batch_count, image_height, image_width, depth},
+       0,
+       255},
+      {TensorType_UINT8,
+       {depth, filter_size, filter_size, filter_count},
+       0,
+       255},
+      {TensorType_UINT8, {}, 0, 255}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  // The image matrix is:
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  // The filter matrix is:
+  // | 1 | 2 | 3 |
+  // | 4 | 5 | 6 |
+  // | 7 | 8 | 9 |
+  m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // No bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Since the dilation rate is 3 this will reduce the size of the output from
+  // 10x10 to 3x3 of all 5s. Specifically:
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
 INSTANTIATE_TEST_CASE_P(

@@ -21,8 +21,33 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+
+// Pass which strips control dependencies from all instructions in the module.
+class ControlDepRemover : public HloPassInterface {
+ public:
+  ControlDepRemover() = default;
+  tensorflow::StringPiece name() const override {
+    return "control-dep-remover";
+  }
+
+  StatusOr<bool> Run(HloModule* module) override {
+    bool changed = false;
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        changed = changed || !instruction->control_predecessors().empty();
+        TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+      }
+    }
+    return changed;
+  }
+};
+
+}  // namespace
+
 Despecializer::Despecializer() : pipeline_("despecializer") {
   // TODO(b/70588125): Also deal with window reversal in a fast way.
+  pipeline_.AddPass<ControlDepRemover>();
   pipeline_.AddPass<Defuser>();
   pipeline_.AddPass<ImplicitBroadcastRemover>();
   pipeline_.AddPass<BFloat16MixedPrecisionRemoval>();

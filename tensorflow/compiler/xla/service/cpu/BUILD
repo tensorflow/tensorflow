@@ -20,7 +20,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "mkl_deps",
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -86,6 +86,7 @@ cc_library(
         ":parallel_task_assignment",
         ":simple_orc_jit",
         "//tensorflow/compiler/tf2xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -497,10 +498,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
-    ] + if_mkl([
-        "@mkl_dnn",
-        "//third_party/mkl:intel_binary_blob",
-    ]),
+    ] + mkl_deps(),
 )
 
 cc_library(
@@ -554,10 +552,7 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
-    ] + if_mkl([
-        "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ]),
+    ] + mkl_deps(),
 )
 
 cc_library(

@@ -399,7 +399,7 @@ py_test(
 
 py_test(
     name = "local_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/local_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -621,6 +621,19 @@ cuda_py_test(
         ":keras",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "conv_utils_test",
+    size = "small",
+    srcs = ["utils/conv_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
