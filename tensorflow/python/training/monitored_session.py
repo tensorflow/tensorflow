@@ -25,6 +25,7 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -284,6 +285,63 @@ class Scaffold(object):
         resources.initialize_resources(resources.local_resources()))
 
 
+def _create_monitored_session_with_worker_context(worker_context,  # pylint: disable=missing-docstring
+                                                  scaffold,
+                                                  checkpoint_dir=None,
+                                                  hooks=None,
+                                                  chief_only_hooks=None,
+                                                  save_checkpoint_secs=None,
+                                                  save_summaries_steps=None,
+                                                  save_summaries_secs=None,
+                                                  config=None,
+                                                  stop_grace_period_secs=120,
+                                                  log_step_count_steps=100,
+                                                  max_wait_secs=7200,
+                                                  save_checkpoint_steps=None,
+                                                  summary_dir=None):
+  all_hooks = []
+  if hooks:
+    all_hooks.extend(hooks)
+  if chief_only_hooks and worker_context.is_chief:
+    all_hooks.extend(chief_only_hooks)
+
+  summary_dir = summary_dir or checkpoint_dir
+  if summary_dir and worker_context.should_save_summary:
+    if log_step_count_steps and log_step_count_steps > 0:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=summary_dir, every_n_steps=log_step_count_steps))
+
+    if (save_summaries_steps and save_summaries_steps > 0) or (
+        save_summaries_secs and save_summaries_secs > 0):
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=summary_dir))
+
+  if checkpoint_dir and worker_context.should_checkpoint:
+    if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
+        save_checkpoint_steps and save_checkpoint_steps > 0):
+      all_hooks.append(
+          basic_session_run_hooks.CheckpointSaverHook(
+              checkpoint_dir,
+              save_steps=save_checkpoint_steps,
+              save_secs=save_checkpoint_secs,
+              scaffold=scaffold))
+
+  session_creator = worker_context.session_creator(
+      scaffold,
+      config=config,
+      checkpoint_dir=checkpoint_dir,
+      max_wait_secs=max_wait_secs)
+  return MonitoredSession(
+      session_creator=session_creator,
+      hooks=all_hooks,
+      stop_grace_period_secs=stop_grace_period_secs)
+
+
 @tf_export('train.MonitoredTrainingSession')
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
@@ -373,14 +431,35 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     save_checkpoint_steps = None
 
   scaffold = scaffold or Scaffold()
+  worker_context = distribute_coordinator_context.get_current_worker_context()
+
+  if worker_context:
+    return _create_monitored_session_with_worker_context(
+        worker_context,
+        scaffold,
+        checkpoint_dir=checkpoint_dir,
+        hooks=hooks,
+        chief_only_hooks=chief_only_hooks,
+        save_checkpoint_secs=save_checkpoint_secs,
+        save_summaries_steps=save_summaries_steps,
+        save_summaries_secs=save_summaries_secs,
+        config=config,
+        stop_grace_period_secs=stop_grace_period_secs,
+        log_step_count_steps=log_step_count_steps,
+        max_wait_secs=max_wait_secs,
+        save_checkpoint_steps=save_checkpoint_steps,
+        summary_dir=summary_dir)
+
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold,
         master=master,
         config=config,
         max_wait_secs=max_wait_secs)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks or [],
-                            stop_grace_period_secs=stop_grace_period_secs)
+    return MonitoredSession(
+        session_creator=session_creator,
+        hooks=hooks or [],
+        stop_grace_period_secs=stop_grace_period_secs)
 
   all_hooks = []
   if chief_only_hooks:
@@ -400,25 +479,29 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):
-      all_hooks.append(basic_session_run_hooks.SummarySaverHook(
-          scaffold=scaffold,
-          save_steps=save_summaries_steps,
-          save_secs=save_summaries_secs,
-          output_dir=summary_dir))
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=summary_dir))
 
   if checkpoint_dir:
     if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
         save_checkpoint_steps and save_checkpoint_steps > 0):
-      all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          checkpoint_dir,
-          save_steps=save_checkpoint_steps,
-          save_secs=save_checkpoint_secs,
-          scaffold=scaffold))
+      all_hooks.append(
+          basic_session_run_hooks.CheckpointSaverHook(
+              checkpoint_dir,
+              save_steps=save_checkpoint_steps,
+              save_secs=save_checkpoint_secs,
+              scaffold=scaffold))
 
   if hooks:
     all_hooks.extend(hooks)
-  return MonitoredSession(session_creator=session_creator, hooks=all_hooks,
-                          stop_grace_period_secs=stop_grace_period_secs)
+  return MonitoredSession(
+      session_creator=session_creator,
+      hooks=all_hooks,
+      stop_grace_period_secs=stop_grace_period_secs)
 
 
 @tf_export('train.SessionCreator')
@@ -546,6 +629,11 @@ class _MonitoredSession(object):
     self._hooks = hooks or []
     for h in self._hooks:
       h.begin()
+
+    worker_context = distribute_coordinator_context.get_current_worker_context()
+    if not session_creator and worker_context:
+      session_creator = worker_context.session_creator()
+
     # Create the session.
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
