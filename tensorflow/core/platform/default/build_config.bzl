@@ -702,6 +702,6 @@ def tf_additional_binary_deps():
       "//tensorflow/core/util/tensor_bundle",
   ] + if_mkl_ml(
       [
-          "//third_party/intel_mkl_ml",
+          "//third_party/mkl:intel_binary_blob",
       ],
   )
