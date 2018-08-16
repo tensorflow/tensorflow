@@ -520,7 +520,7 @@ The following NVIDIA® <i>software</i> must be installed on your system:
 
 To use a GPU with CUDA Compute Capability 3.0, or different versions of the
 preceding NVIDIA libraries see
-@{$install_sources$installing TensorFlow from Sources}. If using Ubuntu 16.04
+[installing TensorFlow from Sources](../install/install_sources.md). If using Ubuntu 16.04
 and possibly other Debian based linux distros, `apt-get` can be used with the
 NVIDIA repository to simplify installation.
 

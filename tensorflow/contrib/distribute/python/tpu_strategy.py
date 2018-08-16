@@ -37,7 +37,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 
@@ -46,8 +45,8 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
   master = tpu_cluster_resolver.master()
 
   # pylint: disable=protected-access
-  cluster_def = (tpu_cluster_resolver.cluster_spec()
-                 or server_lib.ClusterSpec({})).as_cluster_def()
+  cluster_spec = tpu_cluster_resolver.cluster_spec()
+  cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
   tpu_system_metadata = (
       tpu_system_metadata_lib._query_tpu_system_metadata(
           master,
@@ -144,7 +143,10 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     ctx = values.MultiStepContext()
     def run_fn(*args, **kwargs):
       del args, kwargs
-      fn_result = fn(ctx, dequeue_fn())
+      fn_inputs = dequeue_fn()
+      if not isinstance(fn_inputs, tuple):
+        fn_inputs = (fn_inputs,)
+      fn_result = fn(ctx, *fn_inputs)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       if flat_last_step_outputs:
         with ops.control_dependencies([fn_result]):

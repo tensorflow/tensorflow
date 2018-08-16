@@ -56,8 +56,8 @@ PREREQUISITES:
 
 *   Some familiarity with C++.
 *   Must have installed the
-    @{$install$TensorFlow binary}, or must have
-    @{$install_sources$downloaded TensorFlow source},
+    [TensorFlow binary](../install/index.md), or must have
+    [downloaded TensorFlow source](../install/install_sources.md),
     and be able to build it.
 
 [TOC]
@@ -1140,7 +1140,7 @@ In general, changes to existing, checked-in specifications must be
 backwards-compatible: changing the specification of an op must not break prior
 serialized `GraphDef` protocol buffers constructed from older specifications.
 The details of `GraphDef` compatibility are
-@{$version_compat#compatibility_of_graphs_and_checkpoints$described here}.
+[described here](../guide/version_compat.md#compatibility_of_graphs_and_checkpoints).
 
 There are several ways to preserve backwards-compatibility.
 
@@ -1190,7 +1190,7 @@ callers.  The Python API may be kept compatible by careful changes in a
 hand-written Python wrapper, by keeping the old signature except possibly adding
 new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
-@{$version_compat#compatibility_of_graphs_and_checkpoints$`GraphDef` version semantics}.
+[`GraphDef` version semantics](../guide/version_compat.md#compatibility_of_graphs_and_checkpoints).
 
 ### GPU Support
 
@@ -1262,7 +1262,7 @@ For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 Given a graph of ops, TensorFlow uses automatic differentiation
 (backpropagation) to add new ops representing gradients with respect to the
 existing ops (see
-@{$python/train#gradient_computation$Gradient Computation}).
+[Gradient Computation](../api_guides/python/train.md#gradient_computation)).
 To make automatic differentiation work for new ops, you must register a gradient
 function which computes gradients with respect to the ops' inputs given
 gradients with respect to the ops' outputs.

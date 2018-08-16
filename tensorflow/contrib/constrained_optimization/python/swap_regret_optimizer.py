@@ -79,9 +79,11 @@ def _maximal_eigenvector_power_method(matrix,
     The maximal right-eigenvector of `matrix`.
 
   Raises:
-    ValueError: If the epsilon or maximum_iterations parameters violate their
-      bounds.
+    ValueError: If the `matrix` tensor is not floating-point, or if the
+      `epsilon` or `maximum_iterations` parameters violate their bounds.
   """
+  if not matrix.dtype.is_floating:
+    raise ValueError("multipliers must have a floating-point dtype")
   if epsilon <= 0.0:
     raise ValueError("epsilon must be strictly positive")
   if maximum_iterations <= 0:
@@ -139,11 +141,13 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
       (i.e. the Frobenius norm).
 
   Raises:
-    ValueError: if the `matrix` tensor does not have a fully-known shape, or is
-      not two-dimensional and square.
+    ValueError: if the `matrix` tensor is not floating-point, does not have a
+      fully-known shape, or is not two-dimensional and square.
   """
+  if not matrix.dtype.is_floating:
+    raise ValueError("multipliers must have a floating-point dtype")
   matrix_shape = matrix.get_shape()
-  if matrix_shape is None:
+  if matrix_shape.ndims is None:
     raise ValueError("matrix must have known shape")
   if matrix_shape.ndims != 2:
     raise ValueError(
@@ -172,12 +176,12 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
         matrix, axis=0, keepdims=True)) / standard_ops.maximum(
             1.0, standard_ops.reduce_sum(inactive, axis=0, keepdims=True))
     matrix += scale * inactive
-    new_inactive = standard_ops.to_float(matrix > 0)
+    new_inactive = standard_ops.cast(matrix > 0, matrix.dtype)
     matrix *= new_inactive
     return (iteration, matrix, new_inactive, inactive)
 
   iteration = standard_ops.constant(0)
-  inactive = standard_ops.ones_like(matrix)
+  inactive = standard_ops.ones_like(matrix, dtype=matrix.dtype)
 
   # We actually want a do-while loop, so we explicitly call while_loop_body()
   # once before tf.while_loop().
@@ -218,7 +222,7 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
   """Base class representing a `_SwapRegretOptimizer`.
 
   This class contains most of the logic for performing constrained optimization,
-  minimizing external regret for the constraints player. What it *doesn't* do is
+  minimizing swap regret for the constraints player. What it *doesn't* do is
   keep track of the internal state (the stochastic matrix).  Instead, the state
   is accessed via the _initial_state(), _stochastic_matrix(),
   _constraint_grad_and_var() and _projection_op() methods.
@@ -291,16 +295,16 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
   def _projection_op(self, state, name=None):
     pass
 
-  def minimize_constrained(self,
-                           minimization_problem,
-                           global_step=None,
-                           var_list=None,
-                           gate_gradients=train_optimizer.Optimizer.GATE_OP,
-                           aggregation_method=None,
-                           colocate_gradients_with_ops=False,
-                           name=None,
-                           grad_loss=None):
-    """Returns an `Op` for minimizing the constrained problem.
+  def _minimize_constrained(self,
+                            minimization_problem,
+                            global_step=None,
+                            var_list=None,
+                            gate_gradients=train_optimizer.Optimizer.GATE_OP,
+                            aggregation_method=None,
+                            colocate_gradients_with_ops=False,
+                            name=None,
+                            grad_loss=None):
+    """Returns an `Operation` for minimizing the constrained problem.
 
     The `optimizer` constructor parameter will be used to update the model
     parameters, while the constraint/objective weight matrix (the analogue of
@@ -320,8 +324,11 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
       name: as in `tf.train.Optimizer`'s `minimize` method.
       grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
 
+    Raises:
+      ValueError: If the minimization_problem tensors have different dtypes.
+
     Returns:
-      TensorFlow Op.
+      `Operation`, the train_op.
     """
     objective = minimization_problem.objective
 
@@ -329,6 +336,14 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     proxy_constraints = minimization_problem.proxy_constraints
     if proxy_constraints is None:
       proxy_constraints = constraints
+
+    # Make sure that the objective, constraints and proxy constraints all have
+    # the same dtype.
+    if (objective.dtype.base_dtype != constraints.dtype.base_dtype or
+        objective.dtype.base_dtype != proxy_constraints.dtype.base_dtype):
+      raise ValueError("objective, constraints and proxy_constraints must "
+                       "have the same dtype")
+
     # Flatten both constraints tensors to 1d.
     num_constraints = minimization_problem.num_constraints
     constraints = standard_ops.reshape(constraints, shape=(num_constraints,))
@@ -344,15 +359,18 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
         name="swap_regret_optimizer_state")
 
     zero_and_constraints = standard_ops.concat(
-        (standard_ops.zeros((1,)), constraints), axis=0)
+        (standard_ops.zeros((1,), dtype=constraints.dtype), constraints),
+        axis=0)
     objective_and_proxy_constraints = standard_ops.concat(
         (standard_ops.expand_dims(objective, 0), proxy_constraints), axis=0)
 
     distribution = self._distribution(state)
-    loss = standard_ops.tensordot(distribution, objective_and_proxy_constraints,
-                                  1)
+    loss = standard_ops.tensordot(
+        standard_ops.cast(distribution, objective_and_proxy_constraints.dtype),
+        objective_and_proxy_constraints, 1)
     matrix_gradient = standard_ops.matmul(
-        standard_ops.expand_dims(zero_and_constraints, 1),
+        standard_ops.expand_dims(
+            standard_ops.cast(zero_and_constraints, distribution.dtype), 1),
         standard_ops.expand_dims(distribution, 0))
 
     update_ops = []
@@ -555,6 +573,7 @@ class MultiplicativeSwapRegretOptimizer(_SwapRegretOptimizer):
     log_initial_one = math.log(1.0 - (self._initial_multiplier_radius *
                                       (dimension - 1) / (dimension)))
     log_initial_zero = math.log(self._initial_multiplier_radius / dimension)
+    # FUTURE WORK: make the dtype a parameter.
     return standard_ops.concat(
         (standard_ops.constant(
             log_initial_one, dtype=dtypes.float32, shape=(1, dimension)),

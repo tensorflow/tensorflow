@@ -26,6 +26,13 @@ namespace tflite {
 
 // InterpreterTest is a friend of Interpreter, so it can access context_.
 class InterpreterTest : public ::testing::Test {
+ public:
+  template <typename Delegate>
+  static TfLiteStatus ModifyGraphWithDelegate(
+      Interpreter* interpreter, std::unique_ptr<Delegate> delegate) {
+    return interpreter->ModifyGraphWithDelegate(std::move(delegate));
+  }
+
  protected:
   TfLiteContext* GetInterpreterContext() { return &interpreter_.context_; }
 
@@ -1080,21 +1087,22 @@ class TestDelegate : public ::testing::Test {
         return kTfLiteOk;
       };
       delegate_.CopyToBufferHandle =
-          [](TfLiteDelegate* delegate, TfLiteBufferHandle buffer_handle,
-             void* data, size_t size) -> TfLiteStatus {
+          [](TfLiteContext* context, TfLiteDelegate* delegate,
+             TfLiteBufferHandle buffer_handle, void* data,
+             size_t size) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
       delegate_.CopyFromBufferHandle =
-          [](TfLiteDelegate* delegate, TfLiteBufferHandle buffer_handle,
-             void* data, size_t size) -> TfLiteStatus {
+          [](TfLiteContext* context, TfLiteDelegate* delegate,
+             TfLiteBufferHandle buffer_handle, void* data,
+             size_t size) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
-      delegate_.FreeBufferHandle = [](TfLiteDelegate* delegate,
-                                      TfLiteBufferHandle* handle) {
-        *handle = kTfLiteNullBufferHandle;
-      };
+      delegate_.FreeBufferHandle =
+          [](TfLiteContext* context, TfLiteDelegate* delegate,
+             TfLiteBufferHandle* handle) { *handle = kTfLiteNullBufferHandle; };
       // Store type-punned data SimpleDelegate structure.
       delegate_.data_ = reinterpret_cast<void*>(this);
     }
@@ -1299,6 +1307,57 @@ TEST_F(TestDelegateWithDynamicTensors, AllowDynamicTensors) {
   // The node should be replaced because dynamic tensors are allowed. Therefore
   // only node ID in the execution plan is changed from 0 to 1.
   ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+}
+
+TEST(TestDelegateOwnership, ProperlyDisposed) {
+  struct TfLiteInterpreterOwnedDelegate : public TfLiteDelegate {
+    TfLiteInterpreterOwnedDelegate(bool* destroyed, bool* prepared)
+        : destroyed(destroyed), prepared(prepared) {
+      Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
+        *static_cast<TfLiteInterpreterOwnedDelegate*>(delegate)->prepared =
+            true;
+        return kTfLiteOk;
+      };
+    }
+    ~TfLiteInterpreterOwnedDelegate() { *destroyed = true; }
+
+    bool* destroyed;
+    bool* prepared;
+  };
+
+  // Construct a delegate with flags for indicating preparation/destruction.
+  bool destroyed = false;
+  bool prepared = false;
+  std::unique_ptr<TfLiteInterpreterOwnedDelegate> delegate(
+      new TfLiteInterpreterOwnedDelegate(&destroyed, &prepared));
+  {
+    // Create an interpreter and assemble a simple graph.
+    Interpreter interpreter;
+    TfLiteRegistration registration = {nullptr, nullptr, nullptr, nullptr};
+    ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
+    ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+    ASSERT_EQ(interpreter.SetOutputs({1}), kTfLiteOk);
+    ASSERT_EQ(interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr,
+                                                &registration),
+              kTfLiteOk);
+
+    // Pass delegate ownership to that interpreter.
+    ASSERT_EQ(InterpreterTest::ModifyGraphWithDelegate(&interpreter,
+                                                       std::move(delegate)),
+              kTfLiteOk);
+
+    // The delegate should be prepared as normal, and should be preserved.
+    EXPECT_TRUE(prepared);
+    EXPECT_FALSE(destroyed);
+
+    // Interpreter interaction should not impact the delegate's validity.
+    interpreter.AllocateTensors();
+    interpreter.Invoke();
+    EXPECT_FALSE(destroyed);
+  }
+
+  // Only after the interpreter is destroyed should the delegate be destroyed.
+  EXPECT_TRUE(destroyed);
 }
 
 }  // namespace

@@ -402,7 +402,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const Window& window,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -486,11 +487,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
       const string& config);
-  // Overload which does not require a token.
-  // TODO(b/80000000): Remove this overload when all uses of infeed are
-  // converted to take tokens.
-  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& infeed_shape,
-                                                      const string& config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -498,12 +494,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateOutfeed(
       const Shape& outfeed_shape, HloInstruction* operand,
       HloInstruction* token_operand, tensorflow::StringPiece outfeed_config);
-  // Overload which does not require a token.
-  // TODO(b/80000000): Remove this overload when all uses of outfeed are
-  // converted to take tokens.
-  static std::unique_ptr<HloInstruction> CreateOutfeed(
-      const Shape& outfeed_shape, HloInstruction* operand,
-      tensorflow::StringPiece outfeed_config);
 
   // Creates an asynchronous send instruction with the given channel id, which
   // initiates sending the operand data to a unique receive instruction in
@@ -1465,6 +1455,10 @@ class HloInstruction {
   // numbers when you create the instruction.
   void set_convolution_dimension_numbers(
       const ConvolutionDimensionNumbers& dnums);
+
+  // The number of feature groups. Must be a divisor of the input feature
+  // dimension and output feature dimension.
+  int64 feature_group_count() const;
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;

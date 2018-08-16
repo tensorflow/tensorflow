@@ -1428,6 +1428,37 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
 }
 
+// Test transforming reshapes and transposes of rng.
+TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* rng0 = builder.AddInstruction(
+      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {2, 2}),
+                                RandomDistribution::RNG_UNIFORM, {zero, one}));
+
+  HloInstruction* transpose = builder.AddInstruction(
+      HloInstruction::CreateTranspose(rng0->shape(), rng0, {1, 0}));
+  Shape reshape_shape = builder
+                            .AddInstruction(HloInstruction::CreateReshape(
+                                ShapeUtil::MakeShape(F32, {4}), transpose))
+                            ->shape();
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  EXPECT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  // Verify that that reshape(transpose(rng)) is replace by a single rng of the
+  // same shape as the reshape.
+  EXPECT_THAT(computation->root_instruction(), op::Rng());
+  EXPECT_TRUE(ShapeUtil::Equal(computation->root_instruction()->shape(),
+                               reshape_shape));
+}
+
 // Test transforming reshapes to bitcasts under various conditions.
 TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
   HloComputation::Builder builder(TestName());

@@ -38,6 +38,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using deadness_analysis_internal::ComputePredicates;
+using deadness_analysis_internal::PredicateMapTy;
+
 Status AnalyzeDeadness(Graph* graph,
                        std::unique_ptr<DeadnessAnalysis>* result) {
   FixupSourceAndSinkEdges(graph);
@@ -51,13 +54,73 @@ ops::Switch CreateSwitch(const Scope& root, const string& prefix) {
   return ops::Switch(root.WithOpName(prefix + "/switch"), value, predicate);
 }
 
-Output CreateInductionVariable(const Scope& root, const string& prefix,
-                               const string& frame_name, int32 init) {
-  Output initial_value = ops::Const(root.WithOpName(prefix + "/init"), init);
+TensorId ControlOutputFor(const Output& o) {
+  return {o.node()->name(), Graph::kControlSlot};
+}
+
+void VLogGraphIfAsked(const Graph& graph) {
+  if (VLOG_IS_ON(3)) {
+    GraphDef graph_def;
+    graph.ToGraphDef(&graph_def);
+    string serialized;
+    ::tensorflow::protobuf::TextFormat::PrintToString(graph_def, &serialized);
+    LOG(INFO) << serialized;
+  }
+}
+
+struct InductionVarInfo {
+  Output induction_var;
+  Output loop_cond;
+};
+
+// Creates an induction variable with the following structure (simplified for
+// brevity):
+//
+//            +---------------+
+//            | initial_value |
+//            +---------------+
+//              |
+//              |
+//              v
+//            +---------------+
+//            |     Enter     |
+//            +---------------+
+//              |
+//              |
+//              v
+//            +---------------+
+//         +> |     Merge     | -+
+//         |  +---------------+  |
+//         |    |                |
+//         |    |                |
+//         |    v                |
+//         |  +---------------+  |
+//         |  |  LessThan10   |  |
+//         |  +---------------+  |
+//         |    |                |
+//         |    |                |
+//         |    v                |
+//         |  +---------------+  |
+//    +----+- |    Switch     | <+
+//    |    |  +---------------+
+//    |    |    |
+//    |    |    |
+//    |    |    v
+//    |    |  +---------------+
+//    |    +- |    AddOne     |
+//    |       +---------------+
+//    |       +---------------+
+//    +-----> |     Exit      |
+//            +---------------+
+InductionVarInfo CreateInductionVariable(const Scope& root,
+                                         const string& prefix,
+                                         const string& frame_name,
+                                         const Output& initial_value) {
   Output enter_initial_value = ops::internal::Enter(
       root.WithOpName(prefix + "/enter"), initial_value, frame_name);
 
-  ops::Merge iv(root.WithOpName(prefix + "/iv"), {enter_initial_value});
+  ops::Merge iv(root.WithOpName(prefix + "/iv"),
+                {enter_initial_value, enter_initial_value});
   Output increment_by = ops::Const(root.WithOpName(prefix + "/incr"), 1);
   Output final_value = ops::Const(root.WithOpName(prefix + "/final"), 10);
   Output loop_cond_expr =
@@ -66,16 +129,84 @@ Output CreateInductionVariable(const Scope& root, const string& prefix,
       ops::LoopCond(root.WithOpName(prefix + "/cond"), loop_cond_expr);
   ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output, loop_cond);
   ops::internal::Exit exit(root.WithOpName(prefix + "/exit"), iv.output);
-  Output iv_next =
-      ops::Add(root.WithOpName(prefix + "/ivnext"), iv.output, increment_by);
+  Output iv_next = ops::Add(root.WithOpName(prefix + "/ivnext"),
+                            latch.output_true, increment_by);
   Output next_iteration =
-      ops::NextIteration(root.WithOpName(prefix + "next_iteration"), iv_next);
+      ops::NextIteration(root.WithOpName(prefix + "/next_iteration"), iv_next);
 
-  root.graph()->AddEdge(next_iteration.node(), 0, iv.output.node(), 1);
+  CHECK(root.graph()
+            ->UpdateEdge(next_iteration.node(), 0, iv.output.node(), 1)
+            .ok());
   root.graph()->AddControlEdge(iv.output.node(), increment_by.node());
   root.graph()->AddControlEdge(iv.output.node(), final_value.node());
 
-  return iv.output;
+  return {iv.output, loop_cond};
+}
+
+InductionVarInfo CreateInductionVariable(const Scope& root,
+                                         const string& prefix,
+                                         const string& frame_name, int32 init) {
+  return CreateInductionVariable(
+      root, prefix, frame_name,
+      ops::Const(root.WithOpName(prefix + "/init"), init));
+}
+
+// Creates an induction variable with the following structure:
+//
+//                           +---------------+
+//                           | initial_value |
+//                           +---------------+
+//                             |
+//                             |
+//                             v
+//                           +---------------+
+//                           |     Enter     |
+//                           +---------------+
+//                             |
+//                             |
+//                             v
+//                           +---------------+
+//                           |     Merge     | <+
+//                           +---------------+  |
+//                             |                |
+//                             |                |
+//                             v                |
+//         +-----------+     +---------------+  |
+//         | loop_cond | --> |    Switch     | -+
+//         +-----------+     +---------------+
+//                             |
+//                             |
+//                             v
+//                           +---------------+
+//                           |     Exit      |
+//                           +---------------+
+struct DependentInductionVar {
+  Output induction_var;
+  ops::Switch latch;
+};
+
+DependentInductionVar CreateDependentLoopInvariantValue(
+    const Scope& root, const string& prefix, const string& frame_name,
+    const Output& loop_cond, const Output& value) {
+  Output enter_value = ops::internal::Enter(root.WithOpName(prefix + "/enter"),
+                                            value, frame_name);
+  ops::Merge iv(root.WithOpName(prefix + "/iv"), {enter_value, enter_value});
+  ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output, loop_cond);
+  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"), iv.output);
+  Output next_iteration = ops::NextIteration(
+      root.WithOpName(prefix + "/next_iteration"), latch.output_true);
+  CHECK(root.graph()
+            ->UpdateEdge(next_iteration.node(), 0, iv.output.node(), 1)
+            .ok());
+  return {iv.output, latch};
+}
+
+DependentInductionVar CreateDependentLoopInvariantValue(
+    const Scope& root, const string& prefix, const string& frame_name,
+    const Output& loop_cond, int32 value) {
+  return CreateDependentLoopInvariantValue(
+      root, prefix, frame_name, loop_cond,
+      ops::Const(root.WithOpName(prefix + "/init"), value));
 }
 
 TEST(DeadnessAnalysisTest, BasicPositive) {
@@ -337,21 +468,224 @@ TEST(DeadnessAnalysisTest, HostRecv) {
 
 TEST(DeadnessAnalysisTest, Loop) {
   Scope root = Scope::NewRootScope().ExitOnError();
-  Output iv0 = CreateInductionVariable(root, "iv0", "fr0", 0);
-  Output iv1 = CreateInductionVariable(root, "iv1", "fr0", 0);
-  Output iv2 = CreateInductionVariable(root, "iv2", "fr0", 1);
+  Output iv0 = CreateInductionVariable(root, "iv0", "fr0", 0).induction_var;
+  Output iv1 = CreateInductionVariable(root, "iv1", "fr0", 0).induction_var;
+  Output iv2 = CreateInductionVariable(root, "iv2", "fr0", 1).induction_var;
   Output add0 = ops::Add(root.WithOpName("add0"), iv0, iv1);
   Output add1 = ops::Add(root.WithOpName("add1"), iv1, iv2);
-
-  std::unique_ptr<DeadnessAnalysis> result;
-  TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
   // NB!  iv0 and iv1 are equivalent and a smarter deadness analysis would have
   // noticed that.  Today we are pessimistic here because we assign an
   // uninterpreted symbol to merges with backedges.
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add1.node()));
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    std::unique_ptr<DeadnessAnalysis> result;
+    TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add1.node()));
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+    // In theory we should be able to tell that iv0/cond:0 and iv1/cond:0
+    // produce the same deadness.  But we're not that smart today.
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv0)], "{#true,&,*iv0/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv1)], "{#true,&,*iv1/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv2)], "{#true,&,*iv2/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
+              "({#true,&,*iv1/cond:0} & {#true,&,*iv0/cond:0})");
+    EXPECT_EQ(predicate_map[ControlOutputFor(add1)],
+              "({#true,&,*iv1/cond:0} & {#true,&,*iv2/cond:0})");
+  }
+}
+
+TEST(DeadnessAnalysisTest, ControlEquivalentLoopBodies) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv = CreateInductionVariable(root, "iv0", "frame", 0);
+  Output dependent_iv0 =
+      CreateDependentLoopInvariantValue(root, "div0", "frame", iv.loop_cond, 0)
+          .induction_var;
+  Output dependent_iv1 =
+      CreateDependentLoopInvariantValue(root, "div1", "frame", iv.loop_cond, 0)
+          .induction_var;
+  Output add0 = ops::Add(root.WithOpName("add0"), dependent_iv0, dependent_iv1);
+
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    std::unique_ptr<DeadnessAnalysis> result;
+    TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+    EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
+              "{#true,&,*iv0/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv0)],
+              "{#true,&,(*iv0/cond:0 & iv0/iv:0)}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv1)],
+              "{#true,&,(*iv0/cond:0 & iv0/iv:0)}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
+              "{#true,&,(*iv0/cond:0 & iv0/iv:0)}");
+  }
+}
+
+TEST(DeadnessAnalysisTest, LoopInvariantPredicateOnBackedge) {
+  // Create a merge that "looks like" a loop but isn't really.  It has a value
+  // that does not depend on the merge on its backedge.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv = CreateInductionVariable(root, "iv0", "frame", 0);
+  DependentInductionVar dependent_iv =
+      CreateDependentLoopInvariantValue(root, "div0", "frame", iv.loop_cond, 0);
+  FixupSourceAndSinkEdges(root.graph());
+
+  // To make deadness analysis think that dependent_iv is a loop we need an RPO
+  // that visits the merge before the backedge.  This is a legal RPO for
+  // deadness analysis since it ignores NextIteration->Merge edges during RPO.
+  // Right now dependent_iv has an edge from Merge to NextIteration so do the
+  // RPO with this edge in place.  Then remove this edge to get our test case.
+  std::vector<Node*> rpo;
+  GetReversePostOrder(*root.graph(), &rpo, /*stable_comparator=*/{},
+                      /*edge_filter=*/[](const Edge& edge) {
+                        return !edge.src()->IsNextIteration();
+                      });
+  TF_ASSERT_OK(root.graph()->UpdateEdge(
+      iv.induction_var.node(), 0, dependent_iv.latch.output_true.node(), 0));
+
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), rpo, &predicate_map));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv.induction_var)],
+              "div0/iv:0");
+  }
+}
+
+TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv_outer =
+      CreateInductionVariable(root, "iv_outer", "frame", 0);
+  ops::Switch inner_value(root.WithOpName("outer_is_live"),
+                          ops::Const(root.WithOpName("constant"), 5),
+                          iv_outer.loop_cond);
+  InductionVarInfo iv_inner = CreateInductionVariable(
+      root, "iv_inner", "frame",
+      ops::internal::Enter(root.WithOpName("iv_inner/enter"),
+                           inner_value.output_true, "frame_inner"));
+
+  Output dependent_outer_iv0 =
+      CreateDependentLoopInvariantValue(root, "dependent_outer_iv0", "frame",
+                                        iv_outer.loop_cond, 0)
+          .induction_var;
+  Output dependent_outer_iv1 =
+      CreateDependentLoopInvariantValue(root, "dependent_outer_iv1", "frame",
+                                        iv_outer.loop_cond, 0)
+          .induction_var;
+
+  Output dependent_inner_iv0 =
+      CreateDependentLoopInvariantValue(root, "dependent_inner_iv0", "frame",
+                                        iv_inner.loop_cond, dependent_outer_iv0)
+          .induction_var;
+  Output dependent_inner_iv1 =
+      CreateDependentLoopInvariantValue(root, "dependent_inner_iv1", "frame",
+                                        iv_inner.loop_cond, dependent_outer_iv1)
+          .induction_var;
+
+  Output add0 = ops::Add(root.WithOpName("add0"), dependent_inner_iv0,
+                         dependent_inner_iv1);
+
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    std::unique_ptr<DeadnessAnalysis> result;
+    TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+    EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer.induction_var)],
+              "{#true,&,*iv_outer/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner.induction_var)],
+              "{(*iv_outer/cond:0 & {#true,&,*iv_outer/cond:0}),&,"
+              "*iv_inner/cond:0}");
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_inner_iv0)],
+              "{{#true,&,(iv_outer/iv:0 & *iv_outer/cond:0)},&,"
+              "(*iv_inner/cond:0 & iv_inner/iv:0)}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_inner_iv1)],
+              "{{#true,&,(iv_outer/iv:0 & *iv_outer/cond:0)},&,"
+              "(*iv_inner/cond:0 & iv_inner/iv:0)}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
+              "{{#true,&,(iv_outer/iv:0 & *iv_outer/cond:0)},&,"
+              "(*iv_inner/cond:0 & iv_inner/iv:0)}");
+  }
+}
+
+TEST(DeadnessAnalysisTest, ControlNonEquivalentNestedLoopBodies) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv_outer_0 =
+      CreateInductionVariable(root, "iv_outer_0", "frame", 0);
+  ops::Switch inner_value_0(root.WithOpName("outer_0_is_live"),
+                            ops::Const(root.WithOpName("constant"), 5),
+                            iv_outer_0.loop_cond);
+  InductionVarInfo iv_inner_0 = CreateInductionVariable(
+      root, "iv_inner_0", "frame",
+      ops::internal::Enter(root.WithOpName("iv_inner_0/enter"),
+                           inner_value_0.output_true, "frame_inner"));
+
+  InductionVarInfo iv_outer_1 =
+      CreateInductionVariable(root, "iv_outer_1", "frame", 1);
+  ops::Switch inner_init_value_1(root.WithOpName("outer_1_is_live"),
+                                 ops::Const(root.WithOpName("constant"), 5),
+                                 iv_outer_1.loop_cond);
+  InductionVarInfo iv_inner_1 = CreateInductionVariable(
+      root, "iv_inner_1", "frame",
+      ops::internal::Enter(root.WithOpName("iv_inner_1/enter"),
+                           inner_init_value_1.output_true, "frame_inner"));
+  Output add0 = ops::Add(root.WithOpName("add0"), iv_inner_0.induction_var,
+                         iv_inner_1.induction_var);
+
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    std::unique_ptr<DeadnessAnalysis> result;
+    TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+  }
+
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer_0.induction_var)],
+              "{#true,&,*iv_outer_0/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner_0.induction_var)],
+              "{(*iv_outer_0/cond:0 & {#true,&,*iv_outer_0/cond:0}),&,"
+              "*iv_inner_0/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer_1.induction_var)],
+              "{#true,&,*iv_outer_1/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner_1.induction_var)],
+              "{(*iv_outer_1/cond:0 & {#true,&,*iv_outer_1/cond:0}),&,"
+              "*iv_inner_1/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
+              "({(*iv_outer_1/cond:0 & {#true,&,*iv_outer_1/cond:0}),&,"
+              "*iv_inner_1/cond:0} & "
+              "{(*iv_outer_0/cond:0 & {#true,&,*iv_outer_0/cond:0}),&,"
+              "*iv_inner_0/cond:0})");
+  }
 }
 
 TEST(DeadnessAnalysisTest, ControlInputs) {
@@ -454,9 +788,8 @@ TEST(DeadnessAnalysisTest, RecvVsSwitchText) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  deadness_analysis_internal::PredicateMapTy predicate_map;
-  TF_ASSERT_OK(deadness_analysis_internal::ComputePredicates(*root.graph(),
-                                                             &predicate_map));
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
 
   TensorId logical_and_output_0 = {logical_and.node()->name(),
                                    Graph::kControlSlot};

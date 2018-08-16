@@ -24,7 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 
 
 class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
@@ -68,7 +68,8 @@ class VariableCreatorStackTest(test.TestCase):
         v = variable_scope.variable(1.0)
 
         # This will pause the current thread, and execute the other thread.
-        distribute_lib.get_tower_context().merge_call(lambda _: _)
+        distribution_strategy_context.get_tower_context().merge_call(
+            lambda _: _)
       return v
 
     def main_thread_creator(next_creator, *args, **kwargs):

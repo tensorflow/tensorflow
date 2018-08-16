@@ -872,14 +872,14 @@ class KerasTPUModel(models.Model):
         tpu_name_or_address)
     master = self._cluster_resolver.master()
     cluster_spec = self._cluster_resolver.cluster_spec()
+    config = config_pb2.ConfigProto(isolate_session_state=True)
+    if cluster_spec:
+      config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
     self._session = tf_session.Session(
         graph=self._graph,
         target=master,
-        config=config_pb2.ConfigProto(isolate_session_state=True))
-
-    # TODO(saeta): Confirm the lines below work in ClusterSpec propagation env.
-    if cluster_spec:
-      self._session.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+        config=config)
 
     with self._graph.as_default():
       self._session.run(tpu.initialize_system())

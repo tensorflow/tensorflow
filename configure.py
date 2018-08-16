@@ -839,15 +839,16 @@ def set_tf_cuda_version(environ_cp):
       cuda_toolkit_path = cygpath(cuda_toolkit_path)
 
     if is_windows():
-      cuda_rt_lib_path = 'lib/x64/cudart.lib'
+      cuda_rt_lib_paths = ['lib/x64/cudart.lib']
     elif is_linux():
-      cuda_rt_lib_path = 'lib64/libcudart.so.%s' % tf_cuda_version
+      cuda_rt_lib_paths = ['%s/libcudart.so.%s' % (x, tf_cuda_version)
+                           for x in ['lib64', 'lib/x86_64-linux-gnu']]
     elif is_macos():
-      cuda_rt_lib_path = 'lib/libcudart.%s.dylib' % tf_cuda_version
+      cuda_rt_lib_paths = ['lib/libcudart.%s.dylib' % tf_cuda_version]
 
-    cuda_toolkit_path_full = os.path.join(cuda_toolkit_path, cuda_rt_lib_path)
-    if os.path.exists(cuda_toolkit_path_full):
-      break
+    cuda_toolkit_paths_full = [os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths]
+    if any([os.path.exists(x) for x in cuda_toolkit_paths_full]):
+        break
 
     # Reset and retry
     print('Invalid path to CUDA %s toolkit. %s cannot be found' %
@@ -1398,10 +1399,6 @@ def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
 
-def set_build_strip_flag():
-  write_to_bazelrc('build --strip=always')
-
-
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
   # The non-monolithic build is not supported yet
@@ -1558,7 +1555,6 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
-  set_build_strip_flag()
   if is_windows():
     set_windows_build_flags(environ_cp)
 

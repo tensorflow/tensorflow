@@ -34,6 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
+// Next ID: 51
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -73,6 +74,11 @@ message HloInstructionProto {
 
   // Describes the dimension numbers used for a convolution.
   xla.ConvolutionDimensionNumbers convolution_dimension_numbers = 16;
+
+  // The number of feature groups. Used for a convolution. Must be a divisor of
+  // the input feature dimension and output feature dimension. If not specified,
+  // it will use a default value of 1.
+  int64 feature_group_count = 50;
 
   // Describes the [begin, end) index range and stride for slices.
   message SliceDimensions {

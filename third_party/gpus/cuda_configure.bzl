@@ -61,6 +61,7 @@ CUDA_LIB_PATHS = [
 CUPTI_HEADER_PATHS = [
     "extras/CUPTI/include/",
     "include/cuda/CUPTI/",
+    "include/",
 ]
 
 # Lookup paths for the cupti library, relative to the
@@ -69,7 +70,7 @@ CUPTI_HEADER_PATHS = [
 # the other CUDA libraries but rather in a special extras/CUPTI directory.
 CUPTI_LIB_PATHS = [
     "extras/CUPTI/lib64/",
-    "lib/x86_64-linux-gnu",
+    "lib/x86_64-linux-gnu/",
     "lib64/",
     "extras/CUPTI/libx64/",
     "extras/CUPTI/lib/",
@@ -96,6 +97,7 @@ CUDNN_INCLUDE_PATHS = [
 NVVM_LIBDEVICE_PATHS = [
     "nvvm/libdevice/",
     "share/cuda/",
+    "lib/nvidia-cuda-toolkit/libdevice/",
 ]
 
 # Files used to detect the NVVM libdevice path.

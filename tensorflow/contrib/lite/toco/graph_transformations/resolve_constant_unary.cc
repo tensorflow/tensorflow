@@ -246,8 +246,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = outval;
     }
-  } else if (unary_op->type == OperatorType::kRelu6 &&
-             unary_op->type == OperatorType::kRelu1 &&
+  } else if (unary_op->type == OperatorType::kRelu6 ||
+             unary_op->type == OperatorType::kRelu1 ||
              unary_op->type == OperatorType::kRelu) {
     for (size_t i = 0; i < output_buffer_size; ++i) {
       const float value = (*input_float_data)[i];

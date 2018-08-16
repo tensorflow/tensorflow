@@ -96,7 +96,6 @@ typedef enum {
   Dim3d_I = 1
 } MklDnnDims3D;
 
-
 #ifdef INTEL_MKL_ML_ONLY
 class MklShape {
  public:
@@ -361,6 +360,7 @@ class MklShape {
 #else
 
 // Forward decl
+TensorFormat MklDnn3DDataFormatToTFDataFormat(memory::format format);
 TensorFormat MklDnnDataFormatToTFDataFormat(memory::format format);
 memory::dims CalculateTFStrides(const memory::dims& dims_tf_order);
 memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
@@ -469,7 +469,6 @@ class MklDnnShape {
         << "Invalid index from the dimension: " << index << ", " << dimension;
     return this->DimSize(index);
   }
-
 
   inline int32 GetMklDnnTensorDimIndex(char dimension) const {
     switch (dimension) {
@@ -1403,7 +1402,6 @@ inline memory::format TFDataFormatToMklDnnDataFormat(TensorFormat format) {
   else if (format == FORMAT_NCHW)
     return memory::format::nchw;
   TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
-  // Return to get rid of compiler warning
   return memory::format::format_undef;
 }
 
@@ -1466,7 +1464,7 @@ inline memory::dims TFShapeToMklDnnDimsInNCHW(const TensorShape& shape,
 }
 
 inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
-    TensorFormat format) {
+                                               TensorFormat format) {
   // Check validity of format.
   CHECK_NE(TFDataFormatToMklDnn3DDataFormat(format),
            memory::format::format_undef);
@@ -1480,7 +1478,6 @@ inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
   // MKL-DNN requires dimensions in NCDHW format.
   return memory::dims({n, c, d, h, w});
 }
-
 
 /// Overloaded version of function above. Input parameters are
 /// self-explanatory.
@@ -1594,6 +1591,8 @@ class MklDnnData {
 
   /// Operations memory descriptor
   memory::desc* op_md_;
+  // flat to indicate if data is 3D or not.
+  bool bIs3D;
   /// Operations temp buffer
   void* allocated_buffer_;
   /// CPU engine on which operation will be executed
@@ -1619,6 +1618,10 @@ class MklDnnData {
     return const_cast<void*>(
         static_cast<const void*>(tensor->flat<T>().data()));
   }
+
+  void SetIs3DData(bool bIs3D_) { bIs3D = bIs3D_; }
+
+  bool GetIs3D() { return bIs3D; }
 
   /// Set user memory primitive using specified dimensions, memory format and
   /// data_buffer. Function automatically uses element data type by using

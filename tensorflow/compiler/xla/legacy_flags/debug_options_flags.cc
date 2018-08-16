@@ -31,7 +31,6 @@ std::vector<tensorflow::Flag>* flag_objects;
 std::once_flag flags_init;
 
 void SetDebugOptionsDefaults(DebugOptions* flags) {
-  flags->set_xla_enable_fast_math(true);
   flags->set_xla_llvm_enable_alias_scope_metadata(true);
   flags->set_xla_llvm_enable_noalias_metadata(true);
   flags->set_xla_llvm_enable_invariant_load_metadata(true);
@@ -53,6 +52,11 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   // the heuristics needed to decide when to run on multiple streams.  See
   // b/77879207.
   flags->set_xla_gpu_disable_multi_streaming(true);
+
+  // TODO(jlebar): Disable fastmath once doing so is not a performance
+  // regression.
+  flags->set_xla_cpu_enable_fast_math(true);
+  flags->set_xla_gpu_enable_fast_math(true);
 }
 
 // Allocates flag_values and flag_objects; this function must not be called more
@@ -150,10 +154,16 @@ void AllocateFlags() {
           flag_values->mutable_xla_generate_hlo_text_to(),
           "Dump all HLO modules as text into the provided directory path."),
       tensorflow::Flag(
-          "xla_enable_fast_math",
-          bool_setter_for(&DebugOptions::set_xla_enable_fast_math),
-          flag_values->xla_enable_fast_math(),
-          "Enable unsafe fast-math optimizations in the compiler; "
+          "xla_cpu_enable_fast_math",
+          bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
+          flag_values->xla_cpu_enable_fast_math(),
+          "Enable unsafe fast-math optimizations in the CPU compiler; "
+          "this may produce faster code at the expense of some accuracy."),
+      tensorflow::Flag(
+          "xla_gpu_enable_fast_math",
+          bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
+          flag_values->xla_cpu_enable_fast_math(),
+          "Enable unsafe fast-math optimizations in the GPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
       tensorflow::Flag(
           "xla_llvm_enable_alias_scope_metadata",

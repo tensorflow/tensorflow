@@ -76,11 +76,11 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
  private:
   // TODO(mrry): Push the templated code down to the raw copying routine.
   template <class T>
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 batch_size,
             const PartialTensorShape& row_shape, const DatasetBase* input)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
           row_shape_(row_shape),
           input_(input) {
