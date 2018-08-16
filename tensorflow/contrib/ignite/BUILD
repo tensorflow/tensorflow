@@ -108,3 +108,28 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
     ],
 )
+
+# The Apache Ignite servers have to setup before the test and tear down 
+# after the test manually. The docker engine has to be installed.
+#
+# To setup Apache Ignite servers:
+# $ bash ./python/tests/start_ignite.sh
+#
+# To tear down Apache Ignite servers:
+# $ bash ./python/tests/stop_ignite.sh
+tf_py_test(
+    name = "ignite_dataset_test",
+    srcs = ["python/tests/ignite_dataset_test.py"],
+    additional_deps = [
+        ":ignite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+    tags = [
+        "manual",
+        "no_windows",
+        "notap",
+    ],
+)

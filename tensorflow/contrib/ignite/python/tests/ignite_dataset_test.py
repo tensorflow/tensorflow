@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for IgniteDataset."""
 
+import os
 import tensorflow as tf
 from tensorflow.contrib.ignite import IgniteDataset
 from tensorflow.python.framework import errors
@@ -44,7 +45,7 @@ class IgniteDatasetTest(test.TestCase):
     ds = IgniteDataset(
       cache_name="SQL_PUBLIC_TEST_CACHE",
       port=42301,
-      certfile="keystore/client.pem",
+      certfile=os.path.dirname(os.path.realpath(__file__)) + "/keystore/client.pem",
       cert_password="123456"
     )
 
@@ -54,7 +55,7 @@ class IgniteDatasetTest(test.TestCase):
     ds = IgniteDataset(
       cache_name="SQL_PUBLIC_TEST_CACHE",
       port=42302,
-      certfile="keystore/client.pem",
+      certfile=os.path.dirname(os.path.realpath(__file__)) + "/keystore/client.pem",
       cert_password="123456",
       username="ignite",
       password="ignite"
