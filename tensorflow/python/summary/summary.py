@@ -15,7 +15,7 @@
 
 """Tensor summaries for exporting information about a model.
 
-See the @{$python/summary} guide.
+See the [Summary](https://tensorflow.org/api_guides/python/summary) guide.
 """
 
 from __future__ import absolute_import

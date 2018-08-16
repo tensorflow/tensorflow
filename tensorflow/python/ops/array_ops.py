@@ -15,7 +15,7 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Support for manipulating tensors.
 
-See the @{$python/array_ops} guide.
+See the [Array Ops](https://tensorflow.org/api_guides/python/array_ops) guide.
 """
 
 from __future__ import absolute_import

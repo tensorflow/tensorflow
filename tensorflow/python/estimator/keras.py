@@ -487,8 +487,9 @@ def model_to_estimator(keras_model=None,
                        config=None):
   """Constructs an `Estimator` instance from given keras model.
 
-  For usage example, please see
-  @{$guide/estimators$creating_estimators_from_keras_models}.
+  For usage example, please see:
+  [Creating estimators from Keras
+  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
 
   Args:
     keras_model: A compiled Keras model object. This argument is mutually

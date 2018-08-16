@@ -869,7 +869,7 @@ def _get_saver_or_default():
 class Saver(object):
   """Saves and restores variables.
 
-  See @{$variables$Variables}
+  See [Variables](https://tensorflow.org/guide/variables)
   for an overview of variables, saving and restoring.
 
   The `Saver` class adds ops to save and restore variables to and from
