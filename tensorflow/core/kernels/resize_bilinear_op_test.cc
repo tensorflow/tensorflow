@@ -122,7 +122,7 @@ class ResizeBilinearOpTest : public OpsTestBase {
         TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
-    test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
+    test::ExpectClose(*expected, *GetOutput(0));
   }
 
   void RunManyRandomTests(int channels) {
