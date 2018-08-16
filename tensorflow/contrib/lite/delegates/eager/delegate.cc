@@ -55,17 +55,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   return kTfLiteOk;
 }
 
-TfLiteStatus CopyFromBufferHandle(TfLiteDelegate* delegate,
+TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
+                                  TfLiteDelegate* delegate,
                                   TfLiteBufferHandle buffer_handle, void* data,
                                   size_t size) {
-  // TODO(nupurgarg): Make BufferMap unique to each interpreter in order to
-  // support multiple interpreters using a single delegate.
   BufferMap* buffer_map =
-      reinterpret_cast<DelegateData*>(delegate->data_)->GetBufferMap();
+      reinterpret_cast<DelegateData*>(delegate->data_)->GetBufferMap(context);
 
-  // TODO(nupurgarg): Use TfLiteContext's ReportError instead of fprinf.
   if (!buffer_map->HasTensor(buffer_handle)) {
-    fprintf(stderr, "Invalid tensor index %d.\n", buffer_handle);
+    context->ReportError(context, "Invalid tensor index %d.", buffer_handle);
     return kTfLiteError;
   }
 
@@ -73,7 +71,8 @@ TfLiteStatus CopyFromBufferHandle(TfLiteDelegate* delegate,
   tensorflow::StringPiece t_data = t.tensor_data();
 
   if (size != t_data.size()) {
-    fprintf(stderr, "Not enough space to store TensorFlow's aligned buffer.\n");
+    context->ReportError(
+        context, "Not enough space to store TensorFlow's aligned buffer.");
     return kTfLiteError;
   }
 
@@ -84,27 +83,26 @@ TfLiteStatus CopyFromBufferHandle(TfLiteDelegate* delegate,
 }  // namespace delegate
 }  // namespace eager
 
-EagerDelegate::EagerDelegate() {}
-
-EagerDelegate::~EagerDelegate() {}
-
-TfLiteStatus EagerDelegate::Apply(Interpreter* interpreter) {
-  if (!delegate_) {
-    if (!eager::DelegateData::Create(&delegate_data_).ok()) {
-      fprintf(stderr, "Unable to initialize TensorFlow context.\n");
-      return kTfLiteError;
-    }
-
-    delegate_.reset(new TfLiteDelegate{
-        /*data_=*/delegate_data_.get(),
-        /*nullptr,*/ &eager::delegate::Prepare,
-        /*CopyFromBufferHandle=*/&eager::delegate::CopyFromBufferHandle,
-        /*CopyToBufferHandle=*/nullptr,
-        /*FreeBufferHandle=*/nullptr});
+std::unique_ptr<EagerDelegate> EagerDelegate::Create() {
+  std::unique_ptr<eager::DelegateData> delegate_data;
+  if (!eager::DelegateData::Create(&delegate_data).ok()) {
+    fprintf(stderr, "Unable to initialize TensorFlow context.\n");
+    return nullptr;
   }
 
-  return interpreter->ModifyGraphWithDelegate(delegate_.get(),
-                                              /*allow_dynamic_tensors=*/true);
+  return std::unique_ptr<EagerDelegate>(
+      new EagerDelegate(std::move(delegate_data)));
 }
+
+EagerDelegate::EagerDelegate(std::unique_ptr<eager::DelegateData> delegate_data)
+    : TfLiteDelegate{
+          /*data_=*/delegate_data.get(),
+          /*nullptr,*/ &eager::delegate::Prepare,
+          /*CopyFromBufferHandle=*/&eager::delegate::CopyFromBufferHandle,
+          /*CopyToBufferHandle=*/nullptr,
+          /*FreeBufferHandle=*/nullptr},
+      delegate_data_(std::move(delegate_data)) {}
+
+EagerDelegate::~EagerDelegate() {}
 
 }  // namespace tflite

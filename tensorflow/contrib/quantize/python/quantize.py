@@ -198,7 +198,7 @@ def _FindLayersToQuantize(graph):
             |
     [post_conv_correction]
             |
-     [biasadd|folded_bias]
+     biasadd|folded_bias
             |
          [bypass]
             |
@@ -320,7 +320,6 @@ def _FindLayersToQuantize(graph):
               folded_bias_add_pattern,
               batch_norm_identity,
               bypass_pattern,
-              layer_pattern,
           ])
       ])
 
@@ -455,6 +454,24 @@ class _LayerMatch(object):
     return self._bias_add_op
 
 
+def _FollowedByFakeQuant(tensor):
+  """Returns True if the tensor is followed by a FakeQuant."""
+  fake_quant_ops = set([
+      'FakeQuantWithMinMaxVars', 'FakeQuantWithMinMaxArgs',
+      'FakeQuantWithMinMaxVarsPerChannel'
+  ])
+  pass_through_ops = set(['Reshape', 'Identity'])
+  consumers = tensor.consumers()
+  while consumers:
+    c = consumers.pop()
+    if c.type in fake_quant_ops:
+      return True
+    elif c.type in pass_through_ops:
+      for output in c.outputs:
+        consumers.extend(output.consumers())
+  return False
+
+
 def _InsertQuantOp(context,
                    name,
                    producer,
@@ -535,11 +552,7 @@ def _InsertQuantOp(context,
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes
   # overlap between multiple matches, so we need to ensure that we don't
   # add duplicate FakeQuant operations.
-  fake_quant_ops = set([
-      'FakeQuantWithMinMaxVars',
-      'FakeQuantWithMinMaxArgs'
-  ])
-  if fake_quant_ops.intersection(set([c.type for c in inputs.consumers()])):
+  if _FollowedByFakeQuant(inputs):
     return
 
   if moving_avg:

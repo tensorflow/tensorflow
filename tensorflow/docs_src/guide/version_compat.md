@@ -75,7 +75,7 @@ backward incompatible ways between minor releases. These include:
 *   **Other languages**: TensorFlow APIs in languages other than Python and C,
     such as:
 
-  - @{$cc/guide$C++} (exposed through header files in
+  - [C++](../api_guides/cc/guide.md) (exposed through header files in
     [`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc)).
   - [Java](../api_docs/java/reference/org/tensorflow/package-summary),
   - [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
@@ -98,7 +98,7 @@ backward incompatible ways between minor releases. These include:
     accuracy for the overall system.
 
 *   **Random numbers:** The specific random numbers computed by the
-    @{$python/constant_op#Random_Tensors$random ops} may change at any time.
+    [random ops](../api_guides/python/constant_op.md#Random_Tensors) may change at any time.
     Users should rely only on approximately correct distributions and
     statistical strength, not the specific bits computed. However, we will make
     changes to random bits rarely (or perhaps never) for patch releases.  We
@@ -174,6 +174,8 @@ provide tools for automatically converting graphs to a newer supported
 This section is relevant only when making incompatible changes to the `GraphDef`
 format, such as when adding ops, removing ops, or changing the functionality
 of existing ops.  The previous section should suffice for most users.
+
+<a id="backward_forward"/>
 
 ### Backward and partial forward compatibility
 

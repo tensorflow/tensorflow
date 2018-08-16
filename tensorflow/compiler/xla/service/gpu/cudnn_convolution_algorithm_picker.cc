@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -30,7 +31,6 @@ namespace {
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
-using tensorflow::gtl::nullopt;
 using tensorflow::gtl::optional;
 
 class ScratchAllocator : public se::ScratchAllocator {
@@ -173,11 +173,17 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
 // cache misses and doing extra work.  Overall, caching doesn't seem worth the
 // trouble, but we may want to revisit this if we ever find a model where
 // caching would speed up compilation a lot.
-optional<std::tuple<int64, bool, int64>>
+StatusOr<std::tuple<int64, bool, int64>>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
     const Shape& output_shape, const Window& window,
     const ConvolutionDimensionNumbers& dnums, HloInstruction* instr) {
+  CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
+  CHECK_EQ(input_shape.element_type(), output_shape.element_type());
+  // TODO(timshen): for now only check fp16. It can be expanded to other types,
+  // with some work on the HLO routines.
+  const bool cross_check_enabled = input_shape.element_type() == xla::F16;
+
   // Don't run this function concurrently on the same GPU.
   //
   // This is a bit of a hack and doesn't protect us against arbitrary concurrent
@@ -206,51 +212,75 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // Allocate space for the input, filter, and output of the convolution.  We
   // use a ScratchAllocator for this instead of calling allocator_ directly so
   // that our allocations don't leak.
-  //
-  // We don't put any data in these buffers, because (in theory, anyway) the
-  // speed of a conv isn't affected by the data being convolved.
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  StatusOr<DeviceMemoryBase> maybe_input_buf =
-      input_output_allocator.AllocateBytes(&stream,
-                                           ShapeUtil::ByteSizeOf(input_shape));
-  StatusOr<DeviceMemoryBase> maybe_filter_buf =
-      input_output_allocator.AllocateBytes(&stream,
-                                           ShapeUtil::ByteSizeOf(filter_shape));
-  StatusOr<DeviceMemoryBase> maybe_output_buf =
-      input_output_allocator.AllocateBytes(&stream,
-                                           ShapeUtil::ByteSizeOf(output_shape));
-  if (!maybe_input_buf.ok() || !maybe_filter_buf.ok() ||
-      !maybe_output_buf.ok()) {
-    LOG(WARNING)
-        << "Couldn't allocate space for input/filter/output of convolution "
-        << instr->ToString() << ".  Falling back to default algorithm.";
-    return nullopt;
-  }
+  TF_ASSIGN_OR_RETURN(DeviceMemoryBase input_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(input_shape)));
+  TF_ASSIGN_OR_RETURN(DeviceMemoryBase filter_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(filter_shape)));
+  TF_ASSIGN_OR_RETURN(DeviceMemoryBase output_buf,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(output_shape)));
 
-  DeviceMemoryBase input_buf = maybe_input_buf.ValueOrDie();
-  DeviceMemoryBase filter_buf = maybe_filter_buf.ValueOrDie();
-  DeviceMemoryBase output_buf = maybe_output_buf.ValueOrDie();
+  if (cross_check_enabled) {
+    // Broadcast a constant to the buffer, instead of zeroing the buffer. A
+    // non-zero constant is useful for the cross checking, because zero-inputs
+    // may not always reveal the bugs.
+    const auto initialize_f16 = [&stream](DeviceMemoryBase buffer) {
+      CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
+      size_t left_over_bytes = buffer.size() % 4;
+      CHECK_EQ(0, left_over_bytes % 2);
 
-  // Although we don't have evidence this matters, zero out the buffers before
-  // autotuning.  It's conceivable that using uninitialized memory as the inputs
-  // might affect performance if e.g. the inputs contain denormals, and this is
-  // easy enough.
-  if (!stream.ThenMemZero(&input_buf, input_buf.size())
-           .ThenMemZero(&filter_buf, filter_buf.size())
-           .ThenMemZero(&output_buf, output_buf.size())
-           .BlockHostUntilDone()
-           .ok()) {
-    LOG(WARNING)
-        << "Couldn't zero out input/filter/output buffer for convolution "
-        << instr->ToString() << ".  Falling back to default algorithm.";
-    return nullopt;
+      constexpr float kBroadcastedConstant = 0.1f;
+      Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
+                              Eigen::half(kBroadcastedConstant)};
+      uint32 bits;
+      static_assert(sizeof(bits) == sizeof(halfs), "");
+      memcpy(&bits, halfs, sizeof(bits));
+
+      size_t aligned_size = buffer.size() / 4 * 4;
+      stream.ThenMemset32(&buffer, bits, aligned_size);
+
+      DeviceMemoryBase left_over(
+          static_cast<char*>(buffer.opaque()) + aligned_size, left_over_bytes);
+      stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+    };
+    initialize_f16(input_buf);
+    initialize_f16(filter_buf);
+    initialize_f16(output_buf);
+  } else {
+    // Although we don't have evidence this matters, zero out the buffers before
+    // autotuning.  It's conceivable that using uninitialized memory as the
+    // inputs might affect performance if e.g. the inputs contain denormals, and
+    // this is easy enough.
+    stream.ThenMemZero(&input_buf, input_buf.size())
+        .ThenMemZero(&filter_buf, filter_buf.size())
+        .ThenMemZero(&output_buf, output_buf.size());
   }
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
+  DeviceMemoryBase* result_buf = [&] {
+    switch (kind) {
+      case CudnnConvKind::kBackwardFilter:
+        return &filter_buf;
+      case CudnnConvKind::kBackwardInput:
+        return &input_buf;
+      case CudnnConvKind::kForward:
+        return &output_buf;
+    }
+  }();
 
   const bool use_winograd_nonfused = ShouldIncludeWinogradNonfusedAlgo(
       input_shape, output_shape, dnums, stream_exec_);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
+  optional<F16BufferComparator> comparator;
+  // Use the first algorithm that's supported as reference. There isn't a
+  // particular reason to use it, as any algorithm sufficies. It doesn't make
+  // this algorithm considered correct, though.
+  optional<AlgorithmDesc> first_algorithm;
   for (const AlgorithmDesc& alg :
        GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -266,6 +296,34 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             .ok();
 
     if (launch_ok && profile_result.is_valid()) {
+      if (comparator.has_value()) {
+        StatusOr<bool> result = comparator->CompareEqual(
+            se::DeviceMemory<Eigen::half>(*result_buf));
+        if (!result.ok()) {
+          LOG(ERROR) << "Unable to compare "
+                     << AlgorithmToString(*first_algorithm) << " against "
+                     << AlgorithmToString(alg) << " for " << instr->ToString()
+                     << ": " << result.status();
+        } else if (!result.ValueOrDie()) {
+          LOG(ERROR) << "Results mismatch between different convolution "
+                        "algorithms. This is likely a bug in convolution, or "
+                        "an excessive loss of precision in convolution. "
+                     << instr->ToString() << " for "
+                     << AlgorithmToString(*first_algorithm) << " vs "
+                     << AlgorithmToString(alg);
+        }
+      } else if (cross_check_enabled) {
+        auto comp = F16BufferComparator::Create(
+            se::DeviceMemory<Eigen::half>(*result_buf), compiler_, allocator,
+            &stream);
+        if (comp.ok()) {
+          comparator.emplace(comp.ConsumeValueOrDie());
+          first_algorithm.emplace(alg);
+        } else {
+          LOG(ERROR) << "Fail to initialize buffer comparator: "
+                     << comp.status() << ", instruction: " << instr->ToString();
+        }
+      }
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       VLOG(3) << "Run of algorithm " << AlgorithmToString(alg)
               << " succeeded, taking " << profile_result.elapsed_time_in_ms()
@@ -292,9 +350,10 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
                            best_result_bytes_used);
   }
 
-  LOG(WARNING) << "All algorithms tried for convolution " << instr->ToString()
-               << " failed.  Falling back to default algorithm.";
-  return nullopt;
+  return InternalError(
+      "All algorithms tried for convolution %s failed.  Falling back to "
+      "default algorithm.",
+      instr->ToString().c_str());
 }
 
 StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
@@ -305,12 +364,13 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   const auto& lhs_shape = instr->operand(0)->shape();
   const auto& rhs_shape = instr->operand(1)->shape();
   const auto& conv_result_shape = instr->shape().tuple_shapes(0);
-  optional<std::tuple<int64, bool, int64>> alg_scratch_and_tc;
+  StatusOr<std::tuple<int64, bool, int64>> alg_scratch_and_tc;
   if (call_target == kCudnnConvForwardCallTarget) {
-    alg_scratch_and_tc = PickBestAlgorithm(
-        CudnnConvKind::kForward, /*input_shape=*/lhs_shape,
-        /*filter_shape=*/rhs_shape, /*output_shape=*/conv_result_shape,
-        instr->window(), instr->convolution_dimension_numbers(), instr);
+    alg_scratch_and_tc =
+        PickBestAlgorithm(CudnnConvKind::kForward, /*input_shape=*/lhs_shape,
+                          /*filter_shape=*/rhs_shape,
+                          /*output_shape=*/conv_result_shape, instr->window(),
+                          instr->convolution_dimension_numbers(), instr);
   } else if (call_target == kCudnnConvBackwardInputCallTarget) {
     alg_scratch_and_tc = PickBestAlgorithm(
         CudnnConvKind::kBackwardInput, /*input_shape=*/conv_result_shape,
@@ -326,7 +386,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
                << instr->ToString();
   }
 
-  if (!alg_scratch_and_tc.has_value()) {
+  if (!alg_scratch_and_tc.ok()) {
+    LOG(ERROR) << alg_scratch_and_tc.status();
     return false;
   }
 
@@ -334,7 +395,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   bool tensor_ops_enabled;
   int64 scratch_bytes;
 
-  std::tie(algorithm, tensor_ops_enabled, scratch_bytes) = *alg_scratch_and_tc;
+  std::tie(algorithm, tensor_ops_enabled, scratch_bytes) =
+      alg_scratch_and_tc.ConsumeValueOrDie();
 
   VLOG(1) << "Setting cudnn conv to use algorithm " << algorithm << " and "
           << NumBytesToString(scratch_bytes)

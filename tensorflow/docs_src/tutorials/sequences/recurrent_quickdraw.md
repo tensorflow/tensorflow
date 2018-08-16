@@ -32,7 +32,7 @@ drawings in 345 categories.
 
 To try the code for this tutorial:
 
-1.  @{$install$Install TensorFlow} if you haven't already.
+1.  [Install TensorFlow](../../install/index.md) if you haven't already.
 1.  Download the [tutorial code]
 (https://github.com/tensorflow/models/tree/master/tutorials/rnn/quickdraw/train_model.py).
 1.  [Download the data](#download-the-data) in `TFRecord` format from
@@ -108,7 +108,7 @@ This download will take a while and download a bit more than 23GB of data.
 ### Optional: Converting the data
 
 To convert the `ndjson` files to
-@{$python/python_io#TFRecords_Format_Details$TFRecord} files containing
+[TFRecord](../../api_guides/python/python_io.md#TFRecords_Format_Details) files containing
 [`tf.train.Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos run the following command.
 
@@ -118,7 +118,7 @@ protos run the following command.
 ```
 
 This will store the data in 10 shards of
-@{$python/python_io#TFRecords_Format_Details$TFRecord} files with 10000 items
+[TFRecord](../../api_guides/python/python_io.md#TFRecords_Format_Details) files with 10000 items
 per class for the training data and 1000 items per class as eval data.
 
 This conversion process is described in more detail in the following.
@@ -220,7 +220,7 @@ length 2.
 ### Defining the model
 
 To define the model we create a new `Estimator`. If you want to read more about
-estimators, we recommend @{$custom_estimators$this tutorial}.
+estimators, we recommend [this tutorial](../../guide/custom_estimators.md).
 
 To build the model, we:
 

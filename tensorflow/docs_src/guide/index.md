@@ -5,38 +5,38 @@ works. The units are as follows:
 
 ## High Level APIs
 
-  * @{$guide/keras}, TensorFlow's high-level API for building and
+  * [Keras](../guide/keras.md), TensorFlow's high-level API for building and
     training deep learning models.
-  * @{$guide/eager}, an API for writing TensorFlow code
+  * [Eager Execution](../guide/eager.md), an API for writing TensorFlow code
     imperatively, like you would use Numpy.
-  * @{$guide/datasets}, easy input pipelines to bring your data into
+  * [Importing Data](../guide/datasets.md), easy input pipelines to bring your data into
     your TensorFlow program.
-  * @{$guide/estimators}, a high-level API that provides
+  * [Estimators](../guide/estimators.md), a high-level API that provides
     fully-packaged models ready for large-scale training and production.
 
 ## Estimators
 
-* @{$premade_estimators}, the basics of premade Estimators.
-* @{$checkpoints}, save training progress and resume where you left off.
-* @{$feature_columns}, handle a variety of input data types without changes to the model.
-* @{$datasets_for_estimators}, use `tf.data` to input data.
-* @{$custom_estimators}, write your own Estimator.
+* [Premade Estimators](../guide/premade_estimators.md), the basics of premade Estimators.
+* [Checkpoints](../guide/checkpoints.md), save training progress and resume where you left off.
+* [Feature Columns](../guide/feature_columns.md), handle a variety of input data types without changes to the model.
+* [Datasets for Estimators](../guide/datasets_for_estimators.md), use `tf.data` to input data.
+* [Creating Custom Estimators](../guide/custom_estimators.md), write your own Estimator.
 
 ## Accelerators
 
-  * @{$using_gpu} explains how TensorFlow assigns operations to
+  * [Using GPUs](../guide/using_gpu.md) explains how TensorFlow assigns operations to
     devices and how you can change the arrangement manually.
-  * @{$using_tpu} explains how to modify `Estimator` programs to run on a TPU.
+  * [Using TPUs](../guide/using_tpu.md) explains how to modify `Estimator` programs to run on a TPU.
 
 ## Low Level APIs
 
-  * @{$guide/low_level_intro}, which introduces the
+  * [Introduction](../guide/low_level_intro.md), which introduces the
     basics of how you can use TensorFlow outside of the high Level APIs.
-  * @{$guide/tensors}, which explains how to create,
+  * [Tensors](../guide/tensors.md), which explains how to create,
     manipulate, and access Tensors--the fundamental object in TensorFlow.
-  * @{$guide/variables}, which details how
+  * [Variables](../guide/variables.md), which details how
     to represent shared, persistent state in your program.
-  * @{$guide/graphs}, which explains:
+  * [Graphs and Sessions](../guide/graphs.md), which explains:
       * dataflow graphs, which are TensorFlow's representation of computations
         as dependencies between operations.
       * sessions, which are TensorFlow's mechanism for running dataflow graphs
@@ -46,19 +46,19 @@ works. The units are as follows:
     such as Estimators or Keras, the high-level API creates and manages
     graphs and sessions for you, but understanding graphs and sessions
     can still be helpful.
-  * @{$guide/saved_model}, which
+  * [Save and Restore](../guide/saved_model.md), which
     explains how to save and restore variables and models.
 
 ## ML Concepts
 
-  * @{$guide/embedding}, which introduces the concept
+  * [Embeddings](../guide/embedding.md), which introduces the concept
     of embeddings, provides a simple example of training an embedding in
     TensorFlow, and explains how to view embeddings with the TensorBoard
     Embedding Projector.
 
 ## Debugging
 
-  * @{$guide/debugger}, which
+  * [TensorFlow Debugger](../guide/debugger.md), which
     explains how to use the TensorFlow debugger (tfdbg).
 
 ## TensorBoard
@@ -66,17 +66,17 @@ works. The units are as follows:
 TensorBoard is a utility to visualize different aspects of machine learning.
 The following guides explain how to use TensorBoard:
 
-  * @{$guide/summaries_and_tensorboard},
+  * [TensorBoard: Visualizing Learning](../guide/summaries_and_tensorboard.md),
     which introduces TensorBoard.
-  * @{$guide/graph_viz}, which
+  * [TensorBoard: Graph Visualization](../guide/graph_viz.md), which
     explains how to visualize the computational graph.
-  * @{$guide/tensorboard_histograms} which demonstrates the how to
+  * [TensorBoard Histogram Dashboard](../guide/tensorboard_histograms.md) which demonstrates the how to
     use TensorBoard's histogram dashboard.
 
 
 ## Misc
 
-  * @{$guide/version_compat},
+  * [TensorFlow Version Compatibility](../guide/version_compat.md),
     which explains backward compatibility guarantees and non-guarantees.
-  * @{$guide/faq}, which contains frequently asked
+  * [Frequently Asked Questions](../guide/faq.md), which contains frequently asked
     questions about TensorFlow.

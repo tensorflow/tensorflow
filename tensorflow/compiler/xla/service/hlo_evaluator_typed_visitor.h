@@ -86,6 +86,28 @@ bool SafeLess(const NativeT& a, const NativeT& b) {
 // of this class.
 template <typename ReturnT, typename ElementwiseT = ReturnT>
 class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
+ private:
+  // Get the value in the given literal static_cast as a double.
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  double GetAsDouble(const Literal& literal,
+                     tensorflow::gtl::ArraySlice<int64> input_index) {
+    return static_cast<double>(literal.Get<NativeT>(input_index));
+  }
+
+  // Specialization for complex types. In this case it is not possible to
+  // static_cast value to a double so just CHECK fail. This method is not used
+  // at run-time, but must be available at compile-time to keep the compiler
+  // happy.
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  double GetAsDouble(const Literal& literal,
+                     tensorflow::gtl::ArraySlice<int64> input_index) {
+    CHECK(false);
+  }
+
  public:
   explicit HloEvaluatorTypedVisitor(HloEvaluator* p) : parent_(p) {}
 
@@ -1536,7 +1558,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               IsScalarAdd(function)) {
             double computed_result = 0;
             auto func = [&](tensorflow::gtl::ArraySlice<int64> input_index) {
-              computed_result += arg_literal.Get<float>(input_index);
+              computed_result += GetAsDouble<ReturnT>(arg_literal, input_index);
               return true;
             };
             ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,

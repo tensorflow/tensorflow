@@ -41,3 +41,12 @@ py_test(
         "//tensorflow/python:variables",
     ],
 )
+
+py_library(
+    name = "distribute_coordinator_context",
+    srcs = [
+        "distribute_coordinator_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)

@@ -185,7 +185,8 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
-  See the @{$variables$Variables How To} for a high level overview.
+  See the [Variables How To](https://tensorflow.org/guide/variables)
+  for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.

@@ -512,22 +512,24 @@ class XlaBuilder {
   // Enqueues a convolution instruction onto the computation, which uses the
   // default convolution dimension numbers.
   XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-             tensorflow::gtl::ArraySlice<int64> window_strides,
-             Padding padding);
+             tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+             int64 feature_group_count = 1);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided padding configuration in the format returned by MakePadding().
   XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      int64 feature_group_count = 1);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided dimension numbers configuration.
   XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided padding configuration as well as the dimension numbers.
@@ -535,7 +537,8 @@ class XlaBuilder {
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided padding configuration, dilation factors and dimension numbers.
@@ -545,7 +548,8 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
       tensorflow::gtl::ArraySlice<int64> lhs_dilation,
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Enqueues an FFT instruction onto the computation, of the given type and
   // with the given FFT length.
@@ -1161,27 +1165,31 @@ class XlaBuilder {
                           const DotDimensionNumbers& dimension_numbers);
   friend XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
                     tensorflow::gtl::ArraySlice<int64> window_strides,
-                    Padding padding);
+                    Padding padding, int64 feature_group_count);
   friend XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
-      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+      int64 feature_group_count);
   friend XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count);
   friend XlaOp ConvGeneral(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count);
   friend XlaOp ConvGeneralDilated(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
       tensorflow::gtl::ArraySlice<int64> lhs_dilation,
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count);
   friend XlaOp Fft(const XlaOp& operand, FftType fft_type,
                    tensorflow::gtl::ArraySlice<int64> fft_length);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
@@ -1646,28 +1654,32 @@ XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 // Enqueues a convolution instruction onto the computation, which uses the
 // default convolution dimension numbers.
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding);
+           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+           int64 feature_group_count = 1);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration in the format returned by MakePadding().
 XlaOp ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    int64 feature_group_count = 1);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided dimension numbers configuration.
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers);
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count = 1);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration as well as the dimension numbers.
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   tensorflow::gtl::ArraySlice<int64> window_strides,
                   tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-                  const ConvolutionDimensionNumbers& dimension_numbers);
+                  const ConvolutionDimensionNumbers& dimension_numbers,
+                  int64 feature_group_count = 1);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration, dilation factors and dimension numbers.
@@ -1677,7 +1689,8 @@ XlaOp ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers);
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count = 1);
 
 // Enqueues an FFT instruction onto the computation, of the given type and
 // with the given FFT length.

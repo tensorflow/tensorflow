@@ -8,7 +8,7 @@ how to solve the Iris classification problem in TensorFlow.
 Prior to using the sample code in this document, you'll need to do the
 following:
 
-* @{$install$Install TensorFlow}.
+* [Install TensorFlow](../install/index.md).
 * If you installed TensorFlow with virtualenv or Anaconda, activate your
   TensorFlow environment.
 * Install or upgrade pandas by issuing the following command:
@@ -78,10 +78,10 @@ provides a programming stack consisting of multiple API layers:
 
 We strongly recommend writing TensorFlow programs with the following APIs:
 
-* @{$guide/estimators$Estimators}, which represent a complete model.
+* [Estimators](../guide/estimators.md), which represent a complete model.
   The Estimator API provides methods to train the model, to judge the model's
   accuracy, and to generate predictions.
-* @{$guide/datasets_for_estimators}, which build a data input
+* [Datasets for Estimators](../guide/datasets_for_estimators.md), which build a data input
   pipeline. The Dataset API has methods to load and manipulate data, and feed
   it into your model. The Dataset API meshes well with the Estimators API.
 
@@ -173,14 +173,14 @@ example is an Iris Versicolor.
 An Estimator is TensorFlow's high-level representation of a complete model. It
 handles the details of initialization, logging, saving and restoring, and many
 other features so you can concentrate on your model. For more details see
-@{$guide/estimators}.
+[Estimators](../guide/estimators.md).
 
 An Estimator is any class derived from `tf.estimator.Estimator`. TensorFlow
 provides a collection of
 `tf.estimator`
 (for example, `LinearRegressor`) to implement common ML algorithms. Beyond
 those, you may write your own
-@{$custom_estimators$custom Estimators}.
+[custom Estimators](../guide/custom_estimators.md).
 We recommend using pre-made Estimators when just getting started.
 
 To write a TensorFlow program based on pre-made Estimators, you must perform the
@@ -287,7 +287,7 @@ for key in train_x.keys():
 ```
 
 Feature columns can be far more sophisticated than those we're showing here.  We
-detail feature columns @{$feature_columns$later on} in our Getting
+detail feature columns [later on](../guide/feature_columns.md) in our Getting
 Started guide.
 
 Now that we have the description of how we want the model to represent the raw
@@ -423,8 +423,8 @@ Pre-made Estimators are an effective way to quickly create standard models.
 Now that you've gotten started writing TensorFlow programs, consider the
 following material:
 
-* @{$checkpoints$Checkpoints} to learn how to save and restore models.
-* @{$guide/datasets_for_estimators} to learn more about importing
+* [Checkpoints](../guide/checkpoints.md) to learn how to save and restore models.
+* [Datasets for Estimators](../guide/datasets_for_estimators.md) to learn more about importing
   data into your model.
-* @{$custom_estimators$Creating Custom Estimators} to learn how to
+* [Creating Custom Estimators](../guide/custom_estimators.md) to learn how to
   write your own Estimator, customized for a particular problem.

@@ -66,7 +66,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             std::unique_ptr<CapturedFunction> captured_key_func,
@@ -75,7 +75,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_finalize_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           captured_key_func_(std::move(captured_key_func)),
           captured_init_func_(std::move(captured_init_func)),

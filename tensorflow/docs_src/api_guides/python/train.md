@@ -74,9 +74,9 @@ moving averages for evaluations often improve results significantly.
 
 ## Coordinator and QueueRunner
 
-See @{$threading_and_queues$Threading and Queues}
+See [Threading and Queues](../../api_guides/python/threading_and_queues.md)
 for how to use threads and queues.  For documentation on the Queue API,
-see @{$python/io_ops#queues$Queues}.
+see [Queues](../../api_guides/python/io_ops.md#queues).
 
 
 *   `tf.train.Coordinator`
@@ -87,7 +87,7 @@ see @{$python/io_ops#queues$Queues}.
 
 ## Distributed execution
 
-See @{$distributed$Distributed TensorFlow} for
+See [Distributed TensorFlow](../../deploy/distributed.md) for
 more information about how to configure a distributed TensorFlow program.
 
 *   `tf.train.Server`
@@ -105,7 +105,7 @@ more information about how to configure a distributed TensorFlow program.
 
 ## Reading Summaries from Event Files
 
-See @{$summaries_and_tensorboard$Summaries and TensorBoard} for an
+See [Summaries and TensorBoard](../../guide/summaries_and_tensorboard.md) for an
 overview of summaries, event files, and visualization in TensorBoard.
 
 *   `tf.train.summary_iterator`

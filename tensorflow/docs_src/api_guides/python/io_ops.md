@@ -8,7 +8,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 ## Placeholders
 
 TensorFlow provides a placeholder operation that must be fed with data
-on execution.  For more info, see the section on @{$reading_data#Feeding$Feeding data}.
+on execution.  For more info, see the section on [Feeding data](../../api_guides/python/reading_data.md#Feeding).
 
 *   `tf.placeholder`
 *   `tf.placeholder_with_default`
@@ -21,7 +21,7 @@ there is a convenience function:
 ## Readers
 
 TensorFlow provides a set of Reader classes for reading data formats.
-For more information on inputs and readers, see @{$reading_data$Reading data}.
+For more information on inputs and readers, see [Reading data](../../api_guides/python/reading_data.md).
 
 *   `tf.ReaderBase`
 *   `tf.TextLineReader`
@@ -42,7 +42,7 @@ formats into tensors.
 
 ### Example protocol buffer
 
-TensorFlow's @{$reading_data#standard_tensorflow_format$recommended format for training examples}
+TensorFlow's [recommended format for training examples](../../api_guides/python/reading_data.md#standard_tensorflow_format)
 is serialized `Example` protocol buffers, [described
 here](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
 They contain `Features`, [described
@@ -62,7 +62,7 @@ here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 TensorFlow provides several implementations of 'Queues', which are
 structures within the TensorFlow computation graph to stage pipelines
 of tensors together. The following describe the basic Queue interface
-and some implementations.  To see an example use, see @{$threading_and_queues$Threading and Queues}.
+and some implementations.  To see an example use, see [Threading and Queues](../../api_guides/python/threading_and_queues.md).
 
 *   `tf.QueueBase`
 *   `tf.FIFOQueue`
@@ -85,7 +85,7 @@ and some implementations.  To see an example use, see @{$threading_and_queues$Th
 ## Input pipeline
 
 TensorFlow functions for setting up an input-prefetching pipeline.
-Please see the @{$reading_data$reading data how-to}
+Please see the [reading data how-to](../../api_guides/python/reading_data.md)
 for context.
 
 ### Beginning of an input pipeline

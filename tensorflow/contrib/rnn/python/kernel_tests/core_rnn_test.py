@@ -1288,7 +1288,10 @@ class LSTMTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testDynamicEquivalentToStaticRNN(self):
     self._testDynamicEquivalentToStaticRNN(use_sequence_length=False)
-    self._testDynamicEquivalentToStaticRNN(use_sequence_length=False)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDynamicEquivalentToStaticRNNWithSequenceLength(self):
+    self._testDynamicEquivalentToStaticRNN(use_sequence_length=True)
 
 
 class BidirectionalRNNTest(test.TestCase):

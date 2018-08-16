@@ -825,9 +825,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kConvolution: {
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
+      optional<int64> feature_group_count;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
+      attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                      &feature_group_count};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -835,8 +838,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!window) {
         window.emplace();
       }
+      if (!feature_group_count) {
+        feature_group_count = 1;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
-          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
+          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums,
+          feature_group_count.value()));
       break;
     }
     case HloOpcode::kFft: {
@@ -1073,7 +1080,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed: {
       optional<string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
         return false;
       }
       // We need to know the infeed data shape to construct the infeed
@@ -1085,41 +1093,21 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
-
-      if (operands.empty()) {
-        // TODO(b/80000000): Remove this when all uses of infeed are
-        // converted to take tokens.
-        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
-            ShapeUtil::GetTupleElementShape(shape, 0), config ? *config : ""));
-      } else if (operands.size() == 1) {
-        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
-            ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
-            config ? *config : ""));
-      } else {
-        return Error(lexer_.GetLoc(),
-                     "infeed must have exactly zero or one operands");
-      }
+      instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
+          ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
+          config ? *config : ""));
       break;
     }
     case HloOpcode::kOutfeed: {
       optional<string> config;
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
         return false;
       }
-      if (operands.size() == 1) {
-        // TODO(b/80000000): Remove this when all uses of outfeed are
-        // converted to take tokens.
-        instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-            operands[0]->shape(), operands[0], config ? *config : ""));
-      } else if (operands.size() == 2) {
-        instruction = builder->AddInstruction(
-            HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
-                                          operands[1], config ? *config : ""));
-      } else {
-        return Error(lexer_.GetLoc(),
-                     "outfeed must have exactly one or two operands");
-      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
+                                        operands[1], config ? *config : ""));
       break;
     }
     case HloOpcode::kRng: {
@@ -1824,7 +1812,6 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
         break;
       }
       case TokKind::kComma:
-      case TokKind::kComment:
         // Skip.
         lexer_.Lex();
         break;

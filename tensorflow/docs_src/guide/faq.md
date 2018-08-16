@@ -2,7 +2,7 @@
 
 This document provides answers to some of the frequently asked questions about
 TensorFlow. If you have a question that is not covered here, you might find an
-answer on one of the TensorFlow @{$about$community resources}.
+answer on one of the TensorFlow [community resources](../about/index.md).
 
 [TOC]
 
@@ -11,7 +11,7 @@ answer on one of the TensorFlow @{$about$community resources}.
 #### Can I run distributed training on multiple computers?
 
 Yes! TensorFlow gained
-@{$distributed$support for distributed computation} in
+[support for distributed computation](../deploy/distributed.md) in
 version 0.8. TensorFlow now supports multiple devices (CPUs and GPUs) in one or
 more computers.
 
@@ -23,7 +23,7 @@ As of the 0.6.0 release timeframe (Early December 2015), we do support Python
 ## Building a TensorFlow graph
 
 See also the
-@{$python/framework$API documentation on building graphs}.
+[API documentation on building graphs](../api_guides/python/framework.md).
 
 #### Why does `c = tf.matmul(a, b)` not execute the matrix multiplication immediately?
 
@@ -48,16 +48,16 @@ device, and `"/device:GPU:i"` (or `"/gpu:i"`) for the *i*th GPU device.
 To place a group of operations on a device, create them within a
 `tf.device` context.  See
 the how-to documentation on
-@{$using_gpu$using GPUs with TensorFlow} for details of how
+[using GPUs with TensorFlow](../guide/using_gpu.md) for details of how
 TensorFlow assigns operations to devices, and the
-@{$deep_cnn$CIFAR-10 tutorial} for an example model that
+[CIFAR-10 tutorial](../tutorials/images/deep_cnn.md) for an example model that
 uses multiple GPUs.
 
 
 ## Running a TensorFlow computation
 
 See also the
-@{$python/client$API documentation on running graphs}.
+[API documentation on running graphs](../api_guides/python/client.md).
 
 #### What's the deal with feeding and placeholders?
 
@@ -106,7 +106,7 @@ a significant amount of memory, and can be released when the session is closed b
 `tf.Session.close`.
 
 The intermediate tensors that are created as part of a call to
-@{$python/client$`Session.run()`} will be freed at or before the
+[`Session.run()`](../api_guides/python/client.md) will be freed at or before the
 end of the call.
 
 #### Does the runtime parallelize parts of graph execution?
@@ -118,7 +118,7 @@ dimensions:
   CPU, or multiple threads in a GPU.
 * Independent nodes in a TensorFlow graph can run in parallel on multiple
   devices, which makes it possible to speed up
-  @{$deep_cnn$CIFAR-10 training using multiple GPUs}.
+  [CIFAR-10 training using multiple GPUs](../tutorials/images/deep_cnn.md).
 * The Session API allows multiple concurrent steps (i.e. calls to
   `tf.Session.run` in parallel). This
   enables the runtime to get higher throughput, if a single step does not use
@@ -141,9 +141,9 @@ Bindings for various other languages (such as [C#](https://github.com/migueldeic
 #### Does TensorFlow make use of all the devices (GPUs and CPUs) available on my machine?
 
 TensorFlow supports multiple GPUs and CPUs. See the how-to documentation on
-@{$using_gpu$using GPUs with TensorFlow} for details of how
+[using GPUs with TensorFlow](../guide/using_gpu.md) for details of how
 TensorFlow assigns operations to devices, and the
-@{$deep_cnn$CIFAR-10 tutorial} for an example model that
+[CIFAR-10 tutorial](../tutorials/images/deep_cnn.md) for an example model that
 uses multiple GPUs.
 
 Note that TensorFlow only uses GPU devices with a compute capability greater
@@ -155,16 +155,16 @@ The `tf.ReaderBase` and
 `tf.QueueBase` classes provide special operations that
 can *block* until input (or free space in a bounded queue) becomes
 available. These operations allow you to build sophisticated
-@{$reading_data$input pipelines}, at the cost of making the
+[input pipelines](../api_guides/python/reading_data.md), at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-@{$reading_data#creating_threads_to_prefetch_using_queuerunner_objects$using `QueueRunner` objects to drive queues and readers}
+[using `QueueRunner` objects to drive queues and readers](../api_guides/python/reading_data.md#creating_threads_to_prefetch_using_queuerunner_objects)
 for more information on how to use them.
 
 ## Variables
 
-See also the how-to documentation on @{$variables$variables} and
-@{$python/state_ops$the API documentation for variables}.
+See also the how-to documentation on [variables](../guide/variables.md) and
+[the API documentation for variables](../api_guides/python/state_ops.md).
 
 #### What is the lifetime of a variable?
 
@@ -231,7 +231,7 @@ to encode the batch size as a Python constant, but instead to use a symbolic
 
 #### How can I visualize a TensorFlow graph?
 
-See the @{$graph_viz$graph visualization tutorial}.
+See the [graph visualization tutorial](../guide/graph_viz.md).
 
 #### What is the simplest way to send data to TensorBoard?
 
@@ -241,7 +241,7 @@ these summaries to a log directory.  Then, start TensorBoard using
     python tensorflow/tensorboard/tensorboard.py --logdir=path/to/log-directory
 
 For more details, see the
-@{$summaries_and_tensorboard$Summaries and TensorBoard tutorial}.
+[Summaries and TensorBoard tutorial](../guide/summaries_and_tensorboard.md).
 
 #### Every time I launch TensorBoard, I get a network security popup!
 
@@ -251,7 +251,7 @@ the flag --host=localhost. This should quiet any security warnings.
 ## Extending TensorFlow
 
 See the how-to documentation for
-@{$adding_an_op$adding a new operation to TensorFlow}.
+[adding a new operation to TensorFlow](../extend/adding_an_op.md).
 
 #### My data is in a custom format. How do I read it using TensorFlow?
 
@@ -273,8 +273,8 @@ consider converting it, offline, to a format that is easily parsable, such
 as `tf.python_io.TFRecordWriter` format.
 
 The most efficient method to customize the parsing behavior is to
-@{$adding_an_op$add a new op written in C++} that parses your
-data format. The @{$new_data_formats$guide to handling new data formats} has
+[add a new op written in C++](../extend/adding_an_op.md) that parses your
+data format. The [guide to handling new data formats](../extend/new_data_formats.md) has
 more information about the steps for doing this.
 
 

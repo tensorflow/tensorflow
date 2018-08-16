@@ -697,8 +697,9 @@ void CreateComputationForDotAddOutputFusionTest(const string& test_name,
       HloInstruction::CreateBinary(dot_shape, HloOpcode::kAdd, dot, addend));
 
   if (add_extra_use_for_dot) {
+    auto* token = builder.AddInstruction(HloInstruction::CreateToken());
     builder.AddInstruction(
-        HloInstruction::CreateOutfeed(dot_shape, dot, "no_config"));
+        HloInstruction::CreateOutfeed(dot_shape, dot, token, "no_config"));
   }
 
   module->AddEntryComputation(builder.Build());

@@ -335,7 +335,7 @@ restore the current state of the iterator (and, effectively, the whole input
 pipeline). A saveable object thus created can be added to `tf.train.Saver`
 variables list or the `tf.GraphKeys.SAVEABLE_OBJECTS` collection for saving and
 restoring in the same manner as a `tf.Variable`. Refer to
-@{$saved_model$Saving and Restoring} for details on how to save and restore
+[Saving and Restoring](../guide/saved_model.md) for details on how to save and restore
 variables.
 
 ```python

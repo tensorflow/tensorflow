@@ -265,7 +265,6 @@ tf_py_test(
         ":datasets",
     ],
     grpc_enabled = True,
-    tags = ["no_windows"],
 )
 
 tf_py_test(

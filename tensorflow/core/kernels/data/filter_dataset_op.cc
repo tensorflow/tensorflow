@@ -79,12 +79,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
  private:
   const int graph_def_version_;
 
-  class FilterDatasetBase : public GraphDatasetBase {
+  class FilterDatasetBase : public DatasetBase {
    public:
     FilterDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
                       const NameAttrList& func,
                       std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           captured_func_(std::move(captured_func)) {

@@ -202,7 +202,7 @@ def minimize_loss_single_machine(loss,
     accuracy: 0-D Tensor. Accuracy of classifier on current minibatch.
     layer_collection: LayerCollection instance describing model architecture.
       Used by K-FAC to construct preconditioner.
-    device: string, Either '/cpu:0' or '/gpu:0'. The covaraince and invserse
+    device: string, Either '/cpu:0' or '/gpu:0'. The covariance and inverse
       update ops are run on this device.
     session_config: None or tf.ConfigProto. Configuration for tf.Session().
 
@@ -470,7 +470,7 @@ def train_mnist_single_machine(data_dir,
     data_dir: string. Directory to read MNIST examples from.
     num_epochs: int. Number of passes to make over the training set.
     use_fake_data: bool. If True, generate a synthetic dataset.
-    device: string, Either '/cpu:0' or '/gpu:0'. The covaraince and inverse
+    device: string, Either '/cpu:0' or '/gpu:0'. The covariance and inverse
       update ops are run on this device.
 
   Returns:
@@ -509,7 +509,7 @@ def train_mnist_multitower(data_dir, num_epochs, num_towers,
     num_epochs: int. Number of passes to make over the training set.
     num_towers: int. Number of CPUs to split inference across.
     use_fake_data: bool. If True, generate a synthetic dataset.
-    devices: string, Either list of CPU or GPU. The covaraince and inverse
+    devices: string, Either list of CPU or GPU. The covariance and inverse
       update ops are run on this device.
 
   Returns:
@@ -621,7 +621,7 @@ def train_mnist_distributed_sync_replicas(task_id,
     data_dir: string. Directory to read MNIST examples from.
     num_epochs: int. Number of passes to make over the training set.
     op_strategy: `string`, Strategy to run the covariance and inverse
-      ops. If op_strategy == `chief_worker` then covaraiance and inverse
+      ops. If op_strategy == `chief_worker` then covariance and inverse
       update ops are run on chief worker otherwise they are run on dedicated
       workers.
 
