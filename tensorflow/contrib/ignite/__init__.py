@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.ignite.python.ops.ignite_dataset_ops import IgniteDataset
+from tensorflow.contrib.ignite.python.ops.ignite_dataset_ops \
+import IgniteDataset
 
 from tensorflow.python.util.all_util import remove_undocumented
 
