@@ -228,3 +228,54 @@ mlfunc @loop_nest_outer_unroll() {
   }
   return  // SHORT:  return
 }         // SHORT }
+
+// We aren't doing any file check here. We just need this test case to
+// successfully run. Both %i0 and i1 will get unrolled here with the min trip
+// count threshold set to 2.
+// SHORT-LABEL: mlfunc @loop_nest_seq_long() -> i32 {
+mlfunc @loop_nest_seq_long() -> i32 {
+  %A = alloc() : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+  %B = alloc() : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+  %C = alloc() : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+
+  %zero = constant 0 : i32
+  %one = constant 1 : i32
+  %two = constant 2 : i32
+
+  %zero_idx = constant 0 : affineint
+
+  for %n0 = 0 to 512 {
+    for %n1 = 0 to 7 {
+      store %one,  %A[%n0, %n1] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+      store %two,  %B[%n0, %n1] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+      store %zero, %C[%n0, %n1] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+    }
+  }
+
+  for %i0 = 0 to 1 {
+    for %i1 = 0 to 1 {
+      for %i2 = 0 to 7 {
+        %b2 = "affine_apply" (%i1, %i2) {map: (d0, d1) -> (16*d0 + d1)} : (affineint, affineint) -> affineint
+        %x = load %B[%i0, %b2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+        "op1"(%x) : (i32) -> ()
+      }
+      for %j1 = 0 to 7 {
+        for %j2 = 0 to 7 {
+          %a2 = "affine_apply" (%i1, %j2) {map: (d0, d1) -> (16*d0 + d1)} : (affineint, affineint) -> affineint
+          %v203 = load %A[%j1, %a2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+          "op2"(%v203) : (i32) -> ()
+        }
+        for %k2 = 0 to 7 {
+          %s0 = "op3"() : () -> i32
+          %c2 = "affine_apply" (%i0, %k2) {map: (d0, d1) -> (16*d0 + d1)} : (affineint, affineint) -> affineint
+          %s1 =  load %C[%j1, %c2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+          %s2 = "addi32"(%s0, %s1) : (i32, i32) -> i32
+          store %s2, %C[%j1, %c2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+        }
+      }
+      "op4"() : () -> ()
+    }
+  }
+  %ret = load %C[%zero_idx, %zero_idx] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
+  return %ret : i32
+}
