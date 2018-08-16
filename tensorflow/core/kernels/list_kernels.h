@@ -266,9 +266,10 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
 #undef DTYPE_CASE
       default:
         return errors::InvalidArgument(
-            "Trying to compute zeros_like for unsupported dtype",
-            out_tensor.dtype());
+            "Trying to compute zeros_like for unsupported dtype ",
+            DataTypeString(out_tensor.dtype()));
     }
+    y->tensors.emplace_back(out_tensor);
   }
   return Status::OK();
 }
