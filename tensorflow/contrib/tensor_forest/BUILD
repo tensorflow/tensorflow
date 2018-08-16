@@ -515,6 +515,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
+        "//tensorflow/contrib/estimator:head",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
