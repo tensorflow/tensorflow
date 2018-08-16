@@ -75,6 +75,12 @@ class HloTestBase : public ::testing::Test {
   static std::unique_ptr<HloModule> CreateNewModule(
       const string& name = TestName());
 
+  // Runs the hlo_pass with the provided module and returns the result. This
+  // function also verifies that the module remains unchanged when hlo_pass
+  // returns false as the StatusOr value.
+  static StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
+                                   HloModule* module);
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
