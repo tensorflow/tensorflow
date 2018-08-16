@@ -105,9 +105,27 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
-    ReadVariableOp);
+#define REGISTER_READ_GPU_KERNELS(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("ReadVariableOp")               \
+                              .Device(DEVICE_GPU)              \
+                              .HostMemory("resource")          \
+                              .TypeConstraint<type>("dtype"),  \
+                          ReadVariableOp)
+
+TF_CALL_GPU_ALL_TYPES(REGISTER_READ_GPU_KERNELS);
+TF_CALL_int64(REGISTER_READ_GPU_KERNELS);
+TF_CALL_variant(REGISTER_READ_GPU_KERNELS);
+#undef REGISTER_READ_GPU_KERNELS
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires the int32 value to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("ReadVariableOp")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("value")
+                            .TypeConstraint<int32>("dtype"),
+                        ReadVariableOp);
 
 #define REGISTER_GPU_KERNELS(type)                             \
   namespace functor {                                          \
