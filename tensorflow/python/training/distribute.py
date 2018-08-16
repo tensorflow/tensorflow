@@ -624,13 +624,18 @@ class DistributionStrategy(object):
 
     Args:
       fn: function to run using this distribution strategy. The function must
-        have the following signature: def fn(context, inputs).
+        have the following signature: def fn(context, *inputs).
         `context` is an instance of `MultiStepContext` that will be passed when
         `fn` is run. `context` can be used to specify the outputs to be returned
         from `fn` by calling `context.set_last_step_output`. It can also be used
         to capture non tensor outputs by `context.set_non_tensor_output`.
         See `MultiStepContext` documentation for more information.
-        `inputs` will have same type/structure as `iterator.get_next()`.
+        `inputs` will have same type/structure as `iterator.get_next()`. If the
+        `iterator.get_next()` returns a tuple say `return x, y` then whose will
+        be unpacked and passed to the `step_fn`; and step_fn signature would
+        look like `def step_fn(context, x, y)`. If the iterator returns a single
+        value say `return x` then the value is passed as is; the step_fn
+        signature would look like `def step_fn(context, x)`.
         Typically, `fn` will use `call_for_each_tower` method of the strategy
         to distribute the computation over multiple towers.
       iterator: Iterator of a dataset that represents the input for `fn`. The

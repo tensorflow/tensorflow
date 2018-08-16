@@ -1245,9 +1245,8 @@ class Estimator(object):
               self._train_distribution.read_var(global_step_tensor))
 
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(ctx, inputs):
+          def step_fn(ctx, features, labels):
             """A single step that is passed to run_on_dataset."""
-            features, labels = inputs
             estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
                 features,
