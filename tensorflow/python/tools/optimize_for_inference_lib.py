@@ -547,10 +547,12 @@ def remove_simple_dropout_nodes(input_graph_def):
   dropout_prefix_set = set()
 
   for node in input_graph_def.node:
-
     for index, input_name in enumerate(node.input):
       input_name = node_name_from_input(input_name)
       parts = input_name.split('/')
+      if len(parts) < 2:
+        continue
+
       if parts[-1] == 'mul' and parts[-2].startswith('dropout'):
         # dropout mul is last node in dropout block
         # we will step backward from it to find 'pre-dropout' node
@@ -573,11 +575,23 @@ def remove_simple_dropout_nodes(input_graph_def):
         predecessor_node_name = None
         for inpt in dropout_div_node.input:
           parts = inpt.split('/')
+          if len(parts) < 2:
+            continue
+
           if not (parts[-1] == 'keep_prob' and\
                   parts[-2].startswith('dropout')):      
             predecessor_node_name = inpt
             break
 
+        parts = predecessor_node_name.split('/')
+
+        if parts[-1].startswith("Switch"):
+          pred_node = node_from_map(input_node_map, predecessor_node_name)
+          for inpt in pred_node.input:
+            inpt_parts = inpt.split('/')
+            if not inpt_parts[-1].startswith('pred_id'):
+              predecessor_node_name = inpt
+              
         if not predecessor_node_name:
           tf_logging.warning("Could not find predecessor node")
           continue
@@ -637,6 +651,10 @@ def remove_conditional_dropout_nodes(input_graph_def):
       input_name = node_name_from_input(input_name)
 
       parts = input_name.split('/')
+             
+      if len(parts) < 3:
+        continue
+
       if parts[-1] == "Merge" and parts[-2] == "cond" and \
           parts[-3].lower().startswith('dropout'):
 
@@ -676,7 +694,9 @@ def remove_conditional_dropout_nodes(input_graph_def):
 
         for inpt in switch_node.input:
           parts = inpt.split('/')   
-          if not len(parts) == 3 or not parts[-3].lower().startswith('dropout'):
+          if len(parts) < 3:
+            continue
+          if not parts[-3].lower().startswith('dropout'):
             # rewire input to pre-dropout node
             node.input[index] = inpt
             dropout_prefix_set.add(extract_dropout_prefix(dropout_merge_name))

@@ -35,6 +35,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
 from tensorflow.python.layers import core
@@ -115,9 +116,6 @@ class OptimizeForInferenceTest(test.TestCase):
                                                   [add_name, b_constant_name])
     self.set_attr_dtype(unused_output_add_node, "T", dtypes.float32)
     graph_def.node.extend([unused_output_add_node])
-
-    for n in graph_def.node:
-       print(" GRAPH: ", n.name)
 
     expected_output = graph_pb2.GraphDef()
     a_constant = self.create_constant_node_def(
@@ -525,6 +523,36 @@ class OptimizeForInferenceTest(test.TestCase):
         feed_dict = { "optimized/ns1/ns2/input:0" : [3] })
       self.assertEqual(optimized_result[0], 6.0)
     self.tearDown() 	
+
+
+  def testRemoveCondWithSimpleDropout(self):
+    self.setUp()
+    with self.test_session() as sess:
+      input_node = array_ops.placeholder(dtypes.float32, shape=(1), name = "input")
+      is_training = array_ops.placeholder(dtypes.bool, shape=(), name = "is_training")
+      n = nn_ops.relu(input_node)
+      n = control_flow_ops.cond(is_training,
+                        lambda: nn_ops.dropout(n, keep_prob=0.000001),
+                        lambda: n)
+      n = control_flow_ops.cond(is_training,
+                        lambda: nn_ops.dropout(n, keep_prob=0.000001),
+                        lambda: n)
+      output = math_ops.multiply(n, 2, name = "output")
+      optimized_graph_def = optimize_for_inference_lib.remove_simple_dropout_nodes(
+          sess.graph_def)
+      for node in optimized_graph_def.node: 
+        self.assertTrue(not node.name.lower().startswith("dropout"))
+        self.assertTrue(not node.name.lower().startswith("cond/dropout"))
+      _ = importer.import_graph_def(
+         optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/output:0"], 
+        feed_dict = { "optimized/input:0" : [3], "optimized/is_training:0" : False  })
+      self.assertEqual(optimized_result[0], 6.0)
+      optimized_result = sess.run(["optimized/output:0"], 
+        feed_dict = { "optimized/input:0" : [3], "optimized/is_training:0" : True  })
+      self.assertEqual(optimized_result[0], 6.0)
+    self.tearDown() 	
+
 
   def testRemoveIdentityDropouts(self):
     self.setUp()
