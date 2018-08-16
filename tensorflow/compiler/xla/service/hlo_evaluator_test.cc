@@ -2517,6 +2517,31 @@ TEST_P(HloEvaluatorTest, DoesCompareBF16) {
                std::move(rhs));
 }
 
+TEST_P(HloEvaluatorTest, Bf16Reduction) {
+  const string hlo_text = R"(
+HloModule Bf16Reduction
+
+add_bf16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(bf16[] lhs, bf16[] rhs)
+}
+
+ENTRY main {
+  arg0 = bf16[4]{0} parameter(0)
+  init = bf16[] constant(0)
+  ROOT %reduce = bf16[] reduce(arg0, init), dimensions={0}, to_apply=add_bf16
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+
+  std::unique_ptr<Literal> arg = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(1.0f), bfloat16(3.0f), bfloat16(-2.0f), bfloat16(42.0f)});
+  std::unique_ptr<Literal> expected =
+      LiteralUtil::CreateR0<bfloat16>(bfloat16(44.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *Evaluate({arg.get()})));
+}
+
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,
                         ::testing::ValuesIn(use_bf16_params));
 
