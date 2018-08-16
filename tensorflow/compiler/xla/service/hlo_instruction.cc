@@ -281,12 +281,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kInfeed: {
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
-      CHECK_EQ(proto.operand_ids_size(), 1);
+      TF_RET_CHECK(proto.operand_ids_size() == 1);
       instruction =
           CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed:
-      CHECK_EQ(proto.operand_ids_size(), 2);
+      TF_RET_CHECK(proto.operand_ids_size() == 2);
       instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
                                   operands(1), proto.outfeed_config());
       break;
