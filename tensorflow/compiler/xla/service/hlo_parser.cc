@@ -1233,22 +1233,21 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kGather: {
-      optional<std::vector<tensorflow::int64>> output_window_dims;
-      attrs["output_window_dims"] = {
-          /*required=*/true, AttrTy::kBracedInt64List, &output_window_dims};
-      optional<std::vector<tensorflow::int64>> elided_window_dims;
-      attrs["elided_window_dims"] = {
-          /*required=*/true, AttrTy::kBracedInt64List, &elided_window_dims};
-      optional<std::vector<tensorflow::int64>> gather_dims_to_operand_dims;
-      attrs["gather_dims_to_operand_dims"] = {/*required=*/true,
-                                              AttrTy::kBracedInt64List,
-                                              &gather_dims_to_operand_dims};
+      optional<std::vector<tensorflow::int64>> offset_dims;
+      attrs["offset_dims"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                              &offset_dims};
+      optional<std::vector<tensorflow::int64>> collapsed_slice_dims;
+      attrs["collapsed_slice_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &collapsed_slice_dims};
+      optional<std::vector<tensorflow::int64>> start_index_map;
+      attrs["start_index_map"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                                  &start_index_map};
       optional<tensorflow::int64> index_vector_dim;
       attrs["index_vector_dim"] = {/*required=*/true, AttrTy::kInt64,
                                    &index_vector_dim};
-      optional<std::vector<tensorflow::int64>> window_bounds;
-      attrs["window_bounds"] = {/*required=*/true, AttrTy::kBracedInt64List,
-                                &window_bounds};
+      optional<std::vector<tensorflow::int64>> slice_sizes;
+      attrs["slice_sizes"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                              &slice_sizes};
 
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
@@ -1257,14 +1256,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
 
       GatherDimensionNumbers dim_numbers =
           HloGatherInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/*output_window_dims,
-              /*elided_window_dims=*/*elided_window_dims,
-              /*gather_dims_to_operand_dims=*/*gather_dims_to_operand_dims,
+              /*offset_dims=*/*offset_dims,
+              /*collapsed_slice_dims=*/*collapsed_slice_dims,
+              /*start_index_map=*/*start_index_map,
               /*index_vector_dim=*/*index_vector_dim);
 
       instruction = builder->AddInstruction(HloInstruction::CreateGather(
-          shape, /*operand=*/operands[0], /*gather_indices=*/operands[1],
-          dim_numbers, *window_bounds));
+          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+          dim_numbers, *slice_sizes));
       break;
     }
     case HloOpcode::kScatter: {

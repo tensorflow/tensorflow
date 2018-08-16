@@ -1826,21 +1826,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[2,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 3}
+      slice_sizes={1, 3}
 }
 )";
   ParseAndVerifyModule(hlo_text);
   std::unique_ptr<Literal> operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> start_indices = LiteralUtil::CreateR1<int32>({0, 2});
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}}),
-      *Evaluate({operand.get(), gather_indices.get()})));
+      *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV2) {
@@ -1851,21 +1850,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
   ParseAndVerifyModule(hlo_text);
   std::unique_ptr<Literal> operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> start_indices = LiteralUtil::CreateR1<int32>({0, 2});
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *LiteralUtil::CreateR2<int32>({{1, 3}, {4, 6}, {7, 9}}),
-      *Evaluate({operand.get(), gather_indices.get()})));
+      *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherMultipleBatchDims) {
@@ -1876,22 +1874,22 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,3,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
   ParseAndVerifyModule(hlo_text);
   std::unique_ptr<Literal> operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
+  std::unique_ptr<Literal> start_indices =
       LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *LiteralUtil::CreateR3<int32>(
           {{{1, 3}, {4, 6}, {7, 9}}, {{3, 2}, {6, 5}, {9, 8}}}),
-      *Evaluate({operand.get(), gather_indices.get()})));
+      *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherNd) {
@@ -1902,11 +1900,11 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
 }
 )";
   ParseAndVerifyModule(hlo_text);
@@ -1914,11 +1912,11 @@ ENTRY main {
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
+  std::unique_ptr<Literal> start_indices =
       LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{-1, 1}, {-4, 4}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+                             *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest,
@@ -1930,11 +1928,11 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
 }
 )";
   ParseAndVerifyModule(hlo_text);
@@ -1942,11 +1940,11 @@ ENTRY main {
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
+  std::unique_ptr<Literal> start_indices =
       LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{-2, 2}, {-1, 1}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+                             *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_DynamicSlice) {
@@ -1957,21 +1955,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[1,1] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={0,1},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
   ParseAndVerifyModule(hlo_text);
   std::unique_ptr<Literal> operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({1, 1});
+  std::unique_ptr<Literal> start_indices = LiteralUtil::CreateR1<int32>({1, 1});
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{5}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+                             *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_BatchDynamicSlice) {
@@ -1982,21 +1979,21 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,1,1] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
   ParseAndVerifyModule(hlo_text);
   std::unique_ptr<Literal> operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
+  std::unique_ptr<Literal> start_indices =
       LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR3<int32>({{{8}}, {{5}}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+                             *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_ZeroDimBounds) {
@@ -2007,20 +2004,19 @@ ENTRY main {
   operand = s32[3,0] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[2,0] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 0}
+      slice_sizes={1, 0}
 }
 )";
   ParseAndVerifyModule(hlo_text);
   std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> start_indices = LiteralUtil::CreateR1<int32>({0, 2});
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{}, {}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+                             *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_NoOutputWindowDims) {
@@ -2031,21 +2027,21 @@ ENTRY main {
   operand = s32[3] parameter(0)
   indices = s32[2,2,1] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1}
+      slice_sizes={1}
 }
 )";
   ParseAndVerifyModule(hlo_text);
 
   std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({0, 1, 2});
-  std::unique_ptr<Literal> gather_indices =
+  std::unique_ptr<Literal> start_indices =
       LiteralUtil::CreateR3<int32>({{{0}, {1}}, {{2}, {1}}});
   EXPECT_TRUE(
       LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{0, 1}, {2, 1}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+                             *Evaluate({operand.get(), start_indices.get()})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {

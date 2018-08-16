@@ -877,9 +877,9 @@ class XlaBuilder {
                         const int mantissa_bits);
 
   // Enqueues a Gather node onto the computation.
-  XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+  XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
                const GatherDimensionNumbers& dimension_numbers,
-               tensorflow::gtl::ArraySlice<int64> window_bounds);
+               tensorflow::gtl::ArraySlice<int64> slice_sizes);
 
   // Enqueues a Scatter node onto the computation.
   XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
@@ -1328,9 +1328,9 @@ class XlaBuilder {
                            const XlaComputation& false_computation);
   friend XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                const int mantissa_bits);
-  friend XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+  friend XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
                       const GatherDimensionNumbers& dimension_numbers,
-                      tensorflow::gtl::ArraySlice<int64> window_bounds);
+                      tensorflow::gtl::ArraySlice<int64> slice_sizes);
   friend XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                        const XlaOp& updates,
                        const XlaComputation& update_computation,
@@ -2024,9 +2024,9 @@ XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                       const int mantissa_bits);
 
 // Enqueues a Gather node onto the computation.
-XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             tensorflow::gtl::ArraySlice<int64> window_bounds);
+             tensorflow::gtl::ArraySlice<int64> slice_sizes);
 
 // Enqueues a Scatter node onto the computation.
 XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,

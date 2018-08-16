@@ -1212,15 +1212,15 @@ class HloGatherInstruction : public HloInstruction {
  public:
   explicit HloGatherInstruction(
       const Shape& shape, HloInstruction* operand,
-      HloInstruction* gather_indices,
+      HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds);
+      tensorflow::gtl::ArraySlice<int64> slice_sizes);
   const GatherDimensionNumbers& gather_dimension_numbers() const {
     CHECK(gather_dimension_numbers_ != nullptr);
     return *gather_dimension_numbers_;
   }
-  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const {
-    return gather_window_bounds_;
+  tensorflow::gtl::ArraySlice<int64> gather_slice_sizes() const {
+    return gather_slice_sizes_;
   }
   // Returns the dump string of the gather dimension numbers.
   string GatherDimensionNumbersToString() const;
@@ -1229,9 +1229,9 @@ class HloGatherInstruction : public HloInstruction {
 
   // Creates an instance of GatherDimensionNumbers.
   static GatherDimensionNumbers MakeGatherDimNumbers(
-      tensorflow::gtl::ArraySlice<int64> output_window_dims,
-      tensorflow::gtl::ArraySlice<int64> elided_window_dims,
-      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
+      tensorflow::gtl::ArraySlice<int64> offset_dims,
+      tensorflow::gtl::ArraySlice<int64> collapsed_slice_dims,
+      tensorflow::gtl::ArraySlice<int64> start_index_map,
       int64 index_vector_dim);
 
  private:
@@ -1247,7 +1247,7 @@ class HloGatherInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
-  std::vector<int64> gather_window_bounds_;
+  std::vector<int64> gather_slice_sizes_;
 };
 
 class HloScatterInstruction : public HloInstruction {
