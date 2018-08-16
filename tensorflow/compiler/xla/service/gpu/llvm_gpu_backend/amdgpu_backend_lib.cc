@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace xla {
 namespace gpu {
@@ -445,9 +446,11 @@ StatusOr<std::vector<char>> CompileModuleToHsaco(llvm::Module* module,
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void GPUBackendInit() {
+void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
+
+  llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 
   // Initialize the AMDGPU target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.
@@ -468,13 +471,15 @@ StatusOr<std::vector<char>> CompileToHsaco(llvm::Module* module,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, GPUBackendInit);
+  std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
 
   std::vector<char> hsaco;
   {
-    ScopedLoggingTimer compilation_timer(
-        "Compile module " + llvm_ir::AsString(module->getName()),
-        /*vlog_level=*/2);
+    tensorflow::tracing::ScopedActivity activity(
+        "Compiling IR", llvm_ir::AsString(module->getName()),
+        /*is_expensive=*/true);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " +
+                             llvm_ir::AsString(module->getName()));
     TF_ASSIGN_OR_RETURN(
         hsaco, CompileModuleToHsaco(module, amdgpu_version, hlo_module_config,
                                   rocdl_dir_path));
