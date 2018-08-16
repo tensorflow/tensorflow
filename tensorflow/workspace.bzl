@@ -20,6 +20,10 @@ load(
     "def_file_filter_configure",
 )
 
+def initialize_third_party():
+    # Fill in later
+    pass
+
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
 def clean_dep(dep):
@@ -39,6 +43,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     sycl_configure(name = "local_config_sycl")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
+
+    initialize_third_party()
 
     # For windows bazel build
     # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
