@@ -223,14 +223,42 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
                       input_output_allocator.AllocateBytes(
                           &stream, ShapeUtil::ByteSizeOf(output_shape)));
 
-  // Although we don't have evidence this matters, zero out the buffers before
-  // autotuning.  It's conceivable that using uninitialized memory as the inputs
-  // might affect performance if e.g. the inputs contain denormals, and this is
-  // easy enough.
-  TF_RETURN_IF_ERROR(stream.ThenMemZero(&input_buf, input_buf.size())
-                         .ThenMemZero(&filter_buf, filter_buf.size())
-                         .ThenMemZero(&output_buf, output_buf.size())
-                         .BlockHostUntilDone());
+  if (cross_check_enabled) {
+    // Broadcast a constant to the buffer, instead of zeroing the buffer. A
+    // non-zero constant is useful for the cross checking, because zero-inputs
+    // may not always reveal the bugs.
+    const auto initialize_f16 = [&stream](DeviceMemoryBase buffer) {
+      CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
+      size_t left_over_bytes = buffer.size() % 4;
+      CHECK_EQ(0, left_over_bytes % 2);
+
+      constexpr float kBroadcastedConstant = 0.1f;
+      Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
+                              Eigen::half(kBroadcastedConstant)};
+      uint32 bits;
+      static_assert(sizeof(bits) == sizeof(halfs), "");
+      memcpy(&bits, halfs, sizeof(bits));
+
+      size_t aligned_size = buffer.size() / 4 * 4;
+      stream.ThenMemset32(&buffer, bits, aligned_size);
+
+      DeviceMemoryBase left_over(
+          static_cast<char*>(buffer.opaque()) + aligned_size, left_over_bytes);
+      stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+    };
+    initialize_f16(input_buf);
+    initialize_f16(filter_buf);
+    initialize_f16(output_buf);
+  } else {
+    // Although we don't have evidence this matters, zero out the buffers before
+    // autotuning.  It's conceivable that using uninitialized memory as the
+    // inputs might affect performance if e.g. the inputs contain denormals, and
+    // this is easy enough.
+    stream.ThenMemZero(&input_buf, input_buf.size())
+        .ThenMemZero(&filter_buf, filter_buf.size())
+        .ThenMemZero(&output_buf, output_buf.size());
+  }
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   DeviceMemoryBase* result_buf = [&] {
     switch (kind) {
