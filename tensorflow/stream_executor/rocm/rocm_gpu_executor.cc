@@ -208,7 +208,7 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
     return false;
   }
 
-  VLOG(2) << "getting function " << kernelname << " from module " << module;
+  VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!ROCMDriver::GetModuleFunction(device_ordinal_, module, kernelname->c_str(),
                                      rocm_kernel->rocm_function_ptr())) {
     return false;
