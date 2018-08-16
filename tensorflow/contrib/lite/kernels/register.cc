@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/kernels/register.h"
+#include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -129,9 +130,7 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
                                                     int version) const {
   // Return the NULL Op for all ops whose name start with "Eager", allowing
   // the interpreter to delegate their execution.
-  // TODO(ycling): Refactoring and extract an `IsEagerOp` function into
-  // `lite:framework` build target.
-  if (string(op).find("Eager") == 0) {
+  if (IsEagerOp(op)) {
     static TfLiteRegistration null_op{
         nullptr, nullptr, &UnsupportedTensorFlowOp,
         nullptr, nullptr, BuiltinOperator_CUSTOM,
