@@ -883,10 +883,6 @@ class HloInfeedInstruction : public HloInstruction {
   explicit HloInfeedInstruction(const Shape& infeed_shape,
                                 HloInstruction* token_operand,
                                 const string& config);
-  // TODO(b/80000000): Remove this constructor when all uses of infeed are
-  // converted to take tokens.
-  explicit HloInfeedInstruction(const Shape& infeed_shape,
-                                const string& config);
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
   // and is target-dependent.
@@ -925,12 +921,6 @@ class HloOutfeedInstruction : public HloInstruction {
                                  HloInstruction* operand,
                                  HloInstruction* token_operand,
                                  tensorflow::StringPiece outfeed_config);
-  // TODO(b/80000000): Remove this constructor when all uses of outfeed are
-  // converted to take tokens.
-  explicit HloOutfeedInstruction(const Shape& outfeed_shape,
-                                 HloInstruction* operand,
-                                 tensorflow::StringPiece outfeed_config);
-
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const {
     TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape_));

@@ -156,11 +156,7 @@ Status CheckOperandAndParameter(const HloInstruction* instruction,
 
 Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
   HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(instruction);
-  // Infeed has an optional single token operand.
-  // TODO(b/80000000): Update when token is not optional.
-  if (infeed->operand_count() == 1) {
-    TF_RETURN_IF_ERROR(CheckIsTokenOperand(instruction, 0));
-  }
+  TF_RETURN_IF_ERROR(CheckIsTokenOperand(instruction, 0));
 
   // The output of infeed is a tuple containing the data value and a token.
   return CheckShape(infeed,
@@ -170,11 +166,7 @@ Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
 
 Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
   HloOutfeedInstruction* outfeed = Cast<HloOutfeedInstruction>(instruction);
-  // Outfeed has an optional token operand (operand 1).
-  // TODO(b/80000000): Update when token is not optional.
-  if (outfeed->operand_count() == 2) {
-    TF_RETURN_IF_ERROR(CheckIsTokenOperand(instruction, 1));
-  }
+  TF_RETURN_IF_ERROR(CheckIsTokenOperand(instruction, 1));
 
   // Outfeed has a separate shape field for the value which is outfed to the
   // host. The shape of the instruction itself is always a token.

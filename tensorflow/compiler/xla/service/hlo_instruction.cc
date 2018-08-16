@@ -281,27 +281,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kInfeed: {
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
-      if (proto.operand_ids_size() == 0) {
-        // TODO(b/80000000): Remove this when all uses of infeed are
-        // converted to take tokens.
-        instruction = CreateInfeed(data_shape, proto.infeed_config());
-      } else {
-        CHECK_EQ(proto.operand_ids_size(), 1);
-        instruction =
-            CreateInfeed(data_shape, operands(0), proto.infeed_config());
-      }
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      instruction =
+          CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed:
-      if (proto.operand_ids_size() == 1) {
-        // TODO(b/80000000): Remove this when all uses of outfeed are
-        // converted to take tokens.
-        instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
-                                    proto.outfeed_config());
-      } else {
-        CHECK_EQ(proto.operand_ids_size(), 2);
-        instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
-                                    operands(1), proto.outfeed_config());
-      }
+      CHECK_EQ(proto.operand_ids_size(), 2);
+      instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
+                                  operands(1), proto.outfeed_config());
       break;
     case HloOpcode::kCrossReplicaSum: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -694,23 +681,11 @@ HloInstruction::CreateCrossReplicaSum(
   return MakeUnique<HloInfeedInstruction>(infeed_shape, token_operand, config);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
-    const Shape& infeed_shape, const string& config) {
-  return MakeUnique<HloInfeedInstruction>(infeed_shape, config);
-}
-
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
     const Shape& outfeed_shape, HloInstruction* operand,
     HloInstruction* token_operand, tensorflow::StringPiece outfeed_config) {
   return MakeUnique<HloOutfeedInstruction>(outfeed_shape, operand,
                                            token_operand, outfeed_config);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
-    const Shape& outfeed_shape, HloInstruction* operand,
-    tensorflow::StringPiece outfeed_config) {
-  return MakeUnique<HloOutfeedInstruction>(outfeed_shape, operand,
-                                           outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(

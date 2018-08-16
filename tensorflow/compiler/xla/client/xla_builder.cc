@@ -1073,6 +1073,23 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           "Replicated sharding is not yet supported for infeeds");
     }
 
+    // Infeed takes a single token operand. Generate the token to pass to the
+    // infeed.
+    XlaOp token;
+    auto make_token = [&]() {
+      HloInstructionProto token_instr;
+      *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+      return AddInstruction(std::move(token_instr), HloOpcode::kAfterAll, {});
+    };
+    if (sharding()) {
+      // Arbitrarily assign token to device 0.
+      OpSharding sharding = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, sharding);
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    }
+
     // The sharding is set by the client according to the data tuple shape.
     // However, the shape of the infeed instruction is a tuple containing the
     // data and a token. For tuple sharding type, the sharding must be changed
@@ -1088,11 +1105,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           sharding_builder::AssignDevice(0);
       XlaScopedShardingAssignment scoped_sharding(this,
                                                   infeed_instruction_sharding);
-      TF_ASSIGN_OR_RETURN(
-          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
+      TF_ASSIGN_OR_RETURN(infeed, AddInstruction(std::move(instr),
+                                                 HloOpcode::kInfeed, {token}));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
+      TF_ASSIGN_OR_RETURN(infeed, AddInstruction(std::move(instr),
+                                                 HloOpcode::kInfeed, {token}));
     }
 
     // The infeed instruction produces a tuple of the infed data and a token
@@ -1158,8 +1175,15 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
 
     instr.set_outfeed_config(outfeed_config);
 
+    // Outfeed takes a token as its second operand. Generate the token to pass
+    // to the outfeed.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
+
     TF_RETURN_IF_ERROR(
-        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand})
+        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand, token})
             .status());
 
     // The outfeed instruction produces a token. However, existing users expect
