@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/dataset.h"
-#include <stdlib.h>
 #include "ignite_dataset.h"
+#include <stdlib.h>
+#include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
 
@@ -36,20 +36,26 @@ class IgniteDatasetOp : public DatasetOpKernel {
     int32 part = -1;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
     bool distributed = false;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "distributed", &distributed));
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<bool>(ctx, "distributed", &distributed));
     int32 page_size = -1;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int32>(ctx, "page_size", &page_size));
     std::string username = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "username", &username));
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<std::string>(ctx, "username", &username));
     std::string password = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "password", &password));
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<std::string>(ctx, "password", &password));
     std::string certfile = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "certfile", &certfile));
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<std::string>(ctx, "certfile", &certfile));
     std::string keyfile = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "keyfile", &keyfile));
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<std::string>(ctx, "keyfile", &keyfile));
     std::string cert_password = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "cert_password", &cert_password));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "cert_password",
+                                                         &cert_password));
 
     const Tensor* schema_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
@@ -74,17 +80,19 @@ class IgniteDatasetOp : public DatasetOpKernel {
     }
 
     if (distributed) {
-        const char* env_p = std::getenv("IGNITE_DATASET_PARTITION");
-        if (env_p) {
-            part = atoi(env_p);
-        }
-        else {
-            LOG(ERROR) << "Dataset specified as distributed, but IGNITE_DATASET_PARTITION variable is not defined";
-        }
+      const char* env_p = std::getenv("IGNITE_DATASET_PARTITION");
+      if (env_p) {
+        part = atoi(env_p);
+      } else {
+        LOG(ERROR) << "Dataset specified as distributed, but "
+                      "IGNITE_DATASET_PARTITION variable is not defined";
+      }
     }
 
-    *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local,
-                                        part, page_size, username, password, certfile, keyfile, cert_password, std::move(schema), std::move(permutation));
+    *output = new ignite::IgniteDataset(
+        ctx, cache_name, host, port, local, part, page_size, username, password,
+        certfile, keyfile, cert_password, std::move(schema),
+        std::move(permutation));
   }
 };
 

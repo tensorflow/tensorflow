@@ -15,34 +15,34 @@ limitations under the License.
 
 #include "ignite_ssl_wrapper.h"
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 // #include <map>
 // #include <iostream>
-#include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
 
 namespace ignite {
 
 static int PasswordCb(char *buf, int size, int rwflag, void *password) {
   strncpy(buf, (char *)(password), size);
   buf[size - 1] = '\0';
-  return(strlen(buf));
+  return (strlen(buf));
 }
 
-SslWrapper::SslWrapper(std::shared_ptr<Client> client, std::string certfile, std::string keyfile, std::string cert_password) :
-  client(client),
-  certfile(certfile),
-  keyfile(keyfile),
-  cert_password(cert_password),
-  ctx(NULL) {}
+SslWrapper::SslWrapper(std::shared_ptr<Client> client, std::string certfile,
+                       std::string keyfile, std::string cert_password)
+    : client(client),
+      certfile(certfile),
+      keyfile(keyfile),
+      cert_password(cert_password),
+      ctx(NULL) {}
 
 SslWrapper::~SslWrapper() {
   if (IsConnected()) {
     tensorflow::Status status = Disconnect();
-    if (!status.ok())
-      LOG(WARNING) << status.ToString();
+    if (!status.ok()) LOG(WARNING) << status.ToString();
   }
 
   if (ctx != NULL) {
@@ -60,14 +60,17 @@ tensorflow::Status SslWrapper::InitSslContext() {
     return tensorflow::errors::Internal("Couldn't create SSL context");
 
   SSL_CTX_set_default_passwd_cb(ctx, PasswordCb);
-  SSL_CTX_set_default_passwd_cb_userdata(ctx, (void*)cert_password.c_str());
+  SSL_CTX_set_default_passwd_cb_userdata(ctx, (void *)cert_password.c_str());
 
   if (SSL_CTX_use_certificate_chain_file(ctx, certfile.c_str()) != 1)
-    return tensorflow::errors::Internal("Couldn't load cetificate chain (file '", certfile, "')");
+    return tensorflow::errors::Internal(
+        "Couldn't load cetificate chain (file '", certfile, "')");
 
   std::string private_key_file = keyfile.empty() ? certfile : keyfile;
-  if (SSL_CTX_use_PrivateKey_file(ctx, private_key_file.c_str(), SSL_FILETYPE_PEM) != 1)
-    return tensorflow::errors::Internal("Couldn't load private key (file '", private_key_file, "')");
+  if (SSL_CTX_use_PrivateKey_file(ctx, private_key_file.c_str(),
+                                  SSL_FILETYPE_PEM) != 1)
+    return tensorflow::errors::Internal("Couldn't load private key (file '",
+                                        private_key_file, "')");
 
   return tensorflow::Status::OK();
 }
@@ -77,8 +80,7 @@ tensorflow::Status SslWrapper::Connect() {
 
   if (ctx == NULL) {
     status = InitSslContext();
-    if (!status.ok())
-      return status;
+    if (!status.ok()) return status;
   }
 
   ssl = SSL_new(ctx);
@@ -86,8 +88,7 @@ tensorflow::Status SslWrapper::Connect() {
     return tensorflow::errors::Internal("Failed to establish SSL connection");
 
   status = client->Connect();
-  if (!status.ok())
-    return status;
+  if (!status.ok()) return status;
 
   SSL_set_fd(ssl, client->GetSocketDescriptor());
   if (SSL_connect(ssl) != 1)
@@ -106,13 +107,9 @@ tensorflow::Status SslWrapper::Disconnect() {
   return client->Disconnect();
 }
 
-bool SslWrapper::IsConnected() {
-  return client->IsConnected();
-}
+bool SslWrapper::IsConnected() { return client->IsConnected(); }
 
-int SslWrapper::GetSocketDescriptor() {
-  return client->GetSocketDescriptor();
-}
+int SslWrapper::GetSocketDescriptor() { return client->GetSocketDescriptor(); }
 
 char SslWrapper::ReadByte() {
   char res;
@@ -144,28 +141,26 @@ void SslWrapper::ReadData(char *buf, int length) {
   while (recieved < length) {
     int res = SSL_read(ssl, buf, length - recieved);
 
-    
-
     recieved += res;
     buf += res;
   }
 }
 
-void SslWrapper::WriteByte(char data) { 
+void SslWrapper::WriteByte(char data) {
   int res = 0;
   while (res <= 0) {
-    res = SSL_write(ssl, &data, 1); 
+    res = SSL_write(ssl, &data, 1);
   }
 }
 
-void SslWrapper::WriteShort(short data) { 
+void SslWrapper::WriteShort(short data) {
   int res = 0;
   while (res <= 0) {
-    res = SSL_write(ssl, &data, 2); 
+    res = SSL_write(ssl, &data, 2);
   }
 }
 
-void SslWrapper::WriteInt(int data) { 
+void SslWrapper::WriteInt(int data) {
   int res = 0;
   while (res <= 0) {
     res = SSL_write(ssl, &data, 4);
@@ -175,14 +170,14 @@ void SslWrapper::WriteInt(int data) {
 void SslWrapper::WriteLong(long data) {
   int res = 0;
   while (res <= 0) {
-    res = SSL_write(ssl, &data, 8); 
+    res = SSL_write(ssl, &data, 8);
   }
 }
 
-void SslWrapper::WriteData(char *buf, int length) { 
+void SslWrapper::WriteData(char *buf, int length) {
   int res = 0;
   while (res <= 0) {
-    res = SSL_write(ssl, buf, length); 
+    res = SSL_write(ssl, buf, length);
   }
 }
 

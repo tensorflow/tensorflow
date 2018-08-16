@@ -112,14 +112,14 @@ char* BinaryObjectParser::Parse(char* ptr,
       break;
     }
     case 11: {
-       // date
-       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
-                                 tensorflow::DT_INT64, {});
-       tensor.scalar<tensorflow::int64>()() = *((long*)ptr);
-       ptr += 8;
-       out_tensors->emplace_back(std::move(tensor));
+      // date
+      tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
+                                tensorflow::DT_INT64, {});
+      tensor.scalar<tensorflow::int64>()() = *((long*)ptr);
+      ptr += 8;
+      out_tensors->emplace_back(std::move(tensor));
 
-       break;
+      break;
     }
     case 12: {
       // byte arr
@@ -259,18 +259,18 @@ char* BinaryObjectParser::Parse(char* ptr,
       break;
     }
     case 22: {
-       // date arr
-       int length =  *((int*)ptr);
-       ptr += 4;
-       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
-                                 tensorflow::DT_INT64,
-                                 tensorflow::TensorShape({length}));
-       long* arr = (long*)ptr;
-       ptr += length * 8;
+      // date arr
+      int length = *((int*)ptr);
+      ptr += 4;
+      tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
+                                tensorflow::DT_INT64,
+                                tensorflow::TensorShape({length}));
+      long* arr = (long*)ptr;
+      ptr += length * 8;
 
-       std::copy_n(arr, length, tensor.flat<tensorflow::int64>().data());
-       out_tensors->emplace_back(std::move(tensor));
-       break;
+      std::copy_n(arr, length, tensor.flat<tensorflow::int64>().data());
+      out_tensors->emplace_back(std::move(tensor));
+      break;
     }
     case 27: {
       int byte_arr_size = *((int*)ptr);
@@ -280,7 +280,7 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       int offset = *((int*)ptr);
       ptr += 4;
-      
+
       break;
     }
     case 103: {
@@ -312,7 +312,8 @@ char* BinaryObjectParser::Parse(char* ptr,
     }
     default: {
       // TODO: Error
-      LOG(ERROR) << "Unknowd binary type (type id " << (int)object_type_id << ")";
+      LOG(ERROR) << "Unknowd binary type (type id " << (int)object_type_id
+                 << ")";
     }
   }
 

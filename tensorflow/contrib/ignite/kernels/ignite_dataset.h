@@ -21,10 +21,10 @@ class IgniteDataset : public tensorflow::GraphDatasetBase {
  public:
   IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name,
                 std::string host, tensorflow::int32 port, bool local,
-                tensorflow::int32 part, tensorflow::int32 page_size, 
+                tensorflow::int32 part, tensorflow::int32 page_size,
                 std::string username, std::string password,
-                std::string certfile, std::string keyfile, 
-                std::string cert_password, 
+                std::string certfile, std::string keyfile,
+                std::string cert_password,
                 std::vector<tensorflow::int32> schema,
                 std::vector<tensorflow::int32> permutation);
   ~IgniteDataset();

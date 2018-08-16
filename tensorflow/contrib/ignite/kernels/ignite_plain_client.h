@@ -22,10 +22,10 @@ limitations under the License.
 
 namespace ignite {
 
-class PlainClient: public Client {
+class PlainClient : public Client {
  public:
   PlainClient(std::string host, int port);
-  ~PlainClient(); 
+  ~PlainClient();
 
   virtual tensorflow::Status Connect();
   virtual tensorflow::Status Disconnect();

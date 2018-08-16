@@ -42,40 +42,37 @@ IgniteDatasetIterator::IgniteDatasetIterator(
       remainder(-1),
       cursor_id(-1),
       last_page(false) {
-
   Client* p_client = new PlainClient(host, port);
 
   if (certfile.empty())
     client = std::unique_ptr<Client>(p_client);
-  else 
-    client = std::unique_ptr<Client>(new SslWrapper(std::unique_ptr<Client>(p_client), certfile, keyfile, cert_password));
+  else
+    client = std::unique_ptr<Client>(new SslWrapper(
+        std::unique_ptr<Client>(p_client), certfile, keyfile, cert_password));
 
   LOG(INFO) << "Ignite Dataset Iterator created";
 }
 
-IgniteDatasetIterator::~IgniteDatasetIterator() { 
+IgniteDatasetIterator::~IgniteDatasetIterator() {
   tensorflow::Status status = CloseConnection();
-  if (!status.ok())
-    LOG(ERROR) << status.ToString();
+  if (!status.ok()) LOG(ERROR) << status.ToString();
 
   LOG(INFO) << "Ignite Dataset Iterator destroyed";
 }
 
 tensorflow::Status IgniteDatasetIterator::EstablishConnection() {
   if (!client->IsConnected()) {
-     tensorflow::Status status = client->Connect();
-     if (!status.ok())
-       return status;
+    tensorflow::Status status = client->Connect();
+    if (!status.ok()) return status;
 
-     status = Handshake();
-     if (!status.ok()) {
-       tensorflow::Status disconnect_status = client->Disconnect();
-       if (!disconnect_status.ok())
-         LOG(ERROR) << disconnect_status.ToString();
+    status = Handshake();
+    if (!status.ok()) {
+      tensorflow::Status disconnect_status = client->Disconnect();
+      if (!disconnect_status.ok()) LOG(ERROR) << disconnect_status.ToString();
 
-       return status;
-     }
-   }
+      return status;
+    }
+  }
 
   return tensorflow::Status::OK();
 }
@@ -83,17 +80,17 @@ tensorflow::Status IgniteDatasetIterator::EstablishConnection() {
 tensorflow::Status IgniteDatasetIterator::CloseConnection() {
   if (cursor_id != -1 && !last_page) {
     tensorflow::Status conn_status = EstablishConnection();
-    if (!conn_status.ok())
-      return conn_status;
+    if (!conn_status.ok()) return conn_status;
 
-    client->WriteInt(18);         // Message length
-    client->WriteShort(0);        // Operation code
-    client->WriteLong(0);         // Request ID
-    client->WriteLong(cursor_id); // Resource ID
+    client->WriteInt(18);          // Message length
+    client->WriteShort(0);         // Operation code
+    client->WriteLong(0);          // Request ID
+    client->WriteLong(cursor_id);  // Resource ID
 
     int res_len = client->ReadInt();
     if (res_len < 12)
-      return tensorflow::errors::Internal("Close Resource Response is corrupted");
+      return tensorflow::errors::Internal(
+          "Close Resource Response is corrupted");
 
     long req_id = client->ReadLong();
     int status = client->ReadInt();
@@ -104,9 +101,12 @@ tensorflow::Status IgniteDatasetIterator::CloseConnection() {
         int err_msg_length = client->ReadInt();
         char* err_msg = new char[err_msg_length];
         client->ReadData(err_msg, err_msg_length);
-        return tensorflow::errors::Internal("Close Resource Error [status=", status, ", message=", std::string(err_msg, err_msg_length), "]");
+        return tensorflow::errors::Internal(
+            "Close Resource Error [status=", status, ", message=",
+            std::string(err_msg, err_msg_length), "]");
       }
-      return tensorflow::errors::Internal("Close Resource Error [status=", status, "]");
+      return tensorflow::errors::Internal("Close Resource Error [status=",
+                                          status, "]");
     }
 
     LOG(INFO) << "Query Cursor " << cursor_id << " is closed";
@@ -114,12 +114,12 @@ tensorflow::Status IgniteDatasetIterator::CloseConnection() {
     cursor_id = -1;
 
     return client->Disconnect();
-  }
-  else {
+  } else {
     LOG(INFO) << "Query Cursor " << cursor_id << " is already closed";
   }
-  
-  return client->IsConnected() ? client->Disconnect() : tensorflow::Status::OK();
+
+  return client->IsConnected() ? client->Disconnect()
+                               : tensorflow::Status::OK();
 }
 
 tensorflow::Status IgniteDatasetIterator::GetNextInternal(
@@ -133,13 +133,12 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(
     return tensorflow::Status::OK();
   } else {
     tensorflow::Status status = EstablishConnection();
-    if (!status.ok())
-      return status;
+    if (!status.ok()) return status;
 
     if (remainder == -1 || remainder == 0) {
-      tensorflow::Status status = remainder == -1 ? ScanQuery() : LoadNextPage();
-      if (!status.ok())
-        return status;
+      tensorflow::Status status =
+          remainder == -1 ? ScanQuery() : LoadNextPage();
+      if (!status.ok()) return status;
     }
 
     char* initial_ptr = ptr;
@@ -207,7 +206,7 @@ tensorflow::Status IgniteDatasetIterator::Handshake() {
     client->WriteInt(password.length());
     client->WriteData((char*)password.c_str(), password.length());
   }
- 
+
   int handshake_res_len = client->ReadInt();
   short handshake_res = client->ReadByte();
 
@@ -215,36 +214,41 @@ tensorflow::Status IgniteDatasetIterator::Handshake() {
     short serv_ver_major = client->ReadShort();
     short serv_ver_minor = client->ReadShort();
     short serv_ver_patch = client->ReadShort();
- 
+
     char header = client->ReadByte();
     if (header == 9) {
-        int length = client->ReadInt();
-        char* err_msg = new char[length];
-        client->ReadData(err_msg, length);
+      int length = client->ReadInt();
+      char* err_msg = new char[length];
+      client->ReadData(err_msg, length);
 
-        return tensorflow::errors::Internal("Handshake Error [result=", handshake_res, ", version=", serv_ver_major, ".", serv_ver_minor, ".", serv_ver_patch, ", message='", std::string(err_msg, length), "']");
+      return tensorflow::errors::Internal(
+          "Handshake Error [result=", handshake_res, ", version=",
+          serv_ver_major, ".", serv_ver_minor, ".", serv_ver_patch,
+          ", message='", std::string(err_msg, length), "']");
+    } else if (header == 101) {
+      return tensorflow::errors::Internal(
+          "Handshake Error [result=", handshake_res, ", version=",
+          serv_ver_major, ".", serv_ver_minor, ".", serv_ver_patch, "]");
+    } else {
+      return tensorflow::errors::Internal(
+          "Handshake Error [result=", handshake_res, ", version=",
+          serv_ver_major, ".", serv_ver_minor, ".", serv_ver_patch, "]");
     }
-    else if (header == 101) {
-      return tensorflow::errors::Internal("Handshake Error [result=", handshake_res, ", version=", serv_ver_major, ".", serv_ver_minor, ".", serv_ver_patch, "]");
-    }
-    else {
-      return tensorflow::errors::Internal("Handshake Error [result=", handshake_res, ", version=", serv_ver_major, ".", serv_ver_minor, ".", serv_ver_patch, "]");
-    }   
   }
 
   return tensorflow::Status::OK();
 }
 
 tensorflow::Status IgniteDatasetIterator::ScanQuery() {
-  client->WriteInt(25);                         // Message length
-  client->WriteShort(2000);                     // Operation code
-  client->WriteLong(0);                         // Request ID
-  client->WriteInt(JavaHashCode(cache_name));   // Cache name
-  client->WriteByte(0);                         // Flags
-  client->WriteByte(101);                       // Filter object
-  client->WriteInt(page_size);                  // Cursor page size
-  client->WriteInt(part);                       // Partition to query
-  client->WriteByte(local);                     // Local flag
+  client->WriteInt(25);                        // Message length
+  client->WriteShort(2000);                    // Operation code
+  client->WriteLong(0);                        // Request ID
+  client->WriteInt(JavaHashCode(cache_name));  // Cache name
+  client->WriteByte(0);                        // Flags
+  client->WriteByte(101);                      // Filter object
+  client->WriteInt(page_size);                 // Cursor page size
+  client->WriteInt(part);                      // Partition to query
+  client->WriteByte(local);                    // Local flag
 
   int res_len = client->ReadInt();
 
@@ -260,13 +264,16 @@ tensorflow::Status IgniteDatasetIterator::ScanQuery() {
       int err_msg_length = client->ReadInt();
       char* err_msg = new char[err_msg_length];
       client->ReadData(err_msg, err_msg_length);
-      return tensorflow::errors::Internal("Scan Query Error [status=", status, ", message=", std::string(err_msg, err_msg_length), "]");
-    } 
-    return tensorflow::errors::Internal("Scan Query Error [status=", status, "]");
+      return tensorflow::errors::Internal(
+          "Scan Query Error [status=", status, ", message=",
+          std::string(err_msg, err_msg_length), "]");
+    }
+    return tensorflow::errors::Internal("Scan Query Error [status=", status,
+                                        "]");
   }
 
   cursor_id = client->ReadLong();
- 
+
   LOG(INFO) << "Query Cursor " << cursor_id << " is opened";
 
   int row_cnt = client->ReadInt();
@@ -279,12 +286,12 @@ tensorflow::Status IgniteDatasetIterator::ScanQuery() {
   clock_t stop = clock();
 
   double size_in_mb = 1.0 * remainder / 1024 / 1024;
-  double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
+  double time_in_s = (stop - start) / (double)CLOCKS_PER_SEC;
   LOG(INFO) << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
-  <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
+            << " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
 
   last_page = !client->ReadByte();
-  
+
   return tensorflow::Status::OK();
 }
 
@@ -307,9 +314,12 @@ tensorflow::Status IgniteDatasetIterator::LoadNextPage() {
       int err_msg_length = client->ReadInt();
       char* err_msg = new char[err_msg_length];
       client->ReadData(err_msg, err_msg_length);
-      return tensorflow::errors::Internal("Load Next Page Error [status=", status, ", message=", std::string(err_msg, err_msg_length), "]");
+      return tensorflow::errors::Internal(
+          "Load Next Page Error [status=", status, ", message=",
+          std::string(err_msg, err_msg_length), "]");
     }
-    return tensorflow::errors::Internal("Load Next Page Error [status=", status, "]");
+    return tensorflow::errors::Internal("Load Next Page Error [status=", status,
+                                        "]");
   }
 
   int row_cnt = client->ReadInt();
@@ -322,9 +332,9 @@ tensorflow::Status IgniteDatasetIterator::LoadNextPage() {
   clock_t stop = clock();
 
   double size_in_mb = 1.0 * remainder / 1024 / 1024;
-  double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
+  double time_in_s = (stop - start) / (double)CLOCKS_PER_SEC;
   LOG(INFO) << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
-  <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
+            << " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
 
   last_page = !client->ReadByte();
 

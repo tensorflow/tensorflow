@@ -26,15 +26,13 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace ignite {
 
-PlainClient::PlainClient(std::string host, int port) :
-  host(host),
-  port(port),
-  sock(-1) {}
+PlainClient::PlainClient(std::string host, int port)
+    : host(host), port(port), sock(-1) {}
 
 PlainClient::~PlainClient() {
   // do nothing.
@@ -54,7 +52,8 @@ tensorflow::Status PlainClient::Connect() {
     struct in_addr **addr_list;
 
     if ((he = gethostbyname(host.c_str())) == NULL)
-      return tensorflow::errors::Internal("Failed to resolve hostname \"", host, "\"");
+      return tensorflow::errors::Internal("Failed to resolve hostname \"", host,
+                                          "\"");
 
     addr_list = (struct in_addr **)he->h_addr_list;
     for (int i = 0; addr_list[i] != NULL; i++) {
@@ -68,8 +67,9 @@ tensorflow::Status PlainClient::Connect() {
   server.sin_family = AF_INET;
   server.sin_port = htons(port);
 
-  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) 
-    return tensorflow::errors::Internal("Failed to connect to \"", host, ":", port, "\"");
+  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
+    return tensorflow::errors::Internal("Failed to connect to \"", host, ":",
+                                        port, "\"");
 
   LOG(INFO) << "Connection to \"" << host << ":" << port << "\" established";
 
@@ -81,17 +81,15 @@ tensorflow::Status PlainClient::Disconnect() {
   sock = -1;
 
   LOG(INFO) << "Connection to \"" << host << ":" << port << "\" is closed";
- 
-  return close_res == 0 ? tensorflow::Status::OK() : tensorflow::errors::Internal("Failed to correctly close connection");
+
+  return close_res == 0 ? tensorflow::Status::OK()
+                        : tensorflow::errors::Internal(
+                              "Failed to correctly close connection");
 }
 
-bool PlainClient::IsConnected() {
-  return sock != -1;
-}
+bool PlainClient::IsConnected() { return sock != -1; }
 
-int PlainClient::GetSocketDescriptor() {
-  return sock;
-}
+int PlainClient::GetSocketDescriptor() { return sock; }
 
 char PlainClient::ReadByte() {
   char res;
@@ -134,6 +132,8 @@ void PlainClient::WriteInt(int data) { send(sock, &data, 4, 0); }
 
 void PlainClient::WriteLong(long data) { send(sock, &data, 8, 0); }
 
-void PlainClient::WriteData(char *buf, int length) { send(sock, buf, length, 0); }
+void PlainClient::WriteData(char *buf, int length) {
+  send(sock, buf, length, 0);
+}
 
 }  // namespace ignite

@@ -23,9 +23,10 @@ limitations under the License.
 
 namespace ignite {
 
-class SslWrapper: public Client {
+class SslWrapper : public Client {
  public:
-  SslWrapper(std::shared_ptr<Client> client, std::string certfile, std::string keyfile, std::string cert_password);
+  SslWrapper(std::shared_ptr<Client> client, std::string certfile,
+             std::string keyfile, std::string cert_password);
   ~SslWrapper();
 
   virtual tensorflow::Status Connect();
@@ -50,8 +51,8 @@ class SslWrapper: public Client {
   std::string certfile;
   std::string keyfile;
   std::string cert_password;
-  SSL_CTX *ctx;
-  SSL *ssl;
+  SSL_CTX* ctx;
+  SSL* ssl;
   tensorflow::Status InitSslContext();
 };
 

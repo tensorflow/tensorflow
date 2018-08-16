@@ -22,10 +22,9 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
                              std::string cache_name, std::string host,
                              tensorflow::int32 port, bool local,
                              tensorflow::int32 part,
-                             tensorflow::int32 page_size,
-                             std::string username, std::string password,
-                             std::string certfile, std::string keyfile,
-                             std::string cert_password,
+                             tensorflow::int32 page_size, std::string username,
+                             std::string password, std::string certfile,
+                             std::string keyfile, std::string cert_password,
                              std::vector<tensorflow::int32> schema,
                              std::vector<tensorflow::int32> permutation)
     : GraphDatasetBase(ctx),
@@ -47,16 +46,15 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
   LOG(INFO) << "Ignite Dataset created";
 }
 
-IgniteDataset::~IgniteDataset() {
-  LOG(INFO) << "Ignite Dataset destroyed";
-}
+IgniteDataset::~IgniteDataset() { LOG(INFO) << "Ignite Dataset destroyed"; }
 
 std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(
     const tensorflow::string& prefix) const {
   return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator(
       {this, tensorflow::strings::StrCat(prefix, "::Ignite")}, this->host,
-      this->port, this->cache_name, this->local, this->part,
-      this->page_size, this->username, this->password, this->certfile, this->keyfile, this->cert_password, this->schema, this->permutation));
+      this->port, this->cache_name, this->local, this->part, this->page_size,
+      this->username, this->password, this->certfile, this->keyfile,
+      this->cert_password, this->schema, this->permutation));
 }
 
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
@@ -97,7 +95,7 @@ void IgniteDataset::SchemaToTypes() {
       dtypes.push_back(tensorflow::DT_BOOL);
     } else if (e == 9 || e == 20) {
       dtypes.push_back(tensorflow::DT_STRING);
-    } 
+    }
   }
 }
 

@@ -20,25 +20,22 @@ limitations under the License.
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#pragma comment (lib, "Ws2_32.lib")
-#pragma comment (lib, "Mswsock.lib")
-#pragma comment (lib, "AdvApi32.lib")
+#pragma comment(lib, "Ws2_32.lib")
+#pragma comment(lib, "Mswsock.lib")
+#pragma comment(lib, "AdvApi32.lib")
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace ignite {
 
-PlainClient::PlainClient(std::string host, int port) :
-  host(host),
-  port(port),
-  sock(INVALID_SOCKET) {}
+PlainClient::PlainClient(std::string host, int port)
+    : host(host), port(port), sock(INVALID_SOCKET) {}
 
 PlainClient::~PlainClient() {
   if (IsConnected()) {
     tensorflow::Status status = Disconnect();
-    if (!status.ok())
-      LOG(WARNING) << status.ToString();
+    if (!status.ok()) LOG(WARNING) << status.ToString();
   }
 }
 
@@ -46,7 +43,7 @@ tensorflow::Status PlainClient::Connect() {
   WSADATA wsaData;
   struct addrinfo *result = NULL, *ptr = NULL, hints;
 
-  int res = WSAStartup(MAKEWORD(2,2), &wsaData);
+  int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
   if (res != 0)
     return tensorflow::errors::Internal("WSAStartup failed with error: ", res);
 
@@ -54,16 +51,18 @@ tensorflow::Status PlainClient::Connect() {
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
-  
-  res = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &result);
+
+  res =
+      getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &result);
   if (res != 0)
     return tensorflow::errors::Internal("Getaddrinfo failed with error: ", res);
 
-  for(ptr=result; ptr != NULL ;ptr=ptr->ai_next) {
+  for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
     sock = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
     if (sock == INVALID_SOCKET) {
       WSACleanup();
-      return tensorflow::errors::Internal("Socket failed with error: ", WSAGetLastError());
+      return tensorflow::errors::Internal("Socket failed with error: ",
+                                          WSAGetLastError());
     }
 
     res = connect(sock, ptr->ai_addr, (int)ptr->ai_addrlen);
@@ -72,7 +71,7 @@ tensorflow::Status PlainClient::Connect() {
       sock = INVALID_SOCKET;
       continue;
     }
-    
+
     break;
   }
 
@@ -94,43 +93,40 @@ tensorflow::Status PlainClient::Disconnect() {
   WSACleanup();
 
   if (res == SOCKET_ERROR)
-    return tensorflow::errors::Internal("Shutdown failed with error: ", WSAGetLastError());
+    return tensorflow::errors::Internal("Shutdown failed with error: ",
+                                        WSAGetLastError());
   else
     return tensorflow::Status::OK();
 }
 
-bool PlainClient::IsConnected() {
-  return sock != INVALID_SOCKET;
-}
+bool PlainClient::IsConnected() { return sock != INVALID_SOCKET; }
 
-int PlainClient::GetSocketDescriptor() {
-  return sock;
-}
+int PlainClient::GetSocketDescriptor() { return sock; }
 
 char PlainClient::ReadByte() {
   char res;
-  ReadData((char*) &res, 1);
+  ReadData((char *)&res, 1);
 
   return res;
 }
 
 short PlainClient::ReadShort() {
   short res;
-  ReadData((char*) &res, 2);
+  ReadData((char *)&res, 2);
 
   return res;
 }
 
 int PlainClient::ReadInt() {
   int res;
-  ReadData((char*) &res, 4);
+  ReadData((char *)&res, 4);
 
   return res;
 }
 
 long PlainClient::ReadLong() {
   long res;
-  ReadData((char*) &res, 8);
+  ReadData((char *)&res, 8);
 
   return res;
 }
@@ -151,15 +147,15 @@ void PlainClient::ReadData(char *buf, int length) {
   }
 }
 
-void PlainClient::WriteByte(char data) { WriteData((char*) &data, 1); }
+void PlainClient::WriteByte(char data) { WriteData((char *)&data, 1); }
 
-void PlainClient::WriteShort(short data) { WriteData((char*) &data, 2); }
+void PlainClient::WriteShort(short data) { WriteData((char *)&data, 2); }
 
-void PlainClient::WriteInt(int data) { WriteData((char*) &data, 4); }
+void PlainClient::WriteInt(int data) { WriteData((char *)&data, 4); }
 
-void PlainClient::WriteLong(long data) { WriteData((char*) &data, 8); }
+void PlainClient::WriteLong(long data) { WriteData((char *)&data, 8); }
 
-void PlainClient::WriteData(char *buf, int length) { 
+void PlainClient::WriteData(char *buf, int length) {
   int sent = 0;
 
   while (sent < length) {
@@ -172,7 +168,7 @@ void PlainClient::WriteData(char *buf, int length) {
 
     sent += res;
     buf += res;
-  } 
+  }
 }
 
 }  // namespace ignite
