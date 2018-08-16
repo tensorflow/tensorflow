@@ -63,7 +63,9 @@ Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
     TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
     out = poplar::concat(out, t, dimension);
   }
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 
@@ -91,7 +93,9 @@ Status FullVisitor::HandleReverse(HloInstruction* inst) {
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
+          .status());
   return Status::OK();
 }
 
@@ -126,7 +130,9 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
       out, BroadcastTensor(out, GetOutputShape(inst), inst->dimensions()));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 
@@ -136,7 +142,9 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 
@@ -147,7 +155,9 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   std::vector<unsigned> permutation(
       convert_array<std::vector<unsigned>>(inst->dimensions()));
   out = out.dimShuffle(permutation);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 
@@ -179,7 +189,9 @@ Status FullVisitor::HandleSlice(HloInstruction* inst) {
       }
     }
   }
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 
@@ -254,7 +266,9 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(pad, FindInstructionInput(tensor_map, inst, 1));
   TF_ASSIGN_OR_RETURN(out, PadTensor(inst->padding_config(), out, pad));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 

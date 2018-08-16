@@ -25,7 +25,6 @@ namespace xla {
 namespace poplarplugin {
 
 StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
-  std::vector<const HloInstruction*> to_remove;
   auto entry_computation = module->entry_computation();
   std::unique_ptr<HloReachabilityMap> reachability_map =
       entry_computation->ComputeReachability();
@@ -34,6 +33,8 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
 
   for (const auto priority :
        annotations_.inplace_instructions.GetPriorityOrder()) {
+    std::vector<const HloInstruction*> to_remove;
+    std::vector<const HloInstruction*> to_inplace;
     for (auto* inst :
          annotations_.inplace_instructions.GetPrioritySet(priority)) {
       // We only currently support inplace ops inside the entry computation
@@ -83,10 +84,7 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
       }
 
       if (add_to_inplace) {
-        // If we can add in place, then move this instruction to the high
-        // priority set
-        annotations_.inplace_instructions.MovePriority(
-            priority, InplaceInstructions::Priority::HIGH, inst);
+        to_inplace.push_back(inst);
       } else {
         // otherwise remove it and undo any dependencies added
         to_remove.push_back(inst);
@@ -99,6 +97,12 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
       }
 
       changed |= add_to_inplace;
+    }
+
+    // move instructions which are to be in place to the top priority set
+    for (auto* inst : to_inplace) {
+      annotations_.inplace_instructions.MovePriority(
+          priority, InplaceInstructions::Priority::HIGH, inst);
     }
 
     // remove instructions which are not actually in place anymore

@@ -307,7 +307,8 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
 
   return prog;
 }
@@ -346,7 +347,8 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
 
   return prog;
 }
@@ -396,7 +398,8 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
 
   return prog;
 }
@@ -419,7 +422,8 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
   poplar::program::Sequence prog;
   popconv::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, in).status());
   return prog;
 }
 
@@ -461,7 +465,8 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
   popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate,
                                  poplar::FLOAT, prog, GetDebugName(inst));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, biases));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, biases).status());
 
   return prog;
 }

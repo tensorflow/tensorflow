@@ -82,8 +82,34 @@ StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
 
-  if (!in0.isParallelWriteable() ||
-      !res.annotations.inplace_instructions.IsInPlace(inst)) {
+  // We need to add a copy before an inplace op if:
+  // 1. in0 is not ParallelWriteable
+  // 2. inst has been removed from inplace ops by a different pass
+  // 3. in0 is marked as inplace but its parent at operand 0 is not inplace but
+  //    it's input and output tensor intersect
+
+  bool requires_copy_inplace = !in0.isParallelWriteable();
+
+  if (res.annotations.inplace_instructions.IsInPlace(inst)) {
+    bool parent_not_inplace_same_tensor = false;
+    const auto* parent = inst->operand(0);
+
+    if (parent->operand_count() &&
+        !res.annotations.inplace_instructions.IsInPlace(parent)) {
+      poplar::Tensor parent_in0;
+      TF_ASSIGN_OR_RETURN(parent_in0,
+                          FindInstructionInput(tensor_map, parent, 0));
+      OutVector parent_outs = FindInstructionOutputs(tensor_map, parent);
+      CHECK_EQ(parent_outs.size(), 1);
+      poplar::Tensor parent_out = parent_outs[0];
+      parent_not_inplace_same_tensor |= parent_out.intersectsWith(parent_in0);
+    }
+    requires_copy_inplace |= parent_not_inplace_same_tensor;
+  } else {
+    requires_copy_inplace = true;
+  }
+
+  if (requires_copy_inplace) {
     VLOG(1) << "Adding a copy for inplace op " << inst->name();
     poplar::Tensor copy;
     TF_ASSIGN_OR_RETURN(
@@ -97,16 +123,51 @@ StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
   return in0;
 }
 
-Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
-                       const poplar::Tensor& tensor) {
+StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
+                                         CompilerResources& res,
+                                         poplar::program::Sequence& seq,
+                                         TensorMap& map,
+                                         const HloInstruction* inst, int64 n,
+                                         const poplar::Tensor& tensor) {
+  poplar::Tensor out = tensor;
+  if (inst->operand_count() &&
+      !res.annotations.inplace_instructions.IsInPlace(inst)) {
+    // If the output tensor for non inplace op intersects with the tensor for
+    // inst->operand(0) and one of dependency successors of inst is an inplace
+    // op with inst as the operand 0, then we need to clone this output tensor
+    // so that the inplace op can still be performed
+    poplar::Tensor in0;
+    if (inst->opcode() == HloOpcode::kGetTupleElement) {
+      in0 = FindTupleInInstructionInput(map, inst, 0, inst->tuple_index())[n];
+    } else {
+      TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(map, inst, 0));
+    }
+
+    if (in0.intersectsWith(tensor)) {
+      bool clone_output = false;
+      for (const auto* succ : inst->control_successors()) {
+        if (res.annotations.inplace_instructions.IsInPlace(succ) &&
+            succ->operand(0) == inst) {
+          clone_output = true;
+          break;
+        }
+      }
+      if (clone_output) {
+        VLOG(1) << "Adding a clone for output tensor of " << inst->name();
+        out = graph.clone(tensor, inst->name() + ".clone");
+        seq.add(poplar::program::Copy(tensor, out));
+      }
+    }
+  }
+
   auto p = std::make_pair(inst->name(), n);
   auto it = map.find(p);
   if (it != map.end()) {
     return tensorflow::errors::Unknown(se::port::StrCat(
         "[Poplar] Ouptut Tensor for ", GetDebugName(inst), " already exists"));
   }
-  map[p] = tensor;
-  return Status::OK();
+  map[p] = out;
+  return out;
 }
 
 template <typename TYPE>

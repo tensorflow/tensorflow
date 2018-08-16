@@ -35,8 +35,8 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"relugrad", 0},
     {"sigmoidgrad", 0},
     {"sigmoidgrad", 0},
-    {"biasadd", 0},
-    {"biasadd", 0},
+    {"biasadd", 0, true},
+    {"biasadd", 0, true},
     {"zero_pad", 0},
     {"norm_scale_add", 4},
     {"uniform_scale_add", 4},
@@ -45,9 +45,9 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"avg_pool", 1},
-    {"bias_apply", 0},
-    {"scaled_inplace", 0},
-    {"scaled_inplace", 0},
+    {"bias_apply", 0, true},
+    {"scaled_inplace", 0, true},
+    {"scaled_inplace", 0, true},
     {"wide_const", 1},
 };
 

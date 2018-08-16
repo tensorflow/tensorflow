@@ -195,10 +195,15 @@ class EntryVisitor : public FullVisitor {
     }
 
     for (unsigned i = 0; i < shapes.size(); i++) {
+      poplar::program::Sequence& seq =
+          parameter_streamed[inst->parameter_number()] ? sequence
+                                                       : host_to_device;
+
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, std::make_pair(inst, i),
                                          shapes[i], resources_));
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+      TF_ASSIGN_OR_RETURN(out, AddOutputTensor(graph_, resources_, seq,
+                                               tensor_map, inst, i, out));
 
       if (module_shapes.size() > i) {
         if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
@@ -212,11 +217,7 @@ class EntryVisitor : public FullVisitor {
           GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
           out.numElements());
 
-      if (parameter_streamed[inst->parameter_number()]) {
-        sequence.add(poplar::program::Copy(fifo, out));
-      } else {
-        host_to_device.add(poplar::program::Copy(fifo, out));
-      }
+      seq.add(poplar::program::Copy(fifo, out));
     }
     return Status::OK();
   }
@@ -247,7 +248,7 @@ class EntryVisitor : public FullVisitor {
         poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
 
         auto fifo = graph_.addDeviceToHostFIFO(
-          GetOutputCopyHandle(o), out.elementType(), out.numElements());
+            GetOutputCopyHandle(o), out.elementType(), out.numElements());
 
         device_to_host.add(poplar::program::Copy(out, fifo));
       }
@@ -427,8 +428,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<FuseOpsLate>(resources.annotations);
     pipeline.AddPass<Outliner>(resources.annotations);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
-    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<UpdateOpDependenctOrdering>(resources.annotations);
+    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<WhileLoopConditionSimplify>();
     pipeline.AddPass<HloDCE>();

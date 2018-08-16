@@ -714,6 +714,21 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "update_op_dependencies_test",
+    size = "medium",
+    srcs = ["tests/update_op_dependencies_test.py"],
+    deps = [
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -750,6 +765,7 @@ test_suite(
         "constant_test",
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
+        "update_op_dependencies_test",
     ],
 )
 
@@ -784,6 +800,7 @@ test_suite(
         "constant_test",
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
+        "update_op_dependencies_test",
     ],
 )
 

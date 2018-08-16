@@ -185,7 +185,8 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -201,8 +202,11 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
   if (res.annotations.inplace_instructions.IsInPlace(inst) &&
-      (in0.shape() == in1.shape()) && in0.isParallelWriteable()) {
+      (in0.shape() == in1.shape())) {
     poplar::program::Sequence seq;
+    poplar::Tensor in0;
+    TF_ASSIGN_OR_RETURN(in0, GetInplaceOutputTensor(graph, res, seq, inst,
+                                                    output_shape, tensor_map));
     // Call the inplace op
     switch (inst->opcode()) {
       case HloOpcode::kAdd: {
@@ -222,7 +226,8 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
       }
     }
 
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0).status());
 
     return seq;
 
@@ -291,7 +296,8 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
     out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
     return seq;
   }
@@ -332,7 +338,8 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
                                      root_inst->name().c_str());
     }
   }
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0).status());
 
   return seq;
 }
@@ -393,7 +400,8 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   out = poplin::matMul(graph, in0, in1, seq, GetDebugName(inst), opts,
                        &res.dot_cache);
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -428,7 +436,8 @@ StatusOr<poplar::program::Program> CreateSelectOp(
     poplar::Tensor out = popops::map(graph, popops::expr::TernaryOpType::SELECT,
                                      i0, i1, p, seq, GetDebugName(inst));
 
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, i, out).status());
   }
 
   return seq;
@@ -452,7 +461,8 @@ StatusOr<poplar::program::Program> CreateCastOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -486,7 +496,8 @@ StatusOr<poplar::program::Program> CreateClampOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -507,7 +518,8 @@ StatusOr<poplar::program::Program> CreateReluOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -528,7 +540,8 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
 
   return seq;
 }
@@ -547,7 +560,8 @@ StatusOr<poplar::program::Program> CreateSigmoidOp(
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -568,7 +582,8 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
 
   return seq;
 }

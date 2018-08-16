@@ -70,7 +70,8 @@ StatusOr<poplar::program::Program> CreateSliceUpdateOp(
   poplar::Tensor slice = copy.slice(s_begin, s_end);
   seq.add(poplar::program::Copy(update, slice));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, copy));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, copy).status());
 
   return seq;
 }
@@ -109,9 +110,12 @@ StatusOr<poplar::program::Program> CreateSliceOp(poplar::Graph& graph,
   poplar::Tensor slice = input.slice(s_begin, s_end);
   poplar::Tensor out = graph.clone(slice, GetDebugName(inst));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  poplar::program::Sequence seq;
+  seq.add(poplar::program::Copy(slice, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
-  return poplar::program::Copy(slice, out);
+  return seq;
 }
 
 StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
@@ -161,7 +165,8 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
     seq.add(poplar::program::Copy(update, input));
   }
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, input).status());
 
   return seq;
 }
@@ -214,7 +219,8 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
     out = input;
   }
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -229,7 +235,8 @@ StatusOr<poplar::program::Program> CreateWideConstant(
   TF_ASSIGN_OR_RETURN(
       out, AddConstantTensor(graph, std::make_pair(inst, 0), inst->shape(),
                              root->operand(0)->literal(), res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 
   return seq;
 }
@@ -254,7 +261,8 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(poplar::Graph& graph,
   }
   out = popops::pad(graph, out, paddingLower, paddingUpper);
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   return seq;
 }
 

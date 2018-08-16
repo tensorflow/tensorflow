@@ -59,12 +59,19 @@ struct HloMatcherMatched {
 };
 
 struct FusedGraphInfo {
+  FusedGraphInfo(const char* name, const char op_index)
+      : name(name), op_index(op_index) {}
+  FusedGraphInfo(const char* name, const char op_index, const bool in_place)
+      : name(name), op_index(op_index), in_place(in_place) {}
   // The names to give the extracted fused graphs
   const char* name;
 
   // The index of the op within each fusion which should have its op_metadata
   // copied to the kCall instruction.
   const char op_index;
+
+  // Specifies whether the generated op is inplace
+  const bool in_place = false;
 };
 
 using HloMatcherPattern = std::vector<HloMatcherNode>;
@@ -108,6 +115,9 @@ class HloMatcher : public HloPassInterface {
   // The list of patterns to try to find in the computations
   std::vector<HloMatcherPattern> patterns_;
 
+  // The instruction annotations from the compiler
+  struct CompilerAnnotations& annotations_;
+
  private:
   virtual unsigned ReplaceNodes() = 0;
 
@@ -122,9 +132,6 @@ class HloMatcher : public HloPassInterface {
   // instructions due to one match, other matches which contain the instruction
   // cannot also be applied
   std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
-
-  // The instruction annotations from the compiler
-  struct CompilerAnnotations& annotations_;
 };
 
 }  // namespace poplarplugin

@@ -42,7 +42,10 @@ InlineCallVisitor::InlineCallVisitor(poplar::Graph& graph,
 Status InlineCallVisitor::HandleParameter(HloInstruction* inst) {
   for (unsigned int t = 0; t < inputs_[inst->parameter_number()].size(); t++) {
     auto& v = inputs_[inst->parameter_number()];
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, t, v[t]));
+    poplar::Tensor out;
+    TF_CHECK_OK(
+        AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, t, v[t])
+            .status());
   }
   return Status::OK();
 }

@@ -43,8 +43,6 @@ class ExpressionOutliner : public HloMatcher {
 
  private:
   unsigned ReplaceNodes() override { return 0; };
-
-  const InplaceInstructions& inplace_instructions;
 };
 
 }  // namespace poplarplugin
