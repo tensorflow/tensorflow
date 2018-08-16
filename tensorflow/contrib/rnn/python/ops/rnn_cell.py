@@ -1361,10 +1361,17 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
   Stanislau Semeniuta, Aliaksei Severyn, Erhardt Barth.
   """
 
-  def __init__(self, num_units, forget_bias=1.0,
-               input_size=None, activation=math_ops.tanh,
-               layer_norm=True, layer_norm_columns=True, norm_gain=1.0,
-               norm_shift=0.0, dropout_keep_prob=1.0, dropout_prob_seed=None,
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               input_size=None,
+               activation=math_ops.tanh,
+               layer_norm=True,
+               layer_norm_columns=True,
+               norm_gain=1.0,
+               norm_shift=0.0,
+               dropout_keep_prob=1.0,
+               dropout_prob_seed=None,
                reuse=None):
     """Initializes the basic LSTM cell.
 
