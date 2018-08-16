@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Variables. See the @{$python/state_ops} guide."""
+"""Variables.
+
+See the [Variables](https://tensorflow.org/api_guides/python/state_ops) guide.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

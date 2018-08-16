@@ -135,7 +135,7 @@ class VariableMetaclass(type):
 @tf_export("Variable")
 class Variable(six.with_metaclass(VariableMetaclass,
                                   checkpointable.CheckpointableBase)):
-  """See the @{$variables$Variables How To} for a high level overview.
+  """See the [Variables Guide](https://tensorflow.org/guide/variables).
 
   A variable maintains state in the graph across calls to `run()`. You add a
   variable to the graph by constructing an instance of the class `Variable`.

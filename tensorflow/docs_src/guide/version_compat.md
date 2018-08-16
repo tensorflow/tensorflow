@@ -175,6 +175,8 @@ This section is relevant only when making incompatible changes to the `GraphDef`
 format, such as when adding ops, removing ops, or changing the functionality
 of existing ops.  The previous section should suffice for most users.
 
+<a id="backward_forward"/>
+
 ### Backward and partial forward compatibility
 
 Our versioning scheme has three requirements:

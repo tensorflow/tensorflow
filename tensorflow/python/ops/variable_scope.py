@@ -1440,12 +1440,11 @@ def get_variable(name,
       aggregation=aggregation)
 
 
-get_variable_or_local_docstring = (
-    """%s
+get_variable_or_local_docstring = ("""%s
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-@{$variables$Variable Scope How To}
+[Variable Scope How To](https://tensorflow.org/guide/variables)
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1895,8 +1894,8 @@ class variable_scope(object):
 
   Variable scope allows you to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the @{$variables$Variable Scope How To}, here we present only a few basic
-  examples.
+  see the [Variable Scope How To](https://tensorflow.org/guide/variables), here
+  we present only a few basic examples.
 
   Simple example of how to create a new variable:
 
