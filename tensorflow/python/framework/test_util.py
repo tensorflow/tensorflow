@@ -736,15 +736,19 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
-      with context.eager_mode():
+      if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
+        self.tearDown()
+        self._tempdir = None
+      # Create a new graph for the eagerly executed version of this test for
+      # better isolation.
+      graph_for_eager_test = ops.Graph()
+      with graph_for_eager_test.as_default(), context.eager_mode():
         if reset_test:
-          # This decorator runs the wrapped test twice.
-          # Reset the test environment between runs.
-          self.tearDown()
-          self._tempdir = None
           self.setUp()
-
         run_eagerly(self, **kwargs)
+      ops.dismantle_graph(graph_for_eager_test)
 
     return decorated
 
