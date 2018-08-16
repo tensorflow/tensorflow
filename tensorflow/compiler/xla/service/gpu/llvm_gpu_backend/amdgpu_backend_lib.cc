@@ -219,7 +219,7 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   std::string ir_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".ll");
   std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
 
-  std::string isabin_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".s");
+  std::string isabin_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".o");
   std::string isabin_path = tensorflow::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".hsaco");
@@ -233,31 +233,57 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   module->print(*ir_fs, nullptr);
   ir_fs->flush();
 
-  // emit GCN ISA binary
-  std::string gcnisa_binary;  // need a std::string instead of a ::string.
-  {
-    llvm::raw_string_ostream stream(gcnisa_binary);
-    llvm::buffer_ostream pstream(stream);
-    // The extension is stripped by IrDumpingPassManager, so we need to
-    // get creative to add a suffix.
-    string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
-    IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(
-                     absl::string_view(tensorflow::io::Basename(module_id)), 
-                                 "-amdgpu.dummy"),
-        "", false);
-    codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
-        llvm::Triple(module->getTargetTriple())));
+  //// emit GCN ISA binary
+  //std::string gcnisa_binary;  // need a std::string instead of a ::string.
+  //{
+  //  llvm::raw_string_ostream stream(gcnisa_binary);
+  //  llvm::buffer_ostream pstream(stream);
+  //  // The extension is stripped by IrDumpingPassManager, so we need to
+  //  // get creative to add a suffix.
+  //  string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
+  //  IrDumpingPassManager codegen_passes(
+  //      ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
+  //                               "-amdgpu.dummy"),
+  //      "", false);
+  //  codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+  //      llvm::Triple(module->getTargetTriple())));
 
-    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::TargetMachine::CGFT_ObjectFile);
-    codegen_passes.run(*module);
+  //  target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
+  //                                      llvm::TargetMachine::CGFT_ObjectFile);
+  //  LOG(INFO) << "LLVM IR -> GCN ISA...\n";
+  //  codegen_passes.run(*module);
+  //}
+
+  // execute llc to convert LLVM IR into GCN ISA
+  auto llc_program = llvm::sys::findProgramByName("llc");
+  if (!llc_program) {
+    LOG(FATAL) << "unable to find llc in PATH: "
+               << llc_program.getError().message();
+  }
+  std::vector<llvm::StringRef> llc_args {
+    llvm_ir::AsStringRef("llc"),
+    llvm_ir::AsStringRef("-mtriple"),
+    llvm_ir::AsStringRef("amdgcn--amdhsa-amdgiz"),
+    llvm_ir::AsStringRef("-mcpu=gfx900"),
+    llvm_ir::AsStringRef("-filetype=obj"),
+    llvm_ir::AsStringRef("ir_path"),
+  };
+  llc_args[5] = llvm_ir::AsStringRef(ir_path.c_str());
+
+  std::string error_message;
+  int llc_result = llvm::sys::ExecuteAndWait(*llc_program,
+                                             llvm_ir::AsArrayRef(llc_args),
+                                             llvm::None, {}, 0, 0,
+                                             &error_message);
+
+  if (llc_result) {
+    LOG(FATAL) << "llc execute fail: " << error_message;
   }
 
-  // dump GCN ISA binary
-  std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_None));
-  *isabin_fs << gcnisa_binary;
-  isabin_fs->flush();
+  //// dump GCN ISA binary
+  //std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_None));
+  //*isabin_fs << gcnisa_binary;
+  //isabin_fs->flush();
 
   // execute ld.lld to convert GCN ISA binary into HSACO
   auto lld_program = llvm::sys::findProgramByName("ld.lld");
@@ -277,7 +303,7 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
   lld_args[6] = llvm_ir::AsStringRef(hsaco_path.c_str());
 
-  std::string error_message;
+  //std::string error_message;
   int lld_result = llvm::sys::ExecuteAndWait(*lld_program,
                                              llvm_ir::AsArrayRef(lld_args),
                                              llvm::None, {}, 0, 0,
