@@ -164,7 +164,6 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        ":constants",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
@@ -188,9 +187,4 @@ tf_cc_test(
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
-)
-
-cc_library(
-    name = "constants",
-    hdrs = ["constants.h"],
 )
