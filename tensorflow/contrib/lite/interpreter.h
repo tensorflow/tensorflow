@@ -414,6 +414,7 @@ class Interpreter {
   }
 
  private:
+  friend class InterpreterBuilder;
   friend class InterpreterTest;
 
   // Prevent 'context_' from accessing functions that are only available to
@@ -549,6 +550,26 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
+  using TfLiteDelegatePtr =
+      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+
+  // Variant of the public ModifyGraphWithDelegate method that additionally
+  // Assumes ownership of the provided delegate.
+  // WARNING: This is an experimental API and subject to change.
+  template <typename Delegate>
+  TfLiteStatus ModifyGraphWithDelegate(std::unique_ptr<Delegate> typed_delegate,
+                                       bool allow_dynamic_tensors = false) {
+    TfLiteDelegatePtr delegate(typed_delegate.release(),
+                               [](TfLiteDelegate* delegate) {
+                                 delete static_cast<Delegate*>(delegate);
+                               });
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.push_back(std::move(delegate));
+    return ModifyGraphWithDelegate(owned_delegates_.back().get(),
+                                   allow_dynamic_tensors);
+  }
+
   // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
   // capacity. Calling this function may invalidate existing pointers to
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
@@ -627,6 +648,11 @@ class Interpreter {
 
   // Whether to delegate to NN API
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
+
+  // List of delegates that have been installed and are owned by this
+  // interpreter instance. Useful if client delegate ownership is burdensome.
+  // WARNING: This is an experimental API and subject to change.
+  std::vector<TfLiteDelegatePtr> owned_delegates_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 

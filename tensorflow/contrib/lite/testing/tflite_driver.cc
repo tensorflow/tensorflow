@@ -139,7 +139,7 @@ class TfLiteDriver::Expectation {
 TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
     : use_nnapi_(use_nnapi) {
   if (delegate_name == "EAGER") {
-    delegate_.reset(new EagerDelegate());
+    delegate_ = EagerDelegate::Create();
   }
 }
 
@@ -173,7 +173,9 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   interpreter_->UseNNAPI(use_nnapi_);
 
   if (delegate_) {
-    if (delegate_->Apply(interpreter_.get()) != kTfLiteOk) {
+    if (interpreter_->ModifyGraphWithDelegate(delegate_.get(),
+                                              /*allow_dynamic_tensors=*/true) !=
+        kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");
       return;
     }
