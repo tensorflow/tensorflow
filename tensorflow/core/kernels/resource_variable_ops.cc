@@ -124,6 +124,7 @@ REGISTER_KERNEL_BUILDER(
                           ResourceHandleOp<Var>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int32(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -347,6 +348,17 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires the int32 value to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("resource")
+                            .HostMemory("value"),
+                        AssignVariableOp<Eigen::ThreadPoolDevice, int32>);
+
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T, DenseUpdateType Op>
@@ -405,6 +417,23 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
+
+// Special GPU kernels for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires the int32 value to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("resource")
+                            .HostMemory("value"),
+                        AssignUpdateVariableOp<Eigen::ThreadPoolDevice, int32, ADD>);
+REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("resource")
+                            .HostMemory("value"),
+                        AssignUpdateVariableOp<Eigen::ThreadPoolDevice, int32, SUB>);
+
 #endif  // GOOGLE_CUDA
 
 class VarIsInitializedOp : public OpKernel {
