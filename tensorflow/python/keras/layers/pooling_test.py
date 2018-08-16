@@ -124,6 +124,10 @@ class Pooling3DTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_maxpooling_3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
         keras.layers.MaxPooling3D,
@@ -143,6 +147,10 @@ class Pooling3DTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_averagepooling_3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
         keras.layers.AveragePooling3D,

@@ -693,6 +693,11 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         else:
           shape = [4, 16, 16, 16, 64]
           convolution = convolutional.conv3d
+
+          if test.is_built_with_rocm():
+            # 5D tensors are not yet supported in ROCm
+            continue
+
         inputs = random_ops.random_normal(shape, dtype=dtype)
         inputs_2norm = linalg_ops.norm(inputs)
         outputs = convolution(
@@ -1042,6 +1047,9 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
                                   [-1, -1, -1, beginning, -1])
       tmp_back = array_ops.slice(tmp, [0, 0, 0, 0, 0], [-1, -1, -1, end, -1])
       return array_ops.concat([tmp_front, tmp, tmp_back], 3)
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
 
     cout = 32
     shape = [1, 7, 7, 7, 16]
