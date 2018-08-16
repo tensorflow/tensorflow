@@ -121,6 +121,7 @@ load(
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_proto_hdrs",
+    "tf_additional_proto_compiler_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
@@ -128,6 +129,7 @@ load(
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
+    "tf_lib_proto_compiler_deps",
     "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
@@ -610,6 +612,17 @@ cc_library(
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
         "@double_conversion//:double-conversion",
+    ],
+)
+
+cc_library(
+    name = "lib_proto_compiler",
+    hdrs = [
+        "platform/protobuf_compiler.h",
+    ] + tf_additional_proto_compiler_hdrs(),
+    copts = tf_copts(),
+    deps = tf_lib_proto_compiler_deps() + [
+        ":lib_proto_parsing",
     ],
 )
 
