@@ -4391,6 +4391,7 @@ cc_library(
         ":regex_full_match_op",
         ":regex_replace_op",
         ":string_join_op",
+        ":string_length_op",
         ":string_split_op",
         ":string_strip_op",
         ":string_to_hash_bucket_op",
@@ -4422,6 +4423,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "string_join_op",
     prefix = "string_join_op",
+    deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "string_length_op",
+    prefix = "string_length_op",
     deps = STRING_DEPS,
 )
 
