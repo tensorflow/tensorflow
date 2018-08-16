@@ -918,11 +918,11 @@ class TopologyConstructionTest(test.TestCase):
     with self.test_session():
       model = keras.models.Sequential()
       model.add(
-        keras.layers.Dense(
-          2,
-          input_shape = (3,),
-          kernel_initializer = keras.initializers.Constant(np.ones((3, 2)))
-        )
+          keras.layers.Dense(
+              2,
+              input_shape = (3,),
+              kernel_initializer = keras.initializers.Constant(np.ones((3, 2)))
+          )
       )
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
