@@ -113,7 +113,7 @@ std::string Token::getStringValue() const {
       break;
     }
 
-    assert(i + 1 < e && "invalid string should be caught by lexer");
+    assert(i + 1 <= e && "invalid string should be caught by lexer");
     auto c2 = bytes[i++];
 
     assert(llvm::isHexDigit(c1) && llvm::isHexDigit(c2) && "invalid escape");
