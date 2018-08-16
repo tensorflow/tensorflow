@@ -324,6 +324,14 @@ class Estimator(object):
       ValueError: If both `steps` and `max_steps` are not `None`.
       ValueError: If either `steps` or `max_steps <= 0`.
     """
+    if self.config.task_type in (run_config.TaskType.EVALUATOR,
+                                 run_config.TaskType.PS):
+      raise ValueError(
+          'Train has been called wrong configuration. Please use '
+          'tf.estimator.train_and_evaluate which calls propper API according '
+          'to given configuration. Current configuration: {}.'.format(
+              self.config))
+
     with context.graph_mode():
       if (steps is not None) and (max_steps is not None):
         raise ValueError('Can not provide both steps and max_steps.')
