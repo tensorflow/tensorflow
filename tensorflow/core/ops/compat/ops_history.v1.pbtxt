@@ -69134,6 +69134,17 @@ op {
   }
 }
 op {
+  name: "StringLength"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+}
+op {
   name: "StringSplit"
   input_arg {
     name: "input"
