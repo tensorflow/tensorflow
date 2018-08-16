@@ -323,6 +323,43 @@ class LatestExporterTest(test.TestCase):
     self.assertTrue(gfile.Exists(export_dir_3))
     self.assertTrue(gfile.Exists(export_dir_4))
 
+  def test_garbage_collect_exports_with_trailing_delimiter(self):
+    export_dir_base = tempfile.mkdtemp() + "export/"
+    gfile.MkDir(export_dir_base)
+    export_dir_1 = _create_test_export_dir(export_dir_base)
+    export_dir_2 = _create_test_export_dir(export_dir_base)
+    export_dir_3 = _create_test_export_dir(export_dir_base)
+    export_dir_4 = _create_test_export_dir(export_dir_base)
+
+    self.assertTrue(gfile.Exists(export_dir_1))
+    self.assertTrue(gfile.Exists(export_dir_2))
+    self.assertTrue(gfile.Exists(export_dir_3))
+    self.assertTrue(gfile.Exists(export_dir_4))
+
+    def _serving_input_receiver_fn():
+      return array_ops.constant([1]), None
+
+    exporter = exporter_lib.LatestExporter(
+        name="latest_exporter",
+        serving_input_receiver_fn=_serving_input_receiver_fn,
+        exports_to_keep=1)
+    estimator = test.mock.Mock(spec=estimator_lib.Estimator)
+    # Garbage collect all but the most recent 2 exports,
+    # where recency is determined based on the timestamp directory names.
+    with test.mock.patch.object(gfile, "ListDirectory") as mock_list_directory:
+      mock_list_directory.return_value = [
+          os.path.basename(export_dir_1) + b"/",
+          os.path.basename(export_dir_2) + b"/",
+          os.path.basename(export_dir_3) + b"/",
+          os.path.basename(export_dir_4) + b"/",
+          ]
+      exporter.export(estimator, export_dir_base, None, None, False)
+
+    self.assertFalse(gfile.Exists(export_dir_1))
+    self.assertFalse(gfile.Exists(export_dir_2))
+    self.assertFalse(gfile.Exists(export_dir_3))
+    self.assertTrue(gfile.Exists(export_dir_4))
+
 
 def _create_test_export_dir(export_dir_base):
   export_dir = _get_timestamped_export_dir(export_dir_base)
