@@ -421,6 +421,23 @@ class ListOpsTest(test_util.TensorFlowTestCase):
                                  "Invalid data type at index 0"):
       self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, [3, 4]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testZerosLike(self):
+    l_empty = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=scalar_shape())
+    l_empty_zeros = array_ops.zeros_like(l_empty)
+    t_empty_zeros = list_ops.tensor_list_stack(
+        l_empty_zeros, element_dtype=dtypes.float32)
+
+    l_full = list_ops.tensor_list_push_back(l_empty, constant_op.constant(1.0))
+    l_full = list_ops.tensor_list_push_back(l_full, constant_op.constant(2.0))
+    l_full_zeros = array_ops.zeros_like(l_full)
+    t_full_zeros = list_ops.tensor_list_stack(
+        l_full_zeros, element_dtype=dtypes.float32)
+
+    self.assertAllEqual(self.evaluate(t_empty_zeros), [])
+    self.assertAllEqual(self.evaluate(t_full_zeros), [0.0, 0.0])
+
 
 if __name__ == "__main__":
   test.main()
