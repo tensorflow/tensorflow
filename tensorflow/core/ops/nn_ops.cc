@@ -983,6 +983,21 @@ REGISTER_OP("Relu6Grad")
     .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
+REGISTER_OP("LeakyRelu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("alpha: float = 0.2")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("LeakyReluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Output("backprops: T")
+    .Attr("alpha: float = 0.2")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
+
 REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
