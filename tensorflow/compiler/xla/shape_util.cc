@@ -1014,12 +1014,13 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 }
 
 /* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+  if (!IsTuple(shape)) {
+    return 1;
+  }
   int64 count = 0;
-  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex& index) {
-    if (IsLeafIndex(shape, index)) {
-      ++count;
-    }
-  });
+  for (const Shape& subshape : shape.tuple_shapes()) {
+    count += GetLeafCount(subshape);
+  }
   return count;
 }
 

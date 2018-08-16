@@ -150,8 +150,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->eager_context =
       reinterpret_cast<DelegateData*>(params->delegate->data_)
           ->GetEagerContext();
-  op_data->buffer_map =
-      reinterpret_cast<DelegateData*>(params->delegate->data_)->GetBufferMap();
+  op_data->buffer_map = reinterpret_cast<DelegateData*>(params->delegate->data_)
+                            ->GetBufferMap(context);
 
   CHECK(params->output_tensors);
   for (auto tensor_index : TfLiteIntArrayView(params->output_tensors)) {

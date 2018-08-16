@@ -929,10 +929,9 @@ class MultiDeviceIteratorInitOp : public OpKernel {
                    LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
     core::ScopedUnref unref(resource);
 
-    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
     std::unique_ptr<IteratorBase> iterator;
-    OP_REQUIRES_OK(ctx,
-                   dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    OP_REQUIRES_OK(ctx, dataset->MakeIterator(IteratorContext(ctx), "Iterator",
+                                              &iterator));
     int64 incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
                                        &incarnation_id));

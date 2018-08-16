@@ -26,8 +26,8 @@ namespace tflite {
 // executed by TensorFlow's runtime via Eager.
 //
 // The interpreter must be constructed after the EagerDelegate and destructed
-// before the EagerDelegate. This delegate can only be used with one
-// interpreter.
+// before the EagerDelegate. This delegate may be used with multiple
+// interpreters, but it is *not* thread-safe.
 //
 // Usage:
 //   EagerDelegate delegate;

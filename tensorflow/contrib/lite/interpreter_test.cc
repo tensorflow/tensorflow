@@ -1080,21 +1080,22 @@ class TestDelegate : public ::testing::Test {
         return kTfLiteOk;
       };
       delegate_.CopyToBufferHandle =
-          [](TfLiteDelegate* delegate, TfLiteBufferHandle buffer_handle,
-             void* data, size_t size) -> TfLiteStatus {
+          [](TfLiteContext* context, TfLiteDelegate* delegate,
+             TfLiteBufferHandle buffer_handle, void* data,
+             size_t size) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
       delegate_.CopyFromBufferHandle =
-          [](TfLiteDelegate* delegate, TfLiteBufferHandle buffer_handle,
-             void* data, size_t size) -> TfLiteStatus {
+          [](TfLiteContext* context, TfLiteDelegate* delegate,
+             TfLiteBufferHandle buffer_handle, void* data,
+             size_t size) -> TfLiteStatus {
         // TODO(ycling): Implement tests to test buffer copying logic.
         return kTfLiteOk;
       };
-      delegate_.FreeBufferHandle = [](TfLiteDelegate* delegate,
-                                      TfLiteBufferHandle* handle) {
-        *handle = kTfLiteNullBufferHandle;
-      };
+      delegate_.FreeBufferHandle =
+          [](TfLiteContext* context, TfLiteDelegate* delegate,
+             TfLiteBufferHandle* handle) { *handle = kTfLiteNullBufferHandle; };
       // Store type-punned data SimpleDelegate structure.
       delegate_.data_ = reinterpret_cast<void*>(this);
     }

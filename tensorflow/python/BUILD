@@ -1871,6 +1871,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":nn_ops_gen",
+        ":numerics",
         "@six_archive//:six",
     ],
 )
@@ -1884,7 +1885,6 @@ py_test(
         ":client_testlib",
         ":clip_ops",
         ":framework_for_generated_wrappers",
-        ":numerics",
         "//third_party/py/numpy",
     ],
 )
@@ -3341,7 +3341,10 @@ py_library(
 
 py_library(
     name = "distribute",
-    srcs = ["training/distribute.py"],
+    srcs = [
+        "training/distribute.py",
+        "training/distribution_strategy_context.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
@@ -4207,7 +4210,6 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -4501,7 +4503,6 @@ py_test(
     srcs = ["training/saver_large_partitioned_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_windows",
         "noasan",  # http://b/30782289
         "notsan",  # http://b/30782289
     ],

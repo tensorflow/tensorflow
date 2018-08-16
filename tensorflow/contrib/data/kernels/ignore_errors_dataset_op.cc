@@ -35,10 +35,10 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : GraphDatasetBase(ctx), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
     }
 

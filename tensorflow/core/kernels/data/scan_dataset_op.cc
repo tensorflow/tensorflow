@@ -69,7 +69,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func, std::vector<Tensor> initial_state,
@@ -77,7 +77,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& state_types,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           initial_state_(std::move(initial_state)),

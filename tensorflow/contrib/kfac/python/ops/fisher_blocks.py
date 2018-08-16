@@ -870,7 +870,7 @@ class ConvKFCBasicFB(InputOutputMultiTower, KroneckerProductFB):
   Estimates the Fisher Information matrix's blog for a convolutional
   layer.
 
-  Consider a convoluational layer in this model with (unshared) filter matrix
+  Consider a convolutional layer in this model with (unshared) filter matrix
   'w'. For a minibatch that produces inputs 'a' and output preactivations 's',
   this FisherBlock estimates,
 

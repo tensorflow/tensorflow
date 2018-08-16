@@ -950,8 +950,7 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
     *val = t->scalar<int64>()();
     return Status::OK();
   } else {
-    return errors::InvalidArgument(
-        "Scalar input for dim size must be int32 or int64");
+    return errors::InvalidArgument("Scalar input must be int32 or int64.");
   }
 }
 

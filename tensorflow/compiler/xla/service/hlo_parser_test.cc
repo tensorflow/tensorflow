@@ -1560,6 +1560,81 @@ ENTRY consts {
       "last");
 }
 
+TEST_F(HloParserTest, Comments) {
+  const string original = R"(/* module description. */
+HloModule comments:
+
+ENTRY /*comment*/ c1 {
+  /* blah */
+  ROOT const1 = /*foo*/f32[1]{0} constant({12345 /*bar*/})
+  /* comment */
+}
+
+/* something else */
+
+)";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, MultilineComments) {
+  const string original = R"(HloModule multiline_comment:
+ENTRY c1 {
+  /*
+     ROOT foo = f32[1]{0} constant({12345})
+  */
+  ROOT const1 = f32[1]{0} constant({12345})
+/*
+a
+b
+c
+d
+
+*/
+})";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, UnterminatedComment) {
+  const string original = R"(HloModule unterminated_comment:
+ENTRY c1 {
+/* unterminated
+  ROOT const1 = f32[1]{0} constant({12345})
+})";
+  // Verify that the error message points to the beginning of the unterminated
+  // comment.
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "/* unterminated\n^");
+}
+
+TEST_F(HloParserTest, SlashSlashComments) {
+  const string original = R"(HloModule slash_slash_comment:
+// Garbage
+ENTRY c1 {
+  // Foo bar
+  ROOT const1 = f32[1]{0} constant({12345}) // Something else
+})";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, SlashSlashCommentMsDosEolFormat) {
+  const string original =
+      "HloModule slash_slash_comment:\r\n// Garbage\r\nENTRY c1 {\r\n// Foo "
+      "bar\r\nROOT const1 = f32[1]{0} constant({12345}) // Something else\r\n}";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, SlashSlashCommentMacEolFormat) {
+  const string original =
+      "HloModule slash_slash_comment:\r// Garbage\rENTRY c1 {\r// Foo "
+      "bar\rROOT const1 = f32[1]{0} constant({12345}) // Something else\r}";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
 TEST_F(HloParserTest, MultipleEntries) {
   const string original = R"(HloModule multiple_entries:
 ENTRY c1 {
