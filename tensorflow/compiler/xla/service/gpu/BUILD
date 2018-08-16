@@ -362,6 +362,7 @@ cc_library(
     hdrs = ["cudnn_convolution_algorithm_picker.h"],
     deps = [
         ":backend_configs",
+        ":buffer_comparator",
         ":cudnn_convolution_runner",
         ":gpu_executable",
         ":ir_emission_utils",

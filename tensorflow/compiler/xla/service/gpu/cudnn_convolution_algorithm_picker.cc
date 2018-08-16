@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -177,6 +178,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
     const Shape& output_shape, const Window& window,
     const ConvolutionDimensionNumbers& dnums, HloInstruction* instr) {
+  CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
+  CHECK_EQ(input_shape.element_type(), output_shape.element_type());
+  // TODO(timshen): for now only check fp16. It can be expanded to other types,
+  // with some work on the HLO routines.
+  const bool cross_check_enabled = input_shape.element_type() == xla::F16;
+
   // Don't run this function concurrently on the same GPU.
   //
   // This is a bit of a hack and doesn't protect us against arbitrary concurrent
@@ -225,11 +232,27 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
                          .ThenMemZero(&output_buf, output_buf.size())
                          .BlockHostUntilDone());
 
+  DeviceMemoryBase* result_buf = [&] {
+    switch (kind) {
+      case CudnnConvKind::kBackwardFilter:
+        return &filter_buf;
+      case CudnnConvKind::kBackwardInput:
+        return &input_buf;
+      case CudnnConvKind::kForward:
+        return &output_buf;
+    }
+  }();
+
   const bool use_winograd_nonfused = ShouldIncludeWinogradNonfusedAlgo(
       input_shape, output_shape, dnums, stream_exec_);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
+  optional<F16BufferComparator> comparator;
+  // Use the first algorithm that's supported as reference. There isn't a
+  // particular reason to use it, as any algorithm sufficies. It doesn't make
+  // this algorithm considered correct, though.
+  optional<AlgorithmDesc> first_algorithm;
   for (const AlgorithmDesc& alg :
        GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -245,6 +268,34 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             .ok();
 
     if (launch_ok && profile_result.is_valid()) {
+      if (comparator.has_value()) {
+        StatusOr<bool> result = comparator->CompareEqual(
+            se::DeviceMemory<Eigen::half>(*result_buf));
+        if (!result.ok()) {
+          LOG(ERROR) << "Unable to compare "
+                     << AlgorithmToString(*first_algorithm) << " against "
+                     << AlgorithmToString(alg) << " for " << instr->ToString()
+                     << ": " << result.status();
+        } else if (!result.ValueOrDie()) {
+          LOG(ERROR) << "Results mismatch between different convolution "
+                        "algorithms. This is likely a bug in convolution, or "
+                        "an excessive loss of precision in convolution. "
+                     << instr->ToString() << " for "
+                     << AlgorithmToString(*first_algorithm) << " vs "
+                     << AlgorithmToString(alg);
+        }
+      } else if (cross_check_enabled) {
+        auto comp = F16BufferComparator::Create(
+            se::DeviceMemory<Eigen::half>(*result_buf), compiler_, allocator,
+            &stream);
+        if (comp.ok()) {
+          comparator.emplace(comp.ConsumeValueOrDie());
+          first_algorithm.emplace(alg);
+        } else {
+          LOG(ERROR) << "Fail to initialize buffer comparator: "
+                     << comp.status() << ", instruction: " << instr->ToString();
+        }
+      }
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       VLOG(3) << "Run of algorithm " << AlgorithmToString(alg)
               << " succeeded, taking " << profile_result.elapsed_time_in_ms()
