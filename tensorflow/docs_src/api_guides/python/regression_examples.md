@@ -66,7 +66,7 @@ watch the following video:
 <a name="running"></a>
 ## Running the examples
 
-You must @{$install$install TensorFlow} prior to running these examples.
+You must [install TensorFlow](../../install/index.md) prior to running these examples.
 Depending on the way you've installed TensorFlow, you might also
 need to activate your TensorFlow environment.  Then, do the following:
 

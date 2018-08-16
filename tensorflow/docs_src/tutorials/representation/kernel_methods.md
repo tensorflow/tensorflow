@@ -2,7 +2,7 @@
 
 Note: This document uses a deprecated version of `tf.estimator`,
 `tf.contrib.learn.Estimator`, which has a different interface. It also uses
-other `contrib` methods whose @{$version_compat#not_covered$API may not be stable}.
+other `contrib` methods whose [API may not be stable](../../guide/version_compat.md#not_covered).
 
 In this tutorial, we demonstrate how combining (explicit) kernel methods with
 linear models can drastically increase the latters' quality of predictions
@@ -52,7 +52,7 @@ In order to feed data to a `tf.contrib.learn Estimator`, it is helpful to conver
 it to Tensors. For this, we will use an `input function` which adds Ops to the
 TensorFlow graph that, when executed, create mini-batches of Tensors to be used
 downstream. For more background on input functions, check
-@{$premade_estimators#create_input_functions$this section on input functions}.
+[this section on input functions](../../guide/premade_estimators.md#create_input_functions).
 In this example, we will use the `tf.train.shuffle_batch` Op which, besides
 converting numpy arrays to Tensors, allows us to specify the batch_size and
 whether to randomize the input every time the input_fn Ops are executed

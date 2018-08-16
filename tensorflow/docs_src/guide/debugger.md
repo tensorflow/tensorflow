@@ -95,7 +95,7 @@ intermediate tensors (tensors that are neither inputs or outputs of the
 `Session.run()` call, but are in the path leading from the inputs to the
 outputs). This filter is for `nan`s and `inf`s is a common enough use case that
 we ship it with the
-@{$python/tfdbg#Classes_for_debug_dump_data_and_directories$`debug_data`}
+[`debug_data`](../api_guides/python/tfdbg.md#Classes_for_debug_dump_data_and_directories)
 module.
 
 Note: You can also write your own custom filters. See `tfdbg.DebugDumpDir.find`

@@ -29,8 +29,8 @@ steps to install this library and enable TensorFlow for Go:
      the help of GPU(s). To help you decide, read the section entitled
      "Determine which TensorFlow to install" in one of the following guides:
 
-     * @{$install_linux#determine_which_tensorflow_to_install$Installing TensorFlow on Linux}
-     * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on macOS}
+     * [Installing TensorFlow on Linux](../install/install_linux.md#determine_which_tensorflow_to_install)
+     * [Installing TensorFlow on macOS](../install/install_mac.md#determine_which_tensorflow_to_install)
 
   2. Download and extract the TensorFlow C library into `/usr/local/lib` by
      invoking the following shell commands:
