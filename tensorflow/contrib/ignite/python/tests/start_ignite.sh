@@ -14,13 +14,16 @@
 # limitations under the License.
 # ==============================================================================
 
-nohup apache-ignite-fabric/bin/ignite.sh /data/config/ignite-config-ssl.xml & 
-sleep 5 # Wait Apache Ignite to be started
+IGNITE_VERSION=2.6.0
 
-./apache-ignite-fabric/bin/sqlline.sh -u "jdbc:ignite:thin://127.0.0.1/?\
-sslMode=require&\
-sslClientCertificateKeyStoreUrl=/data/keystore/client.jks&\
-sslClientCertificateKeyStorePassword=123456&\
-sslTrustAll=true" --run=/data/sql/init.sql --verbose=true
+# Start Apache Ignite with plain client listener.
+docker run -itd --name ignite-plain -p 42300:10800 \
+-v `pwd`:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-plain.sh
 
-tail -f nohup.out
+# Start Apache Ignite with SSL client listener.
+docker run -itd --name ignite-ssl -p 42301:10800 \
+-v `pwd`:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-ssl.sh
+
+# Start Apache Ignite with SSL client listener with auth.
+docker run -itd --name ignite-ssl-auth -p 42302:10800 \
+-v `pwd`:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-ssl-auth.sh
