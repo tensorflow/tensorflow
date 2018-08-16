@@ -19,7 +19,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -30,32 +32,98 @@ class Allocator;
 class AllocatorMemoryUsed;
 class CostModelManager;
 class Graph;
+class Node;
 class NodeExecStats;
+class OpKernelContext;
 class StepStats;
+class Tensor;
 class TrackingAllocator;
 
 // Wraps NodeExecStats and adds allocation to it.
 class NodeExecStatsWrapper {
  public:
-  NodeExecStatsWrapper();
+  NodeExecStatsWrapper(const string& node_name);
   // Owns 'stats'.
   NodeExecStatsWrapper(NodeExecStats* stats);
 
   // Destructor calls Finalize() to release the TrackingAllocators.
   ~NodeExecStatsWrapper() { Finalize(); }
 
-  NodeExecStats* stats() { return stats_.get(); }
+  // Records the absolute time in nanoseconds at which this node became
+  // runnable (i.e. was scheduled for execution).
+  void SetScheduled(int64 nanos) {
+    stats_->set_scheduled_micros(nanos / EnvTime::kMicrosToNanos);
+    stats_->set_scheduled_nanos(nanos);
+  }
 
-  // "Does not take ownership of the 'allocator'.
-  // Transfers ownership of the 'tracking_allocator' to *this."
-  void AddAllocation(Allocator* allocator,
-                     TrackingAllocator* tracking_allocator);
+  // Called immediately after this node starts being processed by the executor.
+  void RecordExecutorStarted() {
+    int64 now_nanos = Env::Default()->NowNanos();
+    stats_->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
+    stats_->set_all_start_nanos(now_nanos);
+  }
+
+  // Called immediately before this node's `Compute()` or `ComputeAsync()`
+  // method is called.
+  void RecordComputeStarted() {
+    int64 now_nanos = Env::Default()->NowNanos();
+    DCHECK_NE(stats_->all_start_micros(), 0);
+    DCHECK_NE(stats_->all_start_nanos(), 0);
+    stats_->set_op_start_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                                    stats_->all_start_micros());
+    stats_->set_op_start_rel_nanos(now_nanos - stats_->all_start_nanos());
+  }
+
+  // Called immediately after this node's `Compute()` method returned (or, for
+  // asynchronous operations, the callback passed to its `ComputeAsync()` method
+  // was called).
+  void RecordComputeEnded() {
+    int64 now_nanos = Env::Default()->NowNanos();
+    DCHECK_NE(stats_->all_start_micros(), 0);
+    DCHECK_NE(stats_->all_start_nanos(), 0);
+    stats_->set_op_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                                  stats_->all_start_micros());
+    stats_->set_op_end_rel_nanos(now_nanos - stats_->all_start_nanos());
+  }
+
+  // Called immediately after this executor finishes processing this node.
+  void RecordExecutorEnded() {
+    int64 now_nanos = Env::Default()->NowNanos();
+    DCHECK_NE(stats_->all_start_micros(), 0);
+    DCHECK_NE(stats_->all_start_nanos(), 0);
+    stats_->set_all_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                                   stats_->all_start_micros());
+    stats_->set_all_end_rel_nanos(now_nanos - stats_->all_start_nanos());
+  }
+
+  // Records information about the tensor produced by this node at the given
+  // output slot.
+  void SetOutput(int slot, const Tensor* v);
+
+  // Records information about the memory allocated during the execution of this
+  // node.
+  void SetMemory(OpKernelContext* ctx);
+
+  // Records information about the tensors that were accessed during the
+  // execution of this node.
+  void SetReferencedTensors(const TensorReferenceVector& tensors);
+
+  // Sets the timeline_label field of the wrapped NodeExecStats, using data
+  // from *node. Returns true iff the node is a transfer node.
+  bool SetTimelineLabel(const Node* node);
 
  private:
   friend class StepStatsCollector;
 
+  NodeExecStats* stats() { return stats_.get(); }
+
   // Populates stats_ and releases TrackingAllocator.
   void Finalize();
+
+  // Does not take ownership of the `allocator`.
+  // Takes ownership of `tracking_allocator`.
+  void AddAllocation(Allocator* allocator,
+                     TrackingAllocator* tracking_allocator);
 
   gtl::InlinedVector<std::pair<AllocatorMemoryUsed*, TrackingAllocator*>, 2>
       allocations_;
