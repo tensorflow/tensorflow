@@ -505,16 +505,17 @@ Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments        | Type                    | Semantics                     |
-| ---------------- | ----------------------- | ----------------------------- |
-| `lhs`            | `XlaOp`                 | rank n+2 array of inputs      |
-| `rhs`            | `XlaOp`                 | rank n+2 array of kernel      |
-:                  :                         : weights                       :
-| `window_strides` | `ArraySlice<int64>`     | n-d array of kernel strides   |
-| `padding`        | `ArraySlice<pair<int64, | n-d array of (low, high)      |
-:                  : int64>>`                : padding                       :
-| `lhs_dilation`   | `ArraySlice<int64>`     | n-d lhs dilation factor array |
-| `rhs_dilation`   | `ArraySlice<int64>`     | n-d rhs dilation factor array |
+| Arguments             | Type                 | Semantics                     |
+| --------------------- | -------------------- | ----------------------------- |
+| `lhs`                 | `XlaOp`              | rank n+2 array of inputs      |
+| `rhs`                 | `XlaOp`              | rank n+2 array of kernel      |
+:                       :                      : weights                       :
+| `window_strides`      | `ArraySlice<int64>`  | n-d array of kernel strides   |
+| `padding`             | `ArraySlice<         | n-d array of (low, high)      |
+:                       : pair<int64, int64>>` : padding                       :
+| `lhs_dilation`        | `ArraySlice<int64>`  | n-d lhs dilation factor array |
+| `rhs_dilation`        | `ArraySlice<int64>`  | n-d rhs dilation factor array |
+| `feature_group_count` | int64                | the number of feature groups  |
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -532,8 +533,8 @@ The `rhs` argument is a rank n+2 array describing the convolutional
 filter/kernel/window. The dimensions are, in this order:
 
 *   `output-z`: The `z` dimension of the output.
-*   `input-z`: The size of this dimension should equal the size of the `z`
-    dimension in lhs.
+*   `input-z`: The size of this dimension times `feature_group_count` should
+    equal the size of the `z` dimension in lhs.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the n-d
     window that moves across the base area.
 
@@ -565,6 +566,24 @@ zeroes.
 Dilation of the rhs is also called atrous convolution. For more details, see
 `tf.nn.atrous_conv2d`. Dilation of the lhs is also called transposed
 convolution. For more details, see `tf.nn.conv2d_transpose`.
+
+The `feature_group_count` argument (default value 1) can be used for grouped
+convolutions. `feature_group_count` needs to be a divisor of both the input and
+the output feature dimension. If `feature_group_count` is greater than 1, it
+means that conceptually the input and output feature dimension and the `rhs`
+output feature dimension are split evenly into `feature_group_count` many
+groups, each group consisting of a consecutive subsequence of features. The
+input feature dimension of `rhs` needs to be equal to the `lhs` input feature
+dimension divided by `feature_group_count` (so it already has the size of a
+group of input features). The i-th groups are used together to compute
+`feature_group_count` many separate convolutions. The results of these
+convolutions are concatenated together in the output feature dimension.
+
+For depthwise convolution the `feature_group_count` argument would be set to the
+input feature dimension, and the filter would be reshaped from
+`[filter_height, filter_width, in_channels, channel_multiplier]` to
+`[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
+details, see `tf.nn.depthwise_conv2d`.
 
 The output shape has these dimensions, in this order:
 

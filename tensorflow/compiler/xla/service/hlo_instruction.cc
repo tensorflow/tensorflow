@@ -322,9 +322,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
-      instruction =
-          CreateConvolve(proto.shape(), operands(0), operands(1),
-                         proto.window(), proto.convolution_dimension_numbers());
+      instruction = CreateConvolve(
+          proto.shape(), operands(0), operands(1), proto.window(),
+          proto.convolution_dimension_numbers(),
+          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
       break;
     case HloOpcode::kReduceWindow:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
@@ -609,10 +610,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return MakeUnique<HloConvolutionInstruction>(shape, lhs, rhs, window,
-                                               dimension_numbers);
+    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
+  return MakeUnique<HloConvolutionInstruction>(
+      shape, lhs, rhs, window, dimension_numbers, feature_group_count);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -3179,6 +3180,10 @@ void HloInstruction::set_convolution_dimension_numbers(
   } else {
     LOG(FATAL) << "Unimplemented method.";
   }
+}
+
+int64 HloInstruction::feature_group_count() const {
+  return Cast<HloConvolutionInstruction>(this)->feature_group_count();
 }
 
 HloComputation* HloInstruction::select() const {

@@ -84,7 +84,8 @@ Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
       const Shape expected,
       ShapeInference::InferConvolveShape(
           convolution->operand(0)->shape(), convolution->operand(1)->shape(),
-          convolution->window(), convolution->convolution_dimension_numbers()));
+          convolution->window(), convolution->convolution_dimension_numbers(),
+          convolution->feature_group_count()));
   return CheckShape(convolution, expected);
 }
 
