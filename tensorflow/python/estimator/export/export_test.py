@@ -676,6 +676,12 @@ class ExportTest(test_util.TensorFlowTestCase):
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
 
+  def test_get_temp_export_dir_bytes(self):
+    temp_export_dir = export.get_temp_export_dir(
+        b"/foo/bar/1534435836")
+    self.assertNotIn(b"b'", temp_export_dir)
+    self.assertEquals(b"/foo/bar/temp-1534435836", temp_export_dir)
+
   def test_build_all_signature_defs_serving_only(self):
     receiver_tensor = {"input": array_ops.placeholder(dtypes.string)}
     output_1 = constant_op.constant([1.])
