@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
@@ -182,6 +184,18 @@ class Pooling1DTest(test.TestCase):
             kwargs={'strides': stride,
                     'padding': padding},
             input_shape=(3, 5, 4))
+
+  def test_globalpooling_1d_supports_masking(self):
+    # Test GlobalAveragePooling1D supports masking
+    model = keras.Sequential()
+    model.add(keras.layers.Masking(mask_value=0., input_shape=(3, 4)))
+    model.add(keras.layers.GlobalAveragePooling1D())
+    model.compile(loss='mae', optimizer='adam')
+
+    model_input = np.random.randint(low=1, high=5, size=(2, 3, 4))
+    model_input[0, 1:, :] = 0
+    output = model.predict(model_input)
+    self.assertAllClose(output[0], model_input[0, 0, :], atol=1e-7)
 
 
 if __name__ == '__main__':

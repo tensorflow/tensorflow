@@ -586,8 +586,23 @@ class GlobalAveragePooling1D(GlobalPooling1D):
       `(batch_size, features)`
   """
 
-  def call(self, inputs):
-    return backend.mean(inputs, axis=1)
+  def __init__(self, **kwargs):
+    super(GlobalAveragePooling1D, self).__init__(**kwargs)
+    self.supports_masking = True
+
+  def call(self, inputs, mask=None):
+    if mask is not None:
+      mask = backend.cast(mask, backend.floatx())
+      input_shape = inputs.get_shape().as_list()
+      broadcast_shape = [-1, input_shape[1], 1]
+      mask = backend.reshape(mask, broadcast_shape)
+      inputs *= mask
+      return backend.sum(inputs, axis=1) / backend.sum(mask, axis=1)
+    else:
+      return backend.mean(inputs, axis=1)
+
+  def compute_mask(self, inputs, mask=None):
+    return None
 
 
 @tf_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
