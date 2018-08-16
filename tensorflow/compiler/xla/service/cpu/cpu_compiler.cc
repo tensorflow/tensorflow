@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -258,6 +259,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  pipeline.AddPass<ConvolutionFeatureGroupConverter>();
   pipeline.AddPass<ConvCanonicalization>(&target_machine_features);
   {
     auto& pass =
