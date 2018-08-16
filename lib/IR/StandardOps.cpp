@@ -231,11 +231,37 @@ const char *ConstantOp::verify() const {
     return nullptr;
   }
 
+  if (isa<FloatType>(type)) {
+    if (!isa<FloatAttr>(value))
+      return "requires 'value' to be a floating point constant";
+    return nullptr;
+  }
+
+  if (type->isTFString()) {
+    if (!isa<StringAttr>(value))
+      return "requires 'value' to be a string constant";
+    return nullptr;
+  }
+
   if (isa<FunctionType>(type)) {
     // TODO: Verify a function attr.
   }
 
   return "requires a result type that aligns with the 'value' attribute";
+}
+
+OperationState ConstantFloatOp::build(Builder *builder, double value,
+                                      FloatType *type) {
+  OperationState result(builder->getIdentifier("constant"));
+  result.attributes.push_back(
+      {builder->getIdentifier("value"), builder->getFloatAttr(value)});
+  result.types.push_back(type);
+  return result;
+}
+
+bool ConstantFloatOp::isClassFor(const Operation *op) {
+  return ConstantOp::isClassFor(op) &&
+         isa<FloatType>(op->getResult(0)->getType());
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.

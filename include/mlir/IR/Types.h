@@ -75,6 +75,7 @@ public:
   // derived types should use isa/dyn_cast.
   bool isAffineInt() const { return getKind() == Kind::AffineInt; }
   bool isTFControl() const { return getKind() == Kind::TFControl; }
+  bool isTFString() const { return getKind() == Kind::TFString; }
   bool isBF16() const { return getKind() == Kind::BF16; }
   bool isF16() const { return getKind() == Kind::F16; }
   bool isF32() const { return getKind() == Kind::F32; }

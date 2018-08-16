@@ -48,6 +48,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
 
   // CHECK: %c43 = constant 43 {crazy: "foo"} : affineint
   %8 = constant 43 {crazy: "foo"} : affineint
+
+  // CHECK: %4 = constant 4.300000e+01 : bf16
+  %9 = constant 43.0 : bf16
   return
 }
 

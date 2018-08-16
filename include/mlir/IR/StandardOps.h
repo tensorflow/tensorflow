@@ -157,9 +157,29 @@ protected:
 };
 
 /// This is a refinement of the "constant" op for the case where it is
+/// returning a float value of FloatType.
+///
+///   %1 = "constant"(){value: 42.0} : bf16
+///
+class ConstantFloatOp : public ConstantOp {
+public:
+  static OperationState build(Builder *builder, double value, FloatType *type);
+
+  double getValue() const {
+    return getAttrOfType<FloatAttr>("value")->getValue();
+  }
+
+  static bool isClassFor(const Operation *op);
+
+private:
+  friend class Operation;
+  explicit ConstantFloatOp(const Operation *state) : ConstantOp(state) {}
+};
+
+/// This is a refinement of the "constant" op for the case where it is
 /// returning an integer value of IntegerType.
 ///
-///   %1 = "constant"(){value: 42}
+///   %1 = "constant"(){value: 42} : i32
 ///
 class ConstantIntOp : public ConstantOp {
 public:
