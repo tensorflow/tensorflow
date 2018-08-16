@@ -316,6 +316,13 @@ void AllocateFlags() {
                        bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
                        flag_values->xla_cpu_use_mkl_dnn(),
                        "Generate calls to MKL-DNN in the CPU backend."),
+      tensorflow::Flag(
+          "xla_gpu_crash_on_verification_failures",
+          bool_setter_for(
+              &DebugOptions::set_xla_gpu_crash_on_verification_failures),
+          flag_values->xla_gpu_crash_on_verification_failures(),
+          "Crashes the program on extra verification failures, e.g. cuDNN "
+          "cross checking failures"),
   });
   ParseFlagsFromEnv(*flag_objects);
 }
