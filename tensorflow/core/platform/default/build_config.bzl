@@ -513,6 +513,11 @@ def tf_additional_proto_hdrs():
       "platform/windows/integral_types.h",
   ])
 
+def tf_additional_proto_compiler_hdrs():
+  return [
+      "platform/default/protobuf_compiler.h"
+  ]
+
 def tf_additional_proto_srcs():
   return [
       "platform/default/protobuf.cc",
@@ -657,6 +662,11 @@ def tf_lib_proto_parsing_deps():
       ":protos_all_cc",
       "//third_party/eigen3",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
+  ]
+
+def tf_lib_proto_compiler_deps():
+  return [
+      "@protobuf_archive//:protoc_lib",
   ]
 
 def tf_additional_verbs_lib_defines():
