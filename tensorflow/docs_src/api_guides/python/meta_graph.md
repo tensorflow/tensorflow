@@ -23,7 +23,7 @@ protocol buffer. It contains the following fields:
 * [`SaverDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/saver.proto) for the saver.
 * [`CollectionDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto)
 map that further describes additional components of the model such as
-@{$python/state_ops$`Variables`},
+[`Variables`](../../api_guides/python/state_ops.md),
 `tf.train.QueueRunner`, etc.
 
 In order for a Python object to be serialized

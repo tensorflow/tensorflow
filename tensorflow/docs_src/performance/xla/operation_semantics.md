@@ -1028,7 +1028,7 @@ Arguments | Type    | Semantics
 `rhs`     | `XlaOp` | right-hand-side operand: array of type T
 
 The arguments' shapes have to be either similar or compatible. See the
-@{$broadcasting$broadcasting} documentation about what it means for shapes to
+[broadcasting](../../performance/xla/broadcasting.md) documentation about what it means for shapes to
 be compatible. The result of an operation has a shape which is the result of
 broadcasting the two input arrays. In this variant, operations between arrays of
 different ranks are *not* supported, unless one of the operands is a scalar.
@@ -1052,7 +1052,7 @@ the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
 then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
-@{$broadcasting$broadcasting page}.
+[broadcasting page](../../performance/xla/broadcasting.md).
 
 ## Element-wise comparison operations
 
@@ -1075,7 +1075,7 @@ Arguments | Type    | Semantics
 `rhs`     | `XlaOp` | right-hand-side operand: array of type T
 
 The arguments' shapes have to be either similar or compatible. See the
-@{$broadcasting$broadcasting} documentation about what it means for shapes to
+[broadcasting](../../performance/xla/broadcasting.md) documentation about what it means for shapes to
 be compatible. The result of an operation has a shape which is the result of
 broadcasting the two input arrays with the element type `PRED`. In this variant,
 operations between arrays of different ranks are *not* supported, unless one of
@@ -1092,7 +1092,7 @@ matrix to a vector).
 
 The additional `broadcast_dimensions` operand is a slice of integers specifying
 the dimensions to use for broadcasting the operands. The semantics are described
-in detail on the @{$broadcasting$broadcasting page}.
+in detail on the [broadcasting page](../../performance/xla/broadcasting.md).
 
 ## Element-wise unary functions
 

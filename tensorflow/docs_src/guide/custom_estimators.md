@@ -5,7 +5,7 @@ This document introduces custom Estimators. In particular, this document
 demonstrates how to create a custom `tf.estimator.Estimator` that
 mimics the behavior of the pre-made Estimator
 `tf.estimator.DNNClassifier` in solving the Iris problem. See
-the @{$premade_estimators$Pre-Made Estimators chapter} for details
+the [Pre-Made Estimators chapter](../guide/premade_estimators.md) for details
 on the Iris problem.
 
 To download and access the example code invoke the following two commands:
@@ -84,7 +84,7 @@ and a logits output layer.
 ## Write an Input function
 
 Our custom Estimator implementation uses the same input function as our
-@{$premade_estimators$pre-made Estimator implementation}, from
+[pre-made Estimator implementation](../guide/premade_estimators.md), from
 [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py).
 Namely:
 
@@ -106,8 +106,8 @@ This input function builds an input pipeline that yields batches of
 
 ## Create feature columns
 
-As detailed in the @{$premade_estimators$Premade Estimators} and
-@{$feature_columns$Feature Columns} chapters, you must define
+As detailed in the [Premade Estimators](../guide/premade_estimators.md) and
+[Feature Columns](../guide/feature_columns.md) chapters, you must define
 your model's feature columns to specify how the model should use each feature.
 Whether working with pre-made Estimators or custom Estimators, you define
 feature columns in the same fashion.
@@ -145,7 +145,7 @@ to the constructor are in turn passed on to the `model_fn`. In
 [`custom_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py)
 the following lines create the estimator and set the params to configure the
 model. This configuration step is similar to how we configured the `tf.estimator.DNNClassifier` in
-@{$premade_estimators}.
+[Premade Estimators](../guide/premade_estimators.md).
 
 ```python
 classifier = tf.estimator.Estimator(
@@ -489,7 +489,7 @@ configure your Estimator without modifying the code in the `model_fn`.
 
 The rest of the code to train, evaluate, and generate predictions using our
 Estimator is the same as in the
-@{$premade_estimators$Premade Estimators} chapter. For
+[Premade Estimators](../guide/premade_estimators.md) chapter. For
 example, the following line will train the model:
 
 ```python
@@ -597,6 +597,6 @@ For more details, be sure to check out:
   which contains more curated examples using custom estimators.
 * This [TensorBoard video](https://youtu.be/eBbEDRsCmv4), which introduces
   TensorBoard.
-* The @{$low_level_intro$Low Level Introduction}, which demonstrates
+* The [Low Level Introduction](../guide/low_level_intro.md), which demonstrates
   how to experiment directly with TensorFlow's low level APIs, making debugging
   easier.

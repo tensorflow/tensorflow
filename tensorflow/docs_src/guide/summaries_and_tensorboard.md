@@ -36,7 +36,7 @@ lifecycle for summary data within TensorBoard.
 
 First, create the TensorFlow graph that you'd like to collect summary
 data from, and decide which nodes you would like to annotate with
-@{$python/summary$summary operations}.
+[summary operations](../api_guides/python/summary.md).
 
 For example, suppose you are training a convolutional neural network for
 recognizing MNIST digits. You'd like to record how the learning rate
@@ -53,7 +53,7 @@ this data by attaching
 the gradient outputs and to the variable that holds your weights, respectively.
 
 For details on all of the summary operations available, check out the docs on
-@{$python/summary$summary operations}.
+[summary operations](../api_guides/python/summary.md).
 
 Operations in TensorFlow don't do anything until you run them, or an op that
 depends on their output. And the summary nodes that we've just created are
@@ -74,7 +74,7 @@ Also, the `FileWriter` can optionally take a `Graph` in its constructor.
 If it receives a `Graph` object, then TensorBoard will visualize your graph
 along with tensor shape information. This will give you a much better sense of
 what flows through the graph: see
-@{$graph_viz#tensor-shape-information$Tensor shape information}.
+[Tensor shape information](../guide/graph_viz.md#tensor-shape-information).
 
 Now that you've modified your graph and have a `FileWriter`, you're ready to
 start running your network! If you want, you could run the merged summary op
@@ -219,7 +219,7 @@ When looking at TensorBoard, you will see the navigation tabs in the top right
 corner. Each tab represents a set of serialized data that can be visualized.
 
 For in depth information on how to use the *graph* tab to visualize your graph,
-see @{$graph_viz$TensorBoard: Graph Visualization}.
+see [TensorBoard: Graph Visualization](../guide/graph_viz.md).
 
 For more usage information on TensorBoard in general, see the
 [TensorBoard GitHub](https://github.com/tensorflow/tensorboard).

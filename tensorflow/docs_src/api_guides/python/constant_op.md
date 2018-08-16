@@ -64,7 +64,7 @@ print(sess.run(norm))
 ```
 
 Another common use of random values is the initialization of variables. Also see
-the @{$variables$Variables How To}.
+the [Variables How To](../../guide/variables.md).
 
 ```python
 # Use random uniform values in [0, 1) as the initializer for a variable of shape

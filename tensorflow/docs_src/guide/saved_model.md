@@ -7,7 +7,7 @@ automatically save and restore variables in the `model_dir`.
 
 ## Save and restore variables
 
-TensorFlow @{$variables} are the best way to represent shared, persistent state
+TensorFlow [Variables](../guide/variables.md) are the best way to represent shared, persistent state
 manipulated by your program. The `tf.train.Saver` constructor adds `save` and
 `restore` ops to the graph for all, or a specified list, of the variables in the
 graph.  The `Saver` object provides methods to run these ops, specifying paths
@@ -274,7 +274,7 @@ Ops has not changed.
 
 The `tf.saved_model.builder.SavedModelBuilder` class allows
 users to control whether default-valued attributes must be stripped from the
-@{$extend/tool_developers#nodes$`NodeDefs`}
+[`NodeDefs`](../extend/tool_developers/index.md#nodes)
 while adding a meta graph to the SavedModel bundle. Both
 `tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables`
 and `tf.saved_model.builder.SavedModelBuilder.add_meta_graph`
@@ -413,7 +413,7 @@ SavedModel format. This section explains how to:
 
 ### Prepare serving inputs
 
-During training, an @{$premade_estimators#input_fn$`input_fn()`} ingests data
+During training, an [`input_fn()`](../guide/premade_estimators.md#input_fn) ingests data
 and prepares it for use by the model.  At serving time, similarly, a
 `serving_input_receiver_fn()` accepts inference requests and prepares them for
 the model.  This function has the following purposes:
@@ -616,7 +616,7 @@ result = stub.Classify(request, 10.0)  # 10 secs timeout
 The returned result in this example is a `ClassificationResponse` protocol
 buffer.
 
-This is a skeletal example; please see the @{$deploy$Tensorflow Serving}
+This is a skeletal example; please see the [Tensorflow Serving](../deploy/index.md)
 documentation and [examples](https://github.com/tensorflow/serving/tree/master/tensorflow_serving/example)
 for more details.
 
@@ -647,7 +647,7 @@ You can use the SavedModel Command Line Interface (CLI) to inspect and
 execute a SavedModel.
 For example, you can use the CLI to inspect the model's `SignatureDef`s.
 The CLI enables you to quickly confirm that the input
-@{$tensors$Tensor dtype and shape} match the model. Moreover, if you
+[Tensor dtype and shape](../guide/tensors.md) match the model. Moreover, if you
 want to test your model, you can use the CLI to do a sanity check by
 passing in sample inputs in various formats (for example, Python
 expressions) and then fetching the output.

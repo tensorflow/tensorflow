@@ -1,7 +1,7 @@
 # Reading data
 
 Note: The preferred way to feed data into a tensorflow program is using the
-@{$datasets$`tf.data` API}.
+[`tf.data` API](../../guide/datasets.md).
 
 There are four methods of getting data into a TensorFlow program:
 
@@ -16,7 +16,7 @@ There are four methods of getting data into a TensorFlow program:
 
 ## `tf.data` API
 
-See the @{$guide/datasets} for an in-depth explanation of `tf.data.Dataset`.
+See the [Importing Data](../../guide/datasets.md) for an in-depth explanation of `tf.data.Dataset`.
 The `tf.data` API enables you to extract and preprocess data
 from different input/file formats, and apply transformations such as batching,
 shuffling, and mapping functions over the dataset. This is an improved version
@@ -56,8 +56,8 @@ in
 ## `QueueRunner`
 
 Warning: This section discusses implementing input pipelines using the
-queue-based APIs which can be cleanly replaced by the @{$datasets$`tf.data`
-API}.
+queue-based APIs which can be cleanly replaced by the [`tf.data`
+API](../../guide/datasets.md).
 
 A typical queue-based pipeline for reading records from files has the following stages:
 
@@ -154,14 +154,14 @@ a uint8 tensor, standard operations can slice out each piece and reformat as
 needed. For CIFAR-10, you can see how to do the reading and decoding in
 [`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_input.py)
 and described in
-@{$deep_cnn#prepare-the-data$this tutorial}.
+[this tutorial](../../tutorials/images/deep_cnn.md#prepare-the-data).
 
 #### Standard TensorFlow format
 
 Another approach is to convert whatever data you have into a supported format.
 This approach makes it easier to mix and match data sets and network
 architectures. The recommended format for TensorFlow is a
-@{$python/python_io#tfrecords_format_details$TFRecords file}
+[TFRecords file](../../api_guides/python/python_io.md#tfrecords_format_details)
 containing
 [`tf.train.Example` protocol buffers](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 (which contain
@@ -279,7 +279,7 @@ This can be important:
 How many threads do you need? the `tf.train.shuffle_batch*` functions add a
 summary to the graph that indicates how full the example queue is. If you have
 enough reading threads, that summary will stay above zero.  You can
-@{$summaries_and_tensorboard$view your summaries as training progresses using TensorBoard}.
+[view your summaries as training progresses using TensorBoard](../../guide/summaries_and_tensorboard.md).
 
 ### Creating threads to prefetch using `QueueRunner` objects
 
@@ -368,7 +368,7 @@ threads got an error when running some operation (or an ordinary Python
 exception).
 
 For more about threading, queues, QueueRunners, and Coordinators
-@{$threading_and_queues$see here}.
+[see here](../../api_guides/python/threading_and_queues.md).
 
 #### Aside: How clean shut-down when limiting epochs works
 
@@ -501,18 +501,18 @@ sessions, maybe in separate processes:
   model that reads validation input data.
 
 This is what is done `tf.estimator` and manually in
-@{$deep_cnn#save-and-restore-checkpoints$the example CIFAR-10 model}.
+[the example CIFAR-10 model](../../tutorials/images/deep_cnn.md#save-and-restore-checkpoints).
 This has a couple of benefits:
 
 * The eval is performed on a single snapshot of the trained variables.
 * You can perform the eval even after training has completed and exited.
 
 You can have the train and eval in the same graph in the same process, and share
-their trained variables or layers. See @{$variables$the shared variables tutorial}.
+their trained variables or layers. See [the shared variables tutorial](../../guide/variables.md).
 
 To support the single-graph approach
-@{$guide/datasets$`tf.data`} also supplies
-@{$guide/datasets#creating_an_iterator$advanced iterator types} that
+[`tf.data`](../../guide/datasets.md) also supplies
+[advanced iterator types](../../guide/datasets.md#creating_an_iterator) that
 that allow the user to change the input pipeline without rebuilding the graph or
 session.
 
