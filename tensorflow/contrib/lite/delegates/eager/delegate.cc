@@ -83,27 +83,26 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
 }  // namespace delegate
 }  // namespace eager
 
-EagerDelegate::EagerDelegate() {}
-
-EagerDelegate::~EagerDelegate() {}
-
-TfLiteStatus EagerDelegate::Apply(Interpreter* interpreter) {
-  if (!delegate_) {
-    if (!eager::DelegateData::Create(&delegate_data_).ok()) {
-      fprintf(stderr, "Unable to initialize TensorFlow context.\n");
-      return kTfLiteError;
-    }
-
-    delegate_.reset(new TfLiteDelegate{
-        /*data_=*/delegate_data_.get(),
-        /*nullptr,*/ &eager::delegate::Prepare,
-        /*CopyFromBufferHandle=*/&eager::delegate::CopyFromBufferHandle,
-        /*CopyToBufferHandle=*/nullptr,
-        /*FreeBufferHandle=*/nullptr});
+std::unique_ptr<EagerDelegate> EagerDelegate::Create() {
+  std::unique_ptr<eager::DelegateData> delegate_data;
+  if (!eager::DelegateData::Create(&delegate_data).ok()) {
+    fprintf(stderr, "Unable to initialize TensorFlow context.\n");
+    return nullptr;
   }
 
-  return interpreter->ModifyGraphWithDelegate(delegate_.get(),
-                                              /*allow_dynamic_tensors=*/true);
+  return std::unique_ptr<EagerDelegate>(
+      new EagerDelegate(std::move(delegate_data)));
 }
+
+EagerDelegate::EagerDelegate(std::unique_ptr<eager::DelegateData> delegate_data)
+    : TfLiteDelegate{
+          /*data_=*/delegate_data.get(),
+          /*nullptr,*/ &eager::delegate::Prepare,
+          /*CopyFromBufferHandle=*/&eager::delegate::CopyFromBufferHandle,
+          /*CopyToBufferHandle=*/nullptr,
+          /*FreeBufferHandle=*/nullptr},
+      delegate_data_(std::move(delegate_data)) {}
+
+EagerDelegate::~EagerDelegate() {}
 
 }  // namespace tflite

@@ -16,7 +16,6 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/c:c_api_internal",
-        "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
@@ -55,7 +54,6 @@ cc_library(
         ":delegate_data",
         ":kernel",
         ":util",
-        "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:util",
     ] + select({
@@ -119,7 +117,6 @@ cc_library(
         ":delegate_data",
         ":util",
         "@flatbuffers",
-        "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:string",
         "//tensorflow/contrib/lite/kernels:kernel_util",
@@ -169,7 +166,6 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/c:c_api_internal",
-        "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
