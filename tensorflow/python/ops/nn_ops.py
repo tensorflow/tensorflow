@@ -1836,8 +1836,9 @@ def softmax_cross_entropy_with_logits_v2(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -1962,8 +1963,9 @@ def softmax_cross_entropy_with_logits(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
