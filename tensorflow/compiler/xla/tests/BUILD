@@ -1156,6 +1156,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
+    shard_count = 20,
     tags = [
         "enable_for_xla_interpreter",
         "optonly",
