@@ -423,20 +423,28 @@ class ListOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testZerosLike(self):
-    l_empty = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=scalar_shape())
-    l_empty_zeros = array_ops.zeros_like(l_empty)
-    t_empty_zeros = list_ops.tensor_list_stack(
-        l_empty_zeros, element_dtype=dtypes.float32)
+    for dtype in (dtypes.uint8, dtypes.uint16, dtypes.int8, dtypes.int16,
+                  dtypes.int32, dtypes.int64, dtypes.float16, dtypes.float32,
+                  dtypes.float64, dtypes.complex64, dtypes.complex128,
+                  dtypes.bool):
+      l_empty = list_ops.empty_tensor_list(
+          element_dtype=dtype, element_shape=scalar_shape())
+      l_empty_zeros = array_ops.zeros_like(l_empty)
+      t_empty_zeros = list_ops.tensor_list_stack(
+          l_empty_zeros, element_dtype=dtype)
 
-    l_full = list_ops.tensor_list_push_back(l_empty, constant_op.constant(1.0))
-    l_full = list_ops.tensor_list_push_back(l_full, constant_op.constant(2.0))
-    l_full_zeros = array_ops.zeros_like(l_full)
-    t_full_zeros = list_ops.tensor_list_stack(
-        l_full_zeros, element_dtype=dtypes.float32)
+      l_full = list_ops.tensor_list_push_back(l_empty,
+                                              math_ops.cast(0, dtype=dtype))
+      l_full = list_ops.tensor_list_push_back(l_full,
+                                              math_ops.cast(1, dtype=dtype))
+      l_full_zeros = array_ops.zeros_like(l_full)
+      t_full_zeros = list_ops.tensor_list_stack(
+          l_full_zeros, element_dtype=dtype)
 
-    self.assertAllEqual(self.evaluate(t_empty_zeros), [])
-    self.assertAllEqual(self.evaluate(t_full_zeros), [0.0, 0.0])
+      self.assertAllEqual(self.evaluate(t_empty_zeros), [])
+      self.assertAllEqual(
+          self.evaluate(t_full_zeros), np.zeros(
+              (2,), dtype=dtype.as_numpy_dtype))
 
 
 if __name__ == "__main__":

@@ -261,7 +261,7 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
         out_tensor.flat<dtype>().constant(dtype(0));             \
     break;
 
-      TF_CALL_NUMBER_TYPES(DTYPE_CASE)
+      TF_CALL_POD_TYPES(DTYPE_CASE)
 
 #undef DTYPE_CASE
       default:
