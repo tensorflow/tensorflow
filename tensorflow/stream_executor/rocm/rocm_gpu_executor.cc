@@ -181,18 +181,18 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   const string *kernelname;
 
   const OnDiskKernelLoaderSpec *on_disk_spec = nullptr;
-  bool has_ptx = spec.has_cuda_ptx_on_disk();
-  if (has_ptx) {
-    on_disk_spec = &spec.cuda_ptx_on_disk();
+  bool has_cubin = spec.has_cuda_cubin_on_disk();
+  if (has_cubin) {
+    on_disk_spec = &spec.cuda_cubin_on_disk();
   }
 
   if (on_disk_spec != nullptr) {
     LOG(WARNING) << "loading ROCM kernel from disk is not supported";
     return false;
-  } else if (spec.has_cuda_ptx_in_memory()) {
-    kernelname = &spec.cuda_ptx_in_memory().kernelname();
+  } else if (spec.has_cuda_cubin_in_memory()) {
+    kernelname = &spec.cuda_cubin_in_memory().kernelname();
 
-    const char *hsaco = spec.cuda_ptx_in_memory().original_default_text();
+    const char *hsaco = spec.cuda_cubin_in_memory().bytes();
     mutex_lock lock{in_memory_modules_mu_};
     module = in_memory_modules_[hsaco];
 
