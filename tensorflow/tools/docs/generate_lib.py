@@ -22,6 +22,7 @@ import argparse
 import fnmatch
 import os
 import shutil
+import tempfile
 
 import six
 
@@ -544,9 +545,9 @@ class DocGenerator(object):
     self.argument_parser.add_argument(
         '--src_dir',
         type=str,
-        default=None,
-        required=True,
-        help='Directory with the source docs.')
+        default=tempfile.mkdtemp(),
+        required=False,
+        help='Optional directory of source docs to add api_docs links to')
 
   def add_base_dir_argument(self, default_base_dir):
     self.argument_parser.add_argument(
