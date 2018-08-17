@@ -23,7 +23,6 @@ from tensorflow.contrib.distribute.python.collective_all_reduce_strategy import 
 from tensorflow.contrib.distribute.python.cross_tower_ops import *
 from tensorflow.contrib.distribute.python.mirrored_strategy import MirroredStrategy
 from tensorflow.contrib.distribute.python.monitor import Monitor
-from tensorflow.contrib.distribute.python.multi_worker_strategy import MultiWorkerMirroredStrategy
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
 from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
@@ -40,7 +39,6 @@ _allowed_symbols = [
     'CrossTowerOps',
     'DistributionStrategy',
     'MirroredStrategy',
-    'MultiWorkerMirroredStrategy',
     'Monitor',
     'OneDeviceStrategy',
     'ParameterServerStrategy',
