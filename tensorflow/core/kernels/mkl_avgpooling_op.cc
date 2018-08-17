@@ -454,7 +454,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       // initialize variables for the pooling op
       MklPoolParameters pool_params;
       // check whether pooling is 2D or 3D
-      bool isPool2D = (this->ksize_.size() == 4);
+      bool is_pool2d = (this->ksize_.size() == 4);
       // Get the input tensor and initialize the pooling parameters
       TensorShape input_tensor_shape = input_tensor.shape();
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
@@ -477,13 +477,13 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       memory::dims filter_dims, strides, padding_left, padding_right;
       // Get src/filter/stride/padding information
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
-                             &padding_left, &padding_right, isPool2D);
+                             &padding_left, &padding_right, is_pool2d);
 
       // Get the input memory descriptor
       memory::dims src_dims =
           dnn_shape_input.IsMklTensor()
               ? dnn_shape_input.GetSizesAsMklDnnDims()
-              : isPool2D ? TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
+              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
                                                      this->data_format_tf_)
                          : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
                                                       this->data_format_tf_);
@@ -564,18 +564,18 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         orig_input_shape.AddDim(shape_vec(i));
       }
 
-      bool isPool2D = (this->ksize_.size() == 4);
+      bool is_pool2d = (this->ksize_.size() == 4);
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);
 
       memory::dims filter_dims, strides, padding_left, padding_right;
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
-                             &padding_left, &padding_right, isPool2D);
+                             &padding_left, &padding_right, is_pool2d);
 
       memory::dims orig_input_dims_mkl_order =
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetSizesAsMklDnnDims()
-              : isPool2D ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
+              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
                                                      this->data_format_tf_)
                          : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
                                                       this->data_format_tf_);
@@ -583,7 +583,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       memory::dims diff_dst_dims =
           grad_mkl_shape.IsMklTensor()
               ? grad_mkl_shape.GetSizesAsMklDnnDims()
-              : isPool2D ? TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
+              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
                                                      this->data_format_tf_)
                          : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
                                                       this->data_format_tf_);
