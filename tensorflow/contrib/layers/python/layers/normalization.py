@@ -176,8 +176,7 @@ def group_norm(inputs,
                variables_collections=None,
                outputs_collections=None,
                trainable=True,
-               scope=None,
-               mean_close_to_zero=False):
+               scope=None):
   """Functional interface for the group normalization layer.
 
   Reference: https://arxiv.org/abs/1803.08494.
@@ -223,19 +222,6 @@ def group_norm(inputs,
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     scope: Optional scope for `variable_scope`.
-    mean_close_to_zero: The mean of `input` before ReLU will be close to zero
-      when batch size >= 4k for Resnet-50 on TPU. If `True`, use
-      `nn.sufficient_statistics` and `nn.normalize_moments` to calculate the
-      variance. This is the same behavior as `fused` equals `True` in batch
-      normalization. If `False`, use `nn.moments` to calculate the variance.
-      When `mean` is close to zero, like 1e-4, use `mean` to calculate the
-      variance may have poor result due to repeated roundoff error and
-      denormalization in `mean`.  When `mean` is large, like 1e2,
-      sum(`input`^2) is so large that only the high-order digits of the elements
-      are being accumulated. Thus, use sum(`input` - `mean`)^2/n to calcualte
-      the variance has better accuracy compared to (sum(`input`^2)/n - `mean`^2)
-      when `mean` is large.
-
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -347,14 +333,7 @@ def group_norm(inputs,
       gamma = array_ops.reshape(gamma, params_shape_broadcast)
 
     # Calculate the moments.
-    if mean_close_to_zero:
-      # One pass algorithm returns better result when mean is close to zero.
-      counts, means_ss, variance_ss, _ = nn.sufficient_statistics(
-          inputs, moments_axes, keep_dims=True)
-      mean, variance = nn.normalize_moments(
-          counts, means_ss, variance_ss, shift=None)
-    else:
-      mean, variance = nn.moments(inputs, moments_axes, keep_dims=True)
+    mean, variance = nn.moments(inputs, moments_axes, keep_dims=True)
 
     # Compute normalization.
     # TODO(shlens): Fix nn.batch_normalization to handle the 5-D Tensor
