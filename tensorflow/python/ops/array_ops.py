@@ -712,10 +712,7 @@ def strided_slice(input_,
         new_axis_mask=new_axis_mask,
         shrink_axis_mask=shrink_axis_mask)
 
-  if not context.executing_eagerly():
-    # TODO(apassos) In eager mode assignment will be done by overriding
-    # __setitem__ instead.
-    op.assign = assign
+  op.assign = assign
   return op
 
 
