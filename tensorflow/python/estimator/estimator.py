@@ -120,7 +120,8 @@ class Estimator(object):
                warm_start_from=None):
     """Constructs an `Estimator` instance.
 
-    See @{$estimators} for more information. To warm-start an `Estimator`:
+    See [estimators](https://tensorflow.org/guide/estimators) for more information.
+    To warm-start an `Estimator`:
 
     ```python
     estimator = tf.estimator.DNNClassifier(
@@ -285,8 +286,10 @@ class Estimator(object):
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$premade_estimators#create_input_functions} for more information.
-        The function should construct and return one of the following:  * A
+        See [Premade
+        Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
+        the following:  * A
         `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
         `(features, labels)` with same constraints as below. * A tuple
         `(features, labels)`: Where `features` is a `tf.Tensor` or a dictionary
@@ -321,6 +324,14 @@ class Estimator(object):
       ValueError: If both `steps` and `max_steps` are not `None`.
       ValueError: If either `steps` or `max_steps <= 0`.
     """
+    if self.config.task_type in (run_config.TaskType.EVALUATOR,
+                                 run_config.TaskType.PS):
+      raise ValueError(
+          'Train has been called wrong configuration. Please use '
+          'tf.estimator.train_and_evaluate which calls propper API according '
+          'to given configuration. Current configuration: {}.'.format(
+              self.config))
+
     with context.graph_mode():
       if (steps is not None) and (max_steps is not None):
         raise ValueError('Can not provide both steps and max_steps.')
@@ -394,7 +405,8 @@ class Estimator(object):
 
     Args:
       input_fn: A function that constructs the input data for evaluation. See
-        @{$premade_estimators#create_input_functions} for more information. The
+        [Premade Estimators](https://tensorflow.org/guide/premade#create_input_functions}
+        for more information. The
         function should construct and return one of the following:  * A
         `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
         `(features, labels)` with same constraints as below. * A tuple
@@ -478,8 +490,9 @@ class Estimator(object):
       input_fn: A function that constructs the features. Prediction continues
         until `input_fn` raises an end-of-input exception
         (`tf.errors.OutOfRangeError` or `StopIteration`).
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade
+        Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
 
           * A `tf.data.Dataset` object: Outputs of `Dataset` object must have
@@ -595,8 +608,7 @@ class Estimator(object):
     """Exports inference graph as a `SavedModel` into the given dir.
 
     For a detailed guide, see
-    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with
-    Estimators}.
+    [Using SavedModel with Estimators](https://tensorflow.org/guide/saved_model#using_savedmodel_with_estimators).
 
     This method builds a new graph by first calling the
     `serving_input_receiver_fn` to obtain feature `Tensor`s, and then calling

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -125,6 +126,52 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
 
   EXPECT_GE(index_arg.Get<int32>({2}), 0);
   EXPECT_LE(index_arg.Get<int32>({2}), 3);
+}
+
+XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
+  // Inputs which are sort keys in key/value sorts should have no duplicates.
+  auto module = ParseHloString(R"(
+HloModule sort.148.1589
+
+ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
+  %parameter.0 = f32[1048576]{0} parameter(0)
+  %parameter.1 = s32[1048576]{0} parameter(1)
+  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+}
+)")
+                    .ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  const Literal& key_arg = *args[0];
+
+  tensorflow::gtl::FlatSet<uint32> key_set;
+  for (const float& value : key_arg.data<float>()) {
+    EXPECT_TRUE(key_set.insert(tensorflow::bit_cast<uint32>(value)).second);
+  }
+}
+
+XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
+  // Inputs which are sort keys in key/value sorts should have no duplicates.
+  auto module = ParseHloString(R"(
+HloModule sort.148.1589
+
+ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (s32[1048576], s32[1048576]) {
+  %parameter.0 = s32[1048576]{0} parameter(0)
+  %parameter.1 = s32[1048576]{0} parameter(1)
+  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+}
+)")
+                    .ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  const Literal& key_arg = *args[0];
+
+  tensorflow::gtl::FlatSet<int32> key_set;
+  for (const int32& value : key_arg.data<int32>()) {
+    EXPECT_TRUE(key_set.insert(tensorflow::bit_cast<uint32>(value)).second);
+  }
 }
 
 }  // namespace

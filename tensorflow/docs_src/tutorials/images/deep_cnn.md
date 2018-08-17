@@ -40,7 +40,7 @@ designing larger and more sophisticated models in TensorFlow:
 and `tf.nn.local_response_normalization`
 (Chapter 3.3 in
 [AlexNet paper](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
-* @{$summaries_and_tensorboard$Visualization}
+* [Visualization](../../guide/summaries_and_tensorboard.md)
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
 * Routines for calculating the
@@ -114,7 +114,7 @@ The input part of the model is built by the functions `inputs()` and
 `distorted_inputs()` which read images from the CIFAR-10 binary data files.
 These files contain fixed byte length records, so we use
 `tf.FixedLengthRecordReader`.
-See @{$reading_data#reading-from-files$Reading Data} to
+See [Reading Data](../../api_guides/python/reading_data.md#reading-from-files) to
 learn more about how the `Reader` class works.
 
 The images are processed as follows:
@@ -131,10 +131,10 @@ artificially increase the data set size:
 * Randomly distort the `tf.image.random_brightness`.
 * Randomly distort the `tf.image.random_contrast`.
 
-Please see the @{$python/image$Images} page for the list of
+Please see the [Images](../../api_guides/python/image.md) page for the list of
 available distortions. We also attach an
 `tf.summary.image` to the images
-so that we may visualize them in @{$summaries_and_tensorboard$TensorBoard}.
+so that we may visualize them in [TensorBoard](../../guide/summaries_and_tensorboard.md).
 This is a good practice to verify that inputs are built correctly.
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
@@ -160,8 +160,8 @@ Layer Name | Description
 `conv2` | `tf.nn.conv2d` and `tf.nn.relu` activation.
 `norm2` | `tf.nn.local_response_normalization`.
 `pool2` | `tf.nn.max_pool`.
-`local3` | @{$python/nn$fully connected layer with rectified linear activation}.
-`local4` | @{$python/nn$fully connected layer with rectified linear activation}.
+`local3` | [fully connected layer with rectified linear activation](../../api_guides/python/nn.md).
+`local4` | [fully connected layer with rectified linear activation](../../api_guides/python/nn.md).
 `softmax_linear` | linear transformation to produce logits.
 
 Here is a graph generated from TensorBoard describing the inference operation:
@@ -205,7 +205,7 @@ We visualize it in TensorBoard with a `tf.summary.scalar`:
 
 We train the model using standard
 [gradient descent](https://en.wikipedia.org/wiki/Gradient_descent)
-algorithm (see @{$python/train$Training} for other methods)
+algorithm (see [Training](../../api_guides/python/train.md) for other methods)
 with a learning rate that
 `tf.train.exponential_decay`
 over time.
@@ -265,7 +265,7 @@ in `cifar10_input.py`.
 
 `cifar10_train.py` periodically uses a  `tf.train.Saver` to save
 all model parameters in
-@{$guide/saved_model$checkpoint files}
+[checkpoint files](../../guide/saved_model.md)
 but it does *not* evaluate the model. The checkpoint file
 will be used by `cifar10_eval.py` to measure the predictive
 performance (see [Evaluating a Model](#evaluating-a-model) below).
@@ -282,7 +282,7 @@ how the model is training. We want more insight into the model during training:
 * Are the gradients, activations and weights reasonable?
 * What is the learning rate currently at?
 
-@{$summaries_and_tensorboard$TensorBoard} provides this
+[TensorBoard](../../guide/summaries_and_tensorboard.md) provides this
 functionality, displaying data exported periodically from `cifar10_train.py` via
 a
 `tf.summary.FileWriter`.
@@ -413,7 +413,7 @@ scope indicating that they should be run on the first GPU.
 All variables are pinned to the CPU and accessed via
 `tf.get_variable`
 in order to share them in a multi-GPU version.
-See how-to on @{$variables$Sharing Variables}.
+See how-to on [Sharing Variables](../../guide/variables.md).
 
 ### Launching and Training the Model on Multiple GPU cards
 

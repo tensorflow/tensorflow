@@ -3,11 +3,11 @@
 This section focuses on deploying real-world models.  It contains
 the following documents:
 
-  * @{$distributed$Distributed TensorFlow}, which explains how to create
+  * [Distributed TensorFlow](../deploy/distributed.md), which explains how to create
     a cluster of TensorFlow servers.
-  * @{$hadoop$How to run TensorFlow on Hadoop}, which has a highly
+  * [How to run TensorFlow on Hadoop](../deploy/hadoop.md), which has a highly
     self-explanatory title.
-  * @{$s3$How to run TensorFlow with the S3 filesystem}, which explains how
+  * [How to run TensorFlow with the S3 filesystem](../deploy/s3.md), which explains how
     to run TensorFlow with the S3 file system.
   * The entire document set for [TensorFlow serving](/serving), an open-source,
     flexible, high-performance serving system for machine-learned models

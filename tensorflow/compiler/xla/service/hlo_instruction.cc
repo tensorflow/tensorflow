@@ -281,12 +281,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kInfeed: {
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
-      CHECK_EQ(proto.operand_ids_size(), 1);
+      TF_RET_CHECK(proto.operand_ids_size() == 1);
       instruction =
           CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed:
-      CHECK_EQ(proto.operand_ids_size(), 2);
+      TF_RET_CHECK(proto.operand_ids_size() == 2);
       instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
                                   operands(1), proto.outfeed_config());
       break;
@@ -392,13 +392,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Gather instruction should have GatherDimensionNumbers set.";
       std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
           MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
-      std::vector<int64> gather_window_bounds;
-      for (int64 bound : proto.gather_window_bounds()) {
-        gather_window_bounds.push_back(bound);
+      std::vector<int64> gather_slice_sizes;
+      for (int64 bound : proto.gather_slice_sizes()) {
+        gather_slice_sizes.push_back(bound);
       }
-      instruction =
-          CreateGather(proto.shape(), operands(0), operands(1),
-                       *gather_dimension_numbers, gather_window_bounds);
+      instruction = CreateGather(proto.shape(), operands(0), operands(1),
+                                 *gather_dimension_numbers, gather_slice_sizes);
       break;
     }
     case HloOpcode::kScatter: {
@@ -1078,11 +1077,11 @@ bool HloInstruction::HasSideEffect() const {
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
-    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return MakeUnique<HloGatherInstruction>(shape, operand, gather_indices,
-                                          gather_dim_numbers, window_bounds);
+    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  return MakeUnique<HloGatherInstruction>(shape, operand, start_indices,
+                                          gather_dim_numbers, slice_sizes);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
@@ -3226,9 +3225,8 @@ const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {
   return Cast<HloGatherInstruction>(this)->gather_dimension_numbers();
 }
 
-tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_window_bounds()
-    const {
-  return Cast<HloGatherInstruction>(this)->gather_window_bounds();
+tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_slice_sizes() const {
+  return Cast<HloGatherInstruction>(this)->gather_slice_sizes();
 }
 
 const ScatterDimensionNumbers& HloInstruction::scatter_dimension_numbers()

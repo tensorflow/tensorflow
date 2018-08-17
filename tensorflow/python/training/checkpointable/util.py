@@ -68,16 +68,25 @@ _OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
 class _CheckpointRestoreCoordinator(object):
   """Holds the status of an object-based checkpoint load."""
 
-  def __init__(self, object_graph_proto, save_path, dtype_map=None):
+  def __init__(self, object_graph_proto, save_path, save_path_tensor,
+               restore_op_cache, saveable_object_cache):
     """Specify the checkpoint being loaded.
 
     Args:
       object_graph_proto: The CheckpointableObjectGraph protocol buffer
         associated with this checkpoint.
-      save_path: A string `Tensor`. The path to the checkpoint, as returned by
+      save_path: A string, the path to the checkpoint, as returned by
         `tf.train.latest_checkpoint`.
-      dtype_map: When executing eagerly, specifies dtypes for creating slot
-        variables. None when graph building.
+      save_path_tensor: A string `Tensor` which contains or will be fed the save
+        path.
+      restore_op_cache: A dictionary shared between
+        `_CheckpointRestoreCoordinator`s for the same Python objects, used to
+        look up restore ops by name to avoid re-creating them across multiple
+        `restore()` calls.
+      saveable_object_cache: A mapping of checkpointable objects -> attribute
+        names -> list(`SaveableObject`s), used when `SaveableObjects` must be
+        referenced every restore (e.g. for Python state); otherwise they would
+        create their own ops every restore.
     """
     self.builder = saver_lib.BulkSaverBuilder()
     self.object_graph_proto = object_graph_proto
@@ -97,12 +106,17 @@ class _CheckpointRestoreCoordinator(object):
     # loading). Used to make status assertions fail when loading checkpoints
     # that don't quite match.
     self.all_python_objects = _ObjectIdentityWeakSet()
-    self.save_path = save_path
-    self.dtype_map = dtype_map
+    self.save_path_tensor = save_path_tensor
+    self.save_path_string = save_path
+    self.dtype_map = pywrap_tensorflow.NewCheckpointReader(
+        save_path).get_variable_to_dtype_map()
+    # A NewCheckpointReader for the most recent checkpoint, for streaming Python
+    # state restoration.
     # When graph building, contains a list of ops to run to restore objects from
     # this checkpoint.
     self.restore_ops = []
-    self.restore_ops_by_name = {}
+    self.restore_ops_by_name = restore_op_cache
+    self.saveable_object_cache = saveable_object_cache
     self.new_restore_ops_callback = None
     # A mapping from optimizer proto ids to lists of slot variables to be
     # restored when the optimizer is tracked. Only includes slot variables whose
@@ -1153,16 +1167,15 @@ class CheckpointableSaver(object):
     self._last_save_object_graph = None
     self._last_save_saver = None
 
-    # Op caching for restore
-    self._last_restore_object_graph = None
-    self._last_restore_checkpoint = None
+    # Op caching for restore, shared between _CheckpointRestoreCoordinators
+    self._restore_op_cache = {}
 
     if context.executing_eagerly():
       # SaveableObjects are always recreated when executing eagerly.
       self._saveable_object_cache = None
     else:
-      # Maps Checkpointable objects -> attribute names -> SaveableObjects, to
-      # avoid re-creating SaveableObjects when graph building.
+      # Maps Checkpointable objects -> attribute names -> list(SaveableObjects),
+      # to avoid re-creating SaveableObjects when graph building.
       self._saveable_object_cache = _ObjectIdentityWeakKeyDictionary()
 
   @property
@@ -1340,22 +1353,12 @@ class CheckpointableSaver(object):
     object_graph_proto = (
         checkpointable_object_graph_pb2.CheckpointableObjectGraph())
     object_graph_proto.ParseFromString(object_graph_string)
-    if graph_building and object_graph_proto == self._last_restore_object_graph:
-      checkpoint = self._last_restore_checkpoint
-    else:
-      checkpoint = _CheckpointRestoreCoordinator(
-          object_graph_proto=object_graph_proto,
-          save_path=file_prefix_tensor,
-          dtype_map=dtype_map)
-      if graph_building:
-        if self._last_restore_object_graph is not None:
-          raise NotImplementedError(
-              "Using a single Saver to restore different object graphs is not "
-              "currently supported when graph building. Use a different Saver "
-              "for each object graph (restore ops will be duplicated), or "
-              "file a feature request if this limitation bothers you.")
-        self._last_restore_checkpoint = checkpoint
-        self._last_restore_object_graph = object_graph_proto
+    checkpoint = _CheckpointRestoreCoordinator(
+        object_graph_proto=object_graph_proto,
+        save_path=save_path,
+        save_path_tensor=file_prefix_tensor,
+        restore_op_cache=self._restore_op_cache,
+        saveable_object_cache=self._saveable_object_cache)
     base._CheckpointPosition(  # pylint: disable=protected-access
         checkpoint=checkpoint, proto_id=0).restore(self._root_checkpointable)
     load_status = CheckpointLoadStatus(

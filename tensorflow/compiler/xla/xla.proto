@@ -195,8 +195,13 @@ message DebugOptions {
   bool xla_cpu_enable_fast_math = 99;
   bool xla_gpu_enable_fast_math = 100;
 
-  // Extra options to pass to the compilation backend; specific interpretation
-  // of these values is left to the backend.
+  // Crashes the program when any kind of verification fails, instead of just
+  // logging the failures. One example is cross checking of convolution results
+  // among different algorithms.
+  bool xla_gpu_crash_on_verification_failures = 101;
+
+  // Extra options to pass to the compilation backend (e.g. LLVM); specific
+  // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 }
 

@@ -3265,6 +3265,7 @@ py_library(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         # `layers` dependency only exists due to the use of a small utility.
@@ -4658,7 +4659,10 @@ py_test(
     size = "medium",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67945581
+    tags = [
+        "no_pip",
+        "notsan",  # b/67945581
+    ],
     deps = [
         ":array_ops",
         ":checkpoint_management",
@@ -4676,6 +4680,7 @@ py_test(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute:distribute_coordinator",
     ],
 )
 

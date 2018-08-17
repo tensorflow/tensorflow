@@ -1631,27 +1631,27 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
   });
 }
 
-XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
                          const GatherDimensionNumbers& dimension_numbers,
-                         tensorflow::gtl::ArraySlice<int64> window_bounds) {
+                         tensorflow::gtl::ArraySlice<int64> slice_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
-    TF_ASSIGN_OR_RETURN(const Shape& gather_indices_shape,
-                        GetShape(gather_indices));
+    TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
+                        GetShape(start_indices));
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
-        ShapeInference::InferGatherShape(input_shape, gather_indices_shape,
-                                         dimension_numbers, window_bounds));
+        ShapeInference::InferGatherShape(input_shape, start_indices_shape,
+                                         dimension_numbers, slice_sizes));
 
     *instr.mutable_gather_dimension_numbers() = dimension_numbers;
-    for (int64 bound : window_bounds) {
-      instr.add_gather_window_bounds(bound);
+    for (int64 bound : slice_sizes) {
+      instr.add_gather_slice_sizes(bound);
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kGather,
-                          {input, gather_indices});
+                          {input, start_indices});
   });
 }
 
@@ -2906,11 +2906,11 @@ XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                             mantissa_bits);
 }
 
-XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return input.builder()->Gather(input, gather_indices, dimension_numbers,
-                                 window_bounds);
+             tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  return input.builder()->Gather(input, start_indices, dimension_numbers,
+                                 slice_sizes);
 }
 
 XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,

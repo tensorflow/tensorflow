@@ -5784,6 +5784,38 @@ class GraphKeys(object):
     return cls.GLOBAL_VARIABLES
 
 
+def dismantle_graph(graph):
+  """Cleans up reference cycles from a `Graph`.
+
+  Helpful for making sure the garbage collector doesn't need to run after a
+  temporary `Graph` is no longer needed.
+
+  Args:
+    graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
+      after this function runs.
+  """
+  # pylint: disable=protected-access
+  # OrderedDict, constructed on Graph creation, makes a simple reference loop
+  # and hides it in an __attribute in some Python versions. We don't need to
+  # throw an error if we can't find it, but if we do find it we can break the
+  # loop to avoid creating work for the garbage collector.
+  graph_operations = graph.get_operations()
+  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
+  # pylint: enable=protected-access
+  if problematic_cycle:
+    try:
+      del problematic_cycle[0][:]
+    except TypeError:
+      # This is probably not one of the problematic Python versions. Continue
+      # with the rest of our cleanup.
+      pass
+  # Now clean up Operation<->Graph reference cycles by clearing all of the
+  # attributes for the Graph and its ops.
+  for op in graph_operations:
+    op.__dict__ = {}
+  graph.__dict__ = {}
+
+
 @tf_export("add_to_collection")
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.

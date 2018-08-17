@@ -70,7 +70,7 @@ class TileOp : public XlaOpKernel {
     bool one_dimension_is_broadcasted_without_multiple = true;
     for (int i = 0; i < input_dims; ++i) {
       int multiple = literal.Get<int>({i});
-      OP_REQUIRES(ctx, multiple,
+      OP_REQUIRES(ctx, multiple >= 0,
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", multiple));
       int64 new_dim = input_shape.dim_size(i) * multiple;

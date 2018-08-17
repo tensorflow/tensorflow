@@ -14,7 +14,10 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Sparse Tensor Representation. See the @{$python/sparse_ops} guide."""
+"""Sparse Tensor Representation.
+
+See the [Sparse Ops](https://tensorflow.org/api_guides/python/sparse_ops) guide.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

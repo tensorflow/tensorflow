@@ -14,7 +14,7 @@
 # ==============================================================================
 """Basic arithmetic operators.
 
-See the @{$python/math_ops} guide.
+See the [python/math_ops](python/math_ops) guide.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -2564,8 +2564,9 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r""" Computes the mean along segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
   [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
@@ -2596,8 +2597,9 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
   [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
@@ -2632,8 +2634,9 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
-  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  for an explanation of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
   dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -2707,8 +2710,9 @@ def sparse_segment_mean(data,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
 
-  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  for an explanation of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
   dimension, selecting a subset of dimension 0, specified by `indices`.

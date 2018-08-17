@@ -226,7 +226,7 @@ class Dataset(object):
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$guide/datasets#consuming_numpy_arrays$this guide}.
+    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -245,7 +245,7 @@ class Dataset(object):
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$guide/datasets#consuming_numpy_arrays$this guide}.
+    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the

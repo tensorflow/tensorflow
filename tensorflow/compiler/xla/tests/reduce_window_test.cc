@@ -1261,6 +1261,12 @@ struct R1ReduceWindowTestData {
      /*pad_low=*/{5},
      /*pad_high=*/{0},
      /*reducer=*/Reducer::kAdd},
+
+    {/*base_bounds=*/{4096}, /*window_bounds=*/{4096},
+     /*strides=*/{1},
+     /*pad_low=*/{4095},
+     /*pad_high=*/{0},
+     /*reducer=*/Reducer::kMax},
 };
 
 string R1ReduceWindowTestDataToString(

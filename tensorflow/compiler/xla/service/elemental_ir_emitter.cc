@@ -1672,22 +1672,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   std::vector<int64> operand_to_output_dim(operand_shape.dimensions_size(), -1);
   for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
-    if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
+    if (c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       operand_index.push_back(index.GetConstantWithIndexType(0));
     } else {
-      int64 output_window_dim =
-          dim_numbers.output_window_dims(operand_index_dim++);
+      int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
       operand_to_output_dim[i] = output_window_dim;
       operand_index.push_back(index[output_window_dim]);
     }
   }
 
-  // This is the index of the index vector in the gather_indices tensor.
+  // This is the index of the index vector in the start_indices tensor.
   IrArray::Index gather_index_index(index_type);
   {
     std::vector<llvm::Value*> gather_index_index_components;
     for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
-      if (!c_binary_search(dim_numbers.output_window_dims(), i)) {
+      if (!c_binary_search(dim_numbers.offset_dims(), i)) {
         gather_index_index.push_back(index[i]);
       }
     }
@@ -1700,7 +1699,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   auto add_to_operand_index = [&](llvm::Value* index_component, int64 dim) {
     llvm::Value* gather_dim_component_extended =
         b_->CreateSExtOrTrunc(index_component, index_type);
-    int64 operand_dim = dim_numbers.gather_dims_to_operand_dims(dim);
+    int64 operand_dim = dim_numbers.start_index_map(dim);
     int64 output_dim = operand_to_output_dim[operand_dim];
     // If 'output_dim' is -1, it means 'operand_dim' is an elided window dim.
     // This means we set the iteration index to 0, so for the purpose of the

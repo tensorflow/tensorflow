@@ -18,13 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import os
-
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
-from tensorflow.core.protobuf import cluster_pb2
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -32,22 +29,10 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 _LOCAL_CPU = "/device:CPU:0"
 _LOCAL_GPU_0 = "/device:GPU:0"
-
-
-def _normalize_cluster_spec(cluster_spec):
-  """Makes `cluster_spec` into a `ClusterSpec` object."""
-  if isinstance(cluster_spec, (dict, cluster_pb2.ClusterDef)):
-    return server_lib.ClusterSpec(cluster_spec)
-  elif not isinstance(cluster_spec, server_lib.ClusterSpec):
-    raise ValueError(
-        "`cluster_spec' should be dict or a `tf.train.ClusterSpec` or a "
-        "`tf.train.ClusterDef` object")
-  return cluster_spec
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
@@ -108,7 +93,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     super(ParameterServerStrategy, self).__init__()
     self._num_gpus_per_worker = num_gpus_per_worker
     if cluster_spec:
-      cluster_spec = _normalize_cluster_spec(cluster_spec)
+      cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
     self._cluster_spec = cluster_spec
 
     # We typically don't need to do all-reduce in this strategy.
@@ -216,6 +201,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     else:
       self._default_device = self._worker_device
 
+    self._is_chief = cluster_spec is None or multi_worker_util.is_chief(
+        cluster_spec, task_type, task_id)
+
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     return values.PerDeviceDataset(
@@ -319,26 +307,31 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     # No need to distinguish between normal variables and tower-local variables.
     return array_ops.identity(var)
 
-  def configure(self, session_config=None):
+  def configure(self,
+                session_config=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    """Configures the strategy class.
+
+    The strategy object will be re-initialized if `cluster_spec` is given but
+    was not passed in the constructor.
+
+    Args:
+      session_config: not used currently.
+      cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
+        cluster configurations.
+      task_type: the current task type.
+      task_id: the current task id.
+    """
     del session_config
-
-    # Use TF_CONFIG to get the cluster spec and the current job.
-    tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
-    cluster_spec = _normalize_cluster_spec(tf_config.get("cluster", {}))
-
-    task_env = tf_config.get("task", {})
-    if task_env:
-      task_type = task_env.get("type", "worker")
-      task_id = int(task_env.get("index", "0"))
-    else:
-      task_type = "worker"
-      task_id = None
 
     # Set the devices if cluster_spec is defined in TF_CONFIG but not passed in
     # the constructor.
     if not self._cluster_spec and cluster_spec:
-      self._cluster_spec = cluster_spec
-      self._initialize_devices(self._num_gpus_per_worker, cluster_spec,
+      self._cluster_spec = multi_worker_util.normalize_cluster_spec(
+          cluster_spec)
+      self._initialize_devices(self._num_gpus_per_worker, self._cluster_spec,
                                task_type, task_id)
 
   @property
@@ -356,3 +349,19 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
+
+  @property
+  def between_graph(self):
+    return True
+
+  @property
+  def should_init(self):
+    return self._is_chief
+
+  @property
+  def should_checkpoint(self):
+    return self._is_chief
+
+  @property
+  def should_save_summary(self):
+    return self._is_chief

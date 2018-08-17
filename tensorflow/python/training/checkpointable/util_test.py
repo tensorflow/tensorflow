@@ -1073,16 +1073,11 @@ class CheckpointingTests(test.TestCase):
     self.assertEqual(5, self.evaluate(checkpoint.var_5))
     self.assertEqual(1, self.evaluate(checkpoint.var_1))
     self.assertEqual(0, self.evaluate(checkpoint.var_0))
-    if context.executing_eagerly():
-      checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
-      self.assertEqual(9, self.evaluate(checkpoint.var_9))
-      self.assertEqual(8, self.evaluate(checkpoint.var_8))
-      self.assertEqual(1, self.evaluate(checkpoint.var_1))
-      self.assertEqual(0, self.evaluate(checkpoint.var_0))
-    else:
-      # Restoring into modified graphs is an error while graph building.
-      with self.assertRaises(NotImplementedError):
-        checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+    checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+    self.assertEqual(9, self.evaluate(checkpoint.var_9))
+    self.assertEqual(8, self.evaluate(checkpoint.var_8))
+    self.assertEqual(1, self.evaluate(checkpoint.var_1))
+    self.assertEqual(0, self.evaluate(checkpoint.var_0))
 
   def testManyRestoresGraph(self):
     """Restores after the first should not modify the graph."""
