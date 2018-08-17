@@ -105,7 +105,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
   double GetAsDouble(const Literal& literal,
                      tensorflow::gtl::ArraySlice<int64> input_index) {
-    CHECK(false);
+    LOG(FATAL) << "Trying to get complex literal as double: "
+               << literal.ToString();
   }
 
  public:
