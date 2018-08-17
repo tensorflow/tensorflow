@@ -105,7 +105,9 @@ StatusOr<poplar::program::Program> CreateParallelMap(poplar::Graph& graph,
 
   auto outputs = visitor.outputs();
   for (size_t i = 0; i < outputs.size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, outputs[i]));
+    TF_CHECK_OK(AddOutputTensor(graph, res, visitor.sequence, tensor_map, inst,
+                                i, outputs[i])
+                    .status());
   }
 
   return visitor.sequence;
@@ -133,8 +135,10 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
     seq.add(inline_visitor.sequence);
 
     for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
-      TF_RETURN_IF_ERROR(
-          AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
+      poplar::Tensor out;
+      TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i,
+                                  inline_visitor.outputs()[i])
+                      .status());
     }
   } else if (StartsWith(comp->name(), "__arithmetic")) {
     ArithmeticExprVisitor arithmetic_visitor(graph, res, args);
@@ -143,8 +147,9 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
     seq.add(arithmetic_visitor.sequence);
 
     for (size_t i = 0; i < arithmetic_visitor.outputs().size(); i++) {
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                         arithmetic_visitor.outputs()[i]));
+      TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i,
+                                  arithmetic_visitor.outputs()[i])
+                      .status());
     }
   } else {
     ComputationMap::iterator subcomp_visitor;
@@ -170,7 +175,8 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
       poplar::Tensor o =
           graph.clone(subcomp_visitor->second.outputs()[i], name);
       seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+      TF_CHECK_OK(
+          AddOutputTensor(graph, res, seq, tensor_map, inst, i, o).status());
     }
   }
 
@@ -199,8 +205,9 @@ StatusOr<poplar::program::Program> CreateFusionOp(poplar::Graph& graph,
   seq.add(inline_visitor.sequence);
 
   for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
-    TF_RETURN_IF_ERROR(
-        AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
+    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i,
+                                inline_visitor.outputs()[i])
+                    .status());
   }
 
   return seq;
@@ -330,7 +337,8 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
     auto name = se::port::StrCat(GetDebugName(inst), "_out_", i);
     poplar::Tensor o = graph.clone(body_outputs[i], name);
     main_seq.add(poplar::program::Copy(body_outputs[i], o));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, main_seq, tensor_map, inst, i, o).status());
   }
 
   return main_seq;
@@ -394,7 +402,8 @@ StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
 
   for (unsigned int i = 0; i < output_count; i++) {
     poplar::Tensor out = graph.clone(true_body->second.outputs()[i]);
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+    TF_ASSIGN_OR_RETURN(
+        out, AddOutputTensor(graph, res, seq, tensor_map, inst, i, out));
 
     true_seq.add(poplar::program::Copy(true_body->second.outputs()[i], out));
     false_seq.add(poplar::program::Copy(false_body->second.outputs()[i], out));

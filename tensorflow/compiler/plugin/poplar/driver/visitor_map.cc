@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -40,8 +41,10 @@ MapVisitor::MapVisitor(poplar::Graph& graph, CompilerResources& res,
 
 Status MapVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
-                                     operands_[inst->parameter_number()]));
+  poplar::Tensor out;
+  TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0,
+                              operands_[inst->parameter_number()])
+                  .status());
   return Status::OK();
 }
 

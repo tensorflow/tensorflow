@@ -128,7 +128,9 @@ Status BaseVisitor::HandleCopy(HloInstruction* inst) {
 
   out = graph_.clone(in);
   sequence.add(poplar::program::Copy(in, out));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
 
   return Status::OK();
 }
@@ -171,7 +173,9 @@ Status BaseVisitor::HandleBitcastConvert(HloInstruction* inst) {
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   out = out.reinterpret(type);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
   return Status::OK();
 }
 
@@ -205,7 +209,9 @@ Status BaseVisitor::HandleConstant(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(
       t, AddConstantTensor(graph_, std::make_pair(inst, 0),
                            GetOutputShape(inst), inst->literal(), resources_));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
+          .status());
   return Status::OK();
 }
 
@@ -214,7 +220,10 @@ Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   ArgVector inputs =
       FindTupleInInstructionInput(tensor_map, inst, 0, inst->tuple_index());
   for (unsigned int i = 0; i < inputs.size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, inputs[i]));
+    poplar::Tensor out;
+    TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map, inst,
+                                i, inputs[i])
+                    .status());
   }
   return Status::OK();
 }
@@ -300,7 +309,9 @@ Status BaseVisitor::HandleTuple(HloInstruction* inst) {
   for (uint64 i = 0; i < operand_count; i++) {
     ArgVector inputs = FindInstructionInputs(tensor_map, inst, i);
     for (poplar::Tensor t : inputs) {
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, n, t));
+      TF_CHECK_OK(
+          AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, n, t)
+              .status());
       n++;
     }
   }
@@ -351,7 +362,9 @@ Status BaseVisitor::HandleReal(HloInstruction* inst) {
 
   out = graph_.clone(in);
   sequence.add(poplar::program::Copy(in, out));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
+          .status());
 
   return Status::OK();
 }

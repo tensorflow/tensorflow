@@ -13,36 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_WIDE_CONST_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_WIDE_CONST_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
-
-#include <set>
+#include "tensorflow/compiler/plugin/poplar/driver/single_hlo_matcher.h"
 
 namespace xla {
 
-class HloModule;
-
 namespace poplarplugin {
 
-class InplaceInstructions;
-
-// Extract elementwise ops into a called sub-graph
-// (must come after InplaceFinder)
-
-class ExpressionOutliner : public HloMatcher {
+class FuseWideConst : public SingleHloMatcher {
  public:
-  ExpressionOutliner(struct CompilerAnnotations& annotations);
+  FuseWideConst(struct CompilerAnnotations& annotations);
 
-  ~ExpressionOutliner() override = default;
+  ~FuseWideConst() override = default;
 
-  tensorflow::StringPiece name() const override { return "expression-outline"; }
-
-  StatusOr<bool> Run(HloModule* module) override;
-
- private:
-  unsigned ReplaceNodes() override { return 0; };
+  tensorflow::StringPiece name() const override {
+    return "poplar-fuse-wide-const";
+  }
 };
 
 }  // namespace poplarplugin

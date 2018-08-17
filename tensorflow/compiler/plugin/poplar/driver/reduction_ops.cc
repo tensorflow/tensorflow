@@ -271,7 +271,8 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   } else {
     // Find the input tensors
     poplar::Tensor to_reduce;
@@ -306,7 +307,8 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
                         GetDebugName(inst) + "_initval");
     }
 
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   }
 
   return seq;
@@ -321,7 +323,8 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   } else {
     // Find the input tensors
     poplar::Tensor to_reduce;
@@ -410,7 +413,8 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
       out = popops::map(graph, op, out, init_val, seq,
                         GetDebugName(inst) + "_initval");
     }
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   }
 
   return seq;
@@ -425,7 +429,8 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
   } else {
     const HloInstruction* pooling_inst;
 
@@ -460,7 +465,9 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     auto reduction_dims = GetReductionDims(window);
 
     if (reduction_dims.size() == 0) {
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, to_reduce));
+      TF_CHECK_OK(
+          AddOutputTensor(graph, res, prog, tensor_map, inst, 0, to_reduce)
+              .status());
       return prog;
     }
 
@@ -494,7 +501,8 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
         GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
     out = out.dimShuffle(shuffle_out);
 
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
   }
 
   return prog;
@@ -661,7 +669,8 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
                       GetDebugName(inst) + "_initval");
   }
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(graph, res, program_seq, tensor_map, inst, 0, out)
+                  .status());
 
   return program_seq;
 }
@@ -709,7 +718,8 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   const auto shuffle_out =
       GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
   out = out.dimShuffle(shuffle_out);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   return seq;
 }
 

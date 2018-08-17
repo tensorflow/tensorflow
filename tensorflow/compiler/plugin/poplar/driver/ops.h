@@ -69,8 +69,12 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped);
 
-Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
-                       const poplar::Tensor& tensor);
+StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
+                                         CompilerResources& res,
+                                         poplar::program::Sequence& seq,
+                                         TensorMap& map,
+                                         const HloInstruction* inst, int64 n,
+                                         const poplar::Tensor& tensor);
 
 /* Returns a pair of numbers representing the half-open range of indicies
  * which a particular input to a tuple represents in the flattened output.

@@ -21,137 +21,160 @@ from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
-  def testConv1x1_Stride2x1_In1x5(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [1,1,5,1], name="a")
-      pb = array_ops.placeholder(np.float32, [1,1,1,1], name="b")
-      output = nn_ops.convolution(pa, pb, strides=[1,2], padding="VALID")
+  data_formats = ['NHWC', 'NCHW']
 
-    with session_lib.Session() as sess:
-      fd = {
-        pa: [[[[1], [2], [3], [4], [5]]]],
-        pb: [[[[10]]]]
-      }
-      result = sess.run(output, fd)
-      self.assertAllClose(result, [[[[10], [30], [50]]]])
+  def _ip_shp(self, nhwc, fmt):
+    if fmt == 'NHWC':
+      return nhwc
+    else:
+      return [nhwc[0], nhwc[3], nhwc[1], nhwc[2]]
+
+  def testConv1x1_Stride2x1_In1x5(self):
+    for fmt in self.data_formats:
+      with ops.device("/device:IPU:0"):
+        pa = array_ops.placeholder(np.float32, self._ip_shp([1,1,5,1], fmt),
+                                   name="a")
+        pb = array_ops.placeholder(np.float32, [1,1,1,1], name="b")
+        output = nn_ops.convolution(pa, pb, strides=[1,2], padding="VALID",
+                                    data_format=fmt, name='cnv1')
+
+      with session_lib.Session() as sess:
+        fd = {
+          pa: np.zeros(self._ip_shp([1,1,5,1], fmt)),
+          pb: np.zeros([1,1,1,1])
+        }
+        result = sess.run(output, fd)
+        self.assertAllClose(result, np.zeros(self._ip_shp([1,1,3,1], fmt)))
 
   def testConv3x3_Pad1x1(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [1,14,14,64], name="a")
-      pb = array_ops.placeholder(np.float32, [3,3,64,128], name="b")
-      output = nn_ops.convolution(pa, pb, padding="SAME")
+    for fmt in self.data_formats:
+      with ops.device("/device:IPU:0"):
+        pa = array_ops.placeholder(np.float32, self._ip_shp([1,14,14,64], fmt),
+                                   name="a")
+        pb = array_ops.placeholder(np.float32, [3,3,64,128], name="b")
+        output = nn_ops.convolution(pa, pb, padding="SAME", data_format=fmt,
+                                    name='cnv2')
 
-    with session_lib.Session() as sess:
-      fd = {
-        pa: np.zeros([1,14,14,64]),
-        pb: np.zeros([3,3,64,128])
-      }
-      result = sess.run(output, fd)
-      self.assertAllClose(result, np.zeros([1,14,14,128]))
+      with session_lib.Session() as sess:
+        fd = {
+          pa: np.zeros(self._ip_shp([1,14,14,64], fmt)),
+          pb: np.zeros([3,3,64,128])
+        }
+        result = sess.run(output, fd)
+        self.assertAllClose(result, np.zeros(self._ip_shp([1,14,14,128], fmt)))
 
   def testConv3x3_WithBias(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [1,14,14,64], name="a")
-      pb = array_ops.placeholder(np.float32, [3,3,64,128], name="b")
-      bi = array_ops.placeholder(np.float32, [128], name="b")
-      output = nn_ops.convolution(pa, pb, padding="SAME")
-      output = nn_ops.bias_add(output, bi)
+    for fmt in self.data_formats:
+      with ops.device("/device:IPU:0"):
+        pa = array_ops.placeholder(np.float32, self._ip_shp([1,14,14,64], fmt),
+                                   name="a")
+        pb = array_ops.placeholder(np.float32, [3,3,64,128], name="b")
+        bi = array_ops.placeholder(np.float32, [128], name="b")
+        output = nn_ops.convolution(pa, pb, padding="SAME", data_format=fmt,
+                                    name='cnv3')
+        output = nn_ops.bias_add(output, bi, data_format=fmt, name='ba3')
 
-    with ops.device('cpu'):
-      report = gen_ipu_ops.ipu_event_trace()
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session() as sess:
-      sess.run(report)
+      with tu.ipu_session() as sess:
+        sess.run(report)
 
-      fd = {
-        pa: np.zeros([1,14,14,64]),
-        pb: np.zeros([3,3,64,128]),
-        bi: np.zeros([128]),
-      }
-      result = sess.run(output, fd)
-      self.assertAllClose(result, np.zeros([1,14,14,128]))
+        fd = {
+          pa: np.zeros(self._ip_shp([1,14,14,64], fmt)),
+          pb: np.zeros([3,3,64,128]),
+          bi: np.zeros([128]),
+        }
+        result = sess.run(output, fd)
+        self.assertAllClose(result, np.zeros(self._ip_shp([1,14,14,128], fmt)))
 
-      result = sess.run(report)
+        result = sess.run(report)
 
-      s = tu.extract_all_strings_from_event_trace(result)
-      cs_list = tu.get_compute_sets_from_report(s)
+        s = tu.extract_all_strings_from_event_trace(result)
+        cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'host-exchange-local-copy-',
-            'convolution/convolution.*.clone/Conv_3x3',
-            'Copy_{<const>,XLA_Args/arg0.*_input}',
-            'BiasAdd/call/addToChannel']
+        ok = ['progIdCopy',
+              'host-exchange-local-copy-',
+              'cnv3*/convolution.*.clone/Conv_3x3',
+              'Copy_{<const>,XLA_Args/arg0.*_input}',
+              'ba3*/call/addToChannel']
 
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+        self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testConv8x8_WithBias(self):
-    with ops.device("/device:IPU:0"):
-      inp = array_ops.placeholder(np.float32, [1,84,84,4], name="inp")
-      wei = array_ops.placeholder(np.float32, [8,8,4,16], name="wei")
-      bia = array_ops.placeholder(np.float32, [16], name="bia")
-      output = nn_ops.conv2d(inp, wei, strides=[1,4,4,1], padding="VALID")
-      output = nn_ops.bias_add(output, bia)
+    for fmt in self.data_formats:
+      with ops.device("/device:IPU:0"):
+        inp = array_ops.placeholder(np.float32, self._ip_shp([1,84,84,4], fmt),
+                                    name="inp")
+        wei = array_ops.placeholder(np.float32, [8,8,4,16], name="wei")
+        bia = array_ops.placeholder(np.float32, [16], name="bia")
+        output = nn_ops.conv2d(inp, wei, strides=self._ip_shp([1,4,4,1], fmt),
+                               padding="VALID", data_format=fmt, name='cnv4')
+        output = nn_ops.bias_add(output, bia, data_format=fmt, name='ba4')
 
-    with ops.device('cpu'):
-      report = gen_ipu_ops.ipu_event_trace()
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session() as sess:
-      sess.run(report)
+      with tu.ipu_session() as sess:
+        sess.run(report)
 
-      fd = {
-        inp: np.zeros([1,84,84,4]),
-        wei: np.zeros([8,8,4,16]),
-        bia: np.zeros([16]),
-      }
-      result = sess.run(output, fd)
-      self.assertAllClose(result, np.zeros([1, 20, 20, 16]))
+        fd = {
+          inp: np.zeros(self._ip_shp([1,84,84,4], fmt)),
+          wei: np.zeros([8,8,4,16]),
+          bia: np.zeros([16]),
+        }
+        result = sess.run(output, fd)
+        self.assertAllClose(result,
+                            np.zeros(self._ip_shp([1, 20, 20, 16], fmt)))
 
-      result = sess.run(report)
+        result = sess.run(report)
 
-      s = tu.extract_all_strings_from_event_trace(result)
-      cs_list = tu.get_compute_sets_from_report(s)
+        s = tu.extract_all_strings_from_event_trace(result)
+        cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'host-exchange-local-copy-',
-            'Copy_XLA_Args/arg2.*_weights_to_weightsRearranged/OnTileCopy',
-            'Conv2D/convolution.*.clone/Conv_8x8_stride4x4',
-            'BiasAdd/call/addToChannel']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+        ok = ['progIdCopy',
+              'host-exchange-local-copy-',
+              'Copy_XLA_Args/arg2.*_weights_to_weightsRearranged/OnTileCopy',
+              'cnv4*/convolution.*.clone/Conv_8x8_stride4x4',
+              'ba4*/call/addToChannel']
+        self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testConv1x1_WithBias(self):
-    with ops.device("/device:IPU:0"):
-      inp = array_ops.placeholder(np.float32, [1,1,1,4], name="inp")
-      wei = array_ops.placeholder(np.float32, [1,1,4,16], name="wei")
-      bia = array_ops.placeholder(np.float32, [16], name="bia")
-      output = nn_ops.conv2d(inp, wei, strides=[1,1,1,1], padding="VALID")
-      output = output + bia
+    for fmt in self.data_formats:
+      with ops.device("/device:IPU:0"):
+        inp = array_ops.placeholder(np.float32, self._ip_shp([1,1,1,4], fmt),
+                                    name="inp")
+        wei = array_ops.placeholder(np.float32, [1,1,4,16], name="wei")
+        bia = array_ops.placeholder(np.float32, [16], name="bia")
+        output = nn_ops.conv2d(inp, wei, strides=[1,1,1,1], padding="VALID",
+                               data_format=fmt, name='cnv5')
+        output = nn_ops.bias_add(output, bia, data_format=fmt, name='ba5')
 
-    with ops.device('cpu'):
-      report = gen_ipu_ops.ipu_event_trace()
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session() as sess:
-      sess.run(report)
+      with tu.ipu_session() as sess:
+        sess.run(report)
 
-      fd = {
-        inp: np.zeros([1,1,1,4]),
-        wei: np.zeros([1,1,4,16]),
-        bia: np.zeros([16]),
-      }
-      result = sess.run(output, fd)
-      self.assertAllClose(result, np.zeros([1, 1, 1, 16]))
+        fd = {
+          inp: np.zeros(self._ip_shp([1,1,1,4], fmt)),
+          wei: np.zeros([1,1,4,16]),
+          bia: np.zeros([16]),
+        }
+        result = sess.run(output, fd)
+        self.assertAllClose(result, np.zeros(self._ip_shp([1, 1, 1, 16], fmt)))
 
-      result = sess.run(report)
+        result = sess.run(report)
 
-      s = tu.extract_all_strings_from_event_trace(result)
-      cs_list = tu.get_compute_sets_from_report(s)
+        s = tu.extract_all_strings_from_event_trace(result)
+        cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'host-exchange-local-copy-',
-            'Copy_bwdWeights_to_inRearranged',
-            'Conv2D/convolution.*.clone/Conv_1x1',
-            'add/add.*/AddTo']
-# TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+        ok = ['progIdCopy',
+              'host-exchange-local-copy-',
+              'Copy_bwdWeights_to_inRearranged',
+              'cnv5*/convolution.*.clone/Conv_1x1',
+              'ba5*/add.*/AddTo']
+        self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testConvBackpropInput(self):
     with ops.device("/device:IPU:0"):
@@ -260,6 +283,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_partialReduceOut_to_depthwise/call.2_out_0',
             'depthwise/call.*clone/Conv_1x1',
             'add/call.*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -482,6 +506,50 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'Copy_partialReduceOut_to_Relu/call',
             'Relu/call.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testDataLayout(self):
+    with ops.device("/device:IPU:0"):
+      pa1 = array_ops.placeholder(np.float32, [1,14,14,64], name="a")
+      pb1 = array_ops.placeholder(np.float32, [3,3,64,128], name="b")
+      bi1 = array_ops.placeholder(np.float32, [128], name="b")
+      op1 = nn_ops.convolution(pa1, pb1, padding="SAME", data_format='NHWC')
+      op1 = nn_ops.bias_add(op1, bi1, data_format='NHWC')
+
+      pa2 = array_ops.placeholder(np.float32, [1,64,14,14], name="a")
+      pb2 = array_ops.placeholder(np.float32, [3,3,64,128], name="b")
+      bi2 = array_ops.placeholder(np.float32, [128], name="b")
+      op2 = nn_ops.convolution(pa2, pb2, padding="SAME", data_format='NCHW')
+      op2 = nn_ops.bias_add(op2, bi2, data_format='NCHW')
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        pa1: np.zeros([1,14,14,64]),
+        pb1: np.zeros([3,3,64,128]),
+        bi1: np.zeros([128]),
+        pa2: np.zeros([1,64,14,14]),
+        pb2: np.zeros([3,3,64,128]),
+        bi2: np.zeros([128]),
+      }
+      result = sess.run(op1, fd)
+      self.assertAllClose(result, np.zeros([1,14,14,128]))
+
+      result = sess.run(report)
+      s = tu.extract_all_strings_from_event_trace(result)
+      mem_nhwc = tu.get_total_memory_from_report(s)
+
+      result = sess.run(op2, fd)
+      self.assertAllClose(result, np.zeros([1,128,14,14]))
+
+      result = sess.run(report)
+      s = tu.extract_all_strings_from_event_trace(result)
+      mem_nchw = tu.get_total_memory_from_report(s)
+
+      self.assertTrue(mem_nchw < mem_nhwc)
 
 if __name__ == "__main__":
     googletest.main()

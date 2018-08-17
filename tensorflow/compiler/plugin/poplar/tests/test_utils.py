@@ -16,8 +16,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 
 import contextlib
-import re
 import fnmatch
+import json
+import re
 
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
@@ -34,6 +35,20 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
       config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
     yield sess
 
+def get_total_memory_from_report(report):
+  lines = report.split('\n')
+  found = False
+  for x in lines:
+    if not found:
+      m = re.search('Memory Usage\s+:', x)
+      if m:
+        found = True
+    else:
+      m = re.search('Total\s*:\s+(\d+) bytes', x)
+      if m:
+        return int(m.group(1))
+  return None
+
 def get_compute_sets_from_report(report):
   lines = report.split('\n')
   cs = [x for x in lines if re.search('  Step #\d+:', x)]
@@ -45,14 +60,22 @@ def check_all_compute_sets_in_list(cs_list, whitelist):
   result = True
   fail_list = []
   wl = [x+'*' for x in whitelist]
-  if len(cs_list) < len(wl):
-    print("Too few compute sets for whitelist")
-    return False
-  else:
-    for cs in cs_list:
-      if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
-        fail_list += [ cs ]
-        result = False
+  for cs in cs_list:
+    if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
+      fail_list += [ cs ]
+      result = False
+  if not result:
+    print("Failed to match " + str(fail_list))
+  return result
+
+def check_some_compute_sets_in_list(cs_list, whitelist):
+  result = True
+  fail_list = []
+  wl = [x+'*' for x in whitelist]
+  for x in wl:
+    if len([cs for cs in cs_list if fnmatch.fnmatch(cs, x)]) == 0:
+      fail_list += [ x ]
+      result = False
   if not result:
     print("Failed to match " + str(fail_list))
   return result
@@ -88,7 +111,9 @@ def extract_all_io_events(events):
     if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
                     IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
       try:
-        result += [(evt.type, evt.data_str.decode('utf-8'))]
+        payload = json.loads(evt.data_str.decode('utf-8'))
+        for t in payload["tensors"]:
+          result += [(evt.type, t["name"])]
       except UnicodeDecodeError:
         pass
   return result

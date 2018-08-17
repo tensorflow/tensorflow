@@ -91,7 +91,9 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
       valid[i] = false;
       poplar::Tensor none;
       inputs.push_back(none);
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, none));
+      TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
+                                  inst, i, none)
+                      .status());
     } else {
       valid[i] = true;
       auto& t = temp_inputs_[inst->parameter_number()][i];
@@ -100,12 +102,16 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
         poplar::Tensor out;
         TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, src, shapes[i], resources_));
         inputs.push_back(out);
-        TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+        TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
+                                    inst, i, out)
+                        .status());
       } else {
         auto name = se::port::StrCat(GetDebugName(inst), "_in_", i);
         poplar::Tensor out = graph_.clone(t, name);
         inputs.push_back(out);
-        TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+        TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
+                                    inst, i, out)
+                        .status());
       }
     }
   }

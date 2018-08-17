@@ -16,7 +16,9 @@
 """Utility functions related to the Graphcore IPU."""
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.framework import ops
 
 import time
 
@@ -113,3 +115,34 @@ def extract_all_strings_from_event_trace(events):
     result = result + evt_str + '\n'
 
   return result
+
+def move_variable_initialization_to_cpu(graph=None):
+  """For all variables in the VARIABLES collection, move any initialization
+  ops onto the CPU.
+
+  Args:
+    graph: Operations are moved around on this graph.  The default graph
+           will be used if not specified.
+
+  Returns:
+    None
+  """
+  if not graph:
+    graph = ops.get_default_graph()
+
+  init_ops = []
+  dep_ops = list(map(lambda x:x.initializer.inputs[1].op, graph.get_collection('variables')))
+  visited  = set()
+
+  while len(dep_ops) > 0:
+    op = dep_ops.pop()
+    if not op in visited:
+      visited.add(op)
+      init_ops += [op]
+      dep_ops += map(lambda x:x.op, op.inputs)
+
+  for op in init_ops:
+    op._set_device('/device:CPU:0')
+    op._set_attr('_class', attr_value_pb2.AttrValue(s=b'loc:@cpu'))
+
+  return

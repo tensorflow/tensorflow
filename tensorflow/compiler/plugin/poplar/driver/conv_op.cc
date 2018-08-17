@@ -4,6 +4,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -16,6 +17,7 @@
 #include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <popconv/Convolution.hpp>
+#include <popops/Reduce.hpp>
 
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>
@@ -306,7 +308,8 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
 
   return prog;
 }
@@ -345,7 +348,8 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
 
   return prog;
 }
@@ -395,7 +399,8 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
 
   return prog;
 }
@@ -418,7 +423,8 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
   poplar::program::Sequence prog;
   popconv::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, in).status());
   return prog;
 }
 
@@ -445,11 +451,20 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
 
   float learning_rate = float_lit->GetFirstElement<float>();
 
-  poplar::program::Sequence prog;
-  popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate,
-                                 poplar::FLOAT, prog, GetDebugName(inst));
+  // Find reduction
+  const auto* reduce = root->operand(1)->operand(0);
+  std::vector<std::size_t> reduction_dims;
+  for (auto d : reduce->dimensions()) {
+    reduction_dims.push_back(d);
+  }
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, biases));
+  poplar::program::Sequence prog;
+  popops::reduceWithOutput(graph, deltas, biases, reduction_dims,
+                           {popops::Operation::ADD, -learning_rate, true},
+                           prog, GetDebugName(inst));
+
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, biases).status());
 
   return prog;
 }

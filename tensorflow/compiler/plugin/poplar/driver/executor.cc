@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "include/json/json.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
@@ -593,13 +595,26 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
 }
 
 Status PoplarExecutor::MoveDeviceToHost() {
+  Json::Value root;
+  root["tensors"] = Json::Value(Json::arrayValue);
+  uint64 total_size = 0;
+
   for (const auto& tc : allocations_) {
     // Set up streams
     if (tc->on_device == true && !tc->output_handle.empty()) {
       void *buf(static_cast<void *>(tc->data));
       current_engine_->connectStream(tc->output_handle, buf);
+
+      Json::Value tensor;
+      tensor["name"] = Json::Value(tc->output_handle);
+      tensor["size"] = Json::Value::UInt64(tc->size);
+      root["tensors"].append(tensor);
+      total_size += tc->size;
     }
   }
+  root["total_size"] = Json::Value::UInt64(total_size);
+  Json::StreamWriterBuilder json_builder;
+  std::string json_msg = Json::writeString(json_builder, root);
 
   // perform device -> host read
   try {
@@ -608,19 +623,18 @@ Status PoplarExecutor::MoveDeviceToHost() {
     return tensorflow::errors::Internal("Poplar host read error: ", e.what());
   }
 
+  if (current_config_.profiling().enable_io_trace()) {
+    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
+                   json_msg, 0);
+  }
+
   // Post process upload
   for (const auto& tc : allocations_) {
-
     if (tc->on_device == true && !tc->output_handle.empty()) {
       if (tc->output_convertor) {
         void* buf(static_cast<void*>(tc->data));
         std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
         memcpy(buf, converted.data(), converted.size());
-      }
-
-      if (current_config_.profiling().enable_io_trace()) {
-        AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
-                       tc->output_handle, 0);
       }
     }
 
@@ -756,8 +770,13 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
       try {
         if (do_host_to_device) {
+          Json::Value root;
+          root["tensors"] = Json::Value(Json::arrayValue);
+          uint64 total_size = 0;
+
           for (auto arg : arg_map) {
             TensorControl* tc = arg.second.tc;
+            std::vector<std::pair<std::string, int64>> stream_list;
             void* buf(static_cast<void*>(tc->data));
             if (!arg.second.streamed) {
 
@@ -770,17 +789,31 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
               tc->on_device = true;
               tc->input_handle = arg.first;
-              tc->converted_data.clear();
 
-              if (current_config_.profiling().enable_io_trace()) {
-                AddEventRecord(
-                    tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
-                    arg.first, 0);
-              }
+              Json::Value tensor;
+              tensor["name"] = Json::Value(arg.first);
+              tensor["size"] = Json::Value::UInt64(tc->size);
+              root["tensors"].append(tensor);
+              total_size += tc->size;
+
+              stream_list.push_back(std::make_pair(arg.first, 0));
             }
           }
+          root["total_size"] = Json::Value::UInt64(total_size);
+          Json::StreamWriterBuilder json_builder;
+          std::string json_msg = Json::writeString(json_builder, root);
 
           current_engine_->run(1);
+
+          if (current_config_.profiling().enable_io_trace()) {
+            AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
+                           "", json_msg, 0);
+          }
+
+          for (auto arg : arg_map) {
+            TensorControl* tc = arg.second.tc;
+            tc->converted_data.clear();
+          }
         }
       } catch (std::logic_error e) {
         return tensorflow::errors::Internal("Poplar host write error ",

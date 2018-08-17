@@ -42,6 +42,7 @@ cc_library(
         "driver/fuse_max_pool.cc",
         "driver/fuse_ops_early.cc",
         "driver/fuse_ops_late.cc",
+        "driver/fuse_wide_const.cc",
         "driver/hlo_hash.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
@@ -68,6 +69,7 @@ cc_library(
         "driver/fuse_max_pool.h",
         "driver/fuse_ops_early.h",
         "driver/fuse_ops_late.h",
+        "driver/fuse_wide_const.h",
         "driver/hlo_hash.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
@@ -163,9 +165,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@jsoncpp_git//:jsoncpp",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = True,
 )
@@ -395,6 +398,16 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "fuse_wide_const_test",
+    srcs = ["tests/fuse_wide_const_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_test(
     name = "device_test",
     size = "small",
@@ -589,6 +602,7 @@ py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
     ],
@@ -712,6 +726,21 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "update_op_dependencies_test",
+    size = "medium",
+    srcs = ["tests/update_op_dependencies_test.py"],
+    deps = [
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -748,6 +777,8 @@ test_suite(
         "constant_test",
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
+        "update_op_dependencies_test",
+        "fuse_wide_const_test",
     ],
 )
 
@@ -782,6 +813,8 @@ test_suite(
         "constant_test",
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
+        "update_op_dependencies_test",
+        "fuse_wide_const_test",
     ],
 )
 

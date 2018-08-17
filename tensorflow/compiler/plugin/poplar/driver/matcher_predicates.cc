@@ -218,6 +218,10 @@ bool IsPopOpsConvolution(const HloInstruction *inst) {
   return false;
 }
 
+bool IsPopOpsConvolutionInputGradient(const HloInstruction *inst) {
+  return (IsPopOpsCall(inst, "conv_with_reverse"));
+}
+
 bool IsOpWithWindowNoBaseDilation(const HloInstruction *inst) {
   switch (inst->opcode()) {
     case HloOpcode::kConvolution:

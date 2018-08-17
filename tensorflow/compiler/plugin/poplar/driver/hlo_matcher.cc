@@ -295,6 +295,7 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   OutlinedInfo outlined_info = {call, {}};
+  // Add the removed instructions
   for (auto inst : instructions_to_outline) {
     if (inst->user_count() == 0) {
       TF_CHECK_OK(matched.computation->RemoveInstruction(inst));

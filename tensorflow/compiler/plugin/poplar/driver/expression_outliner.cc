@@ -93,8 +93,7 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 }  // namespace
 
 ExpressionOutliner::ExpressionOutliner(struct CompilerAnnotations& annotations)
-    : HloMatcher({}, annotations, true),
-      inplace_instructions(annotations.inplace_instructions) {}
+    : HloMatcher({}, annotations, true) {}
 
 StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
@@ -102,7 +101,9 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   std::list<HloInstruction*> all_ops;
   for (auto* inst : comp->MakeInstructionPostOrder()) {
     if (IsPopopsElementwise(inst) && inst->user_count() == 1 &&
-        !inplace_instructions.IsInPlace(inst)) {
+        !annotations_.inplace_instructions.IsInPlace(inst) &&
+        inst->control_predecessors().size() == 0 &&
+        inst->control_successors().size() == 0) {
       bool add_op = true;
       if (inst->IsElementwiseBinary()) {
         // for BinaryOps check the shapes of inputs match
@@ -185,7 +186,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
         bool ok_to_outline =
             (std::find(all_ops.begin(), all_ops.end(), op) != all_ops.end());
 
-        if (inplace_instructions.IsInPlace(op)) {
+        if (annotations_.inplace_instructions.IsInPlace(op)) {
           ok_to_outline = false;
         }
 
