@@ -35,7 +35,10 @@ PlainClient::PlainClient(std::string host, int port)
     : host(host), port(port), sock(-1) {}
 
 PlainClient::~PlainClient() {
-  // do nothing.
+  if (IsConnected()) {
+    tensorflow::Status status = Disconnect();
+    if (!status.ok()) LOG(WARNING) << status.ToString();
+  }
 }
 
 tensorflow::Status PlainClient::Connect() {
@@ -93,47 +96,70 @@ int PlainClient::GetSocketDescriptor() { return sock; }
 
 char PlainClient::ReadByte() {
   char res;
-  recv(sock, &res, 1, 0);
+  ReadData((char *)&res, 1);
+
   return res;
 }
 
 short PlainClient::ReadShort() {
   short res;
-  recv(sock, &res, 2, 0);
+  ReadData((char *)&res, 2);
+
   return res;
 }
 
 int PlainClient::ReadInt() {
   int res;
-  recv(sock, &res, 4, 0);
+  ReadData((char *)&res, 4);
+
   return res;
 }
 
 long PlainClient::ReadLong() {
   long res;
-  recv(sock, &res, 8, 0);
+  ReadData((char *)&res, 8);
+
   return res;
 }
 
 void PlainClient::ReadData(char *buf, int length) {
   int recieved = 0;
+
   while (recieved < length) {
     int res = recv(sock, buf, length - recieved, 0);
+
+    if (res < 0) {
+      LOG(WARNING) << "Error occured while reading from socket: " << res;
+      break;
+    }
+
     recieved += res;
     buf += res;
   }
 }
 
-void PlainClient::WriteByte(char data) { send(sock, &data, 1, 0); }
+void PlainClient::WriteByte(char data) { WriteData((char *)&data, 1); }
 
-void PlainClient::WriteShort(short data) { send(sock, &data, 2, 0); }
+void PlainClient::WriteShort(short data) { WriteData((char *)&data, 2); }
 
-void PlainClient::WriteInt(int data) { send(sock, &data, 4, 0); }
+void PlainClient::WriteInt(int data) { WriteData((char *)&data, 4); }
 
-void PlainClient::WriteLong(long data) { send(sock, &data, 8, 0); }
+void PlainClient::WriteLong(long data) { WriteData((char *)&data, 8); }
 
 void PlainClient::WriteData(char *buf, int length) {
-  send(sock, buf, length, 0);
+  int sent = 0;
+
+  while (sent < length) {
+    int res = send(sock, buf, length - sent, 0);
+
+    if (res < 0) {
+      LOG(WARNING) << "Error occured while reading from socket: " << res;
+      break;
+    }
+
+    sent += res;
+    buf += res;
+  }
 }
 
 }  // namespace ignite

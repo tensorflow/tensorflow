@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_binary_object_parser.h"
-//#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace ignite {
