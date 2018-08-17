@@ -189,7 +189,7 @@ Note: These are just the minimum requirements to _build_ tensorflow. Installing
 the pip package will download additional packages required to _run_ it. If you
 plan on executing tasks directly with `bazel` , without the pip installation,
 you may need to install additional python packages. For example, you should `pip
-install mock enum34` before running TensorFlow's tests with bazel.
+install enum34` before running TensorFlow's tests with bazel.
 
 <a name="ConfigureInstallation"></a>
 
@@ -363,6 +363,8 @@ continue to work against your built package.
 <b>Tip:</b> By default, building TensorFlow from sources consumes a lot of RAM.
 If RAM is an issue on your system, you may limit RAM usage by specifying
 <code>--local_resources 2048,.5,1.0</code> while invoking `bazel`.
+
+### Run the build_pip_package script
 
 The <code>bazel build</code> command builds a script named `build_pip_package`.
 Running this script as follows will build a `.whl` file within the
