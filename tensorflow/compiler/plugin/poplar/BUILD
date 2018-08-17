@@ -42,6 +42,7 @@ cc_library(
         "driver/fuse_max_pool.cc",
         "driver/fuse_ops_early.cc",
         "driver/fuse_ops_late.cc",
+        "driver/fuse_wide_const.cc",
         "driver/hlo_hash.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
@@ -68,6 +69,7 @@ cc_library(
         "driver/fuse_max_pool.h",
         "driver/fuse_ops_early.h",
         "driver/fuse_ops_late.h",
+        "driver/fuse_wide_const.h",
         "driver/hlo_hash.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
@@ -389,6 +391,16 @@ tf_cc_test(
 tf_cc_test(
     name = "commutative_instruction_reorder_operands_test",
     srcs = ["tests/commutative_instruction_reorder_operands_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "fuse_wide_const_test",
+    srcs = ["tests/fuse_wide_const_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -766,6 +778,7 @@ test_suite(
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
         "update_op_dependencies_test",
+        "fuse_wide_const_test",
     ],
 )
 
@@ -801,6 +814,7 @@ test_suite(
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
         "update_op_dependencies_test",
+        "fuse_wide_const_test",
     ],
 )
 

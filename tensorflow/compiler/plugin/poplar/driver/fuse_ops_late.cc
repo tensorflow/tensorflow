@@ -48,7 +48,6 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"bias_apply", 0, true},
     {"scaled_inplace", 0, true},
     {"scaled_inplace", 0, true},
-    {"wide_const", 1},
 };
 
 /*
@@ -243,10 +242,6 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // Broadcast scalar constant (must be low priority)
-    {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
 };
 
 FuseOpsLate::FuseOpsLate(struct CompilerAnnotations& annotations)
