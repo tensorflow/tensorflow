@@ -159,6 +159,11 @@ REGISTER_OP("StringStrip")
     .Output("output: string")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("StringLength")
+    .Input("input: string")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")

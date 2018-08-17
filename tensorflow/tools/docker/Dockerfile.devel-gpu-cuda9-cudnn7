@@ -37,6 +37,8 @@ RUN pip --no-cache-dir install --upgrade \
 RUN pip --no-cache-dir install \
         ipykernel \
         jupyter \
+        keras_applications==1.0.4 \
+        keras_preprocessing==1.0.2 \
         matplotlib \
         numpy \
         scipy \

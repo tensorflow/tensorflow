@@ -35,10 +35,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, DatasetBase* input)
-        : GraphDatasetBase(ctx), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
       for (const PartialTensorShape& shape : input->output_shapes()) {
         gtl::InlinedVector<int64, 4> partial_dim_sizes;

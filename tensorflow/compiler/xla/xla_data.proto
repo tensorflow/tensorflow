@@ -424,25 +424,25 @@ message GatherDimensionNumbers {
   // "Window indices" is a term for a set of indices that index into the
   // interior of a dynamic-slice from the input tensor, the starting indices for
   // which were computed from output_gather_dims (see the operation semantic for
-  // how this is defined) and the gather_indices tensor.
+  // how this is defined) and the start_indices tensor.
   //
   // The window indices for a specific output index Out is computed as:
   //
   //  i = 0
   //  for (k : [0, input_tensor_shape.rank))
   //    window_indices[k] =
-  //      if k in elided_window_dims
+  //      if k in collapsed_slice_dims
   //      then 0
-  //      else Out[output_window_dims[i++]]
-  repeated int64 output_window_dims = 1;
-  repeated int64 elided_window_dims = 2;
+  //      else Out[offset_dims[i++]]
+  repeated int64 offset_dims = 1;
+  repeated int64 collapsed_slice_dims = 2;
 
-  // This is interpreted as a map from i to gather_dims_to_operand_dims[i]. It
-  // transforms the gather index looked up from the gather_indices tensor into
+  // This is interpreted as a map from i to start_index_map[i]. It
+  // transforms the gather index looked up from the start_indices tensor into
   // the starting index in the input space.
-  repeated int64 gather_dims_to_operand_dims = 3;
+  repeated int64 start_index_map = 3;
 
-  // The dimension in the gather_indices input that contains the starting
+  // The dimension in the start_indices input that contains the starting
   // indices.
   int64 index_vector_dim = 4;
 }

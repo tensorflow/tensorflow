@@ -39,11 +39,11 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      const DatasetBase* to_concatenate)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           to_concatenate_(to_concatenate) {
       input_->Ref();

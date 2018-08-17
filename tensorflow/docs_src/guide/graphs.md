@@ -38,13 +38,13 @@ programs:
   machines. TensorFlow inserts the necessary communication and coordination
   between devices.
 
-* **Compilation.** TensorFlow's @{$performance/xla$XLA compiler} can
+* **Compilation.** TensorFlow's [XLA compiler](../performance/xla/index.md) can
   use the information in your dataflow graph to generate faster code, for
   example, by fusing together adjacent operations.
 
 * **Portability.** The dataflow graph is a language-independent representation
   of the code in your model. You can build a dataflow graph in Python, store it
-  in a @{$saved_model$SavedModel}, and restore it in a C++ program for
+  in a [SavedModel](../guide/saved_model.md), and restore it in a C++ program for
   low-latency inference.
 
 
@@ -93,7 +93,7 @@ to all API functions in the same context.  For example:
   stored value. The `tf.Variable` object also has methods such as
   `tf.Variable.assign` and `tf.Variable.assign_add` that
   create `tf.Operation` objects that, when executed, update the stored value.
-  (See @{$guide/variables} for more information about variables.)
+  (See [Variables](../guide/variables.md) for more information about variables.)
 
 * Calling `tf.train.Optimizer.minimize` will add operations and tensors to the
   default graph that calculates gradients, and return a `tf.Operation` that,
@@ -210,7 +210,7 @@ with tf.device("/device:GPU:0"):
   # Operations created in this context will be pinned to the GPU.
   result = tf.matmul(weights, img)
 ```
-If you are deploying TensorFlow in a @{$distributed$typical distributed configuration},
+If you are deploying TensorFlow in a [typical distributed configuration](../deploy/distributed.md),
 you might specify the job name and task ID to place variables on
 a task in the parameter server job (`"/job:ps"`), and the other operations on
 task in the worker job (`"/job:worker"`):

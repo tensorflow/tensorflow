@@ -9,7 +9,7 @@ incorporated into high-level APIs.
 
 ## Input Pipeline
 
-The @{$performance_guide$Performance Guide} explains how to identify possible
+The [Performance Guide](../performance/performance_guide.md) explains how to identify possible
 input pipeline issues and best practices. We found that using `tf.FIFOQueue`
 and `tf.train.queue_runner` could not saturate multiple current generation GPUs
 when using large inputs and processing with higher samples per second, such

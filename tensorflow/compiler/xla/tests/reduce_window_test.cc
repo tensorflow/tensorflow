@@ -1261,6 +1261,12 @@ struct R1ReduceWindowTestData {
      /*pad_low=*/{5},
      /*pad_high=*/{0},
      /*reducer=*/Reducer::kAdd},
+
+    {/*base_bounds=*/{4096}, /*window_bounds=*/{4096},
+     /*strides=*/{1},
+     /*pad_low=*/{4095},
+     /*pad_high=*/{0},
+     /*reducer=*/Reducer::kMax},
 };
 
 string R1ReduceWindowTestDataToString(
@@ -1458,6 +1464,25 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
   %parameter.0 = s32[81,8]{1,0} parameter(0)
   %parameter.1 = s32[] parameter(1)
   ROOT %reduce-window = s32[82,8]{1,0} reduce-window(s32[81,8]{1,0} %parameter.0, s32[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceWindowF16) {
+  const string hlo_string = R"(
+HloModule reduce-window
+
+%identity.pad_to_reduce_window (param0: f16[], param1: f16[]) -> f16[] {
+  %param0 = f16[] parameter(0)
+  ROOT %param1 = f16[] parameter(1)
+}
+
+ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
+  %parameter.0 = f16[81,8]{1,0} parameter(0)
+  %parameter.1 = f16[] parameter(1)
+  ROOT %reduce-window = f16[82,8]{1,0} reduce-window(f16[81,8]{1,0} %parameter.0, f16[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
 }
 
 )";

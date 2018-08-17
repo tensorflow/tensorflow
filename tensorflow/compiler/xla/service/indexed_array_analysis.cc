@@ -153,7 +153,7 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
     TF_ASSIGN_OR_RETURN(
         computed_array,
         ComputeArrayForGather(instr->shape(), instr->gather_dimension_numbers(),
-                              instr->gather_window_bounds(),
+                              instr->gather_slice_sizes(),
                               FindOrDie(cache_, instr->operand(0)),
                               FindOrDie(cache_, instr->operand(1))));
   } else if (instr->opcode() == HloOpcode::kReshape) {
@@ -251,24 +251,23 @@ StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
     const Shape& shape, const GatherDimensionNumbers& dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
+    tensorflow::gtl::ArraySlice<int64> slice_sizes, Array* source,
     Array* indices) {
   if (dim_numbers.index_vector_dim() != indices->shape().dimensions_size()) {
     VLOG(3) << "ComputeArrayForGather: indices are not scalar";
     return nullptr;
   }
 
-  CHECK_EQ(dim_numbers.gather_dims_to_operand_dims_size(), 1);
+  CHECK_EQ(dim_numbers.start_index_map_size(), 1);
 
-  // We can also handle dim_numbers.elided_window_dims_size() == 0 here, should
-  // it become relevant.
+  // We can also handle dim_numbers.collapsed_slice_dims_size() == 0 here,
+  // should it become relevant.
 
-  if (dim_numbers.elided_window_dims_size() != 1 ||
-      dim_numbers.elided_window_dims(0) !=
-          dim_numbers.gather_dims_to_operand_dims(0)) {
+  if (dim_numbers.collapsed_slice_dims_size() != 1 ||
+      dim_numbers.collapsed_slice_dims(0) != dim_numbers.start_index_map(0)) {
     VLOG(3) << "ComputeArrayForGather: gather operations must elide "
-               "gather_dims_to_operand_dims[0] and "
-               "gather_dims_to_operand_dims[0] only";
+               "start_index_map[0] and "
+               "start_index_map[0] only";
     return nullptr;
   }
 
@@ -277,21 +276,21 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
   // arrays from an array of size [7,4,6].  We check that condition down below:
 
   for (int64 i = 0, e = source->shape().dimensions_size(); i < e; i++) {
-    if (i != dim_numbers.elided_window_dims(0) &&
-        source->shape().dimensions(i) != window_bounds[i]) {
-      VLOG(3) << "ComputeArrayForGather: window_bounds[" << i
+    if (i != dim_numbers.collapsed_slice_dims(0) &&
+        source->shape().dimensions(i) != slice_sizes[i]) {
+      VLOG(3) << "ComputeArrayForGather: slice_sizes[" << i
               << "] != source->shape().dimensions(" << i << ") -- "
-              << source->shape().dimensions(i) << " vs. " << window_bounds[i]
-              << " with dim_numbers.elided_window_dims(0) = "
-              << dim_numbers.elided_window_dims(0);
+              << source->shape().dimensions(i) << " vs. " << slice_sizes[i]
+              << " with dim_numbers.collapsed_slice_dims(0) = "
+              << dim_numbers.collapsed_slice_dims(0);
       return nullptr;
     }
   }
 
-  int64 source_dim = dim_numbers.gather_dims_to_operand_dims(0);
+  int64 source_dim = dim_numbers.start_index_map(0);
   std::vector<int64> output_dims;
   for (int64 i = 0, e = shape.dimensions_size(); i < e; i++) {
-    if (!c_binary_search(dim_numbers.output_window_dims(), i)) {
+    if (!c_binary_search(dim_numbers.offset_dims(), i)) {
       output_dims.push_back(i);
     }
   }
@@ -735,11 +734,11 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
   //   operand = s32[3,5,2] constant({...})
   //   indices = s32[7] parameter(0)
   //   gather = s32[3,2,7] gather(operand, indices),
-  //       output_window_dims={0,1},
-  //       elided_window_dims={1},
-  //       gather_dims_to_operand_dims={1},
+  //       offset_dims={0,1},
+  //       collapsed_slice_dims={1},
+  //       start_index_map={1},
   //       index_vector_dim=1,
-  //       window_bounds={3,1,2}
+  //       slice_sizes={3,1,2}
   //   reshape = s32[6,7] reshape(gather)
   //
   // In this case the gather maps to:

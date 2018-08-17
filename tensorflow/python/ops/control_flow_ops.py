@@ -14,7 +14,8 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the @{$python/control_flow_ops} guide.
+See the [Control
+Flow](https://tensorflow.org/api_guides/python/control_flow_ops) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import

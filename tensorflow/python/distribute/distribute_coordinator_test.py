@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for distribute coordinator."""
+"""Tests for Distribute Coordinator."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -37,6 +37,7 @@ except ImportError as _error:
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator
+from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -44,16 +45,16 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import monitored_session
+
 
 CHIEF = distribute_coordinator._TaskType.CHIEF
 WORKER = distribute_coordinator._TaskType.WORKER
 PS = distribute_coordinator._TaskType.PS
 EVALUATOR = distribute_coordinator._TaskType.EVALUATOR
 
-SPLIT_CLIENT = distribute_coordinator.CoordinatorMode.SPLIT_CLIENT
+STANDALONE_CLIENT = distribute_coordinator.CoordinatorMode.STANDALONE_CLIENT
 INDEPENDENT_WORKER = distribute_coordinator.CoordinatorMode.INDEPENDENT_WORKER
-
-RUN_STD_SERVER_METHOD = "tensorflow.python.distribute.distribute_coordinator._run_std_server"
 
 NUM_WORKERS = 3
 NUM_PS = 2
@@ -72,6 +73,57 @@ def _strip_protocol(target):
     return target.split("//")[1]
   else:
     return target
+
+
+class MockStrategy(object):
+
+  def __init__(self,
+               between_graph=False,
+               should_init=None,
+               should_checkpoint=None,
+               should_save_summary=None):
+    self._between_graph = between_graph
+    self._should_init = should_init
+    self._should_checkpoint = should_checkpoint
+    self._should_save_summary = should_save_summary
+
+  @property
+  def between_graph(self):
+    return self._between_graph
+
+  def configure(self,
+                session_options=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    del session_options, cluster_spec, task_type
+    if self._should_init is None:
+      if task_id == 0:
+        self._should_init = True
+      else:
+        self._should_init = False
+    if self._should_checkpoint is None:
+      if task_id == 0:
+        self._should_checkpoint = True
+      else:
+        self._should_checkpoint = False
+    if self._should_save_summary is None:
+      if task_id == 0:
+        self._should_save_summary = True
+      else:
+        self._should_save_summary = False
+
+  @property
+  def should_init(self):
+    return self._should_init
+
+  @property
+  def should_checkpoint(self):
+    return self._should_checkpoint
+
+  @property
+  def should_save_summary(self):
+    return self._should_save_summary
 
 
 class MockServer(object):
@@ -108,6 +160,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
     self._result_correct = 0
     self._lock = threading.Lock()
     self._worker_context = {}
+    self._strategy_property = {}
     self._std_servers = {}
     self._barrier = distribute_coordinator._Barrier(NUM_WORKERS)
 
@@ -142,8 +195,8 @@ class DistributeCoordinatorTestBase(test.TestCase):
       cluster_spec[EVALUATOR] = ["localhost:%s" % portpicker.pick_unused_port()]
     return cluster_spec
 
-  def _in_graph_worker_fn(self):
-    context = distribute_coordinator.get_current_worker_context()
+  def _in_graph_worker_fn(self, strategy):
+    context = distribute_coordinator_context.get_current_worker_context()
     self.assertTrue(context is not None)
     with self._test_session(target=context.master_target) as sess:
       xs = []
@@ -164,22 +217,23 @@ class DistributeCoordinatorTestBase(test.TestCase):
     if result_value == expected:
       self._result_correct += 1
 
-  def _run_coordinator_in_thread(self, worker_fn, **kwargs):
+  def _run_coordinator_in_thread(self, worker_fn, strategy, **kwargs):
     t = threading.Thread(
         target=distribute_coordinator.run_distribute_coordinator,
-        args=(worker_fn,),
+        args=(worker_fn, strategy),
         kwargs=kwargs)
     t.start()
     return t
 
-  def _run_multiple_coordinator_in_threads(self, worker_fn, cluster_spec,
-                                           **kwargs):
+  def _run_multiple_coordinator_in_threads(self, worker_fn, strategy,
+                                           cluster_spec, **kwargs):
     threads = {}
     for task_type in cluster_spec.keys():
       threads[task_type] = []
       for task_id in range(len(cluster_spec[task_type])):
         t = self._run_coordinator_in_thread(
             worker_fn,
+            strategy,
             cluster_spec=cluster_spec,
             task_type=task_type,
             task_id=task_id,
@@ -187,8 +241,8 @@ class DistributeCoordinatorTestBase(test.TestCase):
         threads[task_type].append(t)
     return threads
 
-  def _between_graph_worker_fn(self):
-    context = distribute_coordinator.get_current_worker_context()
+  def _between_graph_worker_fn(self, strategy):
+    context = distribute_coordinator_context.get_current_worker_context()
     self.assertTrue(context is not None)
     with self._test_session(target=context.master_target) as sess:
       with ops.device("/job:ps/task:0"):
@@ -234,14 +288,50 @@ class DistributeCoordinatorTestBase(test.TestCase):
         with self._lock:
           self._result_correct += 1
 
-  def _dump_worker_context(self):
+  def _between_graph_with_monitored_session(self, strategy):
+    context = distribute_coordinator_context.get_current_worker_context()
+    self.assertTrue(context is not None)
+    with ops.device("/job:ps/task:0"):
+      # TODO(yuefengz): investigate why not using resource variable will make
+      # the test flaky.
+      x = variable_scope.get_variable("x", initializer=10.0, use_resource=True)
+    with ops.device("/job:ps/task:1"):
+      y = variable_scope.get_variable("y", initializer=20.0, use_resource=True)
+
+    x_add = x.assign_add(2.0)
+    y_sub = y.assign_sub(2.0)
+    train_op = control_flow_ops.group([x_add, y_sub])
+
+    # The monitored session will run init or ready ops.
+    with monitored_session.MonitoredSession() as sess:
+      sess.run(train_op)
+
+      # Synchronize workers after one step to make sure they all have finished
+      # training.
+      if context.has_barrier:
+        context.wait_for_other_workers()
+      else:
+        self._barrier.wait()
+
+      x_val, y_val = sess.run([x, y])
+
+    self.assertEqual(x_val, 16.0)
+    self.assertEqual(y_val, 14.0)
+    if x_val == 16.0 and y_val == 14.0:
+      with self._lock:
+        self._result_correct += 1
+
+  def _dump_worker_context(self, strategy):
     """Dumps the propoerties of each worker context.
 
     It dumps the context properties to a dict mapping from task_type to a list
     of tuples of master_target, num_workers, is_chief and distribute_mode, where
     the list is indexed by the task_id.
+
+    Args:
+      strategy: a `DistributionStrategy` object.
     """
-    context = distribute_coordinator.get_current_worker_context()
+    context = distribute_coordinator_context.get_current_worker_context()
     self.assertTrue(context is not None)
     task_type = str(context.task_type)
     task_id = context.task_id or 0
@@ -254,6 +344,25 @@ class DistributeCoordinatorTestBase(test.TestCase):
                                                   context.num_workers,
                                                   context.is_chief,
                                                   context.distributed_mode)
+
+  def _dump_strategy_property(self, strategy):
+    context = distribute_coordinator_context.get_current_worker_context()
+    self.assertTrue(context is not None)
+
+    self.assertEqual(context._strategy.should_init, strategy.should_init)
+    self.assertEqual(context.should_checkpoint, strategy.should_checkpoint)
+    self.assertEqual(context.should_save_summary, strategy.should_save_summary)
+
+    task_type = str(context.task_type)
+    task_id = context.task_id or 0
+    with self._lock:
+      if task_type not in self._strategy_property:
+        self._strategy_property[task_type] = []
+      while len(self._strategy_property[task_type]) <= task_id:
+        self._strategy_property[task_type].append(None)
+      self._strategy_property[task_type][task_id] = (
+          context._strategy.should_init, context.should_checkpoint,
+          context.should_save_summary)
 
   def _run_mock_std_server(self,
                            session_config=None,
@@ -274,22 +383,32 @@ class DistributeCoordinatorTestBase(test.TestCase):
     return server
 
 
-class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
+class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
 
-  def testInGraphSplitMode(self):
-    """Test it runs in-graph replication in split client mode."""
+  def testInGraphStandaloneMode(self):
+    """Test it runs in-graph replication in standalone client mode."""
     distribute_coordinator.run_distribute_coordinator(
         self._in_graph_worker_fn,
-        cluster_spec=self._cluster_spec,
-        between_graph=False)
+        MockStrategy(between_graph=False),
+        cluster_spec=self._cluster_spec)
     self.assertEqual(self._result_correct, 1)
 
   def testBetweenGraph(self):
-    """Test it runs between-graph replication in split client mode."""
+    """Test it runs between-graph replication in standalone client mode."""
     distribute_coordinator.run_distribute_coordinator(
         self._between_graph_worker_fn,
-        cluster_spec=self._cluster_spec,
-        between_graph=True)
+        MockStrategy(between_graph=True),
+        cluster_spec=self._cluster_spec)
+
+    # Each finished worker will increment self._result_correct.
+    self.assertEqual(self._result_correct, NUM_WORKERS)
+
+  def testBetweenGraphWithMonitoredSession(self):
+    """Test monitored session in standalone client mode."""
+    distribute_coordinator.run_distribute_coordinator(
+        self._between_graph_with_monitored_session,
+        MockStrategy(between_graph=True),
+        cluster_spec=self._cluster_spec)
 
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
@@ -298,8 +417,8 @@ class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
     # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
         self._dump_worker_context,
-        cluster_spec=self._cluster_spec,
-        between_graph=True)
+        MockStrategy(between_graph=True),
+        cluster_spec=self._cluster_spec)
 
     # There is only one type of task and there three such tasks.
     self.assertEqual(len(self._worker_context), 1)
@@ -318,12 +437,30 @@ class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
         self._worker_context[WORKER][2],
         (_bytes_to_str(self._workers[2].target), NUM_WORKERS, False, True))
 
+  def testBetweenGraphStrategyProperties(self):
+    # Dumps properties of the strategy objects.
+    distribute_coordinator.run_distribute_coordinator(
+        self._dump_strategy_property,
+        MockStrategy(between_graph=True, should_init=True),
+        cluster_spec=self._cluster_spec)
+
+    # There is only one type of task and there three such tasks.
+    self.assertEqual(len(self._strategy_property), 1)
+    self.assertTrue(WORKER in self._strategy_property)
+    self.assertEqual(len(self._strategy_property[WORKER]), NUM_WORKERS)
+
+    # Check whether each task has the right properties of should_init,
+    # should_checkpoint and should_save_summary.
+    self.assertEqual(self._strategy_property[WORKER][0], (True, True, True))
+    self.assertEqual(self._strategy_property[WORKER][1], (True, False, False))
+    self.assertEqual(self._strategy_property[WORKER][2], (True, False, False))
+
   def testInGraphContext(self):
     # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
         self._dump_worker_context,
-        cluster_spec=self._cluster_spec,
-        between_graph=False)
+        MockStrategy(between_graph=False),
+        cluster_spec=self._cluster_spec)
 
     # There is only a "None" task in the dumped task context.
     self.assertEqual(len(self._worker_context), 1)
@@ -339,7 +476,9 @@ class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
   def testLocalContext(self):
     # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
-        self._dump_worker_context, cluster_spec=None, between_graph=True)
+        self._dump_worker_context,
+        MockStrategy(between_graph=False),
+        cluster_spec=None)
 
     # There is only a "None" task.
     self.assertEqual(len(self._worker_context), 1)
@@ -348,7 +487,7 @@ class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
 
     # Check whether each task has the right master_target, num_workers, is_chief
     # and distributed_mode.
-    self.assertEqual(self._worker_context["None"][0], ("local", 0, True, False))
+    self.assertEqual(self._worker_context["None"][0], ("", 0, True, False))
 
   def testBetweenGraphContextWithChief(self):
     # Adds a chief node, so there are NUM_WORKERS + 1 workers in total.
@@ -358,8 +497,8 @@ class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
     # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
         self._dump_worker_context,
+        MockStrategy(between_graph=True),
         cluster_spec=cluster_spec,
-        between_graph=True,
         rpc_layer="grpc")
 
     # There are one CHIEF and three workers.
@@ -391,8 +530,8 @@ class DistributeCoordinatorTestSplitMode(DistributeCoordinatorTestBase):
     # Dumps the task contexts to the self._worker_context dict.
     distribute_coordinator.run_distribute_coordinator(
         self._dump_worker_context,
+        MockStrategy(between_graph=False),
         cluster_spec=cluster_spec,
-        between_graph=False,
         rpc_layer=None)
 
     # There are one "None" task and one EVALUATOR task.
@@ -417,8 +556,8 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     cluster_spec = self._create_cluster_spec(num_workers=NUM_WORKERS)
     threads = self._run_multiple_coordinator_in_threads(
         self._in_graph_worker_fn,
+        MockStrategy(between_graph=False),
         cluster_spec,
-        between_graph=False,
         mode=INDEPENDENT_WORKER)
     threads[WORKER][0].join()
     self.assertEqual(self._result_correct, 1)
@@ -428,8 +567,22 @@ class DistributeCoordinatorTestInpendentWorkerMode(
         num_workers=NUM_WORKERS, num_ps=NUM_PS)
     threads = self._run_multiple_coordinator_in_threads(
         self._between_graph_worker_fn,
+        MockStrategy(between_graph=True),
         cluster_spec,
-        between_graph=True,
+        mode=INDEPENDENT_WORKER)
+    for task_id in range(NUM_WORKERS):
+      threads[WORKER][task_id].join()
+
+    # Each finished worker will increment self._result_correct.
+    self.assertEqual(self._result_correct, NUM_WORKERS)
+
+  def testBetweenGraphWithMonitoredSession(self):
+    cluster_spec = self._create_cluster_spec(
+        num_workers=NUM_WORKERS, num_ps=NUM_PS)
+    threads = self._run_multiple_coordinator_in_threads(
+        self._between_graph_with_monitored_session,
+        MockStrategy(between_graph=True),
+        cluster_spec,
         mode=INDEPENDENT_WORKER)
     for task_id in range(NUM_WORKERS):
       threads[WORKER][task_id].join()
@@ -444,9 +597,9 @@ class DistributeCoordinatorTestInpendentWorkerMode(
                                 self._run_mock_std_server):
       threads = self._run_multiple_coordinator_in_threads(
           self._dump_worker_context,
+          MockStrategy(between_graph=True),
           cluster_spec,
           mode=INDEPENDENT_WORKER,
-          between_graph=True,
           rpc_layer=None)
       for task_id in range(NUM_WORKERS):
         threads[WORKER][task_id].join()
@@ -476,6 +629,31 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     self.assertFalse(self._std_servers[WORKER][1].joined)
     self.assertFalse(self._std_servers[WORKER][2].joined)
 
+  def testBetweenGraphStrategyProperties(self):
+    cluster_spec = self._create_cluster_spec(num_workers=NUM_WORKERS)
+    # Dumps properties of the strategy objects.
+    with test.mock.patch.object(distribute_coordinator, "_run_std_server",
+                                self._run_mock_std_server):
+      threads = self._run_multiple_coordinator_in_threads(
+          self._dump_strategy_property,
+          MockStrategy(between_graph=True, should_init=True),
+          cluster_spec,
+          mode=INDEPENDENT_WORKER,
+          rpc_layer=None)
+      for task_id in range(NUM_WORKERS):
+        threads[WORKER][task_id].join()
+
+    # There is only one type of task and there three such tasks.
+    self.assertEqual(len(self._strategy_property), 1)
+    self.assertTrue(WORKER in self._strategy_property)
+    self.assertEqual(len(self._strategy_property[WORKER]), NUM_WORKERS)
+
+    # Check whether each task has the right properties of should_init,
+    # should_checkpoint and should_save_summary.
+    self.assertEqual(self._strategy_property[WORKER][0], (True, True, True))
+    self.assertEqual(self._strategy_property[WORKER][1], (True, False, False))
+    self.assertEqual(self._strategy_property[WORKER][2], (True, False, False))
+
   def testInGraphContext(self):
     cluster_spec = self._create_cluster_spec(num_workers=NUM_WORKERS)
     # Dumps the task contexts and std server arguments.
@@ -483,9 +661,9 @@ class DistributeCoordinatorTestInpendentWorkerMode(
                                 self._run_mock_std_server):
       threads = self._run_multiple_coordinator_in_threads(
           self._dump_worker_context,
+          MockStrategy(between_graph=False),
           cluster_spec,
           mode=INDEPENDENT_WORKER,
-          between_graph=False,
           rpc_layer=None)
       for task_id in range(NUM_WORKERS):
         threads[WORKER][task_id].join()
@@ -519,9 +697,9 @@ class DistributeCoordinatorTestInpendentWorkerMode(
                                 self._run_mock_std_server):
       threads = self._run_multiple_coordinator_in_threads(
           self._dump_worker_context,
+          MockStrategy(between_graph=False),
           cluster_spec,
           mode=INDEPENDENT_WORKER,
-          between_graph=False,
           rpc_layer=None)
       for task_id in range(NUM_WORKERS):
         threads[WORKER][task_id].join()

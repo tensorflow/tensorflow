@@ -25613,6 +25613,21 @@ op {
   }
 }
 op {
+  name: "HostConst"
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "value"
+    type: "tensor"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}
+op {
   name: "IFFT"
   input_arg {
     name: "input"
@@ -69116,6 +69131,17 @@ op {
     default_value {
       s: ""
     }
+  }
+}
+op {
+  name: "StringLength"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
   }
 }
 op {

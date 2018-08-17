@@ -28,6 +28,7 @@ import six
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
+from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import parser
 from tensorflow.tools.docs import pretty_docs
@@ -96,7 +97,7 @@ def write_docs(output_dir,
   symbol_to_file = {}
 
   # Collect redirects for an api _redirects.yaml file.
-  redirects = ['redirects:\n']
+  redirects = []
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(parser_config.index):
@@ -108,6 +109,9 @@ def write_docs(output_dir,
     # Methods and some routines are documented only as part of their class.
     if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
             _is_free_function(py_object, full_name, parser_config.index)):
+      continue
+
+    if doc_controls.should_skip(py_object):
       continue
 
     sitepath = os.path.join('api_docs/python',
@@ -162,17 +166,20 @@ def write_docs(output_dir,
         continue
 
       duplicates = [item for item in duplicates if item != full_name]
-      template = ('- from: /{}\n'
-                  '  to: /{}\n')
+
       for dup in duplicates:
         from_path = os.path.join(site_api_path, dup.replace('.', '/'))
         to_path = os.path.join(site_api_path, full_name.replace('.', '/'))
-        redirects.append(
-            template.format(from_path, to_path))
+        redirects.append((from_path, to_path))
 
-  if site_api_path:
+  if site_api_path and redirects:
+    redirects = sorted(redirects)
+    template = ('- from: /{}\n'
+                '  to: /{}\n')
+    redirects = [template.format(f, t) for f, t in redirects]
     api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
     with open(api_redirects_path, 'w') as redirect_file:
+      redirect_file.write('redirects:\n')
       redirect_file.write(''.join(redirects))
 
   if yaml_toc:

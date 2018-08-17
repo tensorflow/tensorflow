@@ -825,9 +825,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kConvolution: {
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
+      optional<int64> feature_group_count;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
+      attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                      &feature_group_count};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -835,8 +838,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!window) {
         window.emplace();
       }
+      if (!feature_group_count) {
+        feature_group_count = 1;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
-          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
+          shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums,
+          feature_group_count.value()));
       break;
     }
     case HloOpcode::kFft: {
@@ -1073,7 +1080,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed: {
       optional<string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
         return false;
       }
       // We need to know the infeed data shape to construct the infeed
@@ -1085,41 +1093,21 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
-
-      if (operands.empty()) {
-        // TODO(b/80000000): Remove this when all uses of infeed are
-        // converted to take tokens.
-        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
-            ShapeUtil::GetTupleElementShape(shape, 0), config ? *config : ""));
-      } else if (operands.size() == 1) {
-        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
-            ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
-            config ? *config : ""));
-      } else {
-        return Error(lexer_.GetLoc(),
-                     "infeed must have exactly zero or one operands");
-      }
+      instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
+          ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
+          config ? *config : ""));
       break;
     }
     case HloOpcode::kOutfeed: {
       optional<string> config;
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
         return false;
       }
-      if (operands.size() == 1) {
-        // TODO(b/80000000): Remove this when all uses of outfeed are
-        // converted to take tokens.
-        instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-            operands[0]->shape(), operands[0], config ? *config : ""));
-      } else if (operands.size() == 2) {
-        instruction = builder->AddInstruction(
-            HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
-                                          operands[1], config ? *config : ""));
-      } else {
-        return Error(lexer_.GetLoc(),
-                     "outfeed must have exactly one or two operands");
-      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
+                                        operands[1], config ? *config : ""));
       break;
     }
     case HloOpcode::kRng: {
@@ -1245,22 +1233,21 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kGather: {
-      optional<std::vector<tensorflow::int64>> output_window_dims;
-      attrs["output_window_dims"] = {
-          /*required=*/true, AttrTy::kBracedInt64List, &output_window_dims};
-      optional<std::vector<tensorflow::int64>> elided_window_dims;
-      attrs["elided_window_dims"] = {
-          /*required=*/true, AttrTy::kBracedInt64List, &elided_window_dims};
-      optional<std::vector<tensorflow::int64>> gather_dims_to_operand_dims;
-      attrs["gather_dims_to_operand_dims"] = {/*required=*/true,
-                                              AttrTy::kBracedInt64List,
-                                              &gather_dims_to_operand_dims};
+      optional<std::vector<tensorflow::int64>> offset_dims;
+      attrs["offset_dims"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                              &offset_dims};
+      optional<std::vector<tensorflow::int64>> collapsed_slice_dims;
+      attrs["collapsed_slice_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &collapsed_slice_dims};
+      optional<std::vector<tensorflow::int64>> start_index_map;
+      attrs["start_index_map"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                                  &start_index_map};
       optional<tensorflow::int64> index_vector_dim;
       attrs["index_vector_dim"] = {/*required=*/true, AttrTy::kInt64,
                                    &index_vector_dim};
-      optional<std::vector<tensorflow::int64>> window_bounds;
-      attrs["window_bounds"] = {/*required=*/true, AttrTy::kBracedInt64List,
-                                &window_bounds};
+      optional<std::vector<tensorflow::int64>> slice_sizes;
+      attrs["slice_sizes"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                              &slice_sizes};
 
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
@@ -1269,14 +1256,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
 
       GatherDimensionNumbers dim_numbers =
           HloGatherInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/*output_window_dims,
-              /*elided_window_dims=*/*elided_window_dims,
-              /*gather_dims_to_operand_dims=*/*gather_dims_to_operand_dims,
+              /*offset_dims=*/*offset_dims,
+              /*collapsed_slice_dims=*/*collapsed_slice_dims,
+              /*start_index_map=*/*start_index_map,
               /*index_vector_dim=*/*index_vector_dim);
 
       instruction = builder->AddInstruction(HloInstruction::CreateGather(
-          shape, /*operand=*/operands[0], /*gather_indices=*/operands[1],
-          dim_numbers, *window_bounds));
+          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+          dim_numbers, *slice_sizes));
       break;
     }
     case HloOpcode::kScatter: {
@@ -1824,7 +1811,6 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
         break;
       }
       case TokKind::kComma:
-      case TokKind::kComment:
         // Skip.
         lexer_.Lex();
         break;

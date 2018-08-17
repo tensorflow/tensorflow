@@ -73,7 +73,7 @@ def _scaled_dot_product(scale, xs, ys, name=None):
     # _possibly_nonzero lets us avoid wasted computation.
     return math_ops.add_n(
         [(scale * x) * y for x, y in zip(xs, ys)
-         if _possibly_nonzero(x) or _possibly_nonzero(y)],
+         if _possibly_nonzero(x) and _possibly_nonzero(y)],
         name=scope)
 
 
@@ -122,7 +122,7 @@ def _runge_kutta_step(func,
       yi = y0 + _scaled_dot_product(dt_cast, beta_i, k)
       k.append(func(yi, ti))
 
-    if not (tableau.c_sol[-1] == 0 and tableau.c_sol == tableau.beta[-1]):
+    if not (tableau.c_sol[-1] == 0 and tableau.c_sol[:-1] == tableau.beta[-1]):
       # This property (true for Dormand-Prince) lets us save a few FLOPs.
       yi = y0 + _scaled_dot_product(dt_cast, tableau.c_sol, k)
 
