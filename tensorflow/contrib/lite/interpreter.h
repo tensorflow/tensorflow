@@ -413,6 +413,10 @@ class Interpreter {
     return op_reg.profiling_string(&context_, node);
   }
 
+  // Set the value of an external context.
+  void SetExternalContext(TfLiteExternalContextType type,
+                          TfLiteExternalContext* ctx);
+
  private:
   friend class InterpreterBuilder;
   friend class InterpreterTest;
@@ -544,8 +548,6 @@ class Interpreter {
       struct TfLiteContext* context, TfLiteExternalContextType type);
 
   // Set the value of an external context.
-  void SetExternalContext(TfLiteExternalContextType type,
-                          TfLiteExternalContext* ctx);
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
