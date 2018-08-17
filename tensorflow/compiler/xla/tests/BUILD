@@ -1156,6 +1156,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
+    shard_count = 20,
     tags = [
         "enable_for_xla_interpreter",
         "optonly",
@@ -2087,6 +2088,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )

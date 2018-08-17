@@ -194,6 +194,33 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
         self.assertNotIn('test/relu6', [c.name for c in consumers])
 
+  def testLayerActivationQuantized(self):
+    self._RunTestOverParameters(self._TestLayerActivationQuantized)
+
+  def _TestLayerActivationQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      _ = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          biases_initializer=None,
+          scope='test')
+      # Ensure that both weights and output of activations are quantized
+      # when we have a conv->relu6 with no bias add
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      activation_op = graph.get_operation_by_name('test/Relu6')
+      conv_op = graph.get_operation_by_name('test/Conv2D')
+      self.assertTrue('test/weights_quant/FakeQuantWithMinMaxVars:0' in
+                      [tensor_in.name for tensor_in in conv_op.inputs])
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [op.type for op in activation_op.outputs[0].consumers()])
+
   def testFinalLayerQuantized(self):
     self._RunTestOverParameters(self._TestFinalLayerQuantized)
 

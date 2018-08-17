@@ -48,7 +48,7 @@ exports_files([
     "schema_v3.fbs",
 ])
 
-load("//third_party/flatbuffers:build_defs.bzl", "flatbuffer_cc_library")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
 # Generic schema for inference on device.
 flatbuffer_cc_library(

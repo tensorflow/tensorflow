@@ -159,8 +159,18 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     def iterate_on_tpu():
       return training_loop.repeat(iterations, run_fn, initial_loop_values)
 
+    # We capture the control_flow_context at this point, before we run `fn`
+    # inside a while_loop and TPU replicate context. This is useful in cases
+    # where we might need to exit these contexts and get back to the outer
+    # context to do some things, for e.g. create an op which should be
+    # evaluated only once at the end of the loop on the host. One such usage
+    # is in creating metrics' value op.
+    self._outer_control_flow_context = (
+        ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
+
     replicate_inputs = [[]] * self.num_towers
     replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
+    del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
 
     # Filter out any ops from the outputs, typically this would be the case

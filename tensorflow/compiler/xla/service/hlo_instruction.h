@@ -667,9 +667,9 @@ class HloInstruction {
 
   static std::unique_ptr<HloInstruction> CreateGather(
       const Shape& shape, HloInstruction* operand,
-      HloInstruction* gather_indices,
+      HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds);
+      tensorflow::gtl::ArraySlice<int64> slice_sizes);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
@@ -1489,8 +1489,8 @@ class HloInstruction {
 
   // Delegates to HloGatherInstruction::gather_dimension_numbers.
   const GatherDimensionNumbers& gather_dimension_numbers() const;
-  // Delegates to HloGatherInstruction::gather_window_bounds.
-  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const;
+  // Delegates to HloGatherInstruction::gather_slice_sizes.
+  tensorflow::gtl::ArraySlice<int64> gather_slice_sizes() const;
 
   // Delegates to HloScatterInstruction::scatter_dimension_numbers().
   const ScatterDimensionNumbers& scatter_dimension_numbers() const;

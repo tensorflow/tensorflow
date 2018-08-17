@@ -57,7 +57,7 @@ xla::XlaOp DiagonalBlocks(xla::XlaOp a, int64 block_size) {
     // We can grab entire blocks using gather
     if (n > block_size) {
       // Construct the starting indices of the diagonal blocks
-      auto gather_indices =
+      auto start_indices =
           Transpose(Broadcast(Mul(Iota(builder, xla::S32, num_blocks),
                                   xla::ConstantR0<int32>(builder, block_size)),
                               /*broadcast_sizes=*/{2}),
@@ -65,13 +65,13 @@ xla::XlaOp DiagonalBlocks(xla::XlaOp a, int64 block_size) {
 
       // Gather the diagonal blocks
       xla::GatherDimensionNumbers dim_numbers;
-      dim_numbers.add_output_window_dims(ndims - 1);
-      dim_numbers.add_output_window_dims(ndims);
-      dim_numbers.add_gather_dims_to_operand_dims(ndims - 2);
-      dim_numbers.add_gather_dims_to_operand_dims(ndims - 1);
+      dim_numbers.add_offset_dims(ndims - 1);
+      dim_numbers.add_offset_dims(ndims);
+      dim_numbers.add_start_index_map(ndims - 2);
+      dim_numbers.add_start_index_map(ndims - 1);
       dim_numbers.set_index_vector_dim(1);
-      diag_blocks = Gather(a, gather_indices, dim_numbers,
-                           /*window_bounds=*/{block_size, block_size});
+      diag_blocks = Gather(a, start_indices, dim_numbers,
+                           /*slice_sizes=*/{block_size, block_size});
     }
 
     // The last block might be smaller than the block size,
