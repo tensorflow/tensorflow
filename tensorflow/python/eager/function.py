@@ -485,6 +485,7 @@ class GraphModeFunction(object):
     self._func_name = name
     self._function_def = defined_function
     self._num_outputs = len(defined_function.signature.output_arg)
+    self._outputs = outputs
     self._python_func_outputs = python_func_outputs
     self._python_returns = [python_func_outputs] if isinstance(
         python_func_outputs,
@@ -512,55 +513,52 @@ class GraphModeFunction(object):
 
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
-    filtered_outputs = [x for x in self._python_returns if x is not None]
-    # TODO(skyewm): use FuncGraph
-    backwards_graph = CapturingGraph()
-    backwards_graph._graph_key = self._graph._graph_key  # pylint: disable=protected-access
-    for collection in self._graph.collections:
-      backwards_graph.get_collection_ref(
-          collection)[:] = self._graph.get_collection(collection)
-    backwards_graph.seed = self._graph.seed
+    backwards_graph = FuncGraph(_backward_name(self._func_name), self._graph)
     with backwards_graph.as_default():
-      self._out_grad_placeholders = [
-          graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
+      out_grad_placeholders = [
+          graph_placeholder(x.dtype, x.shape) for x in self._outputs]
       in_gradients = gradients_impl._GradientsHelper(  # pylint: disable=protected-access
-          filtered_outputs,
+          self._outputs,
           self._input_placeholders,
-          grad_ys=self._out_grad_placeholders,
+          grad_ys=out_grad_placeholders,
           src_graph=self._graph)
 
-    backward_outputs = tuple(
-        grad for grad in _flatten(in_gradients) if grad is not None)
-    output_shapes = tuple(grad.shape for grad in backward_outputs)
-
-    extra_inputs = backwards_graph.captures.keys()
-    extra_placeholders = backwards_graph.captures.values()
-
-    forward_name = _forward_name(self._func_name)
     # Note: we cannot have placeholder ops in the graph or the TPU compilation
     # pass fails.
     placeholder_ops = set([y.op for y in self._input_placeholders])
     function_ops = [x for x in self._graph.get_operations()
                     if x not in placeholder_ops]
     self._forward_fdef = _EagerDefinedFunction(
-        forward_name, self._graph, function_ops,
-        self._input_placeholders, filtered_outputs + list(extra_inputs),
-        self._attrs)
-    all_inputs = self._out_grad_placeholders + list(extra_placeholders)
+        _forward_name(self._func_name), self._graph, function_ops,
+        self._input_placeholders,
+        self._outputs + list(backwards_graph.captures.keys()), self._attrs)
+
+    # The ordering of `backwards_graph.inputs` is important: inputs of
+    # `self._backward_function` correspond to outputs of `self._forward_fdef`.
+    backwards_graph.inputs = out_grad_placeholders + list(
+        backwards_graph.captures.values())
+    backwards_graph.outputs.extend(
+        grad for grad in _flatten(in_gradients) if grad is not None)
+    backwards_graph.structured_outputs = in_gradients
+    output_shapes = tuple(grad.shape for grad in backwards_graph.outputs)
+
     # Excluding input ops from the body as we do not intend to execute these
     # operations when the function is executed.
-    all_ignored_ops = frozenset(x.op for x in all_inputs)
-    # Enforce a deterministic order of operations in the generated graph. This
-    # means rerunning the function-defining code will always define the same
-    # function, which is useful if we serialize this etc.
-    function_def_ops = tuple(x
-                             for x in sorted(backwards_graph.get_operations(),
-                                             key=lambda x: x.name)
-                             if x not in all_ignored_ops)
-    bname = _backward_name(self._func_name)
+    ignored_ops = frozenset(x.op for x in backwards_graph.inputs)
+    # `get_operations` enforces a deterministic order on operations.
+    operations = tuple(op for op in backwards_graph.get_operations()
+                       if op not in ignored_ops)
+
     self._backward_function = GraphModeFunction(
-        bname, all_inputs, [], backwards_graph, function_def_ops,
-        backward_outputs, in_gradients, output_shapes, attrs=self._attrs)
+        backwards_graph.name,
+        backwards_graph.inputs,
+        backwards_graph.variables,
+        backwards_graph,
+        operations,
+        backwards_graph.outputs,
+        backwards_graph.structured_outputs,
+        output_shapes,
+        attrs=self._attrs)
 
   def _backprop_call(self, args):
     """Calls the wrapped function and records the result on a tape.
