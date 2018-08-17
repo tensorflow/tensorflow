@@ -225,7 +225,7 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kReduce, true, 0, IsBiasReduce, {7, 6}},
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kCall, false, 1, IsPopOpsConvolutionInputGradient, {}}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
     // Scaled add to - A = A + B * c
     {{HloOpcode::kAdd, true, 0, nullptr, {4, 1}},

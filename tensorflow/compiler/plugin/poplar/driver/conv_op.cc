@@ -17,6 +17,7 @@
 #include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <popconv/Convolution.hpp>
+#include <popops/Reduce.hpp>
 
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>
@@ -450,20 +451,17 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
 
   float learning_rate = float_lit->GetFirstElement<float>();
 
-  auto* conv_call = inst->operand(1);
-  while (!IsPopOpsCall(conv_call, "conv_with_reverse")) {
-    conv_call = conv_call->to_apply()->root_instruction();
+  // Find reduction
+  const auto* reduce = root->operand(1)->operand(0);
+  std::vector<std::size_t> reduction_dims;
+  for (auto d : reduce->dimensions()) {
+    reduction_dims.push_back(d);
   }
-  auto* conv = conv_call->to_apply()->root_instruction();
-  if (conv->opcode() != HloOpcode::kConvolution) {
-    return xla::InternalError("Failed to find convolution");
-  }
-
-  TF_ASSIGN_OR_RETURN(deltas, ShuffleConvolutionInputToPoplar(conv, deltas));
 
   poplar::program::Sequence prog;
-  popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate,
-                                 poplar::FLOAT, prog, GetDebugName(inst));
+  popops::reduceWithOutput(graph, deltas, biases, reduction_dims,
+                           {popops::Operation::ADD, -learning_rate, true},
+                           prog, GetDebugName(inst));
 
   TF_CHECK_OK(
       AddOutputTensor(graph, res, prog, tensor_map, inst, 0, biases).status());

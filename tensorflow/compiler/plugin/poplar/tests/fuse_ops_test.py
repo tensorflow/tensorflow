@@ -292,7 +292,58 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/call.*/BiasUpdate']
+      ok = ['GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/call.*/Reduce']
+      self.assertTrue(tu.check_some_compute_sets_in_list(cs_list, ok))
+
+  def testConvolutionBiasApply2(self):
+    with ops.device("/device:IPU:0"):
+      inp = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+
+        x = inp
+
+        shortcut = x
+        shape_in = x.get_shape()
+
+        init = init_ops.ones_initializer()
+
+        x = convolutional.conv2d(x, 8, 1, use_bias=True,
+                                 kernel_initializer=init, name="c1")
+
+        x = convolutional.conv2d(x, 8, 1, use_bias=True, activation=None,
+                                 kernel_initializer=init, name="c2")
+
+        # shortcut
+        pad = int(x.get_shape()[3] - shape_in[3])
+        if (pad != 0):
+          shortcut = array_ops.pad(shortcut,
+                                   paddings=[[0,0],[0,0],[0,0],[0,pad]])
+
+        x = nn_ops.relu(x + shortcut)
+
+      loss = math_ops.reduce_sum(x)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(loss)
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      sess.run([train,loss], {inp: np.zeros([1,4,4,2])})
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 6) # 2xcompile, 1xupload, 1xload, 1xdownload, 1xexecute
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['GradientDescent/update_vs/c1/bias/ResourceApplyGradientDescent/call.*/Reduce',
+            'GradientDescent/update_vs/c2/bias/ResourceApplyGradientDescent/call.*/Reduce']
       self.assertTrue(tu.check_some_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":

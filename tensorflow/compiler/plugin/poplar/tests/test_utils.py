@@ -74,7 +74,7 @@ def check_some_compute_sets_in_list(cs_list, whitelist):
   wl = [x+'*' for x in whitelist]
   for x in wl:
     if len([cs for cs in cs_list if fnmatch.fnmatch(cs, x)]) == 0:
-      fail_list += [ cs ]
+      fail_list += [ x ]
       result = False
   if not result:
     print("Failed to match " + str(fail_list))
