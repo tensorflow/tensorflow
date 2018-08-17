@@ -57,7 +57,8 @@ class InstanceNormTest(test.TestCase):
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     output = normalization.instance_norm(images)
     print('name: ', output.op.name)
-    self.assertStartsWith(output.op.name, 'InstanceNorm/instancenorm')
+    self.assertStartsWith(
+        output.op.name, 'InstanceNorm/instancenorm')
     self.assertListEqual([5, height, width, 3], output.shape.as_list())
 
   def testCreateOpFloat64(self):
@@ -65,7 +66,8 @@ class InstanceNormTest(test.TestCase):
     images = random_ops.random_uniform(
         (5, height, width, 3), dtype=dtypes.float64, seed=1)
     output = normalization.instance_norm(images)
-    self.assertStartsWith(output.op.name, 'InstanceNorm/instancenorm')
+    self.assertStartsWith(
+        output.op.name, 'InstanceNorm/instancenorm')
     self.assertListEqual([5, height, width, 3], output.shape.as_list())
 
   def testCreateOpNoScaleCenter(self):
@@ -73,7 +75,8 @@ class InstanceNormTest(test.TestCase):
     images = random_ops.random_uniform(
         (5, height, width, 3), dtype=dtypes.float64, seed=1)
     output = normalization.instance_norm(images, center=False, scale=False)
-    self.assertStartsWith(output.op.name, 'InstanceNorm/instancenorm')
+    self.assertStartsWith(
+        output.op.name, 'InstanceNorm/instancenorm')
     self.assertListEqual([5, height, width, 3], output.shape.as_list())
     self.assertEqual(0, len(contrib_variables.get_variables_by_name('beta')))
     self.assertEqual(0, len(contrib_variables.get_variables_by_name('gamma')))
@@ -170,22 +173,24 @@ class GroupNormTest(test.TestCase):
     inputs = array_ops.placeholder(dtypes.float32, shape=(5, 2, 10, 10))
     with self.assertRaisesRegexp(ValueError,
                                  'Invalid groups 10 for 2 channels.'):
-      normalization.group_norm(
-          inputs, groups=10, reduction_axes=[-2, -1], channels_axis=-3)
+      normalization.group_norm(inputs, groups=10,
+                               reduction_axes=[-2, -1], channels_axis=-3)
 
   def testBadCommensurateGroup(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(5, 4, 10, 10))
-    with self.assertRaisesRegexp(
-        ValueError, '4 channels is not commensurate with '
-        '3 groups.'):
-      normalization.group_norm(
-          inputs, groups=3, reduction_axes=[-2, -1], channels_axis=-3)
+    with self.assertRaisesRegexp(ValueError,
+                                 '4 channels is not commensurate with '
+                                 '3 groups.'):
+      normalization.group_norm(inputs, groups=3,
+                               reduction_axes=[-2, -1], channels_axis=-3)
 
   def testAxisIsBad(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(1, 2, 4, 5))
-    with self.assertRaisesRegexp(ValueError, 'Axis is out of bounds.'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Axis is out of bounds.'):
       normalization.group_norm(inputs, channels_axis=5)
-    with self.assertRaisesRegexp(ValueError, 'Axis is out of bounds.'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Axis is out of bounds.'):
       normalization.group_norm(inputs, reduction_axes=[1, 5])
 
   def testNotMutuallyExclusiveAxis(self):
@@ -213,45 +218,41 @@ class GroupNormTest(test.TestCase):
   def testParamsShapeNotFullyDefinedChannelsAxis(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(1, 3, 4, None))
     with self.assertRaisesRegexp(ValueError, 'undefined channel dimension'):
-      normalization.group_norm(
-          inputs, channels_axis=-1, reduction_axes=[-3, -2])
+      normalization.group_norm(inputs, channels_axis=-1,
+                               reduction_axes=[-3, -2])
 
   def testCreateOp(self):
     height, width, groups = 3, 3, 4
-    images = random_ops.random_uniform((5, height, width, 2 * groups), seed=1)
-    output = normalization.group_norm(
-        images, groups=groups, channels_axis=-1, reduction_axes=[-3, -2])
+    images = random_ops.random_uniform((5, height, width, 2*groups), seed=1)
+    output = normalization.group_norm(images, groups=groups, channels_axis=-1,
+                                      reduction_axes=[-3, -2])
     print('name: ', output.op.name)
-    self.assertListEqual([5, height, width, 2 * groups], output.shape.as_list())
+    self.assertListEqual([5, height, width, 2*groups], output.shape.as_list())
 
   def testCreateOpFloat64(self):
     height, width, groups = 3, 3, 5
     images = random_ops.random_uniform(
-        (5, height, width, 4 * groups), dtype=dtypes.float64, seed=1)
+        (5, height, width, 4*groups), dtype=dtypes.float64, seed=1)
     output = normalization.group_norm(images, groups=groups)
     self.assertEqual(dtypes.float64, output.dtype)
-    self.assertListEqual([5, height, width, 4 * groups], output.shape.as_list())
+    self.assertListEqual([5, height, width, 4*groups], output.shape.as_list())
 
   def testCreateOpNoScaleCenter(self):
     height, width, groups = 3, 3, 7
     images = random_ops.random_uniform(
-        (5, height, width, 3 * groups), dtype=dtypes.float32, seed=1)
-    output = normalization.group_norm(
-        images, groups=groups, center=False, scale=False)
-    self.assertListEqual([5, height, width, 3 * groups], output.shape.as_list())
+        (5, height, width, 3*groups), dtype=dtypes.float32, seed=1)
+    output = normalization.group_norm(images, groups=groups, center=False,
+                                      scale=False)
+    self.assertListEqual([5, height, width, 3*groups], output.shape.as_list())
     self.assertEqual(0, len(contrib_variables.get_variables_by_name('beta')))
     self.assertEqual(0, len(contrib_variables.get_variables_by_name('gamma')))
 
   def testCreateVariables_NHWC(self):
     height, width = 3, 3
     images = random_ops.random_uniform((5, height, width, 8), seed=1)
-    normalization.group_norm(
-        images,
-        groups=4,
-        channels_axis=-1,
-        reduction_axes=(-3, -2),
-        center=True,
-        scale=True)
+    normalization.group_norm(images, groups=4,
+                             channels_axis=-1, reduction_axes=(-3, -2),
+                             center=True, scale=True)
     beta = contrib_variables.get_variables_by_name('beta')[0]
     gamma = contrib_variables.get_variables_by_name('gamma')[0]
     self.assertEqual('GroupNorm/beta', beta.op.name)
@@ -259,14 +260,10 @@ class GroupNormTest(test.TestCase):
 
   def testCreateVariables_NCHW(self):
     height, width, groups = 3, 3, 4
-    images = random_ops.random_uniform((5, 2 * groups, height, width), seed=1)
-    normalization.group_norm(
-        images,
-        groups=4,
-        channels_axis=-3,
-        reduction_axes=(-2, -1),
-        center=True,
-        scale=True)
+    images = random_ops.random_uniform((5, 2*groups, height, width), seed=1)
+    normalization.group_norm(images, groups=4,
+                             channels_axis=-3, reduction_axes=(-2, -1),
+                             center=True, scale=True)
     beta = contrib_variables.get_variables_by_name('beta')[0]
     gamma = contrib_variables.get_variables_by_name('gamma')[0]
     self.assertEqual('GroupNorm/beta', beta.op.name)
@@ -276,8 +273,8 @@ class GroupNormTest(test.TestCase):
     height, width = 3, 3
     images = random_ops.random_uniform((5, height, width, 4), seed=1)
     normalization.group_norm(images, groups=2, scale=True, scope='IN')
-    normalization.group_norm(
-        images, groups=2, scale=True, scope='IN', reuse=True)
+    normalization.group_norm(images, groups=2, scale=True, scope='IN',
+                             reuse=True)
     beta = contrib_variables.get_variables_by_name('beta')
     gamma = contrib_variables.get_variables_by_name('gamma')
     self.assertEqual(1, len(beta))
@@ -288,21 +285,16 @@ class GroupNormTest(test.TestCase):
     image_shape = (10, height, width, 4)
     images = random_ops.random_uniform(image_shape, seed=1)
     output_train = normalization.group_norm(images, groups=2, scope='IN')
-    output_eval = normalization.group_norm(
-        images, groups=2, scope='IN', reuse=True)
+    output_eval = normalization.group_norm(images, groups=2, scope='IN',
+                                           reuse=True)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
       # output_train and output_eval should be the same.
       train_np, eval_np = sess.run([output_train, output_eval])
       self.assertAllClose(train_np, eval_np)
 
-  def doOutputTest(self,
-                   input_shape,
-                   channels_axis=None,
-                   reduction_axes=None,
-                   mean_close_to_zero=False,
-                   groups=2,
-                   tol=1e-2):
+  def doOutputTest(self, input_shape, channels_axis=None, reduction_axes=None,
+                   groups=2, tol=1e-2):
     # Select the axis for the channel and the dimensions along which statistics
     # are accumulated.
     if channels_axis < 0:
@@ -314,16 +306,15 @@ class GroupNormTest(test.TestCase):
       if a < channels_axis:
         reduced_axes.append(a)
       else:
-        reduced_axes.append(a + 1)
+        reduced_axes.append(a+1)
     reduced_axes = tuple(reduced_axes)
 
     # Calculate the final shape for the output Tensor.
     axes_before_channels = input_shape[:channels_axis]
-    axes_after_channels = input_shape[channels_axis + 1:]
+    axes_after_channels = input_shape[channels_axis+1:]
     channels = input_shape[channels_axis]
-    outputs_shape = (
-        axes_before_channels + [groups, channels // groups] +
-        axes_after_channels)
+    outputs_shape = (axes_before_channels + [groups, channels // groups] +
+                     axes_after_channels)
 
     # Calculate the final shape for the output statistics.
     reduced_shape = []
@@ -331,28 +322,17 @@ class GroupNormTest(test.TestCase):
       if i not in reduced_axes:
         reduced_shape.append(a)
 
-    if mean_close_to_zero:
-      mu_tuple = (1e-4, 1e-2, 1.0)
-      sigma_tuple = (1e-2, 0.1, 1.0)
-    else:
-      mu_tuple = (1.0, 1e2)
-      sigma_tuple = (1.0, 0.1)
-
-    for mu in mu_tuple:
-      for sigma in sigma_tuple:
+    for mu in (0.0, 1e2):
+      for sigma in (1.0, 0.1):
         # Determine shape of Tensor after normalization.
         expected_mean = np.zeros(reduced_shape)
         expected_var = np.ones(reduced_shape)
 
-        inputs = random_ops.random_normal(input_shape, seed=0) * sigma + mu
+        inputs = random_ops.random_uniform(input_shape, seed=0) * sigma + mu
         output_op = normalization.group_norm(
-            inputs,
-            groups=groups,
-            center=False,
-            scale=False,
+            inputs, groups=groups, center=False, scale=False,
             channels_axis=channels_axis,
-            reduction_axes=reduction_axes,
-            mean_close_to_zero=mean_close_to_zero)
+            reduction_axes=reduction_axes)
         with self.test_session() as sess:
           sess.run(variables.global_variables_initializer())
           outputs = sess.run(output_op)
@@ -373,18 +353,6 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=3, reduction_axes=[1, 2])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-1, reduction_axes=[-3, -2])
-    # Specify axes with positive values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=3,
-        reduction_axes=[1, 2],
-        mean_close_to_zero=True)
-    # Specify axes with negative values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=-1,
-        reduction_axes=[-3, -2],
-        mean_close_to_zero=True)
 
   def testOutputSmallInput3D_NHWC(self):
     input_shape = [10, 10, 30]
@@ -392,18 +360,6 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=2, reduction_axes=[0, 1])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-1, reduction_axes=[-3, -2])
-    # Specify axes with positive values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=2,
-        reduction_axes=[0, 1],
-        mean_close_to_zero=True)
-    # Specify axes with negative values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=-1,
-        reduction_axes=[-3, -2],
-        mean_close_to_zero=True)
 
   def testOutputSmallInput4D_NCHW(self):
     input_shape = [10, 10, 10, 30]
@@ -411,18 +367,6 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=1, reduction_axes=[2, 3])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-3, reduction_axes=[-2, -1])
-    # Specify axes with positive values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=1,
-        reduction_axes=[2, 3],
-        mean_close_to_zero=True)
-    # Specify axes with negative values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=-3,
-        reduction_axes=[-2, -1],
-        mean_close_to_zero=True)
 
   def testOutputSmallInput3D_NCHW(self):
     input_shape = [10, 10, 30]
@@ -430,62 +374,23 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=0, reduction_axes=[1, 2])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-3, reduction_axes=[-2, -1])
-    # Specify axes with positive values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=0,
-        reduction_axes=[1, 2],
-        mean_close_to_zero=True)
-    # Specify axes with negative values.
-    self.doOutputTest(
-        input_shape,
-        channels_axis=-3,
-        reduction_axes=[-2, -1],
-        mean_close_to_zero=True)
 
   def testOutputBigInput4D_NHWC(self):
-    self.doOutputTest(
-        [5, 100, 100, 1], channels_axis=3, reduction_axes=[1, 2], groups=1)
-    self.doOutputTest(
-        [5, 100, 100, 1],
-        channels_axis=3,
-        reduction_axes=[1, 2],
-        groups=1,
-        mean_close_to_zero=True)
+    self.doOutputTest([5, 100, 100, 1], channels_axis=3, reduction_axes=[1, 2],
+                      groups=1)
 
   def testOutputBigInput4D_NCHW(self):
-    self.doOutputTest(
-        [1, 100, 100, 4], channels_axis=1, reduction_axes=[2, 3], groups=4)
-    self.doOutputTest(
-        [1, 100, 100, 4],
-        channels_axis=1,
-        reduction_axes=[2, 3],
-        groups=4,
-        mean_close_to_zero=True)
+    self.doOutputTest([1, 100, 100, 4], channels_axis=1, reduction_axes=[2, 3],
+                      groups=4)
 
   def testOutputSmallInput2D_NC(self):
-    self.doOutputTest(
-        [10, 7 * 100], channels_axis=1, reduction_axes=[], groups=7)
-    self.doOutputTest(
-        [10, 7 * 100],
-        channels_axis=1,
-        reduction_axes=[],
-        groups=7,
-        mean_close_to_zero=True)
+    self.doOutputTest([10, 7*100], channels_axis=1, reduction_axes=[], groups=7)
 
   def testOutputSmallInput5D_NCXXX(self):
-    self.doOutputTest(
-        [10, 10, 20, 40, 5],
-        channels_axis=1,
-        reduction_axes=[2, 3, 4],
-        groups=5)
-    self.doOutputTest(
-        [10, 10, 20, 40, 5],
-        channels_axis=1,
-        reduction_axes=[2, 3, 4],
-        groups=5,
-        mean_close_to_zero=True)
-
+    self.doOutputTest([10, 10, 20, 40, 5],
+                      channels_axis=1,
+                      reduction_axes=[2, 3, 4],
+                      groups=5)
 
 if __name__ == '__main__':
   test.main()
