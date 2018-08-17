@@ -27,4 +27,6 @@ from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_grap
 from tensorflow.contrib.tensorrt.python.trt_convert import enable_test_value
 from tensorflow.contrib.tensorrt.python.trt_convert import get_test_value
 from tensorflow.contrib.tensorrt.python.trt_convert import is_tensorrt_enabled
+from tensorflow.contrib.tensorrt.python.nvidia_scope import nvidia_scope
+from tensorflow.contrib.tensorrt.python.quantization_hints import numerical_hint
 # pylint: enable=unused-import,line-too-long

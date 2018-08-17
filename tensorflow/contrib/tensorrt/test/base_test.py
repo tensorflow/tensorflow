@@ -22,6 +22,8 @@ import numpy as np
 
 from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.contrib.tensorrt.python.nvidia_scope import nvidia_scope as nv_scope
+from tensorflow.contrib.tensorrt.python.quantization_hints import numerical_hint as nm_hint
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -126,6 +128,57 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         #   "add", "sub1"];
         # - my_trt_op_1 should have ["weights","conv", "div"]
         expected_engines=["my_trt_op_0", "my_trt_op_1"],
+        expected_output_dims=(100, 12, 12, 6),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
+
+class SimpleScopedGraphDefTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing multiple segment."""
+    # TODO(aaroey): test graph with different dtypes.
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [100, 24, 24, 2]
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      with g.device("/GPU:0"):
+        conv_filter = constant_op.constant(
+            [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
+            name="weights",
+            dtype=dtype)
+        conv = nn.conv2d(
+            input=inp,
+            filter=conv_filter,
+            strides=[1, 2, 2, 1],
+            padding="SAME",
+            name="conv")
+        c1 = constant_op.constant(
+            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype)
+        p = conv * c1
+        c2 = constant_op.constant(
+            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype)
+        q = conv / c2
+
+        edge = self.trt_incompatible_op(q)
+        with nv_scope(select=False):
+          edge /= edge
+          r = edge + edge
+
+          p -= edge
+          p = nm_hint(p, max_value=5.0, min_value=-1)
+          q *= edge
+          s = p + q
+          s -= r
+      array_ops.squeeze(s, name=self.output_name)
+    #print(g.as_graph_def())
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        num_expected_engines=1,
         expected_output_dims=(100, 12, 12, 6),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
