@@ -114,6 +114,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:multi_worker_util",
     ],
 )
 
