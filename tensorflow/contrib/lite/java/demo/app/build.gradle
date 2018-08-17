@@ -11,11 +11,6 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        // Remove this block.
-        jackOptions {
-            enabled true
-        }
     }
     lintOptions {
         abortOnError false
@@ -37,6 +32,7 @@ android {
 }
 
 repositories {
+    google()
     maven {
         url 'https://google.bintray.com/tensorflow'
     }
