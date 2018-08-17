@@ -35,6 +35,10 @@ class Readable():
      operations.
   """
 
+  @abc.abstractmethod
+  def __init__(self):
+    pass
+
   def read_byte(self):
     """Reads and returnes byte."""
     return self.__read("b", 1)
