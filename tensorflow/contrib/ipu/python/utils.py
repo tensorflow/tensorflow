@@ -131,7 +131,7 @@ def move_variable_initialization_to_cpu(graph=None):
     graph = ops.get_default_graph()
 
   init_ops = []
-  dep_ops = map(lambda x:x.initializer.inputs[1].op, graph.get_collection('variables'))
+  dep_ops = list(map(lambda x:x.initializer.inputs[1].op, graph.get_collection('variables')))
   visited  = set()
 
   while len(dep_ops) > 0:
