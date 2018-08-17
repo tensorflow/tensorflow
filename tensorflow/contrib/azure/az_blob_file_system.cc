@@ -15,6 +15,7 @@ limitations under the License.
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <ostream>
 #include <sstream>
 
 #include "tensorflow/contrib/azure/az_blob_file_system.h"
@@ -172,16 +173,18 @@ class AzBlobRandomAccessFile : public RandomAccessFile {
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     auto blob_client = CreateAzBlobClientWrapper(account_);
-    std::stringstream ss;
-    blob_client.download_blob_to_stream(container_, object_, offset, n, ss);
+    
+    std::ostringstream oss;
+    oss.rdbuf()->pubsetbuf(scratch, n);
+
+    blob_client.download_blob_to_stream(container_, object_, offset, n, oss);
     if (errno != 0) {
+      n = 0;
       *result = StringPiece(scratch, n);
       return errors::Internal("Failed to get contents of az://", account_, kAzBlobEndpoint, "/",
                               container_, "/", object_, " (", errno_to_string(),
                               ")");
     }
-
-    ss.read(scratch, n);
 
     *result = StringPiece(scratch, n);
 

@@ -44,7 +44,7 @@ tf_cc_binary(
 
 # This test is set to manual because it requires interaction with 
 # Azure Blob Storage
-# bazel text \
+# bazel test \
 #   --test_env=TF_AZURE_ACCOUNT=<storage-account> \
 #   --test_env=TF_AZURE_CONTAINER=<storage-container> \
 #   --test_env=TF_AZURE_STORAGE_KEY=<storage-key> \
