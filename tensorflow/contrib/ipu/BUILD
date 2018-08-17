@@ -29,5 +29,6 @@ tf_py_test(
         ":ipu",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
     ],
 )

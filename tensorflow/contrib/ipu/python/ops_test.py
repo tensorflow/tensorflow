@@ -9,6 +9,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
@@ -126,6 +127,28 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       l_final, _ = sess.run([l, train], fd)
 
       self.assertTrue(l_initial > l_final)
+
+  def testInitializerDeviceChange(self):
+
+    inp = array_ops.placeholder(np.float32, [1,8,8,4])
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      out = convolutional.conv2d(inp, 8, 1)
+
+    events = gen_ipu_ops.ipu_event_trace()
+
+    ipu.utils.move_variable_initialization_to_cpu()
+
+    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      # Discard any pending events
+      sess.run(events)
+
+      # Run initializer (should be on CPU)
+      sess.run(variables.global_variables_initializer())
+
+      e = sess.run(events)
+      self.assertEqual(len(e), 2) # compile begin/end, no load/execute
+
 
 if __name__ == "__main__":
     googletest.main()
