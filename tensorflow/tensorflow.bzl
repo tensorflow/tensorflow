@@ -391,7 +391,7 @@ def tf_cc_binary(
         srcs = srcs + tf_binary_additional_srcs(),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-              "//third_party/mkl:intel_binary_blob",
+                "//third_party/mkl:intel_binary_blob",
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
@@ -729,7 +729,7 @@ def tf_cc_test(
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-              "//third_party/mkl:intel_binary_blob",
+                "//third_party/mkl:intel_binary_blob",
             ],
         ),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
