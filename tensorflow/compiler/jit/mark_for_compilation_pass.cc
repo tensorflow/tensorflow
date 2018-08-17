@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -142,6 +143,10 @@ bool IsCompilableCall(const NodeDef& call_def,
             << ": could not instantiate: " << status;
     return false;
   }
+
+  auto release_handle_on_return = gtl::MakeCleanup(
+      [&] { TF_CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
+
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   CHECK(fbody);
   const FunctionDef& fdef = fbody->fdef;
