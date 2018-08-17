@@ -58,8 +58,7 @@ To try the code for this tutorial:
 
 We make the data that we use in this tutorial available as `TFRecord` files
 containing `TFExamples`. You can download the data from here:
-
-http://download.tensorflow.org/data/quickdraw_tutorial_dataset_v1.tar.gz
+<a rel="nofollow" href="http://download.tensorflow.org/data/quickdraw_tutorial_dataset_v1.tar.gz">http://download.tensorflow.org/data/quickdraw_tutorial_dataset_v1.tar.gz</a> (~1GB).
 
 Alternatively you can download the original data in `ndjson` format from the
 Google cloud and convert it to the `TFRecord` files containing `TFExamples`
