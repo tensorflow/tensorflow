@@ -58,11 +58,12 @@ Status GetTmpFilename(string* filename) {
 
 /// \brief Splits a Azure path to a account, container and object.
 ///
-/// For example, "az://account-name.blob.core.windows.net/container/path/to/file.txt" gets split into
-/// "account-name", "container" and "path/to/file.txt".
+/// For example,
+/// "az://account-name.blob.core.windows.net/container/path/to/file.txt" gets
+/// split into "account-name", "container" and "path/to/file.txt".
 Status ParseAzBlobPath(StringPiece fname, bool empty_object_ok,
-                    std::string* account, std::string* container,
-                    std::string* object) {
+                       std::string* account, std::string* container,
+                       std::string* object) {
   if (!account || !object) {
     return errors::Internal("account and object cannot be null.");
   }
@@ -74,7 +75,9 @@ Status ParseAzBlobPath(StringPiece fname, bool empty_object_ok,
   }
 
   if (!str_util::ConsumeSuffix(&accountp, kAzBlobEndpoint)) {
-    return errors::InvalidArgument("Invalid resource uri. Must be of the format az://<account-name>.blob.core.windows.net/<container>/<path>");
+    return errors::InvalidArgument(
+        "Invalid resource uri. Must be of the format "
+        "az://<account-name>.blob.core.windows.net/<container>/<path>");
   }
 
   *account = accountp.ToString();
@@ -166,14 +169,15 @@ microsoft_azure::storage::blob_client_wrapper CreateAzBlobClientWrapper(
 
 class AzBlobRandomAccessFile : public RandomAccessFile {
  public:
-  AzBlobRandomAccessFile(const std::string& account, const std::string& container,
-                      const std::string& object)
+  AzBlobRandomAccessFile(const std::string& account,
+                         const std::string& container,
+                         const std::string& object)
       : account_(account), container_(container), object_(object) {}
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     auto blob_client = CreateAzBlobClientWrapper(account_);
-    
+
     std::ostringstream oss;
     oss.rdbuf()->pubsetbuf(scratch, n);
 
@@ -181,9 +185,9 @@ class AzBlobRandomAccessFile : public RandomAccessFile {
     if (errno != 0) {
       n = 0;
       *result = StringPiece(scratch, n);
-      return errors::Internal("Failed to get contents of az://", account_, kAzBlobEndpoint, "/",
-                              container_, "/", object_, " (", errno_to_string(),
-                              ")");
+      return errors::Internal("Failed to get contents of az://", account_,
+                              kAzBlobEndpoint, "/", container_, "/", object_,
+                              " (", errno_to_string(), ")");
     }
 
     *result = StringPiece(scratch, n);
@@ -197,11 +201,12 @@ class AzBlobRandomAccessFile : public RandomAccessFile {
   std::string object_;
 };
 
-/// TODO: Support blob storage 'append' files for AzBlobFileSystem::NewAppendableFile
+/// TODO: Support blob storage 'append' files for
+/// AzBlobFileSystem::NewAppendableFile
 class AzBlobWritableFile : public WritableFile {
  public:
   AzBlobWritableFile(const std::string& account, const std::string& container,
-                  const std::string& object)
+                     const std::string& object)
       : account_(account),
         container_(container),
         object_(object),
@@ -265,9 +270,9 @@ class AzBlobWritableFile : public WritableFile {
     auto blob_client = CreateAzBlobClientWrapper(account_);
     blob_client.upload_file_to_blob(tmp_content_filename_, container_, object_);
     if (errno != 0) {
-      return errors::Internal("Failed to upload to az://", account_, kAzBlobEndpoint, "/",
-                              container_, "/", object_, " (", errno_to_string(),
-                              ")");
+      return errors::Internal("Failed to upload to az://", account_,
+                              kAzBlobEndpoint, "/", container_, "/", object_,
+                              " (", errno_to_string(), ")");
     }
 
     return Status::OK();
@@ -312,18 +317,20 @@ Status AzBlobFileSystem::NewRandomAccessFile(
   return Status::OK();
 }
 
-Status AzBlobFileSystem::NewWritableFile(const std::string& fname,
-                                      std::unique_ptr<WritableFile>* result) {
+Status AzBlobFileSystem::NewWritableFile(
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, false, &account, &container, &object));
   result->reset(new AzBlobWritableFile(account, container, object));
   return Status::OK();
 }
 
-Status AzBlobFileSystem::NewAppendableFile(const std::string& fname,
-                                        std::unique_ptr<WritableFile>* result) {
+Status AzBlobFileSystem::NewAppendableFile(
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, false, &account, &container, &object));
   result->reset(new AzBlobWritableFile(account, container, object));
   return Status::OK();
 }
@@ -347,7 +354,8 @@ Status AzBlobFileSystem::NewReadOnlyMemoryRegionFromFile(
 
 Status AzBlobFileSystem::FileExists(const std::string& fname) {
   std::string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, false, &account, &container, &object));
   auto blob_client = CreateAzBlobClientWrapper(account);
   auto blob_exists = blob_client.blob_exists(container, object);
   if (!blob_exists) {
@@ -360,7 +368,8 @@ Status AzBlobFileSystem::Stat(const std::string& fname, FileStatistics* stat) {
   using namespace std::chrono;
 
   std::string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, false, &account, &container, &object));
   auto blob_client = CreateAzBlobClientWrapper(account);
 
   if (IsDirectory(fname).ok()) {
@@ -389,9 +398,10 @@ Status AzBlobFileSystem::Stat(const std::string& fname, FileStatistics* stat) {
 }
 
 Status AzBlobFileSystem::GetChildren(const std::string& dir,
-                                  std::vector<std::string>* result) {
+                                     std::vector<std::string>* result) {
   std::string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(dir, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(dir, false, &account, &container, &object));
   auto blob_client = CreateAzBlobClientWrapper(account);
 
   if (!object.empty() && object.back() != '/') {
@@ -426,7 +436,7 @@ Status AzBlobFileSystem::GetChildren(const std::string& dir,
 }
 
 Status AzBlobFileSystem::GetMatchingPaths(const std::string& pattern,
-                                       std::vector<std::string>* results) {
+                                          std::vector<std::string>* results) {
   const std::string& fixed_prefix =
       pattern.substr(0, pattern.find_first_of("*?[\\"));
 
@@ -438,14 +448,15 @@ Status AzBlobFileSystem::GetMatchingPaths(const std::string& pattern,
 
   std::vector<std::string> blobs;
   TF_RETURN_IF_ERROR(ListResources(fixed_prefix, "", blob_client, &blobs));
-  
-  auto container_path = io::JoinPath("az://", account + kAzBlobEndpoint, container);
+
+  auto container_path =
+      io::JoinPath("az://", account + kAzBlobEndpoint, container);
 
   std::transform(std::begin(blobs), std::end(blobs), std::begin(blobs),
                  [&container_path](const std::string& path) {
                    return io::JoinPath(container_path, path);
                  });
-  
+
   std::copy_if(std::begin(blobs), std::end(blobs), std::back_inserter(*results),
                [&pattern](const std::string& full_path) {
                  return Env::Default()->MatchPath(full_path, pattern);
@@ -456,7 +467,8 @@ Status AzBlobFileSystem::GetMatchingPaths(const std::string& pattern,
 
 Status AzBlobFileSystem::DeleteFile(const std::string& fname) {
   std::string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, false, &account, &container, &object));
   auto blob_client = CreateAzBlobClientWrapper(account);
 
   blob_client.delete_blob(container, object);
@@ -531,9 +543,11 @@ Status AzBlobFileSystem::DeleteDir(const std::string& dirname) {
   return Status::OK();
 }
 
-Status AzBlobFileSystem::GetFileSize(const std::string& fname, uint64* file_size) {
+Status AzBlobFileSystem::GetFileSize(const std::string& fname,
+                                     uint64* file_size) {
   std::string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, false, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, false, &account, &container, &object));
 
   auto blob_client = CreateAzBlobClientWrapper(account);
   auto blob_property = blob_client.get_blob_property(container, object);
@@ -547,13 +561,13 @@ Status AzBlobFileSystem::GetFileSize(const std::string& fname, uint64* file_size
 }
 
 Status AzBlobFileSystem::RenameFile(const std::string& src,
-                                 const std::string& target) {
+                                    const std::string& target) {
   std::string src_account, src_container, src_object;
   TF_RETURN_IF_ERROR(
       ParseAzBlobPath(src, false, &src_account, &src_container, &src_object));
   std::string target_account, target_container, target_object;
   TF_RETURN_IF_ERROR(ParseAzBlobPath(target, false, &target_account,
-                                  &target_container, &target_object));
+                                     &target_container, &target_object));
 
   if (src_account != target_account) {
     return errors::Unimplemented(
@@ -570,17 +584,20 @@ Status AzBlobFileSystem::RenameFile(const std::string& src,
                             " (", errno_to_string(), ")");
   }
 
-  // Wait until copy completes 
+  // Wait until copy completes
   // Status can be success, pending, aborted or failed
   std::string pending_status{"pending"};
   std::string copy_status;
   do {
-    const auto target_blob_property = blob_client.get_blob_property(target_container, target_object);
+    const auto target_blob_property =
+        blob_client.get_blob_property(target_container, target_object);
     copy_status = target_blob_property.copy_status;
   } while (copy_status == pending_status && !copy_status.empty());
 
   if (copy_status.find("success") == std::string::npos) {
-    return errors::Internal("Process of renaming resulted in status of ", copy_status, " when renaming ", src, " to ", target);
+    return errors::Internal("Process of renaming resulted in status of ",
+                            copy_status, " when renaming ", src, " to ",
+                            target);
   }
 
   blob_client.delete_blob(src_container, src_object);
@@ -602,7 +619,8 @@ Status AzBlobFileSystem::IsDirectory(const std::string& fname) {
   // blobs name so no need to check further
 
   std::string account, container, object;
-  TF_RETURN_IF_ERROR(ParseAzBlobPath(fname, true, &account, &container, &object));
+  TF_RETURN_IF_ERROR(
+      ParseAzBlobPath(fname, true, &account, &container, &object));
 
   auto blob_client = CreateAzBlobClientWrapper(account);
 
@@ -638,8 +656,8 @@ Status AzBlobFileSystem::IsDirectory(const std::string& fname) {
 }
 
 Status AzBlobFileSystem::DeleteRecursively(const std::string& dirname,
-                                        int64* undeleted_files,
-                                        int64* undeleted_dirs) {
+                                           int64* undeleted_files,
+                                           int64* undeleted_dirs) {
   TF_RETURN_IF_ERROR(DeleteDir(dirname));
 
   return Status::OK();

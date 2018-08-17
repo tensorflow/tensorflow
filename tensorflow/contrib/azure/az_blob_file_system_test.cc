@@ -30,7 +30,9 @@ class AzBlobFileSystemTest : public ::testing::Test {
     auto account = std::getenv("TF_AZURE_ACCOUNT");
     auto container = std::getenv("TF_AZURE_CONTAINER");
     if (account != nullptr && container != nullptr) {
-      return "az://" + io::JoinPath(std::string(account) + ".blob.core.windows.net", std::string(container), path);
+      return "az://" +
+             io::JoinPath(std::string(account) + ".blob.core.windows.net",
+                          std::string(container), path);
     } else {
       return "az://" + io::JoinPath(testing::TmpDir(), path);
     }
