@@ -139,7 +139,7 @@ message HloInstructionProto {
 
   // Gather dimension numbers.
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
-  repeated int64 gather_window_bounds = 34;
+  repeated int64 gather_slice_sizes = 34;
 
   // Compute Host.
   string channel_name = 41;

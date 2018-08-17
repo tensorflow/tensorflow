@@ -555,43 +555,39 @@ Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-// Returns an ShapeUtil::IndexIterationSpace that iterates over the output
-// gather dimensions while keeping the rest of the output dimensions clamped to
-// 0.
-ShapeUtil::IndexIterationSpace IterationSpaceForOutputGatherIndices(
+// Returns an ShapeUtil::IndexIterationSpace that iterates over the output batch
+// dimensions while keeping the rest of the output dimensions clamped to 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
     const Shape& output_shape, const GatherDimensionNumbers& dim_numbers) {
   int64 output_rank = output_shape.dimensions_size();
   std::vector<int64> index_base(output_rank, 0);
   std::vector<int64> index_count;
   index_count.reserve(output_rank);
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_output_gather_dim =
-        !c_binary_search(dim_numbers.output_window_dims(), i);
-    index_count.push_back(is_output_gather_dim ? output_shape.dimensions(i)
-                                               : 1);
+    bool is_output_batch_dim = !c_binary_search(dim_numbers.offset_dims(), i);
+    index_count.push_back(is_output_batch_dim ? output_shape.dimensions(i) : 1);
   }
 
   return {std::move(index_base), std::move(index_count),
           std::vector<int64>(output_rank, 1)};
 }
 
-// Return an ShapeUtil::IndexIterationSpace that iterates over the output window
+// Return an ShapeUtil::IndexIterationSpace that iterates over the output slice
 // dimensions while keeping the rest of the output dimensions clamped to 0.
-ShapeUtil::IndexIterationSpace IterationSpaceForOutputWindowIndices(
-    int64 output_rank, ArraySlice<int64> window_bounds,
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputOffsetIndices(
+    int64 output_rank, ArraySlice<int64> slice_sizes,
     const GatherDimensionNumbers& dim_numbers) {
   std::vector<int64> index_base(output_rank, 0);
   std::vector<int64> index_count(output_rank, 1);
-  int64 window_bounds_idx = 0;
+  int64 slice_sizes_idx = 0;
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_output_window_dim =
-        c_binary_search(dim_numbers.output_window_dims(), i);
+    bool is_output_window_dim = c_binary_search(dim_numbers.offset_dims(), i);
     if (is_output_window_dim) {
-      while (c_binary_search(dim_numbers.elided_window_dims(),
-                             window_bounds_idx)) {
-        window_bounds_idx++;
+      while (c_binary_search(dim_numbers.collapsed_slice_dims(),
+                             slice_sizes_idx)) {
+        slice_sizes_idx++;
       }
-      index_count[i] = window_bounds[window_bounds_idx++];
+      index_count[i] = slice_sizes[slice_sizes_idx++];
     }
   }
 
@@ -599,30 +595,30 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputWindowIndices(
           std::vector<int64>(output_rank, 1)};
 }
 
-// This functor computes the contribution of gather_indices to an input index
+// This functor computes the contribution of start_indices to an input index
 // corresponding to an output index.  That is, given an output index I, it picks
-// out the gather output indices in I and uses them to look up a gather index,
-// G, from the gather indices tensor, and expands G into the input space
-// according to gather_dims_to_operand_dims.
-class OutputGatherIndexToInputIndex {
+// out the batch indices in I and uses them to look up a starting index, G, from
+// the start indices tensor, and expands G into the input space according to
+// start_index_map.
+class OutputBatchIndexToInputIndex {
  public:
   // The constructor does some setup work that is amortized across all
   // iterations.
-  explicit OutputGatherIndexToInputIndex(
+  explicit OutputBatchIndexToInputIndex(
       const GatherDimensionNumbers* dim_numbers, const Shape& input_shape,
-      const Shape& output_shape, const Literal* gather_indices)
-      : dim_numbers_(*dim_numbers), gather_indices_(*gather_indices) {
+      const Shape& output_shape, const Literal* start_indices)
+      : dim_numbers_(*dim_numbers), start_indices_(*start_indices) {
     for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
-      output_dim_is_gather_dims_.push_back(
-          !c_binary_search(dim_numbers_.output_window_dims(), i));
+      output_dim_is_batch_dims_.push_back(
+          !c_binary_search(dim_numbers_.offset_dims(), i));
     }
 
     for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
       int64 index_of_input_dim_in_index_vector =
-          std::distance(dim_numbers_.gather_dims_to_operand_dims().begin(),
-                        c_find(dim_numbers_.gather_dims_to_operand_dims(), i));
+          std::distance(dim_numbers_.start_index_map().begin(),
+                        c_find(dim_numbers_.start_index_map(), i));
       if (index_of_input_dim_in_index_vector ==
-          dim_numbers_.gather_dims_to_operand_dims_size()) {
+          dim_numbers_.start_index_map_size()) {
         input_dim_value_to_index_vector_.push_back(-1);
       } else {
         input_dim_value_to_index_vector_.push_back(
@@ -630,14 +626,14 @@ class OutputGatherIndexToInputIndex {
       }
     }
 
-    index_vector_index_.resize(gather_indices_.shape().dimensions_size());
+    index_vector_index_.resize(start_indices_.shape().dimensions_size());
     input_index_.resize(input_shape.dimensions_size());
     int64 index_vector_size =
-        gather_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
+        start_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
     index_vector_.resize(index_vector_size);
   }
 
-  // Returns the contribution of gather_indices to the input index corresponding
+  // Returns the contribution of start_indices to the input index corresponding
   // to output_index.  See gather_inner_loop_body.
   //
   // This is conceptually  a stateless transformation from output_index to the
@@ -659,7 +655,7 @@ class OutputGatherIndexToInputIndex {
   }
 
  private:
-  // Propagates the gather index dimensions from the output index into
+  // Propagates the batch dimensions from the output index into
   // index_vector_index_ by mutating index_vector_index_ in place.  Does not
   // update the dim_numbers.index_vector_dim() dimension -- that's the dimension
   // we iterate over in FetchIndexVector.
@@ -667,7 +663,7 @@ class OutputGatherIndexToInputIndex {
       ArraySlice<int64> output_index) {
     int64 index_vector_index_i = 0;
     for (int64 i = 0, e = output_index.size(); i < e; i++) {
-      if (!output_dim_is_gather_dims_[i]) {
+      if (!output_dim_is_batch_dims_[i]) {
         continue;
       }
 
@@ -679,14 +675,14 @@ class OutputGatherIndexToInputIndex {
     }
   }
 
-  // Populates index_vector_ by iterating over gather_indices_ according to
+  // Populates index_vector_ by iterating over start_indices_ according to
   // index_vector_index_.
   Status FetchIndexVector() {
     int64 index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
-      TF_ASSIGN_OR_RETURN(index_vector_[i], gather_indices_.GetIntegralAsS64(
-                                                index_vector_index_));
+      TF_ASSIGN_OR_RETURN(index_vector_[i],
+                          start_indices_.GetIntegralAsS64(index_vector_index_));
     }
     return Status::OK();
   }
@@ -708,15 +704,15 @@ class OutputGatherIndexToInputIndex {
   // PropagateIndexVectorToInputIndex.
   std::vector<int64> input_dim_value_to_index_vector_;
 
-  // output_dim_is_gather_dims_[i] is true iff the output index i is a gather
+  // output_dim_is_batch_dims_[i] is true iff the output index i is a gather
   // dimension.
-  std::vector<bool> output_dim_is_gather_dims_;
+  std::vector<bool> output_dim_is_batch_dims_;
 
-  // The buffer into which we construct an index into gather_indices_ to fetch
+  // The buffer into which we construct an index into start_indices_ to fetch
   // the index vector.
   std::vector<int64> index_vector_index_;
 
-  // The index vector fetched from gather_indices_.
+  // The index vector fetched from start_indices_.
   std::vector<int64> index_vector_;
 
   // The result computed by this functor.  operator() returns an ArraySlice into
@@ -724,24 +720,23 @@ class OutputGatherIndexToInputIndex {
   std::vector<int64> input_index_;
 
   const GatherDimensionNumbers& dim_numbers_;
-  const Literal& gather_indices_;
+  const Literal& start_indices_;
 };
 
-// This functor computes the contribution of the window indices in an output
+// This functor computes the contribution of the offset indices in an output
 // index to an input index.  That is, given an output index I it picks out the
-// output window indices in I and expands it into a window index into the input
-// shape.
-class OutputWindowIndexToInputIndex {
+// output offset indices in I and expands it into an index into the input shape.
+class OutputOffsetIndexToInputIndex {
  public:
   // The constructor does some setup work that is amortized across all
   // iterations.
-  explicit OutputWindowIndexToInputIndex(
+  explicit OutputOffsetIndexToInputIndex(
       const GatherDimensionNumbers& dim_numbers, const Shape& input_shape,
       const Shape& output_shape) {
     std::vector<int64> window_index_to_output_index;
     int64 output_index_count = 0;
     for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
-      if (c_binary_search(dim_numbers.output_window_dims(), i)) {
+      if (c_binary_search(dim_numbers.offset_dims(), i)) {
         window_index_to_output_index.push_back(output_index_count++);
       } else {
         output_index_count++;
@@ -750,7 +745,7 @@ class OutputWindowIndexToInputIndex {
 
     int64 window_dim_count = 0;
     for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
-      if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
+      if (c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
         input_dim_value_to_output_index_.push_back(-1);
       } else {
         input_dim_value_to_output_index_.push_back(
@@ -808,20 +803,20 @@ class OutputWindowIndexToInputIndex {
 
 // Rehapes the gather indices input to have a trailing degenerate `1` dimension
 // if necessary.  Hands over the ownership of the newly created literal (if
-// there is one) to `reshaped_gather_indices`.
+// there is one) to `reshaped_start_indices`.
 static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
-    int64 index_vector_dim, const Literal& gather_indices,
-    std::unique_ptr<Literal>* reshaped_gather_indices) {
-  if (gather_indices.shape().dimensions_size() != index_vector_dim) {
-    return std::cref(gather_indices);
+    int64 index_vector_dim, const Literal& start_indices,
+    std::unique_ptr<Literal>* reshaped_start_indices) {
+  if (start_indices.shape().dimensions_size() != index_vector_dim) {
+    return std::cref(start_indices);
   }
 
-  std::vector<int64> new_shape(gather_indices.shape().dimensions().begin(),
-                               gather_indices.shape().dimensions().end());
+  std::vector<int64> new_shape(start_indices.shape().dimensions().begin(),
+                               start_indices.shape().dimensions().end());
   new_shape.push_back(1);
-  TF_ASSIGN_OR_RETURN(*reshaped_gather_indices,
-                      gather_indices.Reshape(new_shape));
-  return std::cref(**reshaped_gather_indices);
+  TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                      start_indices.Reshape(new_shape));
+  return std::cref(**reshaped_start_indices);
 }
 
 Status HloEvaluator::HandleGather(HloInstruction* gather) {
@@ -830,34 +825,33 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   const GatherDimensionNumbers& dim_numbers =
       gather->gather_dimension_numbers();
   const Literal& operand = GetEvaluatedLiteralFor(gather->operand(0));
-  std::unique_ptr<Literal> reshaped_gather_indices;
+  std::unique_ptr<Literal> reshaped_start_indices;
   TF_ASSIGN_OR_RETURN(
-      const Literal& gather_indices,
+      const Literal& start_indices,
       ReshapedGatherIndices(dim_numbers.index_vector_dim(),
                             GetEvaluatedLiteralFor(gather->operand(1)),
-                            &reshaped_gather_indices));
+                            &reshaped_start_indices));
 
   // We iterate over the gather dimensions in the output shape in an outer loop
   // nest, and iterate over the window dimensions in the output shape in an
   // inner loop nest.
 
-  ShapeUtil::IndexIterationSpace gather_indices_iteration_space =
-      IterationSpaceForOutputGatherIndices(shape, dim_numbers);
-  ShapeUtil::IndexIterationSpace window_indices_iteration_space =
-      IterationSpaceForOutputWindowIndices(
-          shape.dimensions_size(), gather->gather_window_bounds(), dim_numbers);
+  ShapeUtil::IndexIterationSpace start_indices_iteration_space =
+      IterationSpaceForOutputBatchIndices(shape, dim_numbers);
+  ShapeUtil::IndexIterationSpace offset_indices_iteration_space =
+      IterationSpaceForOutputOffsetIndices(
+          shape.dimensions_size(), gather->gather_slice_sizes(), dim_numbers);
 
   // Scratch buffers that hold an index in the output shape and the
   // corresponding index in the input shape.
   std::vector<int64> input_index(operand.shape().dimensions_size());
   std::vector<int64> output_index(gather->shape().dimensions_size());
-  std::vector<int64> input_gather_index_clamped(
-      operand.shape().dimensions_size());
+  std::vector<int64> input_index_clamped(operand.shape().dimensions_size());
 
-  OutputGatherIndexToInputIndex output_gather_index_to_input_index(
+  OutputBatchIndexToInputIndex output_batch_index_to_input_index(
       &gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
-      /*output_shape=*/shape, &gather_indices);
-  OutputWindowIndexToInputIndex output_window_index_to_input_index(
+      /*output_shape=*/shape, &start_indices);
+  OutputOffsetIndexToInputIndex output_offset_index_to_input_index(
       gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
       /*output_shape=*/shape);
 
@@ -869,29 +863,29 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
           ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
     TF_ASSIGN_OR_RETURN(
         ArraySlice<int64> input_window_index,
-        output_window_index_to_input_index(output_window_index));
+        output_offset_index_to_input_index(output_window_index));
     for (int i = 0, e = output_index.size(); i < e; i++) {
       output_index[i] = output_gather_index[i] + output_window_index[i];
       DCHECK_LT(output_index[i], shape.dimensions(i));
     }
     for (int i = 0, e = input_gather_index.size(); i < e; i++) {
       int64 output_dim =
-          output_window_index_to_input_index.input_dim_value_to_output_index(i);
+          output_offset_index_to_input_index.input_dim_value_to_output_index(i);
       // If 'output_dim' is -1, it means 'i' is an elided window dim. This means
       // we set the iteration index to 0, so for the purpose of the following
       // calculations we can consider the output dimension size to be 1.
       int64 output_dim_size =
           output_dim == -1 ? 1 : shape.dimensions(output_dim);
       // Clamp the gather index so that the gather region fits in the operand.
-      // input_gather_index_clamped[i] = clamp(input_gather_index[i], 0,
+      // input_index_clamped[i] = clamp(input_gather_index[i], 0,
       //                                       operand_shape.dimensions(i) -
       //                                       output_dim_size);
-      input_gather_index_clamped[i] =
+      input_index_clamped[i] =
           std::min(operand_shape.dimensions(i) - output_dim_size,
                    std::max(0LL, input_gather_index[i]));
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
-      input_index[i] = input_gather_index_clamped[i] + input_window_index[i];
+      input_index[i] = input_index_clamped[i] + input_window_index[i];
       DCHECK_GE(input_index[i], 0);
       DCHECK_LT(input_index[i], operand_shape.dimensions(i));
     }
@@ -902,18 +896,17 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 
   auto gather_outer_loop_body =
       [&](ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
-    TF_ASSIGN_OR_RETURN(
-        ArraySlice<int64> input_gather_index,
-        output_gather_index_to_input_index(output_gather_index));
+    TF_ASSIGN_OR_RETURN(ArraySlice<int64> input_gather_index,
+                        output_batch_index_to_input_index(output_gather_index));
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-        shape, window_indices_iteration_space,
+        shape, offset_indices_iteration_space,
         std::bind(gather_inner_loop_body, std::placeholders::_1,
                   input_gather_index, output_gather_index)));
     return true;
   };
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-      shape, gather_indices_iteration_space, gather_outer_loop_body));
+      shape, start_indices_iteration_space, gather_outer_loop_body));
   evaluated_[gather] = std::move(result);
   return Status::OK();
 }

@@ -213,8 +213,12 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
     self._evaluate(session)
 
 
-class StopAtCheckpointStepHook(training.SessionRunHook):
-  """Hook that requests stop at a specified step based on checkpoint."""
+class _StopAtCheckpointStepHook(training.SessionRunHook):
+  """Hook that requests stop at a specified step based on checkpoint.
+
+  Note: We recommend using 'make_stop_at_checkpoint_step_hook` to get the proper
+  hook.
+  """
 
   def __init__(self, model_dir, last_step,
                wait_after_file_check_secs=30):
@@ -263,5 +267,18 @@ class StopAtCheckpointStepHook(training.SessionRunHook):
         run_context.request_stop()
       else:
         time.sleep(self._wait_after_file_check_secs)
+
+
+def make_stop_at_checkpoint_step_hook(estimator,
+                                      last_step,
+                                      wait_after_file_check_secs=30):
+  """Creates a proper StopAtCheckpointStepHook based on chief status."""
+
+  if estimator.config.is_chief:
+    return training.StopAtStepHook(last_step=last_step)
+  return _StopAtCheckpointStepHook(
+      model_dir=estimator.model_dir,
+      last_step=last_step,
+      wait_after_file_check_secs=wait_after_file_check_secs)
 
 # pylint: enable=protected-access

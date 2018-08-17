@@ -49,7 +49,8 @@ typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 typedef enum {
   kTfLiteEigenContext = 0,     // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
-  kTfLiteMaxExternalContexts = 2
+  kTfLiteEdgeTpuContext = 2,   // Placeholder for Edge TPU support.
+  kTfLiteMaxExternalContexts = 3
 } TfLiteExternalContextType;
 
 // An external context is a collection of information unrelated to the TF Lite

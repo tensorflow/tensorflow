@@ -218,6 +218,21 @@ def extract_features(features, feature_columns, use_core_columns):
   sparse_int_shapes = []
   for key in sorted(features.keys()):
     tensor = features[key]
+    # TODO(nponomareva): consider iterating over feature columns instead.
+    if isinstance(tensor, tuple):
+      # Weighted categorical feature.
+      categorical_tensor = tensor[0]
+      weight_tensor = tensor[1]
+
+      shape = categorical_tensor.dense_shape
+      indices = array_ops.concat([
+          array_ops.slice(categorical_tensor.indices, [0, 0], [-1, 1]),
+          array_ops.expand_dims(
+              math_ops.to_int64(categorical_tensor.values), -1)
+      ], 1)
+      tensor = sparse_tensor.SparseTensor(
+          indices=indices, values=weight_tensor.values, dense_shape=shape)
+
     if isinstance(tensor, sparse_tensor.SparseTensor):
       if tensor.values.dtype == dtypes.float32:
         sparse_float_names.append(key)

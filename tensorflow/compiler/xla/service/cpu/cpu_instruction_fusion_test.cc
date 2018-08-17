@@ -792,11 +792,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[3,2] broadcast(one), dimensions={}
   ROOT result = s32[3,2]{1,0} add(gather, one_broadcasted)
@@ -808,11 +808,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,3,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,3,2] broadcast(one), dimensions={}
   ROOT result = s32[2,3,2]{2,1,0} add(gather, one_broadcasted)
@@ -824,11 +824,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=2,
-      window_bounds={1, 1}
+      slice_sizes={1, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
@@ -840,11 +840,11 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
@@ -856,11 +856,11 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
@@ -872,11 +872,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   gather = s32[1,1] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={0,1},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   one = s32[] constant(1)
   one_broadcasted = s32[1,1] broadcast(one), dimensions={}
   ROOT result = s32[1,1]{1,0} add(gather, one_broadcasted)
@@ -888,11 +888,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,1,1] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,1,1] broadcast(one), dimensions={}
   ROOT result = s32[2,1,1]{2,1,0} add(gather, one_broadcasted)

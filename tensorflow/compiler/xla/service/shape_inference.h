@@ -276,9 +276,9 @@ class ShapeInference {
   // with the given input shape, gather indices shape and gather dimension
   // numbers.
   static StatusOr<Shape> InferGatherShape(
-      const Shape& input_shape, const Shape& gather_indices_shape,
+      const Shape& input_shape, const Shape& start_indices_shape,
       const GatherDimensionNumbers& gather_dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds);
+      tensorflow::gtl::ArraySlice<int64> slice_sizes);
 
   // Helper that validates the given input shape, scatter indices shape, updates
   // shape, and scatter dimension numbers that constitute a scatter operation,

@@ -955,6 +955,19 @@ class EstimatorTrainTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
 
+  def test_config_should_not_be_evaluator_or_ps(self):
+
+    class FakeEvaluatorConfig(run_config.RunConfig):
+
+      @property
+      def task_type(self):
+        return run_config.TaskType.EVALUATOR
+
+    est = estimator.Estimator(
+        model_fn=dummy_model_fn, config=FakeEvaluatorConfig())
+    with self.assertRaisesRegexp(ValueError, 'train_and_evaluate'):
+      est.train(dummy_input_fn, steps=1)
+
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
   _, _ = features, labels
