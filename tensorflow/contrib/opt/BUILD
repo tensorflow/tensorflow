@@ -20,6 +20,7 @@ py_library(
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/ggt.py",
+        "python/training/lars_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/model_average_optimizer.py",
         "python/training/moving_average_optimizer.py",
@@ -27,6 +28,7 @@ py_library(
         "python/training/nadam_optimizer.py",
         "python/training/powersign.py",
         "python/training/reg_adagrad_optimizer.py",
+        "python/training/shampoo.py",
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
         "python/training/weight_decay_optimizers.py",
@@ -342,5 +344,40 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "shampoo_test",
+    size = "large",
+    srcs = ["python/training/shampoo_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "lars_optimizer_test",
+    srcs = ["python/training/lars_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

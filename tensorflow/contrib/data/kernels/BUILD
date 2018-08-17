@@ -37,6 +37,7 @@ cc_library(
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -58,6 +59,7 @@ cc_library(
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -68,6 +70,7 @@ cc_library(
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -78,6 +81,7 @@ cc_library(
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(

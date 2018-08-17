@@ -402,7 +402,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const Window& window,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count = 1);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -447,8 +448,27 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& all_reduce_id =
-          tensorflow::gtl::nullopt);
+      const tensorflow::gtl::optional<int64>& all_reduce_id);
+
+  // This op handles the communication of an Alltoall operation. On each core,
+  // the operands are N ops in the same shape, where N is the number of cores
+  // participating the Alltoall. Then the N operands are scattered to N cores,
+  // e.g., the ith operand is sent to the ith core. Then each core gathers the
+  // received data into a tuple.
+  //
+  // - `replica_groups`: each ReplicaGroup contains a list of replica id. If
+  // empty, all replicas belong to one group in the order of 0 - (n-1). Alltoall
+  // will be applied within subgroups in the specified order. For example,
+  // replica groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied
+  // within replica 1, 2, 3, and in the gather phase, the received blocks will
+  // be concatenated in the order of 1, 2, 3; another Alltoall will be applied
+  // within replica 4, 5, 0, and the concatenation order is 4, 5, 0.
+  //
+  // TODO(b/110096724): This is NOT YET ready to use.
+  static std::unique_ptr<HloInstruction> CreateAllToAll(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const std::vector<ReplicaGroup>& replica_groups,
+      tensorflow::StringPiece barrier);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -467,11 +487,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
       const string& config);
-  // Overload which does not require a token.
-  // TODO(b/80000000): Remove this overload when all uses of infeed are
-  // converted to take tokens.
-  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& infeed_shape,
-                                                      const string& config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -479,12 +494,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateOutfeed(
       const Shape& outfeed_shape, HloInstruction* operand,
       HloInstruction* token_operand, tensorflow::StringPiece outfeed_config);
-  // Overload which does not require a token.
-  // TODO(b/80000000): Remove this overload when all uses of outfeed are
-  // converted to take tokens.
-  static std::unique_ptr<HloInstruction> CreateOutfeed(
-      const Shape& outfeed_shape, HloInstruction* operand,
-      tensorflow::StringPiece outfeed_config);
 
   // Creates an asynchronous send instruction with the given channel id, which
   // initiates sending the operand data to a unique receive instruction in
@@ -542,14 +551,31 @@ class HloInstruction {
       int64 dimension);
 
   // Creates a reduce instruction, where the computation (given by the handle)
-  // is applied successively to every element in operand. That is, if f is the
-  // function to apply (which either takes 2 [accumulator, value] or 3
-  // [accumulator, index, value] arguments) and init is a reduction operator
-  // specified initial value (for example, 0 for addition), then this operation
-  // will compute:
-  //   f(f(init, [index0], value0), [index1], value1), ...)
+  // is applied successively to every element in operand. For example, let f be
+  // the function to apply, which takes 2 arguments, an accumulator and the
+  // current value. Let init be an initial value (which is normally chosen to be
+  // the identity element for f, e.g. 0 if f is addition).
+  // Then the reduce HLO will compute:
+  // f(f(init, value0), value1), ...)
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
+      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      HloComputation* reduce_computation);
+
+  // A more general, multiple-argument version of the above.
+  // The function to apply, f, now takes N arguments:
+  // [accumulator0, accumulator1, ..., accumulatorN, value0, value1, ...,
+  // init_valueN], and returns an N-tuple. The performed computation is (for
+  // commutative and associative f operators) equivalent to:
+  //
+  // f_1 = f(init0, ...  initN, input0.value0, ..., inputN.value0)
+  // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
+  // ..., inputN.value1)
+  // ...
+  // TODO(b/112040122): Add support to this in HLO passes and in backends.
+  static std::unique_ptr<HloInstruction> CreateReduce(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::gtl::ArraySlice<HloInstruction*> init_values,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reduce_computation);
 
@@ -641,9 +667,15 @@ class HloInstruction {
 
   static std::unique_ptr<HloInstruction> CreateGather(
       const Shape& shape, HloInstruction* operand,
-      HloInstruction* gather_indices,
+      HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds);
+      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+
+  static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* scatter_indices, HloInstruction* updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
 
   // Creates a kDomain instruction which delimits an HLO domain which have
   // the provided user and operand side metadata.
@@ -1015,9 +1047,7 @@ class HloInstruction {
     if (sharding_ == nullptr) {
       return tensorflow::gtl::optional<int64>();
     }
-    auto device = sharding_->UniqueDevice();
-    return device.ok() ? device.ValueOrDie()
-                       : tensorflow::gtl::optional<int64>();
+    return sharding_->UniqueDevice();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
@@ -1394,6 +1424,9 @@ class HloInstruction {
   // Delegates to HloAllReduceInstruction::replica_group_ids.
   const std::vector<int64>& replica_group_ids() const;
 
+  // Delegates to HloAllToAllInstruction::replica_groups.
+  const std::vector<ReplicaGroup>& replica_groups() const;
+
   // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
   string cross_replica_sum_barrier() const;
   void set_cross_replica_sum_barrier(const string& barrier);
@@ -1422,6 +1455,10 @@ class HloInstruction {
   // numbers when you create the instruction.
   void set_convolution_dimension_numbers(
       const ConvolutionDimensionNumbers& dnums);
+
+  // The number of feature groups. Must be a divisor of the input feature
+  // dimension and output feature dimension.
+  int64 feature_group_count() const;
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;
@@ -1452,8 +1489,11 @@ class HloInstruction {
 
   // Delegates to HloGatherInstruction::gather_dimension_numbers.
   const GatherDimensionNumbers& gather_dimension_numbers() const;
-  // Delegates to HloGatherInstruction::gather_window_bounds.
-  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const;
+  // Delegates to HloGatherInstruction::gather_slice_sizes.
+  tensorflow::gtl::ArraySlice<int64> gather_slice_sizes() const;
+
+  // Delegates to HloScatterInstruction::scatter_dimension_numbers().
+  const ScatterDimensionNumbers& scatter_dimension_numbers() const;
 
   // Old methods kept for smooth subclassing transition END.
 

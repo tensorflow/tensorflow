@@ -66,7 +66,7 @@ patch versions.  The public APIs consist of
 Some API functions are explicitly marked as "experimental" and can change in
 backward incompatible ways between minor releases. These include:
 
-*   **Experimental APIs**: The @{tf.contrib} module and its submodules in Python
+*   **Experimental APIs**: The `tf.contrib` module and its submodules in Python
     and any functions in the C API or fields in protocol buffers that are
     explicitly commented as being experimental. In particular, any field in a
     protocol buffer which is called "experimental" and all its fields and
@@ -75,10 +75,11 @@ backward incompatible ways between minor releases. These include:
 *   **Other languages**: TensorFlow APIs in languages other than Python and C,
     such as:
 
-  - @{$cc/guide$C++} (exposed through header files in
+  - [C++](../api_guides/cc/guide.md) (exposed through header files in
     [`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc)).
   - [Java](../api_docs/java/reference/org/tensorflow/package-summary),
   - [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
+  - [JavaScript](https://js.tensorflow.org)
 
 *   **Details of composite ops:** Many public functions in Python expand to
     several primitive ops in the graph, and these details will be part of any
@@ -97,7 +98,7 @@ backward incompatible ways between minor releases. These include:
     accuracy for the overall system.
 
 *   **Random numbers:** The specific random numbers computed by the
-    @{$python/constant_op#Random_Tensors$random ops} may change at any time.
+    [random ops](../api_guides/python/constant_op.md#Random_Tensors) may change at any time.
     Users should rely only on approximately correct distributions and
     statistical strength, not the specific bits computed. However, we will make
     changes to random bits rarely (or perhaps never) for patch releases.  We
@@ -173,6 +174,8 @@ provide tools for automatically converting graphs to a newer supported
 This section is relevant only when making incompatible changes to the `GraphDef`
 format, such as when adding ops, removing ops, or changing the functionality
 of existing ops.  The previous section should suffice for most users.
+
+<a id="backward_forward"/>
 
 ### Backward and partial forward compatibility
 
@@ -252,13 +255,13 @@ ops has not changed:
 
 1. If forward compatibility is desired,  set `strip_default_attrs` to `True`
    while exporting the model using either the
-   @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`add_meta_graph_and_variables`}
-   and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`add_meta_graph`}
+   `tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables`
+   and `tf.saved_model.builder.SavedModelBuilder.add_meta_graph`
    methods of the `SavedModelBuilder` class, or
-   @{tf.estimator.Estimator.export_savedmodel$`Estimator.export_savedmodel`}
+   `tf.estimator.Estimator.export_savedmodel`
 2. This strips off the default valued attributes at the time of
    producing/exporting the models. This makes sure that the exported
-   @{tf.MetaGraphDef} does not contain the new op-attribute when the default
+   `tf.MetaGraphDef` does not contain the new op-attribute when the default
    value is used.
 3. Having this control could allow out-of-date consumers (for example, serving
    binaries that lag behind training binaries) to continue loading the models

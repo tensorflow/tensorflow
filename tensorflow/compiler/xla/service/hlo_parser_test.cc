@@ -380,7 +380,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
   %input = f32[1,2,1]{2,1,0} parameter(0)
   %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
   %filter = f32[1,1,1]{2,1,0} parameter(1)
-  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=1
 }
 
 )"
@@ -393,7 +393,7 @@ R"(HloModule ConvolveR2_module
 ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
   %input = f32[1,2]{1,0} parameter(0)
   %filter = f32[1,1]{1,0} parameter(1)
-  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), dim_labels=bf_io->bf
+  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), dim_labels=bf_io->bf, feature_group_count=1
 }
 
 )"
@@ -406,7 +406,7 @@ R"(HloModule ConvolveBackward_module
 ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f32[128,14,14,512] {
   %input = f32[128,7,7,512]{0,3,2,1} parameter(0)
   %filter = f32[3,3,512,512]{3,2,1,0} parameter(1)
-  ROOT %convolution-base-dilated = f32[128,14,14,512]{0,3,2,1} convolution(f32[128,7,7,512]{0,3,2,1} %input, f32[3,3,512,512]{3,2,1,0} %filter), window={size=3x3 pad=1_2x1_2 lhs_dilate=2x2 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f
+  ROOT %convolution-base-dilated = f32[128,14,14,512]{0,3,2,1} convolution(f32[128,7,7,512]{0,3,2,1} %input, f32[3,3,512,512]{3,2,1,0} %filter), window={size=3x3 pad=1_2x1_2 lhs_dilate=2x2 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f, feature_group_count=1
 }
 
 )"
@@ -752,10 +752,50 @@ ENTRY %sparse_f32_r1 () -> f32[9] {
 "gather",
 R"(HloModule StringifyGather
 
-ENTRY %Gather (input_tensor: f32[50,49,48,47,46], gather_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
+ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
   %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
-  %gather_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
-  ROOT %gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %gather_indices), output_window_dims={4,5,6,7,8}, elided_window_dims={}, gather_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, window_bounds={30,29,28,27,26}
+  %start_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  ROOT %gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %start_indices), offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, start_index_map={0,1,2,3,4}, index_vector_dim=4, slice_sizes={30,29,28,27,26}
+}
+
+)"
+},
+{
+"scatter",
+R"(HloModule StringifyScatter
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7,5], updates: f32[10,9,8,7,30,29,28,27,26]) -> f32[50,49,48,47,46] {
+  %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
+  ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, to_apply=%add_F32.v3
+}
+
+)"
+},
+{
+  "ConstantUnsignedNoUnderflow",
+  R"(HloModule ConstantUnsignedNoUnderflow_module
+
+ENTRY %ConstantUnsignedNoUnderflow () -> u64[] {
+  ROOT %constant = u64[] constant(1)
+}
+
+)"
+},
+
+{
+  "ConstantUnsignedNoOverflow",
+  R"(HloModule ConstantUnsignedNoOverflow_module
+
+ENTRY %ConstantUnsignedNoOverflow () -> u64[] {
+  ROOT %constant = u64[] constant(9223372036854775807)
 }
 
 )"
@@ -801,6 +841,32 @@ ENTRY ReduceR3ToR2.v3 {
   input = f32[8,16,256]{2,1,0} parameter(0)
   constant = f32[] constant(0)
   ROOT reduce = f32[8,16]{1,0} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+}
+
+)"
+},
+// tuple reduce
+{
+"TupleReduce",
+R"(HloModule TupleReduce
+
+max_argmax {
+  value = f32[] parameter(2)
+  prev_max = f32[] parameter(0)
+  is_next_larger = pred[] greater-than-or-equal-to(value, prev_max)
+  max = f32[] select(is_next_larger, value, prev_max)
+  index = s32[] parameter(3)
+  prev_argmax = s32[] parameter(1)
+  argmax = s32[] select(is_next_larger, index, prev_argmax)
+  ROOT pair = (f32[], s32[]) tuple(max, argmax)
+}
+
+ENTRY reduce_entry {
+  values = f32[1024]{0} parameter(0)
+  indices = f32[1024]{0} parameter(1)
+  init_value = f32[] constant(-inf)
+  init_index = s32[] constant(-1)
+  ROOT result = (f32[], s32[]) reduce(values, indices, init_value, init_index), dimensions={0}, to_apply=max_argmax
 }
 
 )"
@@ -964,8 +1030,8 @@ R"(HloModule gather
 
 ENTRY Gather {
   input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
-  gather_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
-  ROOT gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} gather(input_tensor, gather_indices), output_window_dims={4,5,6,7,8}, elided_window_dims={}, gather_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, window_bounds={30,29,28,27,26}
+  start_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  ROOT gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} gather(input_tensor, start_indices), offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, start_index_map={0,1,2,3,4}, index_vector_dim=4, slice_sizes={30,29,28,27,26}
 }
 
 )"
@@ -1002,6 +1068,30 @@ add {
 ENTRY CrossReplicaSumWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
   ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+}
+
+)"
+},
+// all-to-all
+{
+"AllToAll",
+R"(HloModule AllToAll
+
+ENTRY AllToAll {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={}
+}
+
+)"
+},
+// all-to-all with subgroups
+{
+"AllToAllWithSubgroups",
+R"(HloModule AllToAllWithSubgroups
+
+ENTRY AllToAllWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}, barrier="abc"
 }
 
 )"
@@ -1224,6 +1314,40 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
                   "is out of range for literal's primitive type F16");
 }
 
+TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedUnderflow_module
+      ENTRY %ConstantUnsignedUnderflow () -> u64[] {
+        ROOT %constant = u64[] constant(-1)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U64");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedOverflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u32[] {
+        ROOT %constant = u32[] constant(4294967296)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+  ExpectHasSubstr(result.status().error_message(),
+                  "is out of range for literal's primitive type U32");
+}
+
+TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
+  const string original = R"(
+      HloModule ConstantUnsignedOverflow_module
+      ENTRY %ConstantUnsignedOverflow () -> u64[] {
+        ROOT %constant = u64[] constant(9223372036854775808)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
 TEST_F(HloParserTest, ConstantWithExp) {
   const string original = R"(HloModule ConstantWithExp_module
 
@@ -1246,7 +1370,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
   %input = f32[1,2,1]{2,1,0} parameter(0)
   %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
   %filter = f32[1,1,1]{2,1,0} parameter(1)
-  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), sharding={maximal device=1}, backend_config="foo", dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), feature_group_count=1, sharding={maximal device=1}, backend_config="foo", dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
 }
 
 )";
@@ -1434,6 +1558,81 @@ ENTRY consts {
   EXPECT_EQ(
       module.ValueOrDie()->entry_computation()->root_instruction()->name(),
       "last");
+}
+
+TEST_F(HloParserTest, Comments) {
+  const string original = R"(/* module description. */
+HloModule comments:
+
+ENTRY /*comment*/ c1 {
+  /* blah */
+  ROOT const1 = /*foo*/f32[1]{0} constant({12345 /*bar*/})
+  /* comment */
+}
+
+/* something else */
+
+)";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, MultilineComments) {
+  const string original = R"(HloModule multiline_comment:
+ENTRY c1 {
+  /*
+     ROOT foo = f32[1]{0} constant({12345})
+  */
+  ROOT const1 = f32[1]{0} constant({12345})
+/*
+a
+b
+c
+d
+
+*/
+})";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, UnterminatedComment) {
+  const string original = R"(HloModule unterminated_comment:
+ENTRY c1 {
+/* unterminated
+  ROOT const1 = f32[1]{0} constant({12345})
+})";
+  // Verify that the error message points to the beginning of the unterminated
+  // comment.
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "/* unterminated\n^");
+}
+
+TEST_F(HloParserTest, SlashSlashComments) {
+  const string original = R"(HloModule slash_slash_comment:
+// Garbage
+ENTRY c1 {
+  // Foo bar
+  ROOT const1 = f32[1]{0} constant({12345}) // Something else
+})";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, SlashSlashCommentMsDosEolFormat) {
+  const string original =
+      "HloModule slash_slash_comment:\r\n// Garbage\r\nENTRY c1 {\r\n// Foo "
+      "bar\r\nROOT const1 = f32[1]{0} constant({12345}) // Something else\r\n}";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
+}
+
+TEST_F(HloParserTest, SlashSlashCommentMacEolFormat) {
+  const string original =
+      "HloModule slash_slash_comment:\r// Garbage\rENTRY c1 {\r// Foo "
+      "bar\rROOT const1 = f32[1]{0} constant({12345}) // Something else\r}";
+  auto module = ParseHloString(original);
+  TF_ASSERT_OK(module.status());
 }
 
 TEST_F(HloParserTest, MultipleEntries) {

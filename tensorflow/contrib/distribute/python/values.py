@@ -35,8 +35,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import saver
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
@@ -55,7 +57,7 @@ class DistributedValues(object):
   def get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
     if device is None:
-      tower_context = distribute_lib.get_tower_context()
+      tower_context = distribution_strategy_context.get_tower_context()
       if tower_context:
         device = tower_context.device
       else:
@@ -288,11 +290,15 @@ class DistributedVariable(DistributedDelegate):
     # We want cross-tower code that does some var.op.X calls
     # to work (even if the current device isn't in self.devices), but
     # other uses of var.op in a cross-tower context to fail.
-    if distribute_lib.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_tower_context():
       return DistributedVarOp(self._primary_var.op.name,
                               self._primary_var.op.graph,
                               self._primary_var.op.type)
     return self.get().op
+
+  def read_value(self):
+    return distribution_strategy_context.get_distribution_strategy().read_var(
+        self)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -358,7 +364,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
   # update several non-slot variables in one call.
   def _assign_func(self, *args, **kwargs):
     f = kwargs.pop("f")
-    if distribute_lib.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_tower_context():
       update_device = distribute_lib.get_update_device()
       # We are calling update on the mirrored variable in cross tower context.
       if update_device is not None:
@@ -367,7 +373,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
         v = self.get(device=update_device)
         return f(v, *args, **kwargs)
 
-      return distribute_lib.get_distribution_strategy().update(
+      return distribution_strategy_context.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:
       _assert_tower_context()
@@ -388,8 +394,8 @@ class MirroredVariable(DistributedVariable, Mirrored,
                 aggregation=self._aggregation, value=value, destinations=self),
             *other_args, **other_kwargs)
 
-      return distribute_lib.get_tower_context().merge_call(merge_fn, *args,
-                                                           **kwargs)
+      return distribution_strategy_context.get_tower_context().merge_call(
+          merge_fn, *args, **kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
@@ -415,7 +421,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribute_lib.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_tower_context():
       return self._primary_var._as_graph_element()
     return self.get()._as_graph_element()
 
@@ -455,7 +461,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      return distribute_lib.get_distribution_strategy().read_var(
+      return distribution_strategy_context.get_distribution_strategy().read_var(
           tower_local_variable)
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
@@ -471,7 +477,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
 
 
 def _assert_tower_context():
-  if not distribute_lib.get_tower_context():
+  if not distribution_strategy_context.get_tower_context():
     raise RuntimeError(
         "Tower-local variables may only be assigned in a tower context.")
 
@@ -494,7 +500,7 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    if distribute_lib.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_tower_context():
       # To preserve the sum across save and restore, we have to divide the
       # total across all devices when restoring a variable that was summed
       # when saving.
@@ -522,7 +528,7 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribute_lib.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_tower_context():
       return self._get_cross_tower()
     return self.get()._as_graph_element()
 
@@ -931,64 +937,123 @@ class MultiStepContext(object):
 
   This context object is useful when running multiple steps at a time using the
   `run_steps_on_dataset` API. For e.g. it allows the user's step function to
-  specify which outputs to emit at what frequency. Currently it only supports
-  capturing output from the last step, but will soon be augmented to support
-  other use cases such as output each N steps.
+  specify which outputs to emit at what frequency. Currently it supports
+  capturing output from the last step, as well as capturing non tensor outputs.
+  In the future it will be augmented to support other use cases such as output
+  each N steps.
   """
 
-  def __init__(self, initial_loop_values=None):
+  def __init__(self):
     """Initializes an output context.
 
-    Args:
-      initial_loop_values: Initial values passed to the run steps
-        while loop. The only purpose is to verify the shapes and types
-        when the actual output is set. This will be removed once we
-        automatically infer the output shapes and types (and do not need to
-        check for user error in specifying them manually).
     Returns:
       A context object.
     """
-    self._last_step_outputs = None
-    self._non_tensor_outputs = None
-    self._initial_loop_values = initial_loop_values
+    self._last_step_outputs = {}
+    self._last_step_outputs_aggregations = {}
+    self._non_tensor_outputs = {}
 
   @property
   def last_step_outputs(self):
-    """Return the last step's outputs."""
+    """A dictionary consisting of outputs to be captured on last step.
+
+    Keys in the dictionary are names of tensors to be captured, as specified
+    when `set_last_step_output` is called.
+    Values in the dictionary are the tensors themselves. If
+    `set_last_step_output` was called with an `aggregation` for this output,
+    then the value is the aggregated value.
+
+    Returns:
+      A dictionary with last step outputs.
+    """
     return self._last_step_outputs
 
-  @last_step_outputs.setter
-  def last_step_outputs(self, outputs):
-    """Set the last step's outputs."""
-    self._verify_structure_shapes_types(outputs, self._initial_loop_values)
+  def _set_last_step_outputs(self, outputs):
+    """Replace the entire dictionary of last step outputs."""
+    if not isinstance(outputs, dict):
+      raise ValueError("Need a dictionary to set last_step_outputs.")
     self._last_step_outputs = outputs
+
+  def set_last_step_output(self, name, output,
+                           aggregation=variables_lib.VariableAggregation.NONE):
+    """Set `output` with `name` to be outputted from the last step.
+
+    Args:
+      name: String, name to identify the output. Doesn't need to match tensor
+        name.
+      output: The tensors that should be outputted with `name`. See below for
+        actual types supported.
+      aggregation: Aggregation method to use to aggregate outputs from multiple
+        towers. Required if `set_last_step_output` is called in a tower context.
+        Optional in cross_tower_context.
+        When present, the outputs from all the towers are aggregated using the
+        current distribution strategy's `reduce` method. Hence, the type of
+        `output` must be what's supported by the corresponding `reduce` method.
+        For e.g. if using MirroredStrategy and aggregation is set, output
+        must be a `PerDevice` value.
+        The aggregation method is also recorded in a dictionary
+        `_last_step_outputs_aggregations` for later interpreting of the
+        outputs as already reduced or not.
+
+    """
+    if distribution_strategy_context.get_cross_tower_context():
+      self._last_step_outputs_aggregations[name] = aggregation
+      if aggregation is variables_lib.VariableAggregation.NONE:
+        self._last_step_outputs[name] = output
+      else:
+        distribution = distribution_strategy_context.get_distribution_strategy()
+        self._last_step_outputs[name] = distribution.reduce(
+            aggregation, output, destinations="/device:CPU:0")
+    else:
+      assert aggregation is not variables_lib.VariableAggregation.NONE
+      def merge_fn(distribution, value):
+        self._last_step_outputs[name] = distribution.reduce(
+            aggregation, value, destinations="/device:CPU:0")
+        # Setting this inside the `merge_fn` because all towers share the same
+        # context object, so it's more robust to set it only once (even if all
+        # the towers are trying to set the same value).
+        self._last_step_outputs_aggregations[name] = aggregation
+
+      distribution_strategy_context.get_tower_context().merge_call(
+          merge_fn, output)
 
   @property
   def non_tensor_outputs(self):
-    """Return the non tensor outputs."""
+    """A dictionary consisting of any non tensor outputs to be captured."""
     return self._non_tensor_outputs
 
-  @non_tensor_outputs.setter
-  def non_tensor_outputs(self, outputs):
-    """Set any non tensor outputs."""
-    self._non_tensor_outputs = outputs
+  def set_non_tensor_output(self, name, output):
+    """Set `output` with `name` to be captured as a non tensor output."""
+    if distribution_strategy_context.get_cross_tower_context():
+      self._non_tensor_outputs[name] = output
+    else:
+      def merge_fn(distribution, value):
+        # NOTE(priyag): For non tensor outputs, we simply return all the values
+        # in a list as aggregation doesn't make sense on non tensors.
+        self._non_tensor_outputs[name] = distribution.unwrap(value)
+      distribution_strategy_context.get_tower_context().merge_call(
+          merge_fn, output)
 
-  def _verify_structure_shapes_types(self, left, right):
-    """Verify that the structure, shapes and types of left are same as right."""
-    nest.assert_same_structure(left, right)
-    flat_left = nest.flatten(left)
-    flat_right = nest.flatten(right)
-    assert len(flat_left) == len(flat_right), (
-        "Length of left {} and right {} should be same.".
-        format(len(flat_left), len(flat_right)))
 
-    for o, i in zip(flat_left, flat_right):
-      # TODO(priyag): Add checks for other types like IndexedSlices.
-      if isinstance(o, ops.Tensor):
-        assert isinstance(i, ops.Tensor)
-        assert o.shape == i.shape, (
-            "Shape {} of left {} doesn't match shape {} of right {}.".
-            format(o.shape, o, i.shape, i))
-        assert o.dtype == i.dtype, (
-            "Dtype {} of left {} doesn't match dtype {} of right {}.".
-            format(o.dtype, o, i.dtype, i))
+def value_container(val):
+  """Returns the container that this per-device `value` belongs to.
+
+  Args:
+    val: A value returned by `call_for_each_tower()` or a variable
+      created in `scope()`.
+
+  Returns:
+    A container that `value` belongs to.
+    If value does not belong to any container (including the case of
+    container having been destroyed), returns the value itself.
+  """
+  # pylint: disable=protected-access
+  if (hasattr(val, "_distributed_container") and
+      # DistributedVariable has _distributed_container defined
+      # but we don't want to return it.
+      not isinstance(val, DistributedVariable)):
+    container = val._distributed_container()
+    # pylint: disable=protected-access
+    if container is not None:
+      return container
+  return val

@@ -210,11 +210,13 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     return make_sqrt();
   }
 
-  if (hlo_module_config_.debug_options().xla_enable_fast_math() &&
-      IsFPLiteralWithValue(rhs, -.5)) {
+  if (IsFPLiteralWithValue(rhs, -.5)) {
     VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
     // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
     // rsqrt.approx instruction.
+    //
+    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
+    // we force-enable it?
     TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
     return b_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
   }
@@ -272,27 +274,20 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
                                prim_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
-    const HloInstruction* op, llvm::Value* operand_value) const {
-  PrimitiveType input_type = op->operand(0)->shape().element_type();
-  PrimitiveType output_type = op->shape().element_type();
-  switch (op->opcode()) {
-    case HloOpcode::kTanh:
-      // If we don't care much about precision, emit a fast approximation of
-      // tanh.
-      if (hlo_module_config_.debug_options().xla_enable_fast_math()) {
-        // Upcast F16 to F32 if necessary.
-        llvm::Type* type =
-            input_type == F16 ? b_->getFloatTy() : operand_value->getType();
-        llvm::Value* input = b_->CreateFPCast(operand_value, type);
-        llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
-        return b_->CreateFPCast(fast_tanh, operand_value->getType());
-      }
-      return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
-                                   output_type);
-    default:
-      return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
-  }
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  // Emit a fast approximation of tanh instead of calling __nv_tanh.
+  // __nv_tanh is particularly bad because it contains branches, thus
+  // preventing LLVM's load-store vectorizer from working its magic across a
+  // function which contains tanh calls.
+  //
+  // This routine isn't numerically precise, but it's good enough for ML.
+
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
+  llvm::Value* input = b_->CreateFPCast(value, type);
+  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
+  return b_->CreateFPCast(fast_tanh, value->getType());
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
@@ -445,6 +440,8 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         return b_->CreateLoad(accum_ptr);
       };
     case HloOpcode::kReduce:
+      // TODO(b/112040122): This should be supported.
+      CHECK_EQ(hlo->operand_count(), 2) << "Did not expect variadic reduce";
       return [=, &operand_to_generator](
                  const IrArray::Index& output_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);

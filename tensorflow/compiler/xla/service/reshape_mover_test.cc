@@ -76,9 +76,13 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
 TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
-  auto rng0 = builder.AddInstruction(
-      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
-                                RandomDistribution::RNG_UNIFORM, {}));
+  auto rng0 = builder.AddInstruction(HloInstruction::CreateRng(
+      ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
+      RandomDistribution::RNG_UNIFORM,
+      {builder.AddInstruction(
+           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f))),
+       builder.AddInstruction(HloInstruction::CreateConstant(
+           LiteralUtil::CreateR0<float>(1.0f)))}));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, rng0));
 

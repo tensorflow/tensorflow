@@ -166,7 +166,7 @@ class HloModuleGroupMetadata {
   //
   // Precondition: IsCompanionWhile(instruction) is true.
   const std::unordered_set<HloInstruction*>& Companions(
-      HloInstruction* instruction) const {
+      const HloInstruction* instruction) const {
     CHECK_EQ(companion_set_index_.count(instruction), 1);
     return companion_set(companion_set_index_.at(instruction));
   }
@@ -243,7 +243,7 @@ class HloModuleGroupMetadata {
       companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
-  tensorflow::gtl::FlatMap<HloInstruction*, int64> companion_set_index_;
+  tensorflow::gtl::FlatMap<const HloInstruction*, int64> companion_set_index_;
 
   // Map from computation to the instruction using it (a kWhile, kConditional).
   tensorflow::gtl::FlatMap<const HloComputation*, TrackedInstruction>

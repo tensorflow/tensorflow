@@ -431,6 +431,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
       return EmitSin(op->shape().element_type(), operand_value);
+    case HloOpcode::kTanh:
+      return EmitTanh(op->shape().element_type(), operand_value);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor,
                                           {operand_value},
@@ -1060,6 +1062,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
   return Unimplemented("atan2");
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
+                                                    llvm::Value* value) const {
+  return Unimplemented("tanh");
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
     const HloInstruction* hlo, llvm::Value* x) const {
   if (hlo->operand(0)->shape().element_type() != F32) {
@@ -1239,13 +1246,23 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
   // Convert raw integer to float in range [0, 1) if the element is a float.
   llvm::Value* elem_value = raw_value;
   if (elem_ir_ty->isFloatingPointTy()) {
-    elem_value = b_->CreateUIToFP(elem_value, elem_ir_ty);
     unsigned raw_value_size_in_bits = raw_value_ty->getPrimitiveSizeInBits();
     CHECK(raw_value_size_in_bits == 32 || raw_value_size_in_bits == 64);
-    elem_value = b_->CreateFDiv(
-        elem_value,
-        llvm::ConstantFP::get(elem_ir_ty,
-                              raw_value_size_in_bits == 64 ? 0x1p64 : 0x1p32));
+    // Perform the division using the float type with the same number of bits
+    // as the raw value to avoid overflow.
+    if (raw_value_size_in_bits == 32) {
+      elem_value = b_->CreateUIToFP(elem_value, b_->getFloatTy());
+      elem_value = b_->CreateFDiv(
+          elem_value, llvm::ConstantFP::get(b_->getFloatTy(), std::exp2(32)));
+    } else {
+      elem_value = b_->CreateUIToFP(elem_value, b_->getDoubleTy());
+      elem_value = b_->CreateFDiv(
+          elem_value, llvm::ConstantFP::get(b_->getDoubleTy(), std::exp2(64)));
+    }
+
+    if (elem_ir_ty != elem_value->getType()) {
+      elem_value = b_->CreateFPTrunc(elem_value, elem_ir_ty);
+    }
   }
 
   // Convert the value for the requested distribution.
@@ -1302,6 +1319,7 @@ int32 GetNumberOfElementsPerPhiloxRngSample(PrimitiveType elem_prim_ty) {
     case F16:
       return 4;
     case U64:
+    case S64:
     case F64:
       return 2;
     default:
@@ -1654,22 +1672,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   std::vector<int64> operand_to_output_dim(operand_shape.dimensions_size(), -1);
   for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
-    if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
+    if (c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       operand_index.push_back(index.GetConstantWithIndexType(0));
     } else {
-      int64 output_window_dim =
-          dim_numbers.output_window_dims(operand_index_dim++);
+      int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
       operand_to_output_dim[i] = output_window_dim;
       operand_index.push_back(index[output_window_dim]);
     }
   }
 
-  // This is the index of the index vector in the gather_indices tensor.
+  // This is the index of the index vector in the start_indices tensor.
   IrArray::Index gather_index_index(index_type);
   {
     std::vector<llvm::Value*> gather_index_index_components;
     for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
-      if (!c_binary_search(dim_numbers.output_window_dims(), i)) {
+      if (!c_binary_search(dim_numbers.offset_dims(), i)) {
         gather_index_index.push_back(index[i]);
       }
     }
@@ -1682,7 +1699,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   auto add_to_operand_index = [&](llvm::Value* index_component, int64 dim) {
     llvm::Value* gather_dim_component_extended =
         b_->CreateSExtOrTrunc(index_component, index_type);
-    int64 operand_dim = dim_numbers.gather_dims_to_operand_dims(dim);
+    int64 operand_dim = dim_numbers.start_index_map(dim);
     int64 output_dim = operand_to_output_dim[operand_dim];
     // If 'output_dim' is -1, it means 'operand_dim' is an elided window dim.
     // This means we set the iteration index to 0, so for the purpose of the
@@ -2134,7 +2151,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
       };
     default:
-      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+      return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
                              HloOpcodeString(hlo->opcode()).c_str());
       };

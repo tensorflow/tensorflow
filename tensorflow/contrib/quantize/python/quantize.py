@@ -198,7 +198,7 @@ def _FindLayersToQuantize(graph):
             |
     [post_conv_correction]
             |
-     biasadd|folded_bias
+     [biasadd|folded_bias]
             |
          [bypass]
             |
@@ -261,6 +261,16 @@ def _FindLayersToQuantize(graph):
 
   layer_output_pattern = graph_matcher.OneofPattern(
       [batch_to_space_pattern, layer_pattern])
+
+  # For separable convolutions, we are looking for a conv, followed by a conv
+  # with no activations between the two.
+  sep_conv_pattern = graph_matcher.OpTypePattern(
+      '|'.join(_QUANTIZABLE_TYPES),
+      inputs=[
+          graph_matcher.OneofPattern([layer_output_pattern]),
+          graph_matcher.OpTypePattern('*')
+      ],
+      ordered_inputs=False)
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
       'Mul',
       inputs=[graph_matcher.OpTypePattern('*'), layer_output_pattern],
@@ -310,6 +320,7 @@ def _FindLayersToQuantize(graph):
               folded_bias_add_pattern,
               batch_norm_identity,
               bypass_pattern,
+              layer_pattern,
           ])
       ])
 
@@ -393,6 +404,17 @@ def _FindLayersToQuantize(graph):
       layer_matches.append(
           _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
 
+  # Look for separable convolutions here
+  sep_conv_matcher = graph_matcher.GraphMatcher(sep_conv_pattern)
+  for match_result in sep_conv_matcher.match_graph(graph):
+    layer_op = match_result.get_op(layer_pattern)
+    weight_tensor = match_result.get_tensor(weight_identity_pattern)
+    activation_op = match_result.get_op(layer_pattern)
+    if layer_op not in matched_layer_set:
+      matched_layer_set.add(layer_op)
+      layer_matches.append(
+          _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
+
   return layer_matches
 
 
@@ -431,6 +453,24 @@ class _LayerMatch(object):
   @property
   def bias_add_op(self):
     return self._bias_add_op
+
+
+def _FollowedByFakeQuant(tensor):
+  """Returns True if the tensor is followed by a FakeQuant."""
+  fake_quant_ops = set([
+      'FakeQuantWithMinMaxVars', 'FakeQuantWithMinMaxArgs',
+      'FakeQuantWithMinMaxVarsPerChannel'
+  ])
+  pass_through_ops = set(['Reshape', 'Identity'])
+  consumers = tensor.consumers()
+  while consumers:
+    c = consumers.pop()
+    if c.type in fake_quant_ops:
+      return True
+    elif c.type in pass_through_ops:
+      for output in c.outputs:
+        consumers.extend(output.consumers())
+  return False
 
 
 def _InsertQuantOp(context,
@@ -513,11 +553,7 @@ def _InsertQuantOp(context,
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes
   # overlap between multiple matches, so we need to ensure that we don't
   # add duplicate FakeQuant operations.
-  fake_quant_ops = set([
-      'FakeQuantWithMinMaxVars',
-      'FakeQuantWithMinMaxArgs'
-  ])
-  if fake_quant_ops.intersection(set([c.type for c in inputs.consumers()])):
+  if _FollowedByFakeQuant(inputs):
     return
 
   if moving_avg:

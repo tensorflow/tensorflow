@@ -1,6 +1,6 @@
 # Build a Convolutional Neural Network using Estimators
 
-The TensorFlow @{tf.layers$`layers` module} provides a high-level API that makes
+The `tf.layers` module provides a high-level API that makes
 it easy to construct a neural network. It provides methods that facilitate the
 creation of dense (fully connected) layers and convolutional layers, adding
 activation functions, and applying dropout regularization. In this tutorial,
@@ -118,8 +118,8 @@ output from one layer-creation method and supply it as input to another.
 Open `cnn_mnist.py` and add the following `cnn_model_fn` function, which
 conforms to the interface expected by TensorFlow's Estimator API (more on this
 later in [Create the Estimator](#create-the-estimator)). `cnn_mnist.py` takes
-MNIST feature data, labels, and
-@{tf.estimator.ModeKeys$model mode} (`TRAIN`, `EVAL`, `PREDICT`) as arguments;
+MNIST feature data, labels, and mode (from
+`tf.estimator.ModeKeys`: `TRAIN`, `EVAL`, `PREDICT`) as arguments;
 configures the CNN; and returns predictions, loss, and a training operation:
 
 ```python
@@ -190,7 +190,7 @@ def cnn_model_fn(features, labels, mode):
 The following sections (with headings corresponding to each code block above)
 dive deeper into the `tf.layers` code used to create each layer, as well as how
 to calculate loss, configure the training op, and generate predictions. If
-you're already experienced with CNNs and @{$custom_estimators$TensorFlow `Estimator`s},
+you're already experienced with CNNs and [TensorFlow `Estimator`s](../../guide/custom_estimators.md),
 and find the above code intuitive, you may want to skim these sections or just
 skip ahead to ["Training and Evaluating the CNN MNIST Classifier"](#train_eval_mnist).
 
@@ -277,7 +277,7 @@ a 5x5 convolution over a 28x28 tensor will produce a 24x24 tensor, as there are
 
 The `activation` argument specifies the activation function to apply to the
 output of the convolution. Here, we specify ReLU activation with
-@{tf.nn.relu}.
+`tf.nn.relu`.
 
 Our output tensor produced by `conv2d()` has a shape of
 <code>[<em>batch_size</em>, 28, 28, 32]</code>: the same height and width
@@ -423,7 +423,7 @@ raw values into two different formats that our model function can return:
 
 For a given example, our predicted class is the element in the corresponding row
 of the logits tensor with the highest raw value. We can find the index of this
-element using the @{tf.argmax}
+element using the `tf.argmax`
 function:
 
 ```python
@@ -438,7 +438,7 @@ value along the dimension with index of 1, which corresponds to our predictions
 10]</code>).
 
 We can derive probabilities from our logits layer by applying softmax activation
-using @{tf.nn.softmax}:
+using `tf.nn.softmax`:
 
 ```python
 tf.nn.softmax(logits, name="softmax_tensor")
@@ -501,8 +501,8 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$custom_estimators#defining-the-training-op-for-the-model$"Defining the training op for the model"}
-> in the @{$custom_estimators$"Creating Estimations in tf.estimator"} tutorial.
+> functions, see ["Defining the training op for the model"](../../guide/custom_estimators.md#defining-the-training-op-for-the-model)
+> in the ["Creating Estimations in tf.estimator"](../../guide/custom_estimators.md) tutorial.
 
 
 ### Add evaluation metrics
@@ -567,13 +567,13 @@ be saved (here, we specify the temp directory `/tmp/mnist_convnet_model`, but
 feel free to change to another directory of your choice).
 
 > Note: For an in-depth walkthrough of the TensorFlow `Estimator` API, see the
-> tutorial @{$custom_estimators$"Creating Estimators in tf.estimator."}
+> tutorial ["Creating Estimators in tf.estimator."](../../guide/custom_estimators.md)
 
 ### Set Up a Logging Hook {#set_up_a_logging_hook}
 
 Since CNNs can take a while to train, let's set up some logging so we can track
-progress during training. We can use TensorFlow's @{tf.train.SessionRunHook} to create a
-@{tf.train.LoggingTensorHook}
+progress during training. We can use TensorFlow's `tf.train.SessionRunHook` to create a
+`tf.train.LoggingTensorHook`
 that will log the probability values from the softmax layer of our CNN. Add the
 following to `main()`:
 
@@ -593,8 +593,8 @@ operation earlier when we generated the probabilities in `cnn_model_fn`.
 > Note: If you don't explicitly assign a name to an operation via the `name`
 > argument, TensorFlow will assign a default name. A couple easy ways to
 > discover the names applied to operations are to visualize your graph on
-> @{$graph_viz$TensorBoard}) or to enable the
-> @{$guide/debugger$TensorFlow Debugger (tfdbg)}.
+> [TensorBoard](../../guide/graph_viz.md)) or to enable the
+> [TensorFlow Debugger (tfdbg)](../../guide/debugger.md).
 
 Next, we create the `LoggingTensorHook`, passing `tensors_to_log` to the
 `tensors` argument. We set `every_n_iter=50`, which specifies that probabilities
@@ -686,9 +686,9 @@ Here, we've achieved an accuracy of 97.3% on our test data set.
 To learn more about TensorFlow Estimators and CNNs in TensorFlow, see the
 following resources:
 
-*   @{$custom_estimators$Creating Estimators in tf.estimator}
+*   [Creating Estimators in tf.estimator](../../guide/custom_estimators.md)
     provides an introduction to the TensorFlow Estimator API. It walks through
     configuring an Estimator, writing a model function, calculating loss, and
     defining a training op.
-*   @{$deep_cnn} walks through how to build a MNIST CNN classification model
+*   [Advanced Convolutional Neural Networks](../../tutorials/images/deep_cnn.md) walks through how to build a MNIST CNN classification model
     *without estimators* using lower-level TensorFlow operations.

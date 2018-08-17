@@ -39,10 +39,12 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -220,10 +222,10 @@ class Dataset(object):
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
-    @{tf.constant} operations. For large datasets (> 1 GB), this can waste
+    `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$guide/datasets#consuming_numpy_arrays$this guide}.
+    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -239,10 +241,10 @@ class Dataset(object):
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
-    @{tf.constant} operations. For large datasets (> 1 GB), this can waste
+    `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$guide/datasets#consuming_numpy_arrays$this guide}.
+    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -329,7 +331,7 @@ class Dataset(object):
     ```
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
-    @{tf.py_func} and inherits the same constraints. In particular, it
+    `tf.py_func` and inherits the same constraints. In particular, it
     requires the `Dataset`- and `Iterator`-related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
@@ -639,22 +641,39 @@ class Dataset(object):
         Defaults to `True`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
-        @{tf.set_random_seed} for behavior.
+        `tf.set_random_seed` for behavior.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
     """
-    if shuffle is None:
-      shuffle = True
-    matching_files = gen_io_ops.matching_files(file_pattern)
-    dataset = Dataset.from_tensor_slices(matching_files)
-    if shuffle:
-      # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
-      # list of files might be empty.
-      buffer_size = math_ops.maximum(
-          array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
-      dataset = dataset.shuffle(buffer_size, seed=seed)
-    return dataset
+    with ops.name_scope("list_files"):
+      if shuffle is None:
+        shuffle = True
+      file_pattern = ops.convert_to_tensor(
+          file_pattern, dtype=dtypes.string, name="file_pattern")
+      matching_files = gen_io_ops.matching_files(file_pattern)
+
+      # Raise an exception if `file_pattern` does not match any files.
+      condition = math_ops.greater(array_ops.shape(matching_files)[0], 0,
+                                   name="match_not_empty")
+
+      message = math_ops.add(
+          "No files matched pattern: ",
+          string_ops.reduce_join(file_pattern, separator=", "), name="message")
+
+      assert_not_empty = control_flow_ops.Assert(
+          condition, [message], summarize=1, name="assert_not_empty")
+      with ops.control_dependencies([assert_not_empty]):
+        matching_files = array_ops.identity(matching_files)
+
+      dataset = Dataset.from_tensor_slices(matching_files)
+      if shuffle:
+        # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
+        # list of files might be empty.
+        buffer_size = math_ops.maximum(
+            array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
+        dataset = dataset.shuffle(buffer_size, seed=seed)
+      return dataset
 
   def repeat(self, count=None):
     """Repeats this dataset `count` times.
@@ -687,7 +706,7 @@ class Dataset(object):
         dataset will sample.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
-        @{tf.set_random_seed} for behavior.
+        `tf.set_random_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
@@ -844,7 +863,7 @@ class Dataset(object):
     This transformation combines multiple consecutive elements of the input
     dataset into a single element.
 
-    Like @{tf.data.Dataset.batch}, the tensors in the resulting element will
+    Like `tf.data.Dataset.batch`, the tensors in the resulting element will
     have an additional outer dimension, which will be `batch_size` (or
     `N % batch_size` for the last element if `batch_size` does not divide the
     number of input elements `N` evenly and `drop_remainder` is `False`). If
@@ -852,7 +871,7 @@ class Dataset(object):
     should set the `drop_remainder` argument to `True` to prevent the smaller
     batch from being produced.
 
-    Unlike @{tf.data.Dataset.batch}, the input elements to be batched may have
+    Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
     different shapes, and this transformation will pad each component to the
     respective shape in `padding_shapes`. The `padding_shapes` argument
     determines the resulting shape for each dimension of each component in an
@@ -864,8 +883,8 @@ class Dataset(object):
       will be padded out to the maximum length of all elements in that
       dimension.
 
-    See also @{tf.contrib.data.dense_to_sparse_batch}, which combines elements
-    that may have different shapes into a @{tf.SparseTensor}.
+    See also `tf.contrib.data.dense_to_sparse_batch`, which combines elements
+    that may have different shapes into a `tf.SparseTensor`.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1020,7 +1039,7 @@ class Dataset(object):
     elements are produced. `cycle_length` controls the number of input elements
     that are processed concurrently. If you set `cycle_length` to 1, this
     transformation will handle one input element at a time, and will produce
-    identical results = to @{tf.data.Dataset.flat_map}. In general,
+    identical results = to `tf.data.Dataset.flat_map`. In general,
     this transformation will apply `map_func` to `cycle_length` input elements,
     open iterators on the returned `Dataset` objects, and cycle through them
     producing `block_length` consecutive elements from each iterator, and
@@ -1287,7 +1306,7 @@ class _NestedDatasetComponent(object):
 
 
 class _VariantDataset(Dataset):
-  """A Dataset wrapper around a @{tf.variant}-typed function argument."""
+  """A Dataset wrapper around a `tf.variant`-typed function argument."""
 
   def __init__(self, dataset_variant, structure):
     super(_VariantDataset, self).__init__()
@@ -1323,20 +1342,20 @@ class StructuredFunctionWrapper(object):
       func: A function from a nested structure to another nested structure.
       transformation_name: Human-readable name of the transformation in which
         this function is being instantiated, for error messages.
-      dataset: (Optional.) A @{tf.data.Dataset}. If given, the structure of this
+      dataset: (Optional.) A `tf.data.Dataset`. If given, the structure of this
         dataset will be assumed as the structure for `func` arguments; otherwise
         `input_classes`, `input_shapes`, and `input_types` must be defined.
       input_classes: (Optional.) A nested structure of `type`. If given, this
         argument defines the Python types for `func` arguments.
-      input_shapes: (Optional.) A nested structure of @{tf.TensorShape}. If
+      input_shapes: (Optional.) A nested structure of `tf.TensorShape`. If
         given, this argument defines the shapes and structure for `func`
         arguments.
-      input_types: (Optional.) A nested structure of @{tf.DType}. If given, this
+      input_types: (Optional.) A nested structure of `tf.DType`. If given, this
         argument defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
       experimental_nested_dataset_support: (Optional.) If `True`, the function
-        will support @{tf.data.Dataset} objects as arguments and return values.
+        will support `tf.data.Dataset` objects as arguments and return values.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -1459,7 +1478,7 @@ class StructuredFunctionWrapper(object):
       self._function._create_definition_if_needed()  # pylint: disable=protected-access
 
   def _defun_args(self):
-    """Returns a flat list of @{tf.DType} for the input element structure."""
+    """Returns a flat list of `tf.DType` for the input element structure."""
     ret = []
     for input_type, input_class in zip(nest.flatten(self._input_types),
                                        nest.flatten(self._input_classes)):
@@ -1504,7 +1523,7 @@ def flat_structure(dataset):
   `**flat_structure(self)` to the op constructor.
 
   Args:
-    dataset: A @{tf.data.Dataset}.
+    dataset: A `tf.data.Dataset`.
 
   Returns:
     A dictionary of keyword arguments that can be passed to many Dataset op
@@ -1827,7 +1846,7 @@ class ShuffleDataset(Dataset):
         dataset will sample.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
-        @{tf.set_random_seed} for behavior.
+        `tf.set_random_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)

@@ -24,7 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 
 # TODO(nsilberman): move into metrics/python/ops/
 
@@ -174,7 +174,7 @@ def f1_score(labels, predictions, weights=None, num_thresholds=200,
         ops.add_to_collections(metrics_collections, best_f1)
       return best_f1
 
-    best_f1 = distribute_lib.get_tower_context().merge_call(
+    best_f1 = distribution_strategy_context.get_tower_context().merge_call(
         f1_across_towers, values)
 
     update_op = compute_best_f1_score(tp=update_ops['tp'], fp=update_ops['fp'],

@@ -15,7 +15,9 @@
 
 """Framework utilities.
 
-See the @{$python/contrib.framework} guide.
+See the
+[Contrib Framework](https://tensorflow.org/api_guides/python/contrib.framework)
+guide.
 
 @@assert_same_float_dtype
 @@assert_scalar
@@ -100,6 +102,8 @@ See the @{$python/contrib.framework} guide.
 
 @@BoundedTensorSpec
 @@TensorSpec
+
+@@RecordInput
 """
 
 from __future__ import absolute_import
@@ -119,6 +123,7 @@ from tensorflow.python.framework.smart_cond import smart_cond
 from tensorflow.python.framework.smart_cond import smart_constant_value
 from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
 from tensorflow.python.framework.tensor_spec import TensorSpec
+from tensorflow.python.ops.data_flow_ops import RecordInput
 from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_1d
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
@@ -133,6 +138,7 @@ _nest_allowed_symbols = [
     'flatten_dict_items',
     'pack_sequence_as',
     'map_structure',
+    'map_structure_with_paths',
     'assert_shallow_structure',
     'flatten_up_to',
     'map_structure_up_to',

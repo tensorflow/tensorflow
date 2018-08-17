@@ -281,27 +281,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kInfeed: {
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
-      if (proto.operand_ids_size() == 0) {
-        // TODO(b/80000000): Remove this when all uses of infeed are
-        // converted to take tokens.
-        instruction = CreateInfeed(data_shape, proto.infeed_config());
-      } else {
-        CHECK_EQ(proto.operand_ids_size(), 1);
-        instruction =
-            CreateInfeed(data_shape, operands(0), proto.infeed_config());
-      }
+      TF_RET_CHECK(proto.operand_ids_size() == 1);
+      instruction =
+          CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed:
-      if (proto.operand_ids_size() == 1) {
-        // TODO(b/80000000): Remove this when all uses of outfeed are
-        // converted to take tokens.
-        instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
-                                    proto.outfeed_config());
-      } else {
-        CHECK_EQ(proto.operand_ids_size(), 2);
-        instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
-                                    operands(1), proto.outfeed_config());
-      }
+      TF_RET_CHECK(proto.operand_ids_size() == 2);
+      instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
+                                  operands(1), proto.outfeed_config());
       break;
     case HloOpcode::kCrossReplicaSum: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -320,15 +307,25 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*all_reduce_id=*/all_reduce_id);
       break;
     }
+    case HloOpcode::kAllToAll: {
+      instruction = CreateAllToAll(
+          proto.shape(), all_operands(),
+          /*replica_groups=*/
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()),
+          /*barrier=*/proto.cross_replica_sum_barrier());
+      break;
+    }
     case HloOpcode::kConvolution:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Convolution instruction should have 2 operands but sees "
           << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
-      instruction =
-          CreateConvolve(proto.shape(), operands(0), operands(1),
-                         proto.window(), proto.convolution_dimension_numbers());
+      instruction = CreateConvolve(
+          proto.shape(), operands(0), operands(1), proto.window(),
+          proto.convolution_dimension_numbers(),
+          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
       break;
     case HloOpcode::kReduceWindow:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
@@ -395,13 +392,28 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Gather instruction should have GatherDimensionNumbers set.";
       std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
           MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
-      std::vector<int64> gather_window_bounds;
-      for (int64 bound : proto.gather_window_bounds()) {
-        gather_window_bounds.push_back(bound);
+      std::vector<int64> gather_slice_sizes;
+      for (int64 bound : proto.gather_slice_sizes()) {
+        gather_slice_sizes.push_back(bound);
       }
+      instruction = CreateGather(proto.shape(), operands(0), operands(1),
+                                 *gather_dimension_numbers, gather_slice_sizes);
+      break;
+    }
+    case HloOpcode::kScatter: {
+      TF_RET_CHECK(proto.operand_ids_size() == 3)
+          << "Scatter instruction should have 3 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_scatter_dimension_numbers())
+          << "Scatter instruction should have ScatterDimensionNumbers set.";
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Scatter instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      auto scatter_dimension_numbers = MakeUnique<ScatterDimensionNumbers>(
+          proto.scatter_dimension_numbers());
       instruction =
-          CreateGather(proto.shape(), operands(0), operands(1),
-                       *gather_dimension_numbers, gather_window_bounds);
+          CreateScatter(proto.shape(), operands(0), operands(1), operands(2),
+                        computations(0), *scatter_dimension_numbers);
       break;
     }
     default: {
@@ -597,10 +609,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return MakeUnique<HloConvolutionInstruction>(shape, lhs, rhs, window,
-                                               dimension_numbers);
+    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
+  return MakeUnique<HloConvolutionInstruction>(
+      shape, lhs, rhs, window, dimension_numbers, feature_group_count);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -655,15 +667,18 @@ HloInstruction::CreateCrossReplicaSum(
       all_reduce_id);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const std::vector<ReplicaGroup>& replica_groups,
+    tensorflow::StringPiece barrier) {
+  return MakeUnique<HloAllToAllInstruction>(shape, operands, replica_groups,
+                                            barrier);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
     const string& config) {
   return MakeUnique<HloInfeedInstruction>(infeed_shape, token_operand, config);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
-    const Shape& infeed_shape, const string& config) {
-  return MakeUnique<HloInfeedInstruction>(infeed_shape, config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
@@ -671,13 +686,6 @@ HloInstruction::CreateCrossReplicaSum(
     HloInstruction* token_operand, tensorflow::StringPiece outfeed_config) {
   return MakeUnique<HloOutfeedInstruction>(outfeed_shape, operand,
                                            token_operand, outfeed_config);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
-    const Shape& outfeed_shape, HloInstruction* operand,
-    tensorflow::StringPiece outfeed_config) {
-  return MakeUnique<HloOutfeedInstruction>(outfeed_shape, operand,
-                                           outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
@@ -812,11 +820,25 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
-    const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+    const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
     HloComputation* reduce_computation) {
-  return MakeUnique<HloReduceInstruction>(
-      shape, arg, init_value, dimensions_to_reduce, reduce_computation);
+  auto instruction = WrapUnique(new HloReduceInstruction(
+      shape, {operand, init_value}, dimensions_to_reduce, reduce_computation));
+  return std::move(instruction);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::gtl::ArraySlice<HloInstruction*> init_values,
+    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+    HloComputation* reduce_computation) {
+  std::vector<HloInstruction*> all_args;
+  all_args.reserve(operands.size() * 2);
+  all_args.insert(all_args.end(), operands.begin(), operands.end());
+  all_args.insert(all_args.end(), init_values.begin(), init_values.end());
+  return MakeUnique<HloReduceInstruction>(shape, all_args, dimensions_to_reduce,
+                                          reduce_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
@@ -1055,11 +1077,21 @@ bool HloInstruction::HasSideEffect() const {
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
-    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return MakeUnique<HloGatherInstruction>(shape, operand, gather_indices,
-                                          gather_dim_numbers, window_bounds);
+    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  return MakeUnique<HloGatherInstruction>(shape, operand, start_indices,
+                                          gather_dim_numbers, slice_sizes);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
+    const Shape& shape, HloInstruction* operand,
+    HloInstruction* scatter_indices, HloInstruction* updates,
+    HloComputation* update_computation,
+    const ScatterDimensionNumbers& scatter_dim_numbers) {
+  return MakeUnique<HloScatterInstruction>(shape, operand, scatter_indices,
+                                           updates, update_computation,
+                                           scatter_dim_numbers);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
@@ -1113,6 +1145,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kConvolution:
@@ -1124,6 +1157,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
     case HloOpcode::kGather:
+    case HloOpcode::kScatter:
     case HloOpcode::kIota:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
@@ -1579,6 +1613,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
     case HloOpcode::kReduceWindow:
@@ -1587,6 +1622,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
+    case HloOpcode::kScatter:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1693,6 +1729,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -1711,6 +1748,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -1977,7 +2015,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
-               opcode() == HloOpcode::kCrossReplicaSum) {
+               opcode() == HloOpcode::kCrossReplicaSum ||
+               opcode() == HloOpcode::kScatter) {
       extra.push_back(
           StrCat("to_apply=", PrintName(to_apply()->name(), options)));
     } else if (!called_computations().empty()) {
@@ -2013,6 +2052,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReduce:
       case HloOpcode::kCrossReplicaSum:
+      case HloOpcode::kScatter:
         extra.push_back(
             StrCat("to_apply=\n", to_apply()->ToString(new_options)));
         break;
@@ -2219,6 +2259,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleFft(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
+    case HloOpcode::kAllToAll:
+      return visitor->HandleAllToAll(this);
     case HloOpcode::kTuple:
       return visitor->HandleTuple(this);
     case HloOpcode::kMap:
@@ -2311,6 +2353,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
     case HloOpcode::kGather:
       return visitor->HandleGather(this);
+    case HloOpcode::kScatter:
+      return visitor->HandleScatter(this);
     case HloOpcode::kDomain:
       return visitor->HandleDomain(this);
     case HloOpcode::kAfterAll:
@@ -3091,12 +3135,23 @@ const std::vector<int64>& HloInstruction::replica_group_ids() const {
   return Cast<HloAllReduceInstruction>(this)->replica_group_ids();
 }
 
+const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
+  return Cast<HloAllToAllInstruction>(this)->replica_groups();
+}
+
 string HloInstruction::cross_replica_sum_barrier() const {
-  return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+  if (opcode() == HloOpcode::kCrossReplicaSum) {
+    return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+  }
+  return Cast<HloAllToAllInstruction>(this)->cross_replica_sum_barrier();
 }
 
 void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
-  return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+  if (opcode() == HloOpcode::kCrossReplicaSum) {
+    return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+        barrier);
+  }
+  return Cast<HloAllToAllInstruction>(this)->set_cross_replica_sum_barrier(
       barrier);
 }
 
@@ -3124,6 +3179,10 @@ void HloInstruction::set_convolution_dimension_numbers(
   } else {
     LOG(FATAL) << "Unimplemented method.";
   }
+}
+
+int64 HloInstruction::feature_group_count() const {
+  return Cast<HloConvolutionInstruction>(this)->feature_group_count();
 }
 
 HloComputation* HloInstruction::select() const {
@@ -3166,9 +3225,13 @@ const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {
   return Cast<HloGatherInstruction>(this)->gather_dimension_numbers();
 }
 
-tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_window_bounds()
+tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_slice_sizes() const {
+  return Cast<HloGatherInstruction>(this)->gather_slice_sizes();
+}
+
+const ScatterDimensionNumbers& HloInstruction::scatter_dimension_numbers()
     const {
-  return Cast<HloGatherInstruction>(this)->gather_window_bounds();
+  return Cast<HloScatterInstruction>(this)->scatter_dimension_numbers();
 }
 
 }  // namespace xla

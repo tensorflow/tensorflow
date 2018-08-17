@@ -15,7 +15,7 @@
 
 """Operations for working with string Tensors.
 
-See the @{$python/string_ops} guide.
+See the [Strings](https://tensorflow.org/api_guides/python/string_ops) guide.
 """
 
 from __future__ import absolute_import

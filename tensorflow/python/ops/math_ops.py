@@ -14,7 +14,7 @@
 # ==============================================================================
 """Basic arithmetic operators.
 
-See the @{$python/math_ops} guide.
+See the [python/math_ops](python/math_ops) guide.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1036,6 +1036,31 @@ def div(x, y, name=None):
     `x / y` returns the quotient of x and y.
   """
   return _div_python2(x, y, name)
+
+
+def unsafe_div(x, y, name=None):
+  """Computes an unsafe divide which returns 0 if the y is zero.
+
+  Note that the function uses Python 3 division operator semantics.
+
+  Args:
+    x: A `Tensor`. Must be one of the following types:
+       `float32`, `float64`, `int16`, `int32`, `int64`.
+    y: A `Tensor` whose dtype is compatible with `x`.
+    name: A name for the operation (optional).
+  Returns:
+    The element-wise value of the x divided by y.
+  """
+
+  with ops.name_scope(name, "unsafe_div", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError(
+          "x and y must have the same dtype, got %r != %r" % (x_dtype, y_dtype))
+    return gen_math_ops.unsafe_div(x, y, name=name)
 
 
 # TODO(aselle): This should be removed
@@ -2105,7 +2130,8 @@ def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
   Args:
-    inputs: A list of `Tensor` objects, each with same shape and type.
+    inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
+      and type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2116,17 +2142,21 @@ def add_n(inputs, name=None):
     cannot be inferred.
   """
   if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise ValueError("inputs must be a list of at least one"
+                     "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
-  if not all(isinstance(x, ops.Tensor) for x in inputs):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+  if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
+    raise ValueError("inputs must be a list of at least one"
+                     "Tensor/IndexedSlices with the same dtype and shape")
 
   if len(inputs) == 1:
+    if isinstance(inputs[0], ops.IndexedSlices):
+      values = inputs[0].values
+    else:
+      values = inputs[0]
     if name:
-      return array_ops.identity(inputs[0], name=name)
-    return inputs[0]
+      return array_ops.identity(values, name=name)
+    return values
   return gen_math_ops.add_n(inputs, name=name)
 
 
@@ -2534,8 +2564,9 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r""" Computes the mean along segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
   [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
@@ -2566,8 +2597,9 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
   [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
@@ -2602,8 +2634,9 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
-  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  for an explanation of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
   dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -2677,8 +2710,9 @@ def sparse_segment_mean(data,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
 
-  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
-  of segments.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  for an explanation of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
   dimension, selecting a subset of dimension 0, specified by `indices`.

@@ -51,7 +51,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
@@ -498,9 +497,7 @@ def assert_no_new_tensors(f):
         f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._zeros_cache.flush()
-    context.get_default_context().ones_rank_cache().flush()
-    context.get_default_context().scalar_cache().clear()
+    context.get_default_context()._clear_caches()  # pylint: disable=protected-access
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
@@ -662,10 +659,10 @@ def run_in_graph_and_eager_modes(func=None,
   """Execute the decorated test with and without enabling eager execution.
 
   This function returns a decorator intended to be applied to test methods in
-  a @{tf.test.TestCase} class. Doing so will cause the contents of the test
+  a `tf.test.TestCase` class. Doing so will cause the contents of the test
   method to be executed twice - once normally, and once with eager execution
   enabled. This allows unittests to confirm the equivalence between eager
-  and graph execution (see @{tf.enable_eager_execution}).
+  and graph execution (see `tf.enable_eager_execution`).
 
   For example, consider the following unittest:
 
@@ -739,15 +736,19 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
-      with context.eager_mode():
+      if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
+        self.tearDown()
+        self._tempdir = None
+      # Create a new graph for the eagerly executed version of this test for
+      # better isolation.
+      graph_for_eager_test = ops.Graph()
+      with graph_for_eager_test.as_default(), context.eager_mode():
         if reset_test:
-          # This decorator runs the wrapped test twice.
-          # Reset the test environment between runs.
-          self.tearDown()
-          self._tempdir = None
           self.setUp()
-
         run_eagerly(self, **kwargs)
+      ops.dismantle_graph(graph_for_eager_test)
 
     return decorated
 

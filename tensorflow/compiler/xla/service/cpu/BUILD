@@ -20,7 +20,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "mkl_deps",
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -55,11 +55,23 @@ cc_library(
 )
 
 cc_library(
+    name = "buffer_info_util",
+    srcs = ["buffer_info_util.cc"],
+    hdrs = ["buffer_info_util.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "cpu_compiler",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
     deps = [
         ":compiler_functor",
+        ":buffer_info_util",
         ":conv_canonicalization",
         ":cpu_copy_insertion",
         ":cpu_executable",
@@ -73,6 +85,8 @@ cc_library(
         ":ir_emitter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
+        "//tensorflow/compiler/tf2xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -87,6 +101,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
+        "//tensorflow/compiler/xla/service:convolution_feature_group_converter",
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -484,10 +499,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
-    ] + if_mkl([
-        "@mkl_dnn",
-        "//third_party/mkl:intel_binary_blob",
-    ]),
+    ] + mkl_deps(),
 )
 
 cc_library(
@@ -541,10 +553,7 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
-    ] + if_mkl([
-        "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ]),
+    ] + mkl_deps(),
 )
 
 cc_library(

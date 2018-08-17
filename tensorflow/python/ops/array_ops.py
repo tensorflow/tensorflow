@@ -15,7 +15,7 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Support for manipulating tensors.
 
-See the @{$python/array_ops} guide.
+See the [Array Ops](https://tensorflow.org/api_guides/python/array_ops) guide.
 """
 
 from __future__ import absolute_import
@@ -538,7 +538,7 @@ def slice(input_, begin, size, name=None):
   words, `begin[i]` is the offset into the 'i'th dimension of `input` that you
   want to slice from.
 
-  Note that @{tf.Tensor.__getitem__} is typically a more pythonic way to
+  Note that `tf.Tensor.__getitem__` is typically a more pythonic way to
   perform slices, as it allows you to write `foo[3:7, :-2]` instead of
   `tf.slice(foo, [3, 0], [4, foo.get_shape()[1]-2])`.
 
@@ -594,7 +594,7 @@ def strided_slice(input_,
 
   **Instead of calling this op directly most users will want to use the
   NumPy-style slicing syntax (e.g. `tensor[..., 3:4:-1, tf.newaxis, 3]`), which
-  is supported via @{tf.Tensor.__getitem__} and @{tf.Variable.__getitem__}.**
+  is supported via `tf.Tensor.__getitem__` and `tf.Variable.__getitem__`.**
   The interface of this op is a low-level encoding of the slicing syntax.
 
   Roughly speaking, this op extracts a slice of size `(end-begin)/stride`
@@ -723,7 +723,7 @@ def _SliceHelperVar(var, slice_spec):
   """Creates a slice helper object given a variable.
 
   This allows creating a sub-tensor from part of the current contents
-  of a variable. See @{tf.Tensor.__getitem__} for detailed examples
+  of a variable. See `tf.Tensor.__getitem__` for detailed examples
   of slicing.
 
   This function in addition also allows assignment to a sliced range.
@@ -2660,6 +2660,76 @@ def gather(params, indices, validate_indices=None, name=None, axis=0):
 
 
 gather.__doc__ = gen_array_ops.gather_v2.__doc__
+
+
+@tf_export("batch_gather")
+def batch_gather(params, indices, name=None):
+  """Gather slices from `params` according to `indices` with leading batch dims.
+
+  This operation assumes that the leading dimensions of `indices` are dense,
+  and the gathers on the axis corresponding to the last dimension of `indices`.
+  More concretely it computes:
+
+  result[i1, ..., in] = params[i1, ..., in-1, indices[i1, ..., in]]
+
+  Therefore `params` should be a Tensor of shape [A1, ..., AN, B1, ..., BM],
+  `indices` should be a Tensor of shape [A1, ..., AN-1, C] and `result` will be
+  a Tensor of size `[A1, ..., AN-1, C, B1, ..., BM]`.
+
+  In the case in which indices is a 1D tensor, this operation is equivalent to
+  `tf.gather`.
+
+  See also `tf.gather` and `tf.gather_nd`.
+
+  Args:
+    params: A Tensor. The tensor from which to gather values.
+    indices: A Tensor. Must be one of the following types: int32, int64. Index
+        tensor. Must be in range `[0, params.shape[axis]`, where `axis` is the
+        last dimension of `indices` itself.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor. Has the same type as `params`.
+
+  Raises:
+    ValueError: if `indices` has an unknown shape.
+  """
+
+  with ops.name_scope(name):
+    indices = ops.convert_to_tensor(indices, name="indices")
+    params = ops.convert_to_tensor(params, name="params")
+    indices_shape = shape(indices)
+    params_shape = shape(params)
+    ndims = indices.shape.ndims
+    if ndims is None:
+      raise ValueError("batch_gather does not allow indices with unknown "
+                       "shape.")
+    batch_indices = indices
+    accum_dim_value = 1
+    for dim in range(ndims-1, 0, -1):
+      dim_value = params_shape[dim-1]
+      accum_dim_value *= params_shape[dim]
+      dim_indices = gen_math_ops._range(0, dim_value, 1)
+      dim_indices *= accum_dim_value
+      dim_shape = stack([1] * (dim - 1) + [dim_value] + [1] * (ndims - dim),
+                        axis=0)
+      batch_indices += reshape(dim_indices, dim_shape)
+
+    flat_indices = reshape(batch_indices, [-1])
+    outer_shape = params_shape[ndims:]
+    flat_inner_shape = gen_math_ops.prod(
+        params_shape[:ndims], [0], False)
+
+    flat_params = reshape(
+        params, concat([[flat_inner_shape], outer_shape], axis=0))
+    flat_result = gather(flat_params, flat_indices)
+    result = reshape(flat_result, concat([indices_shape, outer_shape], axis=0))
+    final_shape = indices.get_shape()[:ndims-1].merge_with(
+        params.get_shape()[:ndims -1])
+    final_shape = final_shape.concatenate(indices.get_shape()[ndims-1])
+    final_shape = final_shape.concatenate(params.get_shape()[ndims:])
+    result.set_shape(final_shape)
+    return result
 
 
 # Define quantize_v2 here in order to make name the second-to-last attribute,

@@ -168,9 +168,11 @@ output_shapes: The list of shapes being produced.
 REGISTER_OP("MultiDeviceIteratorInit")
     .Input("dataset: variant")
     .Input("multi_device_iterator: resource")
+    .Input("max_buffer_size: int64")
     .Output("incarnation_id: int64")
     .Doc(R"doc(
 Initializes the multi device iterator with the given dataset.
+max_buffer_size: The maximum size of the host side per device buffer to keep.
 incarnation_id: An int64 indicating which incarnation of the MultiDeviceIterator
   is running.
 dataset: Dataset to be iterated upon.

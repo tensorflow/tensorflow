@@ -23,9 +23,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -83,13 +85,16 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
-HloTestBase::HloTestBase()
-    : HloTestBase(GetTestPlatform(), GetReferencePlatform()) {}
+HloTestBase::HloTestBase(bool allow_mixed_precision_in_hlo_verifier)
+    : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
+                  allow_mixed_precision_in_hlo_verifier) {}
 
 HloTestBase::HloTestBase(se::Platform* test_platform,
-                         se::Platform* reference_platform)
+                         se::Platform* reference_platform,
+                         bool allow_mixed_precision_in_hlo_verifier)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
-  hlo_verifier_ = MakeUnique<HloVerifier>(/*allow_mixed_precision=*/true);
+  hlo_verifier_ =
+      MakeUnique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
 }
 
 /* static */
@@ -97,7 +102,23 @@ std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
   return MakeUnique<HloModule>(name, GetModuleConfigForTest());
 }
 
-/*static*/ DebugOptions HloTestBase::GetDebugOptionsForTest() {
+/* static */
+StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
+                                       HloModule* module) {
+  const string module_str_before_run = module->ToProto().ShortDebugString();
+  const auto status_or = hlo_pass->Run(module);
+  if (status_or.status().ok()) {
+    const string module_str_after_run = module->ToProto().ShortDebugString();
+    if (!status_or.ValueOrDie()) {
+      // Check that the proto remains same.
+      EXPECT_EQ(module_str_after_run, module_str_before_run);
+    }
+  }
+  return status_or;
+}
+
+/*static*/
+DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
@@ -231,6 +252,29 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   }
   return RunAndCompare(module_or_status.ConsumeValueOrDie(), error,
                        reference_preprocessor);
+}
+
+::testing::AssertionResult HloTestBase::Run(const StringPiece hlo_string) {
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
+  }
+  const auto& fake_arguments =
+      MakeFakeArguments(module_or_status.ValueOrDie().get())
+          .ConsumeValueOrDie();
+  std::vector<Literal*> fake_argument_ptrs;
+  c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+  return test_runner_
+                 .Execute(std::move(module_or_status.ValueOrDie()),
+                          fake_argument_ptrs, /*run_hlo_passes=*/true)
+                 .ok()
+             ? ::testing::AssertionSuccess()
+             : ::testing::AssertionFailure();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(

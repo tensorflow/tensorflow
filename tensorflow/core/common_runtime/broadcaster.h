@@ -34,17 +34,24 @@ class Broadcaster {
 
   // Returns the rank of the device from which this device should receive
   // its value, -1 if no value should be received.
-  static int TreeRecvFrom(const CollectiveParams& cp);
+  static int TreeRecvFrom(const CollectiveParams& cp, int subdiv);
 
   // Populates targets with the ranks of the devices to which this device
   // should forward the value.
-  static void TreeSendTo(const CollectiveParams& cp, std::vector<int>* targets);
+  static void TreeSendTo(const CollectiveParams& cp, int subdiv,
+                         std::vector<int>* targets);
 
  private:
-  void DispatchSend(int dst_rank, const Tensor* src_tensor,
+  // Sends `src_tensor` asynchronously from this device to device at `dst_rank`
+  // in `subdiv`.  Calls `done` upon completion.
+  void DispatchSend(int subdiv, int dst_rank, int src_rank,
+                    const Tensor* src_tensor, const StatusCallback& done);
+  // Receives a tensor into the memory buffer owned by `dst_tensor` at this
+  // device from device at `src_rank` in `subdiv`.  Calls `done` upon
+  // completion.
+  void DispatchRecv(int subdiv, int src_rank, int dst_rank, Tensor* dst_tensor,
                     const StatusCallback& done);
-  void DispatchRecv(int src_rank, Tensor* dst_tensor,
-                    const StatusCallback& done);
+  // Executes the hierarchical broadcast defined by this op.
   void RunTree();
 
   Status status_;

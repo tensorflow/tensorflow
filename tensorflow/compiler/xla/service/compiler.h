@@ -48,11 +48,6 @@ namespace xla {
 // compuation.
 using ObjectFileData = std::vector<char>;
 
-// Contains the buffer sizes information needed to allocate buffers to execute
-// an ahead-of-time computation.  Entries which contain -1 designate a parameter
-// which should be skipped over during allocation.
-using BufferSizes = std::vector<int64>;
-
 // Abstract superclass describing the result of an ahead-of-time compilation.
 class AotCompilationResult {
  public:

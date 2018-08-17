@@ -125,7 +125,7 @@ The `OpDef` specifies the following:
     instead of CamelCase for the op's function name.
 -   A list of inputs and outputs. The types for these may be polymorphic by
     referencing attributes, as described in the inputs and outputs section of
-    @{$adding_an_op$Adding an     op}.
+    [Adding an     op](../extend/adding_an_op.md).
 -   A list of attributes, along with their default values (if any). Note that
     some of these will be inferred (if they are determined by an input), some
     will be optional (if they have a default), and some will be required (no

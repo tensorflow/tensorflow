@@ -115,6 +115,22 @@ class TestModelCloning(test.TestCase):
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_clone_functional_model_with_masking(self):
+    with self.test_session():
+      x = np.array([[[1], [1]], [[0], [0]]])
+      inputs = keras.Input((2, 1))
+      outputs = keras.layers.Masking(mask_value=0)(inputs)
+      outputs = keras.layers.TimeDistributed(
+          keras.layers.Dense(1, kernel_initializer='one'))(outputs)
+      model = keras.Model(inputs, outputs)
+
+      model = keras.models.clone_model(model)
+      model.compile(loss='mse', optimizer=adam.AdamOptimizer(0.01))
+      y = np.array([[[1], [1]], [[1], [1]]])
+      loss = model.train_on_batch(x, y)
+      self.assertEqual(float(loss), 0.)
+
   def test_model_cloning_invalid_use_cases(self):
     seq_model = keras.models.Sequential()
     seq_model.add(keras.layers.Dense(4, input_shape=(4,)))

@@ -113,7 +113,6 @@ py_test(
     size = "small",
     srcs = ["python/saved_model/keras_saved_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":saved_model_py",
         "//tensorflow/python:client_testlib",

@@ -48,6 +48,7 @@ from tensorflow.contrib.autograph.pyct import inspect_utils
 from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
@@ -70,6 +71,8 @@ def is_whitelisted_for_graph(o):
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
       return True
+  if hasattr(o, 'autograph_info__'):
+    return True
   return False
 
 
@@ -115,12 +118,32 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
       node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+  # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
+  elif hasattr(o, '__class__'):
+    raise NotImplementedError(
+        'Object conversion is not yet supported. If you are '
+        'trying to convert code that uses an existing object, '
+        'try including the creation of that object in the '
+        'conversion. For example, instead of converting the method '
+        'of a class, try converting the entire class instead. '
+        'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
+        'contrib/autograph/README.md#using-the-functional-api '
+        'for more information.')
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 
+  # TODO(mdan): This is temporary. it should be created using a converter.
+  # TODO(mdan): The attribute should be added with a helper, not directly.
+  # The helper can ensure there are no collisions.
+  template = '''
+      entity.autograph_info__ = {}
+  '''
+  node.extend(templates.replace(template, entity=name))
+
   program_ctx.add_to_cache(o, node)
+
   if program_ctx.recursive:
     while True:
       candidate = None
@@ -169,7 +192,7 @@ def class_to_graph(c, program_ctx):
   class_name = namer.compiled_class_name(c.__name__, c)
 
   # TODO(mdan): This needs to be explained more thoroughly.
-  # Process any base classes: if the sueprclass if of a whitelisted type, an
+  # Process any base classes: if the superclass if of a whitelisted type, an
   # absolute import line is generated. Otherwise, it is marked for conversion
   # (as a side effect of the call to namer.compiled_class_name() followed by
   # program_ctx.update_name_map(namer)).
@@ -268,18 +291,18 @@ def function_to_graph(f,
   context = converter.EntityContext(namer, entity_info, program_ctx)
   node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
 
-  # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
+  # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
   if not did_rename:
     new_name = f.__name__
     if node.name != f.__name__:
       raise NotImplementedError('Strange corner case. Send us offending code!')
-
   node.name = new_name
+
   program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.
 
-  return (node,), new_name, namespace
+  return [node], new_name, namespace
 
 
 def node_to_graph(node, context, rewrite_errors=True):

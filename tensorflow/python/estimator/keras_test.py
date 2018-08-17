@@ -275,11 +275,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       with self.test_session():
         est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model,
-            # Also use dict config argument to get test coverage for that line.
-            config={
-                'tf_random_seed': _RANDOM_SEED,
-                'model_dir': self._base_dir,
-            })
+            config=self._config)
         before_eval_results = est_keras.evaluate(
             input_fn=eval_input_fn, steps=1)
         est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)

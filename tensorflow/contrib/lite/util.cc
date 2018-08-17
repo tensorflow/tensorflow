@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/util.h"
 
+#include <cstring>
+
 namespace tflite {
+
+bool IsEagerOp(const char* custom_name) {
+  return custom_name && strncmp(custom_name, kEagerCustomCodePrefix,
+                                strlen(kEagerCustomCodePrefix)) == 0;
+}
 
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
   return ConvertArrayToTfLiteIntArray(input.size(), input.data());

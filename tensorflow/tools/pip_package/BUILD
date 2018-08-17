@@ -9,7 +9,7 @@ load(
     "if_windows",
     "transitive_hdrs",
 )
-load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
@@ -63,12 +63,14 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph/lang:lang",
     "//tensorflow/contrib/autograph/operators:operators",
     "//tensorflow/contrib/autograph/pyct:pyct",
+    "//tensorflow/contrib/autograph/pyct/testing:testing",
     "//tensorflow/contrib/autograph/pyct/static_analysis:static_analysis",
     "//tensorflow/contrib/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
     "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
     "//tensorflow/contrib/data/python/ops:contrib_op_loader",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
@@ -129,13 +131,9 @@ filegroup(
         "@absl_py//absl/flags:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astor_archive//:LICENSE",
-        "@aws//:LICENSE",
         "@boringssl//:LICENSE",
-        "@com_github_googleapis_googleapis//:LICENSE",
-        "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
-        "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
@@ -146,12 +144,8 @@ filegroup(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
-        "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
-        "@kafka//:LICENSE",
-        "@libxsmm_archive//:LICENSE.md",
         "@lmdb//:LICENSE",
-        "@local_config_nccl//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
@@ -164,7 +158,39 @@ filegroup(
         "@termcolor_archive//:COPYING.txt",
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
-    ] + if_mkl([
+    ] + select({
+        "//tensorflow:with_aws_support": [
+            "@aws//:LICENSE",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_gcp_support": [
+            "@com_github_googleapis_googleapis//:LICENSE",
+            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_jemalloc_linux_x86_64": [
+            "@jemalloc//:COPYING",
+        ],
+        "//tensorflow:with_jemalloc_linux_ppc64le": [
+            "@jemalloc//:COPYING",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_kafka_support": [
+            "@kafka//:LICENSE",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow/core/kernels:xsmm": [
+            "@libxsmm_archive//:LICENSE.md",
+        ],
+        "//conditions:default": [],
+    }) + if_cuda([
+        "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
+    ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
     ]) + if_not_system_lib(
@@ -182,14 +208,13 @@ sh_binary(
     srcs = ["build_pip_package.sh"],
     data = select({
         "//tensorflow:windows": [":simple_console_for_windows"],
-        "//tensorflow:windows_msvc": [":simple_console_for_windows"],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
             "//tensorflow/contrib/lite/python:interpreter_test_data",
             "//tensorflow/contrib/lite/python:tflite_convert",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+    }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

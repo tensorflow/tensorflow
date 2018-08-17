@@ -122,6 +122,30 @@ xla_test(
 )
 
 cc_library(
+    name = "pooling",
+    srcs = ["pooling.cc"],
+    hdrs = ["pooling.h"],
+    deps = [
+        ":arithmetic",
+        ":constants",
+        "//tensorflow/compiler/tf2xla/lib:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "pooling_test",
+    srcs = ["pooling_test.cc"],
+    deps = [
+        ":pooling",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "prng",
     srcs = ["prng.cc"],
     hdrs = ["prng.h"],
@@ -133,6 +157,37 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "sorting",
+    srcs = ["sorting.cc"],
+    hdrs = ["sorting.h"],
+    deps = [
+        ":numeric",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "sorting_test",
+    srcs = ["sorting_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":sorting",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

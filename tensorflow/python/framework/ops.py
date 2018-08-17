@@ -44,6 +44,7 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
@@ -228,7 +229,7 @@ class Tensor(_TensorLike):
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
-  TensorFlow @{tf.Session}.
+  TensorFlow `tf.Session`.
 
   This class has two primary purposes:
 
@@ -239,7 +240,7 @@ class Tensor(_TensorLike):
 
   2. After the graph has been launched in a session, the value of the
      `Tensor` can be computed by passing it to
-     @{tf.Session.run}.
+     `tf.Session.run`.
      `t.eval()` is a shortcut for calling
      `tf.get_default_session().run(t)`.
 
@@ -364,7 +365,7 @@ class Tensor(_TensorLike):
 
     The shape is computed using shape inference functions that are
     registered in the Op for each `Operation`.  See
-    @{tf.TensorShape}
+    `tf.TensorShape`
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
@@ -454,7 +455,7 @@ class Tensor(_TensorLike):
   def __iter__(self):
     if not context.executing_eagerly():
       raise TypeError(
-          "Tensor objects are not iterable when eager execution is not "
+          "Tensor objects are only iterable when eager execution is "
           "enabled. To iterate over this tensor use tf.map_fn.")
     shape = self._shape_tuple()
     if shape is None:
@@ -694,7 +695,7 @@ class Tensor(_TensorLike):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run} for a
+        See `tf.Session.run` for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this tensor. If
         none, the default session will be used.
@@ -1454,10 +1455,10 @@ class IndexedSlices(_TensorLike):
 
   The `IndexedSlices` class is used principally in the definition of
   gradients for operations that have sparse gradients
-  (e.g. @{tf.gather}).
+  (e.g. `tf.gather`).
 
   Contrast this representation with
-  @{tf.SparseTensor},
+  `tf.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
@@ -1618,8 +1619,8 @@ class Operation(object):
   more `Tensor` objects as input, and produces zero or more `Tensor`
   objects as output. Objects of type `Operation` are created by
   calling a Python op constructor (such as
-  @{tf.matmul})
-  or @{tf.Graph.create_op}.
+  `tf.matmul`)
+  or `tf.Graph.create_op`.
 
   For example `c = tf.matmul(a, b)` creates an `Operation` of type
   "MatMul" that takes tensors `a` and `b` as input, and produces `c`
@@ -1627,7 +1628,7 @@ class Operation(object):
 
   After the graph has been launched in a session, an `Operation` can
   be executed by passing it to
-  @{tf.Session.run}.
+  `tf.Session.run`.
   `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
   """
 
@@ -2337,7 +2338,7 @@ class Operation(object):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run}
+        See `tf.Session.run`
         for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to run to this operation. If
         none, the default session will be used.
@@ -2726,13 +2727,13 @@ class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
   A `Graph` contains a set of
-  @{tf.Operation} objects,
+  `tf.Operation` objects,
   which represent units of computation; and
-  @{tf.Tensor} objects, which represent
+  `tf.Tensor` objects, which represent
   the units of data that flow between operations.
 
   A default `Graph` is always registered, and accessible by calling
-  @{tf.get_default_graph}.
+  `tf.get_default_graph`.
   To add an operation to the default graph, simply call one of the functions
   that defines a new `Operation`:
 
@@ -2742,7 +2743,7 @@ class Graph(object):
   ```
 
   Another typical usage involves the
-  @{tf.Graph.as_default}
+  `tf.Graph.as_default`
   context manager, which overrides the current default graph for the
   lifetime of the context:
 
@@ -2763,7 +2764,7 @@ class Graph(object):
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
   example, the `tf.Variable` uses a collection (named
-  @{tf.GraphKeys.GLOBAL_VARIABLES}) for
+  `tf.GraphKeys.GLOBAL_VARIABLES`) for
   all variables that are created during the construction of a graph. The caller
   may define additional collections by specifying a new name.
   """
@@ -2940,7 +2941,7 @@ class Graph(object):
     """Returns a version number that increases as ops are added to the graph.
 
     Note that this is unrelated to the
-    @{tf.Graph.graph_def_versions}.
+    `tf.Graph.graph_def_versions`.
 
     Returns:
        An integer version that increases as ops are added to the graph.
@@ -2990,7 +2991,7 @@ class Graph(object):
     After calling `g.finalize()`, no new operations can be added to
     `g`.  This method is used to ensure that no operations are added
     to a graph when it is shared between multiple threads, for example
-    when using a @{tf.train.QueueRunner}.
+    when using a `tf.train.QueueRunner`.
     """
     self._finalized = True
 
@@ -3039,7 +3040,7 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using @{tf.import_graph_def}) or used with the
+    (using `tf.import_graph_def`) or used with the
     [C++ Session API](../../../../api_docs/cc/index.md).
 
     This method is thread-safe.
@@ -3085,7 +3086,7 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using @{tf.import_graph_def}) or used with the
+    (using `tf.import_graph_def`) or used with the
     [C++ Session API](../../api_docs/cc/index.md).
 
     This method is thread-safe.
@@ -3292,6 +3293,36 @@ class Graph(object):
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
+  def _make_colocation_conflict_message(self, op, colocation_op):
+    """Return detailed error message about device conflict due to colocation."""
+    # Example error message:
+    #   Tried to colocate op 'a' (defined at file1.py:149) having device
+    #   '/device:GPU:0' with op 'b' (defined at file2:96) which had an
+    #   incompatible device '/device:CPU:0'.
+    #
+    #   No node-device colocations were active during op 'a' creation.
+    #   Device assignments active during op 'a' creation:
+    #     with tf.device(/device:GPU:0): file1.py:148>
+    #
+    #   Node-device colocations active during op 'b' creation:
+    #     with tf.colocate_with(a): file2.py:93>
+    #   Device assignments active during op 'b' creation:
+    #     with tf.device(/cpu:0): file2.py:94
+    op_info = error_interpolation.compute_field_dict(op)
+    coloc_op_info = error_interpolation.compute_field_dict(colocation_op)
+    msg = ("Tried to colocate op '{op_name}'{op_loc} having device '{op_dev}' "
+           "with op '{coloc_op_name}'{coloc_op_loc} which had an incompatible "
+           "device '{coloc_op_dev}'.\n\n{op_summary}\n\n{coloc_op_summary}"
+           .format(op_name=op.name,
+                   op_loc=op_info["defined_at"],
+                   op_dev=op.device,
+                   op_summary=op_info["devs_and_colocs"],
+                   coloc_op_name=colocation_op.name,
+                   coloc_op_loc=coloc_op_info["defined_at"],
+                   coloc_op_dev=colocation_op.device,
+                   coloc_op_summary=coloc_op_info["devs_and_colocs"]))
+    return msg
+
   def _create_op_helper(self, op, compute_device=True):
     """Common logic for creating an op in this graph."""
     # Apply any additional attributes requested. Do not overwrite any existing
@@ -3332,20 +3363,22 @@ class Graph(object):
     if compute_device:
       self._apply_device_functions(op)
 
+    # Snapshot the colocation stack metadata before we might generate error
+    # messages using it.  Note that this snapshot depends on the actual stack
+    # and is independent of the op's _class attribute.
+    # pylint: disable=protected-access
+    op._colocation_code_locations = self._snapshot_colocation_stack_metadata()
+    # pylint: enable=protected-access
+
     if self._colocation_stack:
       all_colocation_groups = []
       for colocation_op in self._colocation_stack.peek_objs():
         all_colocation_groups.extend(colocation_op.colocation_groups())
         if colocation_op.device:
-          # Make this device match the device of the colocated op, to provide
-          # consistency between the device and the colocation property.
           if (op.device and pydev.canonical_name(op.device) !=
               pydev.canonical_name(colocation_op.device)):
-            logging.warning("Tried to colocate %s with an op %s that had "
-                            "a different device: %s vs %s. Postponing "
-                            "error-checking until all devices are assigned.",
-                            op.name, colocation_op.name, op.device,
-                            colocation_op.device)
+            msg = self._make_colocation_conflict_message(op, colocation_op)
+            logging.warning(msg)
           else:
             op._set_device(colocation_op.device)  # pylint: disable=protected-access
 
@@ -3353,7 +3386,6 @@ class Graph(object):
       # pylint: disable=protected-access
       op._set_attr("_class", attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
-      op._colocation_code_locations = self._snapshot_colocation_stack_metadata()
       # pylint: enable=protected-access
 
     # Sets "container" attribute if
@@ -4828,6 +4860,18 @@ class Graph(object):
     else:
       self._graph_control_dependencies_stack = control_dependencies
 
+  @property
+  def _distribution_strategy_stack(self):
+    """A stack to maintain distribution strategy context for each thread."""
+    if not hasattr(self._thread_local, "_distribution_strategy_stack"):
+      self._thread_local._distribution_strategy_stack = []  # pylint: disable=protected-access
+    return self._thread_local._distribution_strategy_stack  # pylint: disable=protected-access
+
+  @_distribution_strategy_stack.setter
+  def _distribution_strategy_stack(self, _distribution_strategy_stack):
+    self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
+        _distribution_strategy_stack)
+
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -4852,7 +4896,7 @@ def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
-  @{tf.Graph.device}
+  `tf.Graph.device`
   for more details.
 
   Args:
@@ -4918,7 +4962,7 @@ def colocate_with(op, ignore_existing=False):
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See @{tf.Graph.control_dependencies}
+  See `tf.Graph.control_dependencies`
   for more details.
 
   When eager execution is enabled, any callable object in the `control_inputs`
@@ -5284,7 +5328,7 @@ def enable_eager_execution(config=None,
 
   Eager execution provides an imperative interface to TensorFlow. With eager
   execution enabled, TensorFlow functions execute operations immediately (as
-  opposed to adding to a graph to be executed later in a @{tf.Session}) and
+  opposed to adding to a graph to be executed later in a `tf.Session`) and
   return concrete values (as opposed to symbolic references to a node in a
   computational graph).
 
@@ -5304,9 +5348,9 @@ def enable_eager_execution(config=None,
   both with and without eager execution).
 
   Args:
-    config: (Optional.) A @{tf.ConfigProto} to use to configure the environment
-      in which operations are executed. Note that @{tf.ConfigProto} is also
-      used to configure graph execution (via @{tf.Session}) and many options
+    config: (Optional.) A `tf.ConfigProto` to use to configure the environment
+      in which operations are executed. Note that `tf.ConfigProto` is also
+      used to configure graph execution (via `tf.Session`) and many options
       within `tf.ConfigProto` are not implemented (or are irrelevant) when
       eager execution is enabled.
     device_policy: (Optional.) Policy controlling how operations requiring
@@ -5606,7 +5650,7 @@ class GraphKeys(object):
 
   * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
     across distributed environment (model variables are subset of these). See
-    @{tf.global_variables}
+    `tf.global_variables`
     for more details.
     Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
     and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
@@ -5618,19 +5662,19 @@ class GraphKeys(object):
     `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
-    @{tf.trainable_variables}
+    `tf.trainable_variables`
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    @{tf.summary.merge_all}
+    `tf.summary.merge_all`
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
-    @{tf.train.start_queue_runners}
+    `tf.train.start_queue_runners`
     for more details.
   * `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
     keep moving averages.  See
-    @{tf.moving_average_variables}
+    `tf.moving_average_variables`
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
@@ -5740,11 +5784,43 @@ class GraphKeys(object):
     return cls.GLOBAL_VARIABLES
 
 
+def dismantle_graph(graph):
+  """Cleans up reference cycles from a `Graph`.
+
+  Helpful for making sure the garbage collector doesn't need to run after a
+  temporary `Graph` is no longer needed.
+
+  Args:
+    graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
+      after this function runs.
+  """
+  # pylint: disable=protected-access
+  # OrderedDict, constructed on Graph creation, makes a simple reference loop
+  # and hides it in an __attribute in some Python versions. We don't need to
+  # throw an error if we can't find it, but if we do find it we can break the
+  # loop to avoid creating work for the garbage collector.
+  graph_operations = graph.get_operations()
+  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
+  # pylint: enable=protected-access
+  if problematic_cycle:
+    try:
+      del problematic_cycle[0][:]
+    except TypeError:
+      # This is probably not one of the problematic Python versions. Continue
+      # with the rest of our cleanup.
+      pass
+  # Now clean up Operation<->Graph reference cycles by clearing all of the
+  # attributes for the Graph and its ops.
+  for op in graph_operations:
+    op.__dict__ = {}
+  graph.__dict__ = {}
+
+
 @tf_export("add_to_collection")
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
-  See @{tf.Graph.add_to_collection}
+  See `tf.Graph.add_to_collection`
   for more details.
 
   Args:
@@ -5763,7 +5839,7 @@ def add_to_collection(name, value):
 def add_to_collections(names, value):
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 
-  See @{tf.Graph.add_to_collections}
+  See `tf.Graph.add_to_collections`
   for more details.
 
   Args:
@@ -5783,7 +5859,7 @@ def add_to_collections(names, value):
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
-  See @{tf.Graph.get_collection_ref}
+  See `tf.Graph.get_collection_ref`
   for more details.
 
   Args:
@@ -5807,7 +5883,7 @@ def get_collection_ref(key):
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
-  See @{tf.Graph.get_collection}
+  See `tf.Graph.get_collection`
   for more details.
 
   Args:
@@ -5850,7 +5926,7 @@ class name_scope(object):  # pylint: disable=invalid-name
   This context manager validates that the given `values` are from the
   same graph, makes that graph the default graph, and pushes a
   name scope in that graph (see
-  @{tf.Graph.name_scope}
+  `tf.Graph.name_scope`
   for more details on that).
 
   For example, to define a new Python op called `my_op`:

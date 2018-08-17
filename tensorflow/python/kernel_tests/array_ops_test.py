@@ -245,6 +245,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
         array_ops.boolean_mask(tensor, mask).eval()
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):
 
   def testExpandScalar(self):
@@ -262,13 +263,19 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     matrix_squeezed = array_ops.squeeze(matrix, [0])
     self.assertEqual(matrix_squeezed.get_shape(), (3))
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        Exception, "Can not squeeze dim.1., expected a dimension of 1, got 3"):
       matrix_squeezed = array_ops.squeeze(matrix, [1])
 
   def testSqueezeScalarDim(self):
     matrix = [[1, 2, 3]]
     matrix_squeezed = array_ops.squeeze(matrix, 0)
     self.assertEqual(matrix_squeezed.get_shape(), (3))
+
+  def testExpandDimsWithNonScalarDim(self):
+    with self.assertRaisesRegexp(Exception,
+                                 "must be a tensor with a single value"):
+      array_ops.expand_dims(1, axis=[0, 1])
 
 
 class ReverseV2Test(test_util.TensorFlowTestCase):

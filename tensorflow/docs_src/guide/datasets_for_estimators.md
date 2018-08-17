@@ -1,6 +1,6 @@
 # Datasets for Estimators
 
-The @{tf.data} module contains a collection of classes that allows you to
+The `tf.data` module contains a collection of classes that allows you to
 easily load data, manipulate it, and pipe it into your model. This document
 introduces the API by walking through two simple examples:
 
@@ -14,7 +14,7 @@ introduces the API by walking through two simple examples:
 
 Taking slices from an array is the simplest way to get started with `tf.data`.
 
-The @{$premade_estimators$Premade Estimators} chapter describes
+The [Premade Estimators](../guide/premade_estimators.md) chapter describes
 the following `train_input_fn`, from
 [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py),
 to pipe the data into the Estimator:
@@ -73,8 +73,8 @@ Let's walk through the `train_input_fn()`.
 
 ### Slices
 
-The function starts by using the @{tf.data.Dataset.from_tensor_slices} function
-to create a @{tf.data.Dataset} representing slices of the array. The array is
+The function starts by using the `tf.data.Dataset.from_tensor_slices` function
+to create a `tf.data.Dataset` representing slices of the array. The array is
 sliced across the first dimension. For example, an array containing the
 MNIST training data has a shape of `(60000, 28, 28)`. Passing this to
 `from_tensor_slices` returns a `Dataset` object containing 60000 slices, each one
@@ -91,8 +91,8 @@ print(mnist_ds)
 ```
 
 This will print the following line, showing the
-@{$guide/tensors#shapes$shapes} and
-@{$guide/tensors#data_types$types} of the items in
+[shapes](../guide/tensors.md#shapes) and
+[types](../guide/tensors.md#data_types) of the items in
 the dataset. Note that a `Dataset` does not know how many items it contains.
 
 ``` None
@@ -128,7 +128,7 @@ print(dataset)
 
 Here we see that when a `Dataset` contains structured elements, the `shapes`
 and `types` of the `Dataset` take on the same structure. This dataset contains
-dictionaries of @{$guide/tensors#rank$scalars}, all of type
+dictionaries of [scalars](../guide/tensors.md#rank), all of type
 `tf.float64`.
 
 The first line of the iris `train_input_fn` uses the same functionality, but
@@ -170,15 +170,15 @@ function takes advantage of several of these methods:
 dataset = dataset.shuffle(1000).repeat().batch(batch_size)
 ```
 
-The @{tf.data.Dataset.shuffle$`shuffle`} method uses a fixed-size buffer to
+The `tf.data.Dataset.shuffle` method uses a fixed-size buffer to
 shuffle the items as they pass through. In this case the `buffer_size` is
 greater than the number of examples in the `Dataset`, ensuring that the data is
 completely shuffled (The Iris data set only contains 150 examples).
 
-The @{tf.data.Dataset.repeat$`repeat`} method restarts the `Dataset` when
+The `tf.data.Dataset.repeat` method restarts the `Dataset` when
 it reaches the end. To limit the number of epochs, set the `count` argument.
 
-The @{tf.data.Dataset.batch$`batch`} method collects a number of examples and
+The `tf.data.Dataset.batch` method collects a number of examples and
 stacks them, to create batches. This adds a dimension to their shape. The new
 dimension is added as the first dimension. The following code uses
 the `batch` method on the MNIST `Dataset`, from earlier. This results in a
@@ -234,7 +234,7 @@ The `labels` can/should be omitted when using the `predict` method.
 ## Reading a CSV File
 
 The most common real-world use case for the `Dataset` class is to stream data
-from files on disk. The @{tf.data} module includes a variety of
+from files on disk. The `tf.data` module includes a variety of
 file readers. Let's see how parsing the Iris dataset from the csv file looks
 using a `Dataset`.
 
@@ -255,9 +255,9 @@ from the local files.
 
 ### Build the `Dataset`
 
-We start by building a @{tf.data.TextLineDataset$`TextLineDataset`} object to
+We start by building a `tf.data.TextLineDataset` object to
 read the file one line at a time. Then, we call the
-@{tf.data.Dataset.skip$`skip`} method to skip over the first line of the file, which contains a header, not an example:
+`tf.data.Dataset.skip` method to skip over the first line of the file, which contains a header, not an example:
 
 ``` python
 ds = tf.data.TextLineDataset(train_path).skip(1)
@@ -268,11 +268,11 @@ ds = tf.data.TextLineDataset(train_path).skip(1)
 We will start by building a function to parse a single line.
 
 The following `iris_data.parse_line` function accomplishes this task using the
-@{tf.decode_csv} function, and some simple python code:
+`tf.decode_csv` function, and some simple python code:
 
 We must parse each of the lines in the dataset in order to generate the
 necessary `(features, label)` pairs. The following `_parse_line` function
-calls @{tf.decode_csv} to parse a single line into its features
+calls `tf.decode_csv` to parse a single line into its features
 and the label. Since Estimators require that features be represented as a
 dictionary, we rely on Python's built-in `dict` and `zip` functions to build
 that dictionary.  The feature names are the keys of that dictionary.
@@ -301,7 +301,7 @@ def _parse_line(line):
 ### Parse the lines
 
 Datasets have many methods for manipulating the data while it is being piped
-to a model. The most heavily-used method is @{tf.data.Dataset.map$`map`}, which
+to a model. The most heavily-used method is `tf.data.Dataset.map`, which
 applies a transformation to each element of the `Dataset`.
 
 The `map` method takes a `map_func` argument that describes how each item in the
@@ -311,7 +311,7 @@ The `map` method takes a `map_func` argument that describes how each item in the
 <img style="width:100%" src="../images/datasets/map.png">
 </div>
 <div style="text-align: center">
-The @{tf.data.Dataset.map$`map`} method applies the `map_func` to
+The `tf.data.Dataset.map` method applies the `map_func` to
 transform each item in the <code>Dataset</code>.
 </div>
 
@@ -377,11 +377,11 @@ Now you have the basic idea of how to efficiently load data into an
 Estimator. Consider the following documents next:
 
 
-* @{$custom_estimators}, which demonstrates how to build your own
+* [Creating Custom Estimators](../guide/custom_estimators.md), which demonstrates how to build your own
   custom `Estimator` model.
-* The @{$low_level_intro#datasets$Low Level Introduction}, which demonstrates
+* The [Low Level Introduction](../guide/low_level_intro.md#datasets), which demonstrates
   how to experiment directly with `tf.data.Datasets` using TensorFlow's low
   level APIs.
-* @{$guide/datasets} which goes into great detail about additional
+* [Importing Data](../guide/datasets.md) which goes into great detail about additional
   functionality of `Datasets`.
 

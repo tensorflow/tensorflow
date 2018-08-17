@@ -58,66 +58,101 @@ Status ExpectArray(const Shape& shape, tensorflow::StringPiece op_type) {
   return Status::OK();
 }
 
-Status VerifyReducerShape(const ProgramShape& reducer_shape,
-                          const Shape& init_value_shape,
-                          const PrimitiveType& input_element_type) {
-  if (reducer_shape.parameters_size() != 2) {
+Status VerifyReducerShape(
+    const ProgramShape& reducer_shape,
+    tensorflow::gtl::ArraySlice<const Shape*> init_value_shapes,
+    tensorflow::gtl::ArraySlice<PrimitiveType> input_element_types,
+    int64 inputs) {
+  if (reducer_shape.parameters_size() != inputs * 2) {
     return InvalidArgument(
-        "Reduction function must take 2 parameters, but "
+        "Reduction function must take %lld parameters, but "
         "takes %d parameter(s).",
-        reducer_shape.parameters_size());
+        inputs * 2, reducer_shape.parameters_size());
   }
 
   const Shape& accumulator_shape = reducer_shape.result();
-  if (!ShapeUtil::IsArray(accumulator_shape) ||
-      ShapeUtil::Rank(accumulator_shape) != 0) {
+  std::vector<const Shape*> accumulator_subshapes;
+  if (ShapeUtil::IsArray(accumulator_shape)) {
+    if (inputs != 1) {
+      return InvalidArgument(
+          "Reduction function must produce a tuple with %lld elements, but "
+          "produces a scalar",
+          inputs);
+    }
+    accumulator_subshapes.push_back(&accumulator_shape);
+  } else if (ShapeUtil::IsTuple(accumulator_shape)) {
+    if (ShapeUtil::TupleElementCount(accumulator_shape) != inputs) {
+      return InvalidArgument(
+          "Reduction function must produce a tuple with %lld elements, but has "
+          "%lld elements",
+          inputs, ShapeUtil::TupleElementCount(accumulator_shape));
+    }
+    for (const Shape& element_shape : accumulator_shape.tuple_shapes()) {
+      accumulator_subshapes.push_back(&element_shape);
+    }
+  } else {
     return InvalidArgument(
-        "Reduction function must produce a scalar but has shape: %s",
+        "Reduction function must produce a scalar or tuple of scalars, but has "
+        "shape: %s",
         ShapeUtil::HumanString(accumulator_shape).c_str());
   }
 
-  // Check that the accumulator can be passed in as the first argument.
-  // Note: comparing here and below with Compatible since we don't care about
-  // layout in scalars - see b/26668201 for a longer-term vision.
-  if (!ShapeUtil::Compatible(accumulator_shape, reducer_shape.parameters(0))) {
-    return InvalidArgument(
-        "Reduction function's first parameter shape differs from the "
-        "result shape: %s vs %s",
-        ShapeUtil::HumanString(reducer_shape.parameters(0)).c_str(),
-        ShapeUtil::HumanString(accumulator_shape).c_str());
+  for (const Shape* element_shape : accumulator_subshapes) {
+    if (ShapeUtil::Rank(*element_shape) != 0) {
+      return InvalidArgument(
+          "Reduction function must return a scalar or tuple of scalars but "
+          "returns shape: %s",
+          ShapeUtil::HumanString(accumulator_shape).c_str());
+    }
   }
 
-  // Check that init_value's shape is suitable for reducer_shape.
-  if (!ShapeUtil::CompatibleIgnoringFpPrecision(accumulator_shape,
-                                                init_value_shape)) {
-    return InvalidArgument(
-        "Reduction function's accumulator shape differs from the "
-        "init_value shape: %s vs %s",
-        ShapeUtil::HumanString(accumulator_shape).c_str(),
-        ShapeUtil::HumanString(init_value_shape).c_str());
-  }
-
-  // Check that the inputs can be passed in as the second argument.
-  const Shape& input_element_shape =
-      ShapeUtil::MakeShape(input_element_type, {});
-  if (!ShapeUtil::CompatibleIgnoringFpPrecision(input_element_shape,
-                                                reducer_shape.parameters(1))) {
-    return InvalidArgument(
-        "Reduction function's second parameter shape differs from the "
-        "input type element type: %s vs %s",
-        ShapeUtil::HumanString(reducer_shape.parameters(1)).c_str(),
-        ShapeUtil::HumanString(input_element_shape).c_str());
-  }
-
-  // Currently the accumulator and inputs must be the same type,
-  // though that restriction could be relaxed.
-  if (!ShapeUtil::CompatibleIgnoringFpPrecision(accumulator_shape,
-                                                reducer_shape.parameters(1))) {
-    return InvalidArgument(
-        "Reduction function's second parameter shape must "
-        "match the result shape, but got %s vs %s.",
-        ShapeUtil::HumanString(reducer_shape.parameters(1)).c_str(),
-        ShapeUtil::HumanString(accumulator_shape).c_str());
+  for (int64 i = 0; i < inputs; ++i) {
+    // Check that the accumulator can be passed in as the first argument.
+    // Note: comparing here and below with Compatible since we don't care about
+    // layout in scalars - see b/26668201 for a longer-term vision.
+    if (!ShapeUtil::Compatible(*accumulator_subshapes[i],
+                               reducer_shape.parameters(i))) {
+      return InvalidArgument(
+          "Reduction function's %lld-th parameter shape differs from the "
+          "result shape: %s vs %s",
+          i, ShapeUtil::HumanString(reducer_shape.parameters(i)).c_str(),
+          ShapeUtil::HumanString(*accumulator_subshapes[i]).c_str());
+    }
+    // Check that init_value's shapes are suitable for reducer_shape.
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(*accumulator_subshapes[i],
+                                                  *init_value_shapes[i])) {
+      return InvalidArgument(
+          "Reduction function's accumulator shape at index %lld differs from "
+          "the init_value shape: %s vs %s",
+          i, ShapeUtil::HumanString(*accumulator_subshapes[i]).c_str(),
+          ShapeUtil::HumanString(*init_value_shapes[i]).c_str());
+    }
+    // Check that the inputs can be passed in as the non-accumulator arguments.
+    const Shape input_element_shape =
+        ShapeUtil::MakeShape(input_element_types[i], {});
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(
+            input_element_shape, reducer_shape.parameters(inputs + i))) {
+      return InvalidArgument(
+          "Reduction function's %lld-th parameter shape differs from the "
+          "input type element type: %s vs %s",
+          inputs + i,
+          ShapeUtil::HumanString(reducer_shape.parameters(inputs + i)).c_str(),
+          ShapeUtil::HumanString(input_element_shape).c_str());
+    }
+    // Check that the accumulator and inputs to the reducer function match.
+    // If the accumulator is scalar, it must have the same type as the inputs
+    // (up to fp precision). If it is a tuple, then the k-th element of the
+    // tuple must have the same type as the K-th input (again, up to fp
+    // precision.)
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(
+            *accumulator_subshapes[i], reducer_shape.parameters(inputs + i))) {
+      return InvalidArgument(
+          "Reduction function's %lld-th parameter shape must "
+          "match the result shape, but got %s vs %s.",
+          inputs + i,
+          ShapeUtil::HumanString(reducer_shape.parameters(inputs + i)).c_str(),
+          ShapeUtil::HumanString(*accumulator_subshapes[i]).c_str());
+    }
   }
 
   return Status::OK();
@@ -1495,7 +1530,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dnums) {
+    const ConvolutionDimensionNumbers& dnums, int64 feature_group_count) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -1605,12 +1640,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (input_features != kernel_input_features) {
+  if (input_features != kernel_input_features * feature_group_count) {
     return InvalidArgument(
         "Expected LHS feature dimension (value %lld) to match RHS "
-        "input feature dimension (value %lld); got <conv>(%s, %s)\n"
+        "input feature dimension * feature_group_count (value %lld); "
+        "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_features, kernel_input_features,
+        input_features, kernel_input_features * feature_group_count,
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str(), dnums.DebugString().c_str());
   }
@@ -1744,11 +1780,83 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::MakeTupleShape(operand_shape_values);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(
+    const Shape& shape, int64 split_dimension, int64 concat_dimension,
+    int64 split_count) {
+  TF_RET_CHECK(split_count > 0);
+  if (split_dimension >= ShapeUtil::Rank(shape) || split_dimension < 0) {
+    return InvalidArgument(
+        "AllToAll split_dimension %lld is out-of-bounds in shape %s.",
+        split_dimension, ShapeUtil::HumanString(shape).c_str());
+  }
+  if (concat_dimension >= ShapeUtil::Rank(shape) || concat_dimension < 0) {
+    return InvalidArgument(
+        "AllToAll concat_dimension %lld is out-of-bounds in shape %s.",
+        concat_dimension, ShapeUtil::HumanString(shape).c_str());
+  }
+  if (shape.dimensions(split_dimension) % split_count != 0) {
+    return InvalidArgument(
+        "AllToAll split dimension size %lld must be dividable by split_count "
+        "%lld.",
+        shape.dimensions(split_dimension), split_count);
+  }
+  std::vector<int64> new_dimensions(shape.dimensions().begin(),
+                                    shape.dimensions().end());
+  new_dimensions[split_dimension] /= split_count;
+  new_dimensions[concat_dimension] *= split_count;
+  return ShapeUtil::MakeShape(shape.element_type(), new_dimensions);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllToAllTupleShape(
+    tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
+  // An Alltoall HLO instruction receives N operands (with the same shape) and
+  // returns a tuple that contains N array shapes.
+  TF_RET_CHECK(!operand_shapes.empty());
+  for (int i = 0; i < operand_shapes.size(); i++) {
+    if (!ShapeUtil::Equal(*operand_shapes[0], *operand_shapes[i])) {
+      return InvalidArgument(
+          "HLO all-to-all has operands with different shapes: the 0th "
+          "operand shape %s, but the %dth operand has shape %s.",
+          ShapeUtil::HumanString(*operand_shapes[0]).c_str(), i,
+          ShapeUtil::HumanString(*operand_shapes[i]).c_str());
+    }
+  }
+
+  return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(
-    const Shape& arg, const Shape& init_value,
+    tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
     const ProgramShape& to_apply) {
-  // Check that the dimension to reduce are in-bounds for the given shape.
+  if (arg_shapes.empty()) {
+    return InvalidArgument("Reduce must have at least 2 arguments, has 0");
+  }
+  if (arg_shapes.size() % 2) {
+    return InvalidArgument(
+        "Reduce must have an even number of arguments, has %lu",
+        arg_shapes.size());
+  }
+  int64 num_reduced_args = arg_shapes.size() / 2;
+
+  tensorflow::gtl::ArraySlice<const Shape*> reduced_args(arg_shapes, 0,
+                                                         num_reduced_args);
+  // Check that all of the reduced tensors have the same dimensions. The element
+  // types may be different.
+  for (int64 i = 1; i < num_reduced_args; ++i) {
+    if (!ShapeUtil::SameDimensions(*reduced_args[0], *reduced_args[i])) {
+      return InvalidArgument(
+          "All reduced tensors must have the sime dimension. Tensor 0 has "
+          "shape %s, Tensor %lld has shape %s",
+          ShapeUtil::HumanString(*reduced_args[0]).c_str(), i,
+          ShapeUtil::HumanString(*reduced_args[i]).c_str());
+    }
+  }
+
+  // Check that the dimensions to reduce are in-bounds for the given shape.
+  // We've already verified all reduced tensors have the same dimensions, so it
+  // doesn't matter which one we choose.
+  const Shape& arg = *reduced_args[0];
   for (int64 dimension : dimensions_to_reduce) {
     if (dimension >= ShapeUtil::Rank(arg) || dimension < 0) {
       return InvalidArgument(
@@ -1756,8 +1864,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(arg).c_str());
     }
   }
-  TF_RETURN_IF_ERROR(
-      VerifyReducerShape(to_apply, init_value, arg.element_type()));
+
+  tensorflow::gtl::ArraySlice<const Shape*> init_values(
+      arg_shapes, num_reduced_args, arg_shapes.size());
+  std::vector<PrimitiveType> element_types;
+  for (const Shape* arg : reduced_args) {
+    element_types.push_back(arg->element_type());
+  }
+  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply, init_values, element_types,
+                                        num_reduced_args));
 
   std::set<int64> dimensions_to_reduce_set(dimensions_to_reduce.begin(),
                                            dimensions_to_reduce.end());
@@ -1768,15 +1883,26 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
 
-  return ShapeUtil::MakeShape(to_apply.result().element_type(), new_dimensions);
+  if (ShapeUtil::IsScalar(to_apply.result())) {
+    return ShapeUtil::MakeShape(to_apply.result().element_type(),
+                                new_dimensions);
+  } else {
+    std::vector<Shape> result_subshapes;
+    for (const Shape& subshape : to_apply.result().tuple_shapes()) {
+      result_subshapes.push_back(
+          ShapeUtil::MakeShape(subshape.element_type(), new_dimensions));
+    }
+    return ShapeUtil::MakeTupleShape(result_subshapes);
+  }
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window, const ProgramShape& to_apply_shape) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
-  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_value_shape,
-                                        operand_shape.element_type()));
+  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
+                                        {operand_shape.element_type()},
+                                        /*inputs=*/1));
   return InferWindowOutputShape(operand_shape, window,
                                 init_value_shape.element_type(),
                                 /*allow_negative_padding=*/false);
@@ -1821,8 +1947,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // Check if the scatter function has a proper shape as a reduction.
-  TF_RETURN_IF_ERROR(VerifyReducerShape(scatter_shape, init_value_shape,
-                                        source_shape.element_type()));
+  TF_RETURN_IF_ERROR(VerifyReducerShape(scatter_shape, {&init_value_shape},
+                                        {source_shape.element_type()},
+                                        /*inputs=*/1));
 
   // Check if the result shape of window operation matches the source shape.
   TF_ASSIGN_OR_RETURN(const Shape& window_result_shape,
@@ -2365,207 +2492,392 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 static Status ValidateGatherDimensionNumbers(
     const Shape& input_shape,
-    tensorflow::gtl::ArraySlice<int64> gather_indices_shape,
+    tensorflow::gtl::ArraySlice<int64> start_indices_shape,
     const GatherDimensionNumbers& dim_numbers) {
-  if (!c_is_sorted(dim_numbers.output_window_dims())) {
+  if (!c_is_sorted(dim_numbers.offset_dims())) {
     return InvalidArgument(
         "Output window dimensions in gather op must be ascending; got: %s.",
-        Join(dim_numbers.output_window_dims(), ", ").c_str());
+        Join(dim_numbers.offset_dims(), ", ").c_str());
   }
 
-  if (c_adjacent_find(dim_numbers.output_window_dims()) !=
-      dim_numbers.output_window_dims().end()) {
+  if (c_adjacent_find(dim_numbers.offset_dims()) !=
+      dim_numbers.offset_dims().end()) {
     return InvalidArgument(
         "Output window dimensions in gather op must not repeat; got: %s.",
-        Join(dim_numbers.output_window_dims(), ", ").c_str());
+        Join(dim_numbers.offset_dims(), ", ").c_str());
   }
 
-  const int64 output_window_dim_count = dim_numbers.output_window_dims_size();
+  const int64 output_offset_dim_count = dim_numbers.offset_dims_size();
   const int64 output_shape_rank =
-      output_window_dim_count + gather_indices_shape.size() - 1;
+      output_offset_dim_count + start_indices_shape.size() - 1;
 
-  for (int i = 0; i < dim_numbers.output_window_dims_size(); ++i) {
-    int64 window_index = dim_numbers.output_window_dims(i);
-    if (window_index < 0 || window_index >= output_shape_rank) {
+  for (int i = 0; i < dim_numbers.offset_dims_size(); ++i) {
+    int64 offset_dim = dim_numbers.offset_dims(i);
+    if (offset_dim < 0 || offset_dim >= output_shape_rank) {
       return InvalidArgument(
-          "Window index %d in gather op is out of bounds; got %lld, but should "
+          "Offset dimension %d in gather op is out of bounds; got %lld, but "
+          "should "
           "have been in [0,%lld).",
-          i, window_index, output_shape_rank);
+          i, offset_dim, output_shape_rank);
     }
   }
 
-  if (dim_numbers.gather_dims_to_operand_dims_size() !=
-      gather_indices_shape[dim_numbers.index_vector_dim()]) {
+  if (dim_numbers.start_index_map_size() !=
+      start_indices_shape[dim_numbers.index_vector_dim()]) {
     return InvalidArgument(
-        "Gather op has %d elements in gather_dims_to_operand_dims and the "
-        "bound of dimension index_vector_dim=%lld of gather_indices is "
+        "Gather op has %d elements in start_index_map and the "
+        "bound of dimension index_vector_dim=%lld of start_indices is "
         "%lld. These two numbers must be equal.",
-        dim_numbers.gather_dims_to_operand_dims_size(),
-        dim_numbers.index_vector_dim(),
-        gather_indices_shape[dim_numbers.index_vector_dim()]);
+        dim_numbers.start_index_map_size(), dim_numbers.index_vector_dim(),
+        start_indices_shape[dim_numbers.index_vector_dim()]);
   }
 
-  for (int i = 0; i < dim_numbers.gather_dims_to_operand_dims_size(); i++) {
-    int64 gather_dim_to_input_dim = dim_numbers.gather_dims_to_operand_dims(i);
-    if (gather_dim_to_input_dim < 0 ||
-        gather_dim_to_input_dim >= input_shape.dimensions_size()) {
+  for (int i = 0; i < dim_numbers.start_index_map_size(); i++) {
+    int64 operand_dim_for_start_index_i = dim_numbers.start_index_map(i);
+    if (operand_dim_for_start_index_i < 0 ||
+        operand_dim_for_start_index_i >= input_shape.dimensions_size()) {
       return InvalidArgument(
-          "Invalid gather_dims_to_operand_dims mapping; domain is [0, %d), "
-          "got: %d->%lld.",
-          input_shape.dimensions_size(), i, gather_dim_to_input_dim);
+          "Invalid start_index_map; domain is [0, %d), got: %d->%lld.",
+          input_shape.dimensions_size(), i, operand_dim_for_start_index_i);
     }
   }
 
-  std::vector<int64> sorted_gather_dims_to_operand_dims(
-      dim_numbers.gather_dims_to_operand_dims().begin(),
-      dim_numbers.gather_dims_to_operand_dims().end());
+  std::vector<int64> sorted_start_index_map(
+      dim_numbers.start_index_map().begin(),
+      dim_numbers.start_index_map().end());
 
-  c_sort(sorted_gather_dims_to_operand_dims);
+  c_sort(sorted_start_index_map);
 
-  if (c_adjacent_find(sorted_gather_dims_to_operand_dims) !=
-      sorted_gather_dims_to_operand_dims.end()) {
+  if (c_adjacent_find(sorted_start_index_map) != sorted_start_index_map.end()) {
     return InvalidArgument(
-        "Repeated dimensions are not allowed in gather_dims_to_operand_dims; "
+        "Repeated dimensions are not allowed in start_index_map; "
         "got: %s.",
-        Join(dim_numbers.gather_dims_to_operand_dims(), ", ").c_str());
+        Join(dim_numbers.start_index_map(), ", ").c_str());
   }
 
-  for (int64 elided_dim : dim_numbers.elided_window_dims()) {
-    if (elided_dim < 0 || elided_dim >= input_shape.dimensions_size()) {
+  for (int64 collapsed_dim : dim_numbers.collapsed_slice_dims()) {
+    if (collapsed_dim < 0 || collapsed_dim >= input_shape.dimensions_size()) {
       return InvalidArgument(
-          "Invalid elided_window_dims set in gather op; valid range is [0, "
+          "Invalid collapsed_slice_dims set in gather op; valid range is [0, "
           "%d), got: %lld.",
-          input_shape.dimensions_size(), elided_dim);
+          input_shape.dimensions_size(), collapsed_dim);
     }
   }
 
-  if (!c_is_sorted(dim_numbers.elided_window_dims())) {
+  if (!c_is_sorted(dim_numbers.collapsed_slice_dims())) {
     return InvalidArgument(
-        "elided_window_dims in gather op must be sorted; got: %s",
-        Join(dim_numbers.elided_window_dims(), ", ").c_str());
+        "collapsed_slice_dims in gather op must be sorted; got: %s",
+        Join(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
-  if (c_adjacent_find(dim_numbers.elided_window_dims()) !=
-      dim_numbers.elided_window_dims().end()) {
+  if (c_adjacent_find(dim_numbers.collapsed_slice_dims()) !=
+      dim_numbers.collapsed_slice_dims().end()) {
     return InvalidArgument(
-        "Repeated dimensions not allowed in elided_window_dims in gather op; "
+        "Repeated dimensions not allowed in collapsed_slice_dims in gather op; "
         "got: %s.",
-        Join(dim_numbers.elided_window_dims(), ", ").c_str());
+        Join(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
   return Status::OK();
 }
 
 /*static*/ StatusOr<Shape> ShapeInference::InferGatherShape(
-    const Shape& input_shape, const Shape& gather_indices_shape,
+    const Shape& input_shape, const Shape& start_indices_shape,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
   TF_RETURN_IF_ERROR(
       ExpectArray(input_shape, "input tensor operand gather op"));
   TF_RETURN_IF_ERROR(
-      ExpectArray(gather_indices_shape, "gather indices operand of gather op"));
+      ExpectArray(start_indices_shape, "gather indices operand of gather op"));
 
-  if (!ShapeUtil::ElementIsIntegral(gather_indices_shape)) {
+  if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
     return InvalidArgument(
         "Gather indices parameter must be an integral tensor; got %s.",
-        ShapeUtil::HumanString(gather_indices_shape).c_str());
+        ShapeUtil::HumanString(start_indices_shape).c_str());
   }
 
   // We implicitly reshape gather indices of shape P[A,B,C] to P[A,B,C,1] if
   // index_vector_dim is rank(P).  The bounds of this expanded shape is
-  // stored in expanded_gather_indices_shape.
+  // stored in expanded_start_indices_shape.
 
-  if (gather_indices_shape.dimensions_size() <
+  if (start_indices_shape.dimensions_size() <
           gather_dim_numbers.index_vector_dim() ||
       gather_dim_numbers.index_vector_dim() < 0) {
     return InvalidArgument(
-        "Gather index leaf dimension must be within [0, rank(gather_indices) + "
-        "1). rank(gather_indices) is %d and gather index leaf dimension is "
+        "Gather index leaf dimension must be within [0, rank(start_indices) + "
+        "1). rank(start_indices) is %d and gather index leaf dimension is "
         "%lld.",
-        gather_indices_shape.dimensions_size(),
+        start_indices_shape.dimensions_size(),
         gather_dim_numbers.index_vector_dim());
   }
 
-  std::vector<int64> expanded_gather_indices_shape;
-  expanded_gather_indices_shape.reserve(gather_indices_shape.dimensions_size());
-  c_copy(gather_indices_shape.dimensions(),
-         std::back_inserter(expanded_gather_indices_shape));
-  if (expanded_gather_indices_shape.size() ==
+  std::vector<int64> expanded_start_indices_shape;
+  expanded_start_indices_shape.reserve(start_indices_shape.dimensions_size());
+  c_copy(start_indices_shape.dimensions(),
+         std::back_inserter(expanded_start_indices_shape));
+  if (expanded_start_indices_shape.size() ==
       gather_dim_numbers.index_vector_dim()) {
-    expanded_gather_indices_shape.push_back(1);
+    expanded_start_indices_shape.push_back(1);
   }
 
   TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
-      input_shape, expanded_gather_indices_shape, gather_dim_numbers));
+      input_shape, expanded_start_indices_shape, gather_dim_numbers));
 
-  if (window_bounds.size() != input_shape.dimensions_size()) {
+  if (slice_sizes.size() != input_shape.dimensions_size()) {
     return InvalidArgument(
-        "Gather op must have one window bound for every input dimension; got: "
-        "len(window_bounds)=%lu, input_shape.rank=%d.",
-        window_bounds.size(), input_shape.dimensions_size());
+        "Gather op must have one slice size for every input dimension; got: "
+        "len(slice_sizes)=%lu, input_shape.rank=%d.",
+        slice_sizes.size(), input_shape.dimensions_size());
   }
 
-  if (window_bounds.size() !=
-      gather_dim_numbers.output_window_dims_size() +
-          gather_dim_numbers.elided_window_dims_size()) {
+  if (slice_sizes.size() !=
+      gather_dim_numbers.offset_dims_size() +
+          gather_dim_numbers.collapsed_slice_dims_size()) {
     return InvalidArgument(
-        "All components of the window index in a gather op must either be a "
-        "output window index or explicitly elided; got len(window_bounds)=%lu, "
-        "output_window_bounds=%s, elided_window_bounds=%s.",
-        window_bounds.size(),
-        Join(gather_dim_numbers.output_window_dims(), ",").c_str(),
-        Join(gather_dim_numbers.elided_window_dims(), ",").c_str());
+        "All components of the offset index in a gather op must either be a "
+        "offset dimension or explicitly collapsed; got len(slice_sizes)=%lu, "
+        "output_slice_sizes=%s, collapsed_slice_dims=%s.",
+        slice_sizes.size(), Join(gather_dim_numbers.offset_dims(), ",").c_str(),
+        Join(gather_dim_numbers.collapsed_slice_dims(), ",").c_str());
   }
 
-  for (int i = 0; i < window_bounds.size(); i++) {
-    int64 window_bound = window_bounds[i];
-    int64 corresponding_input_bound = input_shape.dimensions(i);
-    if (window_bound < 0 || window_bound > corresponding_input_bound) {
+  for (int i = 0; i < slice_sizes.size(); i++) {
+    int64 slice_size = slice_sizes[i];
+    int64 corresponding_input_size = input_shape.dimensions(i);
+    if (slice_size < 0 || slice_size > corresponding_input_size) {
       return InvalidArgument(
-          "Window bound at index %d in gather op is out of range, must be "
-          "within "
-          "[0, %lld), got %lld.",
-          i, corresponding_input_bound + 1, window_bound);
+          "Slice size at index %d in gather op is out of range, must be "
+          "within [0, %lld), got %lld.",
+          i, corresponding_input_size + 1, slice_size);
     }
   }
 
-  for (int i = 0; i < gather_dim_numbers.elided_window_dims_size(); i++) {
-    if (window_bounds[gather_dim_numbers.elided_window_dims(i)] != 1) {
+  for (int i = 0; i < gather_dim_numbers.collapsed_slice_dims_size(); i++) {
+    if (slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)] != 1) {
       return InvalidArgument(
-          "Gather op can only elide window indices with bound 1, but bound is "
+          "Gather op can only collapse slice dims with bound 1, but bound is "
           "%lld for index %lld at position %d.",
-          window_bounds[gather_dim_numbers.elided_window_dims(i)],
-          gather_dim_numbers.elided_window_dims(i), i);
+          slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)],
+          gather_dim_numbers.collapsed_slice_dims(i), i);
     }
   }
 
-  int64 result_rank = gather_dim_numbers.output_window_dims_size() +
-                      (expanded_gather_indices_shape.size() - 1);
-  int64 window_dims_seen = 0;
+  int64 result_rank = gather_dim_numbers.offset_dims_size() +
+                      (expanded_start_indices_shape.size() - 1);
+  int64 offset_dims_seen = 0;
   int64 gather_dims_seen = 0;
   std::vector<int64> output_dim_bounds;
   output_dim_bounds.reserve(result_rank);
   for (int64 i = 0; i < result_rank; i++) {
     int64 current_bound;
-    bool is_window_index =
-        c_binary_search(gather_dim_numbers.output_window_dims(), i);
+    bool is_window_index = c_binary_search(gather_dim_numbers.offset_dims(), i);
     if (is_window_index) {
-      while (c_binary_search(gather_dim_numbers.elided_window_dims(),
-                             window_dims_seen)) {
-        window_dims_seen++;
+      while (c_binary_search(gather_dim_numbers.collapsed_slice_dims(),
+                             offset_dims_seen)) {
+        offset_dims_seen++;
       }
-      current_bound = window_bounds[window_dims_seen++];
+      current_bound = slice_sizes[offset_dims_seen++];
     } else {
       if (gather_dims_seen == gather_dim_numbers.index_vector_dim()) {
         gather_dims_seen++;
       }
-      current_bound = expanded_gather_indices_shape[gather_dims_seen++];
+      current_bound = expanded_start_indices_shape[gather_dims_seen++];
     }
 
     output_dim_bounds.push_back(current_bound);
   }
 
   return ShapeUtil::MakeShape(input_shape.element_type(), output_dim_bounds);
+}
+
+namespace {
+
+Status ValidateScatterDimensionNumbers(
+    const Shape& operand_shape,
+    tensorflow::gtl::ArraySlice<int64> scatter_indices_shape,
+    const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
+  // Validate update_window_dims in ScatterDimensionNumbers.
+  if (!c_is_sorted(dim_numbers.update_window_dims())) {
+    return InvalidArgument(
+        "update_window_dims in scatter op must be sorted; got: %s.",
+        Join(dim_numbers.update_window_dims(), ", ").c_str());
+  }
+  if (c_adjacent_find(dim_numbers.update_window_dims()) !=
+      dim_numbers.update_window_dims().end()) {
+    return InvalidArgument(
+        "update_window_dims in scatter op must not repeat; got: %s.",
+        Join(dim_numbers.update_window_dims(), ", ").c_str());
+  }
+  const int64 updates_rank = ShapeUtil::Rank(updates_shape);
+  for (int64 window_dim : dim_numbers.update_window_dims()) {
+    if (window_dim < 0 || window_dim >= updates_rank) {
+      return InvalidArgument(
+          "Invalid update_window_dims set in scatter op; valid range is [0, "
+          "%lld). got: %lld.",
+          updates_rank, window_dim);
+    }
+  }
+
+  // Validate inserted_window_dims in ScatterDimensionNumbers.
+  if (!c_is_sorted(dim_numbers.inserted_window_dims())) {
+    return InvalidArgument(
+        "inserted_window_dims in scatter op must be sorted; got: %s.",
+        Join(dim_numbers.inserted_window_dims(), ", ").c_str());
+  }
+  if (c_adjacent_find(dim_numbers.inserted_window_dims()) !=
+      dim_numbers.inserted_window_dims().end()) {
+    return InvalidArgument(
+        "inserted_window_dims in scatter op must not repeat; got: %s.",
+        Join(dim_numbers.inserted_window_dims(), ", ").c_str());
+  }
+  for (int64 inserted_dim : dim_numbers.inserted_window_dims()) {
+    if (inserted_dim < 0 || inserted_dim >= operand_shape.dimensions_size()) {
+      return InvalidArgument(
+          "Invalid inserted_window_dims set in scatter op; valid range is [0, "
+          "%d), got: %lld.",
+          operand_shape.dimensions_size(), inserted_dim);
+    }
+  }
+
+  // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.
+  if (dim_numbers.scatter_dims_to_operand_dims_size() !=
+      scatter_indices_shape[dim_numbers.index_vector_dim()]) {
+    return InvalidArgument(
+        "Scatter op has %d elements in scatter_dims_to_operand_dims and the "
+        "bound of dimension index_vector_dim=%lld of scatter_indices is %lld. "
+        "These two numbers must be equal.",
+        dim_numbers.scatter_dims_to_operand_dims_size(),
+        dim_numbers.index_vector_dim(),
+        scatter_indices_shape[dim_numbers.index_vector_dim()]);
+  }
+  for (int i = 0; i < dim_numbers.scatter_dims_to_operand_dims_size(); ++i) {
+    int64 scatter_dim_to_operand_dim =
+        dim_numbers.scatter_dims_to_operand_dims(i);
+    if (scatter_dim_to_operand_dim < 0 ||
+        scatter_dim_to_operand_dim >= operand_shape.dimensions_size()) {
+      return InvalidArgument(
+          "Invalid scatter_dims_to_operand_dims mapping; domain is [0, %d), "
+          "got: %d->%lld.",
+          operand_shape.dimensions_size(), i, scatter_dim_to_operand_dim);
+    }
+  }
+  std::vector<int64> sorted_scatter_dims_to_operand_dims(
+      dim_numbers.scatter_dims_to_operand_dims().begin(),
+      dim_numbers.scatter_dims_to_operand_dims().end());
+  c_sort(sorted_scatter_dims_to_operand_dims);
+  if (c_adjacent_find(sorted_scatter_dims_to_operand_dims) !=
+      sorted_scatter_dims_to_operand_dims.end()) {
+    return InvalidArgument(
+        "Repeated dimensions not allowed in scatter_dims_to_operand_dims; "
+        "got: %s.",
+        Join(dim_numbers.scatter_dims_to_operand_dims(), ", ").c_str());
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+/*static*/ StatusOr<Shape> ShapeInference::InferScatterShape(
+    const Shape& operand_shape, const Shape& scatter_indices_shape,
+    const Shape& updates_shape, const ProgramShape& to_apply_shape,
+    const ScatterDimensionNumbers& scatter_dim_numbers) {
+  TF_RETURN_IF_ERROR(
+      ExpectArray(operand_shape, "operand tensor of scatter op"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(scatter_indices_shape, "scatter indices of scatter op"));
+  TF_RETURN_IF_ERROR(ExpectArray(updates_shape, "updates of scatter op"));
+
+  if (!ShapeUtil::ElementIsIntegral(scatter_indices_shape)) {
+    return InvalidArgument(
+        "Scatter indices parameter must be an integral tensor; got %s.",
+        ShapeUtil::HumanString(scatter_indices_shape).c_str());
+  }
+
+  if (scatter_indices_shape.dimensions_size() <
+          scatter_dim_numbers.index_vector_dim() ||
+      scatter_dim_numbers.index_vector_dim() < 0) {
+    return InvalidArgument(
+        "Scatter index leaf dimension must be within [0, rank(scatter_indices)"
+        " + 1). rank(scatter_indices) is %d and scatter index leaf dimension "
+        "is %lld.",
+        scatter_indices_shape.dimensions_size(),
+        scatter_dim_numbers.index_vector_dim());
+  }
+
+  // Check if the update computation has a proper shape as a reduction.
+  const Shape init_value_shape =
+      ShapeUtil::MakeShape(operand_shape.element_type(), {});
+  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
+                                        {updates_shape.element_type()},
+                                        /*inputs=*/1));
+
+  std::vector<int64> expanded_scatter_indices_shape =
+      ArraySliceToVector(AsInt64Slice(scatter_indices_shape.dimensions()));
+  if (expanded_scatter_indices_shape.size() ==
+      scatter_dim_numbers.index_vector_dim()) {
+    expanded_scatter_indices_shape.push_back(1);
+  }
+
+  int64 expected_updates_rank = expanded_scatter_indices_shape.size() - 1 +
+                                scatter_dim_numbers.update_window_dims_size();
+  if (ShapeUtil::Rank(updates_shape) != expected_updates_rank) {
+    return InvalidArgument("Updates tensor must be of rank %lld; got %lld.",
+                           expected_updates_rank,
+                           ShapeUtil::Rank(updates_shape));
+  }
+
+  TF_RETURN_IF_ERROR(ValidateScatterDimensionNumbers(
+      operand_shape, expanded_scatter_indices_shape, updates_shape,
+      scatter_dim_numbers));
+
+  int64 inserted_dims_seen = 0;
+  std::vector<int64> max_update_slice_sizes;
+  for (int i = 0; i < operand_shape.dimensions_size(); ++i) {
+    if (inserted_dims_seen < scatter_dim_numbers.inserted_window_dims_size() &&
+        scatter_dim_numbers.inserted_window_dims(inserted_dims_seen) == i) {
+      ++inserted_dims_seen;
+    } else {
+      max_update_slice_sizes.push_back(operand_shape.dimensions(i));
+    }
+  }
+  for (int i = 0; i < scatter_dim_numbers.update_window_dims_size(); ++i) {
+    auto update_window_dim = scatter_dim_numbers.update_window_dims(i);
+    if (updates_shape.dimensions(update_window_dim) >
+        max_update_slice_sizes[i]) {
+      return InvalidArgument(
+          "Bounds of the window dimensions of updates must not exceed the "
+          "bounds of the corresponding dimensions of operand. For dimension "
+          "%lld, updates bound is %lld, operand bound is %lld.",
+          update_window_dim, updates_shape.dimensions(update_window_dim),
+          max_update_slice_sizes[i]);
+    }
+  }
+
+  int64 scatter_dims_seen = 0;
+  for (int64 i = 0; i < ShapeUtil::Rank(updates_shape); ++i) {
+    bool is_update_window_dim =
+        c_binary_search(scatter_dim_numbers.update_window_dims(), i);
+    if (is_update_window_dim) {
+      continue;
+    }
+    if (scatter_dims_seen == scatter_dim_numbers.index_vector_dim()) {
+      ++scatter_dims_seen;
+    }
+    if (updates_shape.dimensions(i) !=
+        expanded_scatter_indices_shape[scatter_dims_seen]) {
+      return InvalidArgument(
+          "Bounds of the scatter dimensions of updates must be same as the "
+          "bounds of the corresponding dimensions of scatter indices. For "
+          "scatter dimension %lld, updates bound is %lld, scatter_indices "
+          "bound is %lld.",
+          i, updates_shape.dimensions(i),
+          expanded_scatter_indices_shape[scatter_dims_seen]);
+    }
+    ++scatter_dims_seen;
+  }
+
+  return operand_shape;
 }
 
 }  // namespace xla

@@ -121,6 +121,7 @@ load(
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_proto_hdrs",
+    "tf_additional_proto_compiler_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
@@ -128,6 +129,7 @@ load(
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
+    "tf_lib_proto_compiler_deps",
     "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
@@ -149,6 +151,7 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "mkl_deps",
 )
 
 exports_files(["ops/ops.pbtxt"])
@@ -612,6 +615,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lib_proto_compiler",
+    hdrs = [
+        "platform/protobuf_compiler.h",
+    ] + tf_additional_proto_compiler_hdrs(),
+    copts = tf_copts(),
+    deps = tf_lib_proto_compiler_deps() + [
+        ":lib_proto_parsing",
+    ],
+)
+
 # This build rule (along with :lib_internal, :framework, and
 # :framework_internal) purposefully omits the definitions of many declared
 # symbols, which are included in //tensorflow:libtensorflow_framework.so. Using
@@ -735,7 +749,10 @@ cc_library(
         "util/reporter.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-lm"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
@@ -860,7 +877,6 @@ tf_cuda_library(
         "util/work_sharder.h",
     ] + select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
@@ -2036,7 +2052,7 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
+        "//tensorflow:android": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",
@@ -2125,7 +2141,6 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -2150,7 +2165,6 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -2182,7 +2196,6 @@ cc_library(
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -2238,6 +2251,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2266,6 +2280,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -2292,6 +2307,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
         "@png_archive//:png",
     ],
 )
@@ -2483,7 +2499,6 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
@@ -2492,13 +2507,13 @@ tf_cuda_library(
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:freebsd": [],
+        "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
-        "//conditions:default": ["-ldl"],
-    }) + [
-        "-lm",
-    ],
+        "//conditions:default": [
+            "-ldl",
+            "-lm",
+        ],
+    }),
     deps = [
         ":lib",
         ":lib_internal",
@@ -2513,12 +2528,7 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = ["@protobuf_archive//:protobuf"],
         otherwise = ["@protobuf_archive//:protobuf_headers"],
-    ) + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn",
-        ],
-    ),
+    ) + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -2799,12 +2809,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn",
-        ],
-    ),
+    ] + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -2844,12 +2849,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn",
-        ],
-    ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
+    ] + mkl_deps() + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
 
@@ -3142,7 +3142,10 @@ cc_library(
     testonly = 1,
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
-    linkopts = ["-lm"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     visibility = ["//tensorflow:internal"],
     deps = [
         ":lib",
@@ -3233,6 +3236,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/mutex_test.cc",
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
@@ -3490,6 +3494,7 @@ tf_cc_tests(
         "framework/tensor_shape_test.cc",
         "framework/tensor_slice_test.cc",
         "framework/tensor_test.cc",
+        "framework/tensor_testutil_test.cc",
         "framework/tensor_util_test.cc",
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",
@@ -3851,11 +3856,7 @@ tf_cuda_only_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+    ] + mkl_deps(),
 )
 
 tf_cc_test_gpu(
@@ -4576,6 +4577,8 @@ filegroup(
         # PNG data
         "lib/png/testdata/lena_gray.png",
         "lib/png/testdata/lena_rgba.png",
+        "lib/png/testdata/lena_palette.png",
+        "lib/png/testdata/lena_palette_trns.png",
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",

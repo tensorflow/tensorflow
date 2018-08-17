@@ -16,7 +16,7 @@
 
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
-To use, at program startup, call `tfe.enable_eager_execution()`.
+To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@metrics
 
@@ -67,9 +67,12 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@execution_mode
 @@async_wait
 @@async_clear_error
+@@set_server_def
 
 @@run_test_in_graph_and_eager_modes
 @@run_all_tests_in_graph_and_eager_modes
+
+@@TensorSpec
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
@@ -108,12 +111,14 @@ from tensorflow.python.eager.context import async_clear_error
 from tensorflow.python.eager.context import SYNC
 from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
+from tensorflow.python.eager.context import set_server_def
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
 from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import enable_eager_execution_internal as enable_remote_eager_execution
 from tensorflow.python.framework.ops import eager_run as run

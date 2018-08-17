@@ -1428,6 +1428,37 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
 }
 
+// Test transforming reshapes and transposes of rng.
+TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* rng0 = builder.AddInstruction(
+      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {2, 2}),
+                                RandomDistribution::RNG_UNIFORM, {zero, one}));
+
+  HloInstruction* transpose = builder.AddInstruction(
+      HloInstruction::CreateTranspose(rng0->shape(), rng0, {1, 0}));
+  Shape reshape_shape = builder
+                            .AddInstruction(HloInstruction::CreateReshape(
+                                ShapeUtil::MakeShape(F32, {4}), transpose))
+                            ->shape();
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  EXPECT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  // Verify that that reshape(transpose(rng)) is replace by a single rng of the
+  // same shape as the reshape.
+  EXPECT_THAT(computation->root_instruction(), op::Rng());
+  EXPECT_TRUE(ShapeUtil::Equal(computation->root_instruction()->shape(),
+                               reshape_shape));
+}
+
 // Test transforming reshapes to bitcasts under various conditions.
 TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
   HloComputation::Builder builder(TestName());
@@ -1941,6 +1972,40 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
   EXPECT_EQ(computation->root_instruction()->slice_limits(1), dim1 - 4);
 }
 
+TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {1});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+  auto module = CreateNewModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), keys);
+}
+
+TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {5, 0});
+  Shape values_shape = ShapeUtil::MakeShape(S32, {5, 0});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto values = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, values_shape, "values"));
+  builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+  auto module = CreateNewModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Tuple(keys, values));
+}
+
 TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   struct ConvTestOptions {
     int in_batch = 10;
@@ -1972,7 +2037,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   // Builds a convolution from <options> and runs algebraic simplification on
   // the computation. Returns a string description of the result of
   // simplification.
-  auto build_and_simplify = [&options, this]() -> string {
+  auto build_and_simplify = [&options]() -> string {
     HloComputation::Builder b(TestName());
 
     Window window;

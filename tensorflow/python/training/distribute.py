@@ -21,6 +21,7 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -30,68 +31,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_util
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import nest
-
-
-# ------------------------------------------------------------------------------
-# Internal API for setting the current thread mode as being either in a
-# tower or cross-tower context for a particular distribution strategy.
-
-
-class _ThreadMode(object):
-
-  def __init__(self, dist, cross, tower):
-    self.distribution_strategy = dist
-    self.cross_tower_context = cross
-    self.tower_context = tower
-
-
-class _CrossTowerThreadMode(_ThreadMode):
-
-  def __init__(self, distribution_strategy):
-    _ThreadMode.__init__(
-        self, distribution_strategy, distribution_strategy, None)
-
-
-class _InTowerThreadMode(_ThreadMode):
-
-  def __init__(self, tower_ctx):
-    _ThreadMode.__init__(
-        self, tower_ctx.distribution_strategy, None, tower_ctx)
-
-
-_per_thread_mode = threading.local()
-
-
-def _push_per_thread_mode(context):
-  if not hasattr(_per_thread_mode, "stack"):
-    _per_thread_mode.stack = []
-  _per_thread_mode.stack.append(context)
-
-
-def _pop_per_thread_mode():
-  _per_thread_mode.stack.pop(-1)
-
-
-class _DefaultTowerThreadMode(_ThreadMode):
-  """Type of default value returned by `_get_per_thread_mode()`.
-
-  Used when the thread-local stack is empty.
-  """
-
-  def __init__(self):
-    # _default_distribution_strategy and _default_tower_context are
-    # defined at the bottom of this file.
-    _ThreadMode.__init__(
-        self, _default_distribution_strategy, None, _default_tower_context)
-
-
-def _get_per_thread_mode():
-  try:
-    return _per_thread_mode.stack[-1]
-  except (AttributeError, IndexError):
-    # _default_tower_mode is defined at the bottom of this file.
-    return _default_tower_mode
 
 
 # ------------------------------------------------------------------------------
@@ -127,96 +68,6 @@ class UpdateContext(object):
 
 
 # ------------------------------------------------------------------------------
-# Public API for accessing the current thread mode
-
-
-def get_tower_context():
-  """Returns the current TowerContext or None if in a cross-tower context.
-
-  Note that execution:
-  1. starts in the default (single-tower) tower context (this function
-     will return the default TowerContext object);
-  2. switches to cross-tower context (in which case this will return
-     None) when entering a `with DistributionStrategy.scope():` block;
-  3. switches to a (non-default) tower context inside
-     `call_for_each_tower(fn, ...)`;
-  4. if `fn` calls `get_tower_context()->merge_call(merge_fn, ...)`, then
-     inside `merge_fn` you are back in the cross-tower context (and again
-     this function will return None).
-
-  Note that you can also go directly from step 1 to 4 to switch to a
-  cross-tower context for the default `DistributionStrategy`. You may
-  also switch from the cross-tower context of 4 to a tower context by
-  calling `call_for_each_tower()`, jumping back to step 3.
-
-  Most `DistributionStrategy` methods may only be executed in
-  a cross-tower context, in a tower context you should use the
-  `TowerContext` API instead.
-
-  Returns:
-    The current `TowerContext` object when in a tower context scope, else None.
-
-    Exactly one of `get_tower_context()` and `get_cross_tower_context()`
-    will return None in a particular block.
-  """
-  return _get_per_thread_mode().tower_context
-
-
-def get_cross_tower_context():
-  """Returns the current DistributionStrategy if in a cross-tower context.
-
-  Note that execution:
-  1. starts in the default (single-tower) tower context;
-  2. switches to cross-tower context when entering a
-     `with DistributionStrategy.scope():` block;
-  3. switches to a (non-default) tower context inside
-     `call_for_each_tower(fn, ...)`;
-  4. if `fn` calls `get_tower_context()->merge_call(merge_fn, ...)`, then
-     inside `merge_fn` you are back in the cross-tower context.
-
-  Note that you can also go directly from step 1 to 4 to switch to a
-  cross-tower context for the default `DistributionStrategy`. You may
-  also switch from the cross-tower context of 4 to a tower context by
-  calling `call_for_each_tower()`, jumping back to step 3.
-
-  Most `DistributionStrategy` methods may only be executed in
-  a cross-tower context.
-
-  Returns:
-    Returns the current `DistributionStrategy` object in a cross-tower
-    context, or None.
-
-    Exactly one of `get_tower_context()` and `get_cross_tower_context()`
-    will return None in a particular block.
-  """
-  return _get_per_thread_mode().cross_tower_context
-
-
-def get_distribution_strategy():
-  """Returns the current `DistributionStrategy` object.
-
-  Prefer to use `get_tower_context()` or `get_cross_tower_context()`
-  instead when possible.
-
-  Returns:
-    A `DistributionStrategy` object. Inside a
-    `with distribution_strategy.scope()` block, it returns
-    `distribution_strategy`, otherwise it returns the default
-    (single-tower) `DistributionStrategy` object.
-  """
-  return _get_per_thread_mode().distribution_strategy
-
-
-def has_distribution_strategy():
-  """Return if there is a current non-default `DistributionStrategy`.
-
-  Returns:
-    True if inside a `with distribution_strategy.scope():`.
-  """
-  return get_distribution_strategy() is not _default_distribution_strategy
-
-
-# ------------------------------------------------------------------------------
 # Public utility functions.
 
 
@@ -238,7 +89,8 @@ def _require_cross_tower_context(distribution_strategy):
   if context.cross_tower_context is distribution_strategy: return
   # We have an error to report, figure out the right message.
   if context.distribution_strategy is not distribution_strategy:
-    if context.distribution_strategy is _default_distribution_strategy:
+    if (context.distribution_strategy is
+        distribution_strategy_context._get_default_distribution_strategy()):  # pylint: disable=protected-access
       raise RuntimeError(
           'Need to be inside "with distribution_strategy.scope()" for %s' %
           (distribution_strategy,))
@@ -271,7 +123,8 @@ def _require_distribution_strategy_scope(distribution_strategy):
   context = _get_per_thread_mode()
   if context.distribution_strategy is distribution_strategy: return
   # We have an error to report, figure out the right message.
-  if context.distribution_strategy is _default_distribution_strategy:
+  if (context.distribution_strategy is
+      distribution_strategy_context._get_default_distribution_strategy()):  # pylint: disable=protected-access
     raise RuntimeError(
         'Need to be inside "with distribution_strategy.scope()" for %s' %
         (distribution_strategy,))
@@ -294,7 +147,8 @@ class _CurrentDistributionContext(object):
                var_creator_scope,
                var_scope=None,
                default_device=None):
-    self._context = _CrossTowerThreadMode(distribution_strategy)
+    self._context = distribution_strategy_context._CrossTowerThreadMode(  # pylint: disable=protected-access
+        distribution_strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
     if default_device:
@@ -587,7 +441,7 @@ class DistributionStrategy(object):
     Returns:
       A context manager.
     """
-    if has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       _require_cross_tower_context(self)
       return _SameScopeAgainContext(self)
 
@@ -727,6 +581,90 @@ class DistributionStrategy(object):
   def _broadcast(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  def initialize(self):
+    """Any initialization to be done before running any computations.
+
+    In eager mode, it executes any initialization as a side effect.
+    In graph mode, it creates the initialization ops and returns them.
+
+    For example, TPU initialize_system ops.
+
+    Returns:
+      In eager mode, returns `None`.
+      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+    """
+    if eager_context.executing_eagerly():
+      return
+    else:
+      return []
+
+  def finalize(self):
+    """Any final actions to be done at the end of all computations.
+
+    In eager mode, it executes any finalize actions as a side effect.
+    In graph mode, it creates the finalize ops and returns them.
+
+    For example, TPU shutdown ops.
+
+    Returns:
+      In eager mode, returns `None`.
+      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+    """
+    if eager_context.executing_eagerly():
+      return
+    else:
+      return []
+
+  def run_steps_on_dataset(self, fn, iterator, iterations=1,
+                           initial_loop_values=None):
+    """Run `fn` with input from `iterator` for `iterations` times.
+
+    This method can be used to run a step function for training a number of
+    times using input from a dataset.
+
+    Args:
+      fn: function to run using this distribution strategy. The function must
+        have the following signature: def fn(context, *inputs).
+        `context` is an instance of `MultiStepContext` that will be passed when
+        `fn` is run. `context` can be used to specify the outputs to be returned
+        from `fn` by calling `context.set_last_step_output`. It can also be used
+        to capture non tensor outputs by `context.set_non_tensor_output`.
+        See `MultiStepContext` documentation for more information.
+        `inputs` will have same type/structure as `iterator.get_next()`. If the
+        `iterator.get_next()` returns a tuple say `return x, y` then whose will
+        be unpacked and passed to the `step_fn`; and step_fn signature would
+        look like `def step_fn(context, x, y)`. If the iterator returns a single
+        value say `return x` then the value is passed as is; the step_fn
+        signature would look like `def step_fn(context, x)`.
+        Typically, `fn` will use `call_for_each_tower` method of the strategy
+        to distribute the computation over multiple towers.
+      iterator: Iterator of a dataset that represents the input for `fn`. The
+        caller is responsible for initializing the iterator as needed.
+      iterations: (Optional) Number of iterations that `fn` should be run.
+        Defaults to 1.
+      initial_loop_values: (Optional) Initial values to be passed into the
+        loop that runs `fn`. Defaults to `None`. # TODO(priyag): Remove
+        initial_loop_values argument when we have a mechanism to infer the
+        outputs of `fn`.
+
+    Returns:
+      Returns the `MultiStepContext` object which has the following properties,
+      among other things:
+        - run_op: An op that runs `fn` `iterations` times.
+        - last_step_outputs: A dictionary containing tensors set using
+        `context.set_last_step_output`. Evaluating this returns the value of
+        the tensors after the last iteration.
+        - non_tensor_outputs: A dictionatry containing anything that was set by
+          `fn` by calling `context.set_non_tensor_output`.
+    """
+    _require_cross_tower_context(self)
+    return self._run_steps_on_dataset(fn, iterator, iterations,
+                                      initial_loop_values)
+
+  def _run_steps_on_dataset(self, fn, iterator, iterations,
+                            initial_loop_values):
+    raise NotImplementedError("must be implemented in descendants")
+
   def call_for_each_tower(self, fn, *args, **kwargs):
     """Run `fn` once per tower.
 
@@ -784,7 +722,7 @@ class DistributionStrategy(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value: A per-device value with one value per tower.
       destinations: An optional mirrored variable, a device string,
         list of device strings. The return value will be copied to all
@@ -813,7 +751,7 @@ class DistributionStrategy(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are @{tf.VariableAggregation.SUM}, @{tf.VariableAggregation.MEAN}.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -899,8 +837,22 @@ class DistributionStrategy(object):
       A list of values contained in `value`. If `value` represents a single
       value, this returns `[value].`
     """
-    _require_cross_tower_context(self)
     return self._unwrap(value)
+
+  def value_container(self, value):
+    """Returns the container that this per-device `value` belongs to.
+
+    Args:
+      value: A value returned by `call_for_each_tower()` or a variable
+        created in `scope()`.
+
+    Returns:
+      A container that `value` belongs to.
+      If value does not belong to any container (including the case of
+      container having been destroyed), returns the value itself.
+      `value in unwrap(value_container(value))` will always be true.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def _unwrap(self, distributed_value):
     raise NotImplementedError("must be implemented in descendants")
@@ -983,9 +935,37 @@ class DistributionStrategy(object):
   def _worker_device_index(self):
     raise NotImplementedError("must be implemented in descendants")
 
-  def configure(self, session_config=None):
-    """Find the best configuration given a tensorflow session config."""
-    del session_config
+  @property
+  def between_graph(self):
+    """Whether the strategy uses between-graph replication or not.
+
+      This is expected to return a constant value that will not be changed
+      throughout its life cycle.
+    """
+    raise NotImplementedError("must be implemented in descendants")
+
+  def configure(self,
+                session_config=None,
+                cluster_spec=None,
+                task_type=None,
+                task_id=None):
+    """Configures the strategy class."""
+    del session_config, cluster_spec, task_type, task_id
+
+  @property
+  def should_init(self):
+    """Whether initialization is needed."""
+    raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def should_checkpoint(self):
+    """Whether checkpointing is needed."""
+    raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def should_save_summary(self):
+    """Whether saving summaries is needed."""
+    raise NotImplementedError("must be implemented in descendants")
 
 
 # A note about the difference between the context managers
@@ -1012,7 +992,8 @@ class TowerContext(object):
 
   def __init__(self, distribution_strategy, tower_id):
     self._distribution_strategy = distribution_strategy
-    self._thread_context = _InTowerThreadMode(self)
+    self._thread_context = distribution_strategy_context._InTowerThreadMode(  # pylint: disable=protected-access
+        self)
     self._tower_id = tower_id
 
   def __enter__(self):
@@ -1055,7 +1036,8 @@ class TowerContext(object):
   def _merge_call(self, merge_fn, *args, **kwargs):
     """Default implementation for single tower."""
     _push_per_thread_mode(  # thread-local, so not needed with multiple threads
-        _CrossTowerThreadMode(self._distribution_strategy))
+        distribution_strategy_context._CrossTowerThreadMode(  # pylint: disable=protected-access
+            self._distribution_strategy))
     try:
       return merge_fn(self._distribution_strategy, *args, **kwargs)
     finally:
@@ -1102,7 +1084,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def scope(self):
     """Context manager setting a variable creator and `self` as current."""
-    if has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       raise RuntimeError("Must not nest DistributionStrategy scopes.")
 
     def creator(next_creator, *args, **kwargs):
@@ -1155,6 +1137,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
   def _unwrap(self, distributed_value):
     return [distributed_value]
 
+  def value_container(self, value):
+    return value
+
   @property
   def is_single_tower(self):
     return True
@@ -1180,6 +1165,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     raise RuntimeError("worker_device_index() method unsupported by "
                        "_DefaultDistributionStrategy.")
 
+
 # ------------------------------------------------------------------------------
 # Common operations
 
@@ -1195,17 +1181,8 @@ def increment_var(v, amount=1):
   def merge_fn(dist, vm):
     return dist.group(dist.update(vm, update))
 
-  tower_context = get_tower_context()
+  tower_context = distribution_strategy_context.get_tower_context()
   return tower_context.merge_call(merge_fn, v)
-
-
-# ------------------------------------------------------------------------------
-# Singletons
-
-_default_distribution_strategy = _DefaultDistributionStrategy()
-_default_tower_context = TowerContext(
-    _default_distribution_strategy, tower_id=0)
-_default_tower_mode = _DefaultTowerThreadMode()
 
 
 # ------------------------------------------------------------------------------
@@ -1217,7 +1194,7 @@ _original_from_proto = resource_variable_ops._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
-  if has_distribution_strategy():
+  if distribution_strategy_context.has_distribution_strategy():
     raise NotImplementedError(
         "Deserialization of variables is not yet supported when using"
         "distributed strategies.")
@@ -1226,3 +1203,10 @@ def _from_proto_fn(v, import_scope=None):
 
 resource_variable_ops._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
+
+
+#-------------------------------------------------------------------------------
+# Shorthand for some methods from distribution_strategy_context.
+_push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
+_get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access
+_pop_per_thread_mode = distribution_strategy_context._pop_per_thread_mode  # pylint: disable=protected-access

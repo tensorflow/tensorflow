@@ -175,7 +175,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     self.supports_masking = False
 
-    call_argspec = tf_inspect.getargspec(self.call)
+    call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
@@ -500,13 +500,13 @@ class Layer(checkpointable.CheckpointableBase):
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
       getter: Variable getter argument to be passed to the `Checkpointable` API.
 
     Returns:
@@ -735,9 +735,11 @@ class Layer(checkpointable.CheckpointableBase):
           input_shapes = nest.map_structure(lambda x: x.shape, inputs)
 
         if (not hasattr(self, '_is_graph_network') or
-            self.__class__.__name__ == 'Sequential'):
-          # Only if self is a layer or an instance of a sequential model do we
-          # need to build it.
+            self.__class__.__name__ == 'Sequential' or
+            not hasattr(self.build, '_is_default')):
+          # Only if self is a layer, an instance of a sequential model, or
+          # the user has manually overwritten the build method do we need to
+          # build it.
           self.build(input_shapes)
         # We must set self.built since user defined build functions are not
         # constrained to set self.built.
@@ -771,7 +773,6 @@ class Layer(checkpointable.CheckpointableBase):
 
       if build_graph:
         self._handle_activity_regularization(inputs, outputs)
-        # TODO(fchollet): consider enabling masking for Eager mode.
         self._set_mask_metadata(inputs, outputs, previous_mask)
 
       if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
@@ -828,21 +829,27 @@ class Layer(checkpointable.CheckpointableBase):
         pass
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    if hasattr(self, 'compute_mask'):
+    # In some cases the mask of the outputs has already been computed by
+    # inner layers and does not need to be recomputed by this layer.
+    mask_already_computed = all(
+        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
+    if hasattr(self, 'compute_mask') and not mask_already_computed:
       output_mask = self.compute_mask(inputs, previous_mask)
-      if isinstance(outputs, (list, tuple)):
-        if output_mask is None:
-          output_mask = [None for _ in range(len(outputs))]
-        for x, m in zip(outputs, output_mask):
-          try:
-            x._keras_mask = m  # pylint: disable=protected-access
-          except AttributeError:
-            pass  # C type such as dict. Masking not supported in this case.
-      else:
+    else:
+      output_mask = None
+    if isinstance(outputs, (list, tuple)):
+      if output_mask is None:
+        output_mask = [None for _ in range(len(outputs))]
+      for x, m in zip(outputs, output_mask):
         try:
-          outputs._keras_mask = output_mask  # pylint: disable=protected-access
+          x._keras_mask = m  # pylint: disable=protected-access
         except AttributeError:
           pass  # C type such as dict. Masking not supported in this case.
+    else:
+      try:
+        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+      except AttributeError:
+        pass  # C type such as dict. Masking not supported in this case.
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(self, '_call_convention',
@@ -904,7 +911,7 @@ class Layer(checkpointable.CheckpointableBase):
       assert len(call_args) == 1  # TypeError raised earlier in __call__.
       return call_args[0], call_kwargs
     else:
-      call_arg_spec = tf_inspect.getargspec(self.call)
+      call_arg_spec = tf_inspect.getfullargspec(self.call)
       # There is no explicit "inputs" argument expected or provided to
       # call(). Arguments which have default values are considered non-inputs,
       # and arguments without are considered inputs.
@@ -924,8 +931,8 @@ class Layer(checkpointable.CheckpointableBase):
       _, unwrapped_call = tf_decorator.unwrap(self.call)
       bound_args = inspect.getcallargs(
           unwrapped_call, *call_args, **call_kwargs)
-      if call_arg_spec.keywords is not None:
-        var_kwargs = bound_args.pop(call_arg_spec.keywords)
+      if call_arg_spec.varkw is not None:
+        var_kwargs = bound_args.pop(call_arg_spec.varkw)
         bound_args.update(var_kwargs)
         keyword_arg_names = keyword_arg_names.union(var_kwargs.keys())
       all_args = call_arg_spec.args
@@ -978,7 +985,7 @@ class Layer(checkpointable.CheckpointableBase):
       self.build(input_shape)
 
       with context.graph_mode():
-        graph = eager_function.CapturingGraph({})
+        graph = eager_function.CapturingGraph()
         with graph.as_default():
           if isinstance(input_shape, list):
             inputs = [generate_placeholders_from_shape(shape)
@@ -1914,13 +1921,13 @@ def make_variable(name,
     use_resource: Whether to use a `ResourceVariable`.
     synchronization: Indicates when a distributed a variable will be
       aggregated. Accepted values are constants defined in the class
-      @{tf.VariableSynchronization}. By default the synchronization is set to
+      `tf.VariableSynchronization`. By default the synchronization is set to
       `AUTO` and the current `DistributionStrategy` chooses
       when to synchronize. If `synchronization` is set to `ON_READ`,
       `trainable` must not be set to `True`.
     aggregation: Indicates how a distributed variable will be aggregated.
       Accepted values are constants defined in the class
-      @{tf.VariableAggregation}.
+      `tf.VariableAggregation`.
     partitioner: Not handled at this time.
 
   Returns:
@@ -1958,15 +1965,10 @@ def make_variable(name,
   return v
 
 
-def generate_dummy_data_from_shape(shape):
-  if isinstance(shape, tensor_shape.TensorShape):
-    shape = shape.as_list()
-
-  # Replace Nones in input shape with dummy `1` value
-  shape = [x.value if isinstance(x, tensor_shape.Dimension) else x
-           for x in shape]
-  shape = [1 if x is None else x for x in shape]
-  return array_ops.ones(shape, dtype=backend.floatx())
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True
+  return method
 
 
 def generate_placeholders_from_shape(shape):

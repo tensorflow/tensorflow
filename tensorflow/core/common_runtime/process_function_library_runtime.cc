@@ -145,12 +145,11 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
   Device* device = flr->device();
   string device_type = device->parsed_name().type;
-  if (device_type == "CPU" || device_type == "TPU_SYSTEM" ||
-      device_type == "TPU") {
+  if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return Status::OK();
   }
-  if (device_type == "GPU") {
+  if (device_type == "GPU" || device_type == "TPU") {
     auto* dev_info = flr->device()->tensorflow_gpu_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;

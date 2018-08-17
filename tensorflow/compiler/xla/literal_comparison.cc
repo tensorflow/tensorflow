@@ -38,7 +38,8 @@ namespace {
 // between the left-hand-side and right-hand-side, by bit-casting to UnsignedT
 // -- on miscompare, a nice error message is given in the AssertionFailure.
 template <typename FloatT, typename UnsignedT>
-Status CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
+Status CompareFloatsBitwiseEqual(
+    FloatT lhs, FloatT rhs, tensorflow::gtl::ArraySlice<int64> multi_index) {
   auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
   auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
   auto lhs_double = static_cast<double>(lhs);
@@ -46,9 +47,10 @@ Status CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
   if (ulhs != urhs) {
     return InvalidArgument(
         "floating values are not bitwise-equal; and equality testing "
-        "was requested: %s=%g=%a vs %s=%g=%a",
+        "was requested: %s=%g=%a vs %s=%g=%a at index %s",
         StrCat(tensorflow::strings::Hex(ulhs)).c_str(), lhs_double, lhs_double,
-        StrCat(tensorflow::strings::Hex(urhs)).c_str(), rhs_double, rhs_double);
+        StrCat(tensorflow::strings::Hex(urhs)).c_str(), rhs_double, rhs_double,
+        LiteralUtil::MultiIndexAsString(multi_index).c_str());
   }
   return Status::OK();
 }
@@ -57,39 +59,48 @@ Status CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
 // bitwise helper above (this is the un-specialized fallback, to just use the
 // default gunit implementation).
 template <typename NativeT>
-Status CompareEqual(NativeT lhs, NativeT rhs) {
+Status CompareEqual(NativeT lhs, NativeT rhs,
+                    tensorflow::gtl::ArraySlice<int64> multi_index) {
   if (lhs == rhs) {
     return Status::OK();
   }
-  return InvalidArgument("Expected equality of these values:\n  %s\n  %s",
-                         StrCat(lhs).c_str(), StrCat(rhs).c_str());
+  return InvalidArgument(
+      "Expected equality of these values:\n  %s\n  %s\nat index %s",
+      StrCat(lhs).c_str(), StrCat(rhs).c_str(),
+      LiteralUtil::MultiIndexAsString(multi_index).c_str());
 }
 
 // Specializations for floating types that do bitwise comparisons when equality
 // comparison is requested.
 template <>
-Status CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs) {
-  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
+Status CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
+                              tensorflow::gtl::ArraySlice<int64> multi_index) {
+  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs) {
-  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs);
+Status CompareEqual<Eigen::half>(
+    Eigen::half lhs, Eigen::half rhs,
+    tensorflow::gtl::ArraySlice<int64> multi_index) {
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<float>(float lhs, float rhs) {
-  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
+Status CompareEqual<float>(float lhs, float rhs,
+                           tensorflow::gtl::ArraySlice<int64> multi_index) {
+  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<double>(double lhs, double rhs) {
-  return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs);
+Status CompareEqual<double>(double lhs, double rhs,
+                            tensorflow::gtl::ArraySlice<int64> multi_index) {
+  return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<complex64>(complex64 lhs, complex64 rhs) {
-  auto res = CompareEqual<float>(lhs.real(), rhs.real());
+Status CompareEqual<complex64>(complex64 lhs, complex64 rhs,
+                               tensorflow::gtl::ArraySlice<int64> multi_index) {
+  auto res = CompareEqual<float>(lhs.real(), rhs.real(), multi_index);
   if (!res.ok()) {
     return res;
   }
-  return CompareEqual<float>(lhs.imag(), rhs.imag());
+  return CompareEqual<float>(lhs.imag(), rhs.imag(), multi_index);
 }
 
 // A recursive function which iterates through every index of expected and
@@ -102,7 +113,7 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
   if (dimension == expected.shape().dimensions_size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
     NativeT actual_value = actual.Get<NativeT>(multi_index);
-    return CompareEqual<NativeT>(expected_value, actual_value);
+    return CompareEqual<NativeT>(expected_value, actual_value, multi_index);
   }
 
   Status result;
@@ -720,12 +731,10 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
     return Status::OK();
   }
 
-  return AppendStatus(result,
-                      tensorflow::strings::Printf(
-                          "\nat index: %s\nexpected: %s\nactual:   %s",
-                          LiteralUtil::MultiIndexAsString(multi_index).c_str(),
-                          ToStringTruncated(expected).c_str(),
-                          ToStringTruncated(actual).c_str()));
+  return AppendStatus(
+      result, tensorflow::strings::Printf("\nexpected: %s\nactual:   %s",
+                                          ToStringTruncated(expected).c_str(),
+                                          ToStringTruncated(actual).c_str()));
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,

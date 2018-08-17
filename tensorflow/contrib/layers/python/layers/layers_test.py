@@ -1189,7 +1189,7 @@ class ConvolutionInPlaneTest(test.TestCase):
       result = sess.run(horz_gradients)
       expected = np.zeros((1, 10, 9, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testHorzConvWithBlankImageAndPlaceholder(self):
     image = array_ops.placeholder(dtypes.float32, shape=(None, None, None, 1))
@@ -1209,7 +1209,7 @@ class ConvolutionInPlaneTest(test.TestCase):
           })
       expected = np.zeros((1, 10, 9, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testHorzConvWithRandomImageMultiBatch(self):
     np.random.seed(1)

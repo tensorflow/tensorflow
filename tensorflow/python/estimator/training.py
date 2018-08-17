@@ -129,8 +129,8 @@ class TrainSpec(
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade Estimators](https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
@@ -193,8 +193,8 @@ class EvalSpec(
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Premade Estimators](https://tensorflow.org/api_guides/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
@@ -323,6 +323,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
   ```
+  Note that in current implementation `estimator.evaluate` will be called
+  multiple times. This means that evaluation graph (including eval_input_fn)
+  will be re-created for each `evaluate` call. `estimator.train` will be called
+  only once.
 
   Example of distributed training:
 

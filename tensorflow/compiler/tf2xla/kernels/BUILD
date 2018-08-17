@@ -6,6 +6,10 @@ package(
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 tf_kernel_library(
     name = "xla_ops",
@@ -129,7 +133,9 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/compiler/xla/client/lib:pooling",
         "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",
@@ -152,8 +158,14 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
         "//tensorflow/core/kernels:training_ops",
-        "//tensorflow/core/kernels:transpose_op",
-    ],
+    ] + if_mkl(
+        [
+            "//tensorflow/core/kernels:mkl_transpose_op",
+        ],
+        [
+            "//tensorflow/core/kernels:transpose_op",
+        ],
+    ),
 )
 
 tf_kernel_library(
