@@ -48,7 +48,17 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
     // dimension.
     return false;
   }
-  auto& weights_array = model->GetArray(conv_op->inputs[1]);
+
+  const auto& weights_name = conv_op->inputs[1];
+  if (CountOpsWithInput(*model, weights_name) > 1) {
+    // TODO(yunluli): Come up with a way to do the weights shuffling only once.
+    AddMessageF(
+        "Not changing %s to DepthwiseConv because the weights is consumed by "
+        "another op.",
+        LogName(*conv_op));
+    return false;
+  }
+  auto& weights_array = model->GetArray(weights_name);
   if (!weights_array.buffer) {
     // Yield until the weights are resolved as a constant array.
     return false;

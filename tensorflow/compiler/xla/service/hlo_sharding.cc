@@ -453,7 +453,7 @@ tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
 }
 
 size_t HloSharding::Hash() const {
-  if (!tuple_) {
+  if (tuple_) {
     size_t h = 0;
     for (const auto& element : tuple_elements_) {
       h = tensorflow::Hash64Combine(h, element.Hash());

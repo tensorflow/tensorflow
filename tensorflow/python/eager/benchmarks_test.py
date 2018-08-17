@@ -77,19 +77,54 @@ class SubclassedKerasModel(keras.Model):
 
   def __init__(self):
     super(SubclassedKerasModel, self).__init__()
-    self.layer = keras.layers.Dense(
+    self.layer_a = keras.layers.Dense(
+        64, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_b = keras.layers.Dense(
+        128, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_c = keras.layers.Dense(
+        256, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_d = keras.layers.Dense(
+        256, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_e = keras.layers.Dense(
         10, kernel_initializer="ones", bias_initializer="zeros")
 
   def call(self, x):
-    return self.layer(x)
+    x = self.layer_a(x)
+    x = self.layer_b(x)
+    x = self.layer_c(x)
+    x = self.layer_d(x)
+    return self.layer_e(x)
 
 
 def make_keras_model():
-  x = keras.Input(shape=(10,))
-  y = keras.layers.Dense(
-      10, kernel_initializer="ones", bias_initializer="zeros")(
-          x)
-  return keras.Model(inputs=x, outputs=y)
+  model_input = keras.Input(shape=(10,))
+  x = keras.layers.Dense(
+      64, kernel_initializer="ones", bias_initializer="zeros")(model_input)
+  x = keras.layers.Dense(
+      128, kernel_initializer="ones", bias_initializer="zeros")(x)
+  x = keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros")(x)
+  x = keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros")(x)
+  x = keras.layers.Dense(
+      10, kernel_initializer="ones", bias_initializer="zeros")(x)
+  return keras.Model(inputs=model_input, outputs=x)
+
+
+def make_sequential_keras_model():
+  model = keras.models.Sequential()
+  model.add(keras.layers.Dense(
+      64, kernel_initializer="ones", bias_initializer="zeros",
+      input_shape=(10,)))
+  model.add(keras.layers.Dense(
+      128, kernel_initializer="ones", bias_initializer="zeros"))
+  model.add(keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros"))
+  model.add(keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros"))
+  model.add(keras.layers.Dense(
+      10, kernel_initializer="ones", bias_initializer="zeros"))
+  return model
 
 
 class MicroBenchmarks(test.Benchmark):
@@ -636,6 +671,15 @@ class MicroBenchmarks(test.Benchmark):
     # Symmetry with benchmark_keras_model_subclassed
     func()
     assert np.equal(func(), SubclassedKerasModel()(data)).all()
+    self._run(func, 30000)
+
+  def benchmark_keras_model_sequential(self):
+    model = make_sequential_keras_model()
+    data = random_ops.random_uniform((10, 10))
+    func = lambda: model(data)
+    # Symmetry with benchmark_keras_model_functional
+    func()
+    assert np.equal(func(), make_keras_model()(data)).all()
     self._run(func, 30000)
 
 

@@ -54,17 +54,24 @@ InequalityDecisionNodeEvaluator::InequalityDecisionNodeEvaluator(
   CHECK(safe_strto32(test.feature_id().id().value(), &feature_num_))
       << "Invalid feature ID: [" << test.feature_id().id().value() << "]";
   threshold_ = test.threshold().float_value();
-  include_equals_ =
-      test.type() == decision_trees::InequalityTest::LESS_OR_EQUAL;
+  _test_type = test.type();
 }
 
 int32 InequalityDecisionNodeEvaluator::Decide(
     const std::unique_ptr<TensorDataSet>& dataset, int example) const {
   const float val = dataset->GetExampleValue(example, feature_num_);
-  if (val < threshold_ || (include_equals_ && val == threshold_)) {
-    return left_child_id_;
-  } else {
-    return right_child_id_;
+  switch (_test_type) {
+    case decision_trees::InequalityTest::LESS_OR_EQUAL:
+      return val <= threshold_ ? left_child_id_ : right_child_id_;
+    case decision_trees::InequalityTest::LESS_THAN:
+      return val < threshold_ ? left_child_id_ : right_child_id_;
+    case decision_trees::InequalityTest::GREATER_OR_EQUAL:
+      return val >= threshold_ ? left_child_id_ : right_child_id_;
+    case decision_trees::InequalityTest::GREATER_THAN:
+      return val > threshold_ ? left_child_id_ : right_child_id_;
+    default:
+      LOG(ERROR) << "Unknown split test type: " << _test_type;
+      return -1;
   }
 }
 

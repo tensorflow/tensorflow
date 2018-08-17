@@ -20,6 +20,13 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+// TODO(rmlarsen): Get rid of this workaround. "gpu_assert" is defined when
+// setting EIGEN_USE_THREADS. But when defining EIGEN_USE_THREADS here,
+// incAtomic and other CUDA specific symbols are no longer recognized.
+#ifndef gpu_assert
+#define gpu_assert(x)
+#endif
+
 #include "third_party/nccl/nccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"

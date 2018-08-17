@@ -298,7 +298,7 @@ to call `tf.train.start_queue_runners` before evaluating any `tf.Tensor`s.
 ## Printing Tensors
 
 For debugging purposes you might want to print the value of a `tf.Tensor`. While
- @{$debugger$tfdbg} provides advanced debugging support, TensorFlow also has an
+ [tfdbg](../guide/debugger.md) provides advanced debugging support, TensorFlow also has an
  operation to directly print the value of a `tf.Tensor`.
 
 Note that you rarely want to use the following pattern when printing a

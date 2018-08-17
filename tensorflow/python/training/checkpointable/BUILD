@@ -118,10 +118,7 @@ py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO: needs investigation on Windows
-        "notsan",  # b/74395663
-    ],
+    tags = ["notsan"],  # b/74395663
     deps = [
         ":base",
         ":tracking",

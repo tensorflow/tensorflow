@@ -40,6 +40,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -664,6 +665,22 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
     self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
+
+
+# Its own test case to reproduce variable sharing issues which only pop up when
+# setUp() is overridden and super() is not called.
+class GraphAndEagerNoVariableSharing(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    pass  # Intentionally does not call TensorFlowTestCase's super()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_no_variable_sharing(self):
+    variable_scope.get_variable(
+        name="step_size",
+        initializer=np.array(1e-5, np.float32),
+        use_resource=True,
+        trainable=False)
 
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):

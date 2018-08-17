@@ -35,8 +35,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
@@ -227,10 +227,11 @@ def _default_getter(name, shape, dtype, initializer=None,
       def initial_value():
         return initializer(
             shape_object.as_list(), dtype=dtype, partition_info=partition_info)
-    return resource_variable_ops.ResourceVariable(
+    return variables.Variable(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
+        use_resource=True,
         **kwargs
     )
 
@@ -1528,8 +1529,6 @@ class Checkpoint(tracking.Checkpointable):
     self._maybe_create_save_counter()
     return self._save_counter
 
-  # TODO(allenl): Update save's docstring with a pointer to
-  # tf.contrib.checkpoint.CheckpointManager once that's in.
   def save(self, file_prefix, session=None):
     """Saves a training checkpoint and provides basic checkpoint management.
 
@@ -1541,7 +1540,8 @@ class Checkpoint(tracking.Checkpointable):
     sequentially numbering checkpoints using `save_counter` and updating the
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
-    provided by other utilities which also wrap `write`.
+    provided by other utilities which also wrap `write`
+    (`tf.contrib.checkpoint.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames

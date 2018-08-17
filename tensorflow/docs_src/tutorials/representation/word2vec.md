@@ -383,13 +383,13 @@ compromised speed because we use Python for reading and feeding data items --
 each of which require very little work on the TensorFlow back-end.  If you find
 your model is seriously bottlenecked on input data, you may want to implement a
 custom data reader for your problem, as described in
-@{$new_data_formats$New Data Formats}.  For the case of Skip-Gram
+[New Data Formats](../../extend/new_data_formats.md).  For the case of Skip-Gram
 modeling, we've actually already done this for you as an example in
 [models/tutorials/embedding/word2vec.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec.py).
 
 If your model is no longer I/O bound but you want still more performance, you
 can take things further by writing your own TensorFlow Ops, as described in
-@{$adding_an_op$Adding a New Op}.  Again we've provided an
+[Adding a New Op](../../extend/adding_an_op.md).  Again we've provided an
 example of this for the Skip-Gram case
 [models/tutorials/embedding/word2vec_optimized.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec_optimized.py).
 Feel free to benchmark these against each other to measure performance

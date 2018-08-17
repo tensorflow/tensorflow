@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import threading
 from absl.testing import parameterized
 
@@ -37,7 +36,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_util
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 
 
 class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
@@ -69,19 +68,8 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
     if not task_type:
       return distribution, ''
 
-    tf_config = {
-        'cluster': self._cluster_spec,
-        'task': {
-            'type': task_type,
-            'index': task_id
-        }
-    }
-    with self._lock:
-      # Accessing environment variables should be protected by locks because
-      # environment variables are shared by all threads.
-      with test.mock.patch.dict('os.environ',
-                                {'TF_CONFIG': json.dumps(tf_config)}):
-        distribution.configure()
+    distribution.configure(
+        cluster_spec=self._cluster_spec, task_type=task_type, task_id=task_id)
     return distribution, self._workers[task_id].target
 
   def _test_device_assignment_distributed(self, task_type, task_id, num_gpus):
@@ -101,7 +89,8 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
           last_part_device = 'device:CPU:0'
         else:
           last_part_device = (
-              'device:GPU:%d' % distribute_lib.get_tower_context().tower_id)
+              'device:GPU:%d' %
+              distribution_strategy_context.get_tower_context().tower_id)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
@@ -192,14 +181,16 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
           tower_compute_device = '/device:CPU:0'
         else:
           tower_compute_device = (
-              '/device:GPU:%d' % distribute_lib.get_tower_context().tower_id)
+              '/device:GPU:%d' %
+              distribution_strategy_context.get_tower_context().tower_id)
         tower_compute_device = device_util.canonicalize(tower_compute_device)
 
         if 'CPU' in variable_device:
           tower_variable_device = '/device:CPU:0'
         else:
           tower_variable_device = (
-              '/device:GPU:%d' % distribute_lib.get_tower_context().tower_id)
+              '/device:GPU:%d' %
+              distribution_strategy_context.get_tower_context().tower_id)
         tower_variable_device = device_util.canonicalize(tower_variable_device)
 
         a = constant_op.constant(1.0)

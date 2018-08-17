@@ -13,15 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/delegates/eager/util.h"
-#include "tensorflow/contrib/lite/delegates/eager/constants.h"
 
 namespace tflite {
 namespace eager {
-
-bool IsEagerOp(const char* custom_name) {
-  return custom_name && strncmp(custom_name, kCustomCodePrefix,
-                                strlen(kCustomCodePrefix)) == 0;
-}
 
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {

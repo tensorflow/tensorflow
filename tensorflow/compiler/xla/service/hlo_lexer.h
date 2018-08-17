@@ -105,7 +105,6 @@ class HloLexer {
   TokKind LexShape();
   TokKind LexConstant();
   TokKind LexNumberOrPattern();
-  TokKind LexComment();
   TokKind LexString();
 
   const tensorflow::StringPiece buf_;

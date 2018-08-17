@@ -2,7 +2,7 @@
 [TOC]
 
 Summaries provide a way to export condensed information about a model, which is
-then accessible in tools such as @{$summaries_and_tensorboard$TensorBoard}.
+then accessible in tools such as [TensorBoard](../../guide/summaries_and_tensorboard.md).
 
 ## Generation of Summaries
 

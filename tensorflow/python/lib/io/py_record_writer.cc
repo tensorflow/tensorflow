@@ -52,10 +52,17 @@ PyRecordWriter::~PyRecordWriter() {
   file_.reset();
 }
 
-bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
-  if (writer_ == nullptr) return false;
+void PyRecordWriter::WriteRecord(tensorflow::StringPiece record,
+                                 TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
   Status s = writer_->WriteRecord(record);
-  return s.ok();
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+  }
 }
 
 void PyRecordWriter::Flush(TF_Status* out_status) {

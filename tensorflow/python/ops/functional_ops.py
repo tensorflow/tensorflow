@@ -15,7 +15,8 @@
 
 """Functional operations.
 
-See the @{$python/functional_ops} guide.
+See the [Higher Order
+Functions](https://tensorflow.org/api_guides/python/functional_ops) guide.
 """
 
 from __future__ import absolute_import

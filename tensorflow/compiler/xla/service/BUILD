@@ -1234,6 +1234,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "scatter_expander",
+    srcs = ["scatter_expander.cc"],
+    hdrs = ["scatter_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":while_util",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
 tf_cc_test(
     name = "batchnorm_expander_test",
     size = "small",
@@ -1382,6 +1396,39 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "convolution_feature_group_converter",
+    srcs = ["convolution_feature_group_converter.cc"],
+    hdrs = ["convolution_feature_group_converter.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "convolution_feature_group_converter_test",
+    size = "small",
+    srcs = ["convolution_feature_group_converter_test.cc"],
+    deps = [
+        ":convolution_feature_group_converter",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
     ],
 )
 
