@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -530,6 +531,60 @@ Status MarkForCompilationPass::Run(
   return RunImpl(options, is_compilable);
 }
 
+static string RatioToString(int numerator, int denominator) {
+  return strings::Printf("%d / %d (%.2f%%)", numerator, denominator,
+                         (100.0 * numerator) / denominator);
+}
+
+static void VLogClusteringSummary(const Graph& g) {
+  if (!VLOG_IS_ON(2)) {
+    return;
+  }
+
+  std::map<StringPiece, int> cluster_name_to_size;
+  std::map<StringPiece, std::map<StringPiece, int>>
+      cluster_name_to_op_histogram;
+  std::map<StringPiece, int> unclustered_op_histogram;
+  int clustered_node_count = 0;
+
+  for (Node* n : g.nodes()) {
+    gtl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
+    if (cluster_name) {
+      clustered_node_count++;
+      cluster_name_to_size[*cluster_name]++;
+      cluster_name_to_op_histogram[*cluster_name][n->type_string()]++;
+    } else {
+      unclustered_op_histogram[n->type_string()]++;
+    }
+  }
+
+  int unclustered_node_count = g.num_nodes() - clustered_node_count;
+
+  VLOG(2) << "*** Clustering info for graph of size " << g.num_nodes();
+  VLOG(2) << " Built " << cluster_name_to_size.size() << " clusters, size "
+          << RatioToString(clustered_node_count, g.num_nodes());
+
+  for (const auto& cluster_name_size_pair : cluster_name_to_size) {
+    StringPiece cluster_name = cluster_name_size_pair.first;
+    int size = cluster_name_size_pair.second;
+    VLOG(2) << "  " << cluster_name << " "
+            << RatioToString(size, g.num_nodes());
+    for (const auto& op_count_pair :
+         cluster_name_to_op_histogram[cluster_name]) {
+      VLOG(3) << "   " << op_count_pair.first << ": " << op_count_pair.second
+              << " instances";
+    }
+  }
+
+  if (!unclustered_op_histogram.empty()) {
+    VLOG(2) << " Unclustered nodes: "
+            << RatioToString(unclustered_node_count, g.num_nodes());
+    for (const auto& pair : unclustered_op_histogram) {
+      VLOG(3) << "  " << pair.first << ": " << pair.second << " instances";
+    }
+  }
+}
+
 // Is 'node' an operator that consumes only the shape of its input, not the
 // data itself?
 static bool IsShapeConsumerOp(const Node& node) {
@@ -718,6 +773,9 @@ Status MarkForCompilationPass::RunImpl(
     dump_graph::DumpGraphToFile("mark_for_compilation", **options.graph,
                                 options.flib_def);
   }
+
+  VLogClusteringSummary(*graph);
+
   return Status::OK();
 }
 
