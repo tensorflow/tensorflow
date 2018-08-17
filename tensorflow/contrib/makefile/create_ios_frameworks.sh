@@ -45,6 +45,13 @@ cp $SCRIPT_DIR/gen/lib/libtensorflow-core.a \
    $FW_DIR_TFCORE/tensorflow_experimental
 cp $SCRIPT_DIR/gen/protobuf_ios/lib/libprotobuf.a \
    $FW_DIR_TFCORE/libprotobuf_experimental.a
+IOS_ARCH=$(ls $SCRIPT_DIR/gen/bin|grep ios|awk '{print tolower($0)}')
+NSYNC_PATH=./downloads/nsync/builds/${IOS_ARCH:4}.ios.c++11/libnsync.a
+if [ ! -f $NSYNC_PATH ]; then
+  echo "libnsync.a not found!"
+else
+  cp $NSYNC_PATH $FW_DIR_TFCORE/
+fi
 
 echo "Headers, populating: tensorflow (core)"
 cd $SCRIPT_DIR/../../..
