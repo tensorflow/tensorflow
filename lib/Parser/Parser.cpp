@@ -1945,8 +1945,6 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
                            "'");
   }
 
-  getModule()->getFunctions().push_back(function);
-
   return finalizeFunction(function, braceLoc);
 }
 
@@ -2121,8 +2119,6 @@ ParseResult MLFunctionParser::parseFunctionBody() {
   // Parse statements in this function.
   if (parseStmtBlock(function))
     return ParseFailure;
-
-  getModule()->getFunctions().push_back(function);
 
   return finalizeFunction(function, braceLoc);
 }
@@ -2579,6 +2575,7 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType *&type,
 ///
 ParseResult ModuleParser::parseExtFunc() {
   consumeToken(Token::kw_extfunc);
+  auto loc = getToken().getLoc();
 
   StringRef name;
   FunctionType *type = nullptr;
@@ -2586,7 +2583,14 @@ ParseResult ModuleParser::parseExtFunc() {
     return ParseFailure;
 
   // Okay, the external function definition was parsed correctly.
-  getModule()->getFunctions().push_back(new ExtFunction(name, type));
+  auto *function = new ExtFunction(name, type);
+  getModule()->getFunctions().push_back(function);
+
+  // Verify no name collision / redefinition.
+  if (function->getName().ref() != name)
+    return emitError(loc,
+                     "redefinition of function named '" + name.str() + "'");
+
   return ParseSuccess;
 }
 
@@ -2596,6 +2600,7 @@ ParseResult ModuleParser::parseExtFunc() {
 ///
 ParseResult ModuleParser::parseCFGFunc() {
   consumeToken(Token::kw_cfgfunc);
+  auto loc = getToken().getLoc();
 
   StringRef name;
   FunctionType *type = nullptr;
@@ -2603,7 +2608,13 @@ ParseResult ModuleParser::parseCFGFunc() {
     return ParseFailure;
 
   // Okay, the CFG function signature was parsed correctly, create the function.
-  auto function = new CFGFunction(name, type);
+  auto *function = new CFGFunction(name, type);
+  getModule()->getFunctions().push_back(function);
+
+  // Verify no name collision / redefinition.
+  if (function->getName().ref() != name)
+    return emitError(loc,
+                     "redefinition of function named '" + name.str() + "'");
 
   return CFGFunctionParser(getState(), function).parseFunctionBody();
 }
@@ -2624,7 +2635,13 @@ ParseResult ModuleParser::parseMLFunc() {
     return ParseFailure;
 
   // Okay, the ML function signature was parsed correctly, create the function.
-  auto function = MLFunction::create(name, type);
+  auto *function = MLFunction::create(name, type);
+  getModule()->getFunctions().push_back(function);
+
+  // Verify no name collision / redefinition.
+  if (function->getName().ref() != name)
+    return emitError(loc,
+                     "redefinition of function named '" + name.str() + "'");
 
   // Create the parser.
   auto parser = MLFunctionParser(getState(), function);

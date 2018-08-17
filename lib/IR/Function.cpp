@@ -20,12 +20,12 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
 Function::Function(StringRef name, FunctionType *type, Kind kind)
-  : kind(kind), name(name.str()), type(type) {
-}
+    : kind(kind), name(Identifier::get(name, type->getContext())), type(type) {}
 
 MLIRContext *Function::getContext() const { return getType()->getContext(); }
 
@@ -52,16 +52,39 @@ Module *llvm::ilist_traits<Function>::getContainingModule() {
 }
 
 /// This is a trait method invoked when a Function is added to a Module.  We
-/// keep the module pointer up to date.
+/// keep the module pointer and module symbol table up to date.
 void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
   assert(!function->getModule() && "already in a module!");
-  function->module = getContainingModule();
+  auto *module = getContainingModule();
+  function->module = module;
+
+  // Add this function to the symbol table of the module, uniquing the name if
+  // a conflict is detected.
+  if (!module->symbolTable.insert({function->name, function}).second) {
+    // If a conflict was detected, then the function will not have been added to
+    // the symbol table.  Try suffixes until we get to a unique name that works.
+    SmallString<128> nameBuffer(function->getName().begin(),
+                                function->getName().end());
+    unsigned originalLength = nameBuffer.size();
+
+    // Iteratively try suffixes until we find one that isn't used.  We use a
+    // module level uniquing counter to avoid N^2 behavior.
+    do {
+      nameBuffer.resize(originalLength);
+      nameBuffer += '_';
+      nameBuffer += std::to_string(module->uniquingCounter++);
+      function->name = Identifier::get(nameBuffer, module->getContext());
+    } while (!module->symbolTable.insert({function->name, function}).second);
+  }
 }
 
 /// This is a trait method invoked when a Function is removed from a Module.
 /// We keep the module pointer up to date.
 void llvm::ilist_traits<Function>::removeNodeFromList(Function *function) {
   assert(function->module && "not already in a module!");
+
+  // Remove the symbol table entry.
+  function->module->symbolTable.erase(function->getName());
   function->module = nullptr;
 }
 
@@ -76,9 +99,11 @@ void llvm::ilist_traits<Function>::transferNodesFromList(
   if (curParent == otherList.getContainingModule())
     return;
 
-  // Update the 'module' member of each function.
-  for (; first != last; ++first)
-    first->module = curParent;
+  // Update the 'module' member and symbol table records for each function.
+  for (; first != last; ++first) {
+    removeNodeFromList(&*first);
+    addNodeToList(&*first);
+  }
 }
 
 /// Unlink this function from its Module and delete it.

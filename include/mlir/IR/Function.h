@@ -24,6 +24,7 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
+#include "mlir/IR/Identifier.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
 
@@ -40,7 +41,7 @@ public:
   Kind getKind() const { return kind; }
 
   /// Return the name of this function, without the @.
-  const std::string &getName() const { return name; }
+  Identifier getName() const { return name; }
 
   /// Return the type of this function.
   FunctionType *getType() const { return type; }
@@ -70,7 +71,7 @@ protected:
 private:
   Kind kind;
   Module *module = nullptr;
-  std::string name;
+  Identifier name;
   FunctionType *const type;
 
   void operator=(const Function &) = delete;

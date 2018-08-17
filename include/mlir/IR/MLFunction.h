@@ -39,7 +39,7 @@ class MLFunction final
       public StmtBlock,
       private llvm::TrailingObjects<MLFunction, MLFuncArgument> {
 public:
-  /// Creates a new MLFunction with the specific fields.
+  /// Creates a new MLFunction with the specific type.
   static MLFunction *create(StringRef name, FunctionType *type);
 
   /// Destroys this statement and its subclass data.

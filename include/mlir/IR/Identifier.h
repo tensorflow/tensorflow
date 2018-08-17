@@ -36,11 +36,17 @@ class Identifier {
 public:
   /// Return an identifier for the specified string.
   static Identifier get(StringRef str, const MLIRContext *context);
+  Identifier(const Identifier &) = default;
+  Identifier &operator=(const Identifier &other) = default;
 
   /// Return a StringRef for the string.
-  StringRef str() const {
-    return StringRef(pointer, size());
-  }
+  StringRef ref() const { return StringRef(pointer, size()); }
+
+  /// Return an std::string.
+  std::string str() const { return ref().str(); }
+
+  /// Return a null terminated C string.
+  const char *c_str() const { return pointer; }
 
   /// Return a pointer to the start of the string data.
   const char *data() const {
@@ -53,12 +59,10 @@ public:
   }
 
   /// Return true if this identifier is the specified string.
-  bool is(StringRef string) const {
-    return str().equals(string);
-  }
+  bool is(StringRef string) const { return ref().equals(string); }
 
-  Identifier(const Identifier&) = default;
-  Identifier &operator=(const Identifier &other) = default;
+  const char *begin() const { return pointer; }
+  const char *end() const { return pointer + size(); }
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -96,7 +100,7 @@ inline bool operator!=(StringRef lhs, Identifier rhs) { return !rhs.is(lhs); }
 
 // Make identifiers hashable.
 inline llvm::hash_code hash_value(Identifier arg) {
-  return llvm::hash_value(arg.str());
+  return llvm::hash_value(arg.ref());
 }
 
 } // end namespace mlir

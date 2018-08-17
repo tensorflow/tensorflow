@@ -300,5 +300,5 @@ extfunc @f44(memref<2x4xi8, #map44>)
 // CHECK: extfunc @f45(memref<100x100x100xi8, #map{{[0-9]+}}>)
 extfunc @f45(memref<100x100x100xi8, #map45>)
 
-// CHECK: extfunc @f45(memref<100x100x100xi8, #map{{[0-9]+}}>)
-extfunc @f45(memref<100x100x100xi8, #map46>)
+// CHECK: extfunc @f46(memref<100x100x100xi8, #map{{[0-9]+}}>)
+extfunc @f46(memref<100x100x100xi8, #map46>)

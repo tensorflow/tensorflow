@@ -909,7 +909,7 @@ void FunctionPrinter::printOptionalAttrDict(
   // Filter out any attributes that shouldn't be included.
   SmallVector<NamedAttribute, 8> filteredAttrs;
   for (auto attr : attrs) {
-    auto attrName = attr.first.str();
+    auto attrName = attr.first.ref();
     // Never print attributes that start with a colon.  These are internal
     // attributes that represent location or other internal metadata.
     if (attrName.startswith(":"))
@@ -946,7 +946,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
 
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
-  if (auto opInfo = state.operationSet->lookup(op->getName().str())) {
+  if (auto *opInfo = state.operationSet->lookup(op->getName().ref())) {
     opInfo->printAssembly(op, this);
     return;
   }
@@ -957,7 +957,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
 
 void FunctionPrinter::printDefaultOp(const Operation *op) {
   os << '"';
-  printEscapedString(op->getName().str(), os);
+  printEscapedString(op->getName().ref(), os);
   os << "\"(";
 
   interleaveComma(op->getOperands(),

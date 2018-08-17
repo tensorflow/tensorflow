@@ -397,3 +397,8 @@ mlfunc @return_inside_loop() -> i8 {
     // expected-error@-1 {{'return' op must be the last statement in the ML function}}
   }
 }
+
+// -----
+
+extfunc @redef()
+extfunc @redef()  // expected-error {{redefinition of function named 'redef'}}

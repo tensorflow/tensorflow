@@ -19,3 +19,16 @@
 using namespace mlir;
 
 Module::Module(MLIRContext *context) : context(context) {}
+
+/// Look up a function with the specified name, returning null if no such
+/// name exists.
+Function *Module::getNamedFunction(StringRef name) {
+  return getNamedFunction(Identifier::get(name, context));
+}
+
+/// Look up a function with the specified name, returning null if no such
+/// name exists.
+Function *Module::getNamedFunction(Identifier name) {
+  auto it = symbolTable.find(name);
+  return it != symbolTable.end() ? it->second : nullptr;
+}
