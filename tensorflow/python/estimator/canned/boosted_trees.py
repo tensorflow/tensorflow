@@ -24,8 +24,6 @@ import functools
 import numpy as np
 
 from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
-from tensorflow.python.client import session as tf_session
-from tensorflow.python.eager import context
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
@@ -43,9 +41,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -60,8 +57,6 @@ _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
 _HOLD_FOR_MULTI_DIM_SUPPORT = object()
 _DUMMY_NUM_BUCKETS = -1
 _DUMMY_NODE_ID = -1
-
-_BOOSTED_TREES_SERIALIZED_PROTO = '_BOOSTED_TREES_SERIALIZED_PROTO'
 
 
 def _get_transformed_features(features, sorted_feature_columns):
@@ -770,8 +765,6 @@ def _bt_model_fn(
           bucketized_features=input_feature_list,
           logits_dimension=head.logits_dimension)
     else:
-      _, serialized_proto = tree_ensemble.serialize()
-      ops.add_to_collection(_BOOSTED_TREES_SERIALIZED_PROTO, serialized_proto)
       if is_single_machine:
         local_tree_ensemble = tree_ensemble
         ensemble_reload = control_flow_ops.no_op()
@@ -980,9 +973,7 @@ def _compute_feature_importances(tree_ensemble,
       by its feature importance.
     feature_importances: A list of corresponding feature importance.
   """
-  tree_importances = [_compute_feature_importances_per_tree(tree,
-                                                            num_features,
-                                                            normalize)
+  tree_importances = [_compute_feature_importances_per_tree(tree, num_features)
                       for tree in tree_ensemble.trees]
   tree_importances = np.array(tree_importances)
   tree_weights = np.array(tree_ensemble.tree_weights).reshape(-1, 1)
@@ -1021,43 +1012,20 @@ class _BoostedTrees(estimator.Estimator):
     Raises:
       ValueError: Empty ensemble.
     """
-    tree_ensemble = self._read_tree_ensemble_from_checkpoint()
-    if tree_ensemble:
-      num_features = _calculate_num_features(self._sorted_feature_columns)
-      names_for_idx = np.array(
-          _generate_feature_name_mapping(self._sorted_feature_columns))
-      idx, importances = _compute_feature_importances(tree_ensemble,
-                                                      num_features,
-                                                      normalize)
-      return names_for_idx[idx], importances
-    else:
+    reader = checkpoint_utils.load_checkpoint(self._model_dir)
+    serialized = reader.get_tensor('boosted_trees:0_serialized')
+    if not serialized:
       raise ValueError('Found empty serialized string for TreeEnsemble.'
                        'You should only call the method after training.')
+    ensemble_proto = boosted_trees_pb2.TreeEnsemble()
+    ensemble_proto.ParseFromString(serialized)
 
-  def _read_tree_ensemble_from_checkpoint(self):
-    with context.graph_mode():
-      checkpoint_path = checkpoint_management.latest_checkpoint(
-          self._model_dir)
-      if not checkpoint_path:
-        raise ValueError("Couldn't find trained model at %s." % self._model_dir)
-
-      with ops.Graph().as_default() as g:
-        with tf_session.Session(config=self._session_config) as session:
-          meta_file = checkpoint_path + '.meta'
-          graph_saver = saver.import_meta_graph(meta_file)
-          graph_saver.restore(session, checkpoint_path)
-
-          serialized_proto = ops.get_collection(_BOOSTED_TREES_SERIALIZED_PROTO)
-          assert len(serialized_proto) == 1
-          serialized_proto_string = session.run(serialized_proto[0])
-
-          if serialized_proto_string:
-            tree_ensemble = boosted_trees_pb2.TreeEnsemble()
-            tree_ensemble.ParseFromString(serialized_proto_string)
-            return tree_ensemble
-          else:
-            # serialized_proto_string is empty string before training.
-            return None
+    num_features = _calculate_num_features(self._sorted_feature_columns)
+    names_for_feature_id = np.array(
+        _generate_feature_name_mapping(self._sorted_feature_columns))
+    sorted_feature_id, importances = _compute_feature_importances(
+        ensemble_proto, num_features, normalize)
+    return names_for_feature_id[sorted_feature_id], importances
 
 
 @estimator_export('estimator.BoostedTreesClassifier')
