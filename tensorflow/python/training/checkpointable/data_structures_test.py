@@ -31,6 +31,7 @@ from tensorflow.python.layers import core as non_keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
@@ -96,6 +97,11 @@ class ListTests(test.TestCase):
     model.load_weights(save_path)
     self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
                         self.evaluate(model.variables[0]))
+    v = variables.Variable(1.)
+    model.var_list = [v]
+    self.assertIn(v, model.variables)
+    self.assertIn(v, model.trainable_variables)
+    self.assertNotIn(v, model.non_trainable_variables)
 
   def testUpdatesForwarded(self):
     with context.graph_mode():
