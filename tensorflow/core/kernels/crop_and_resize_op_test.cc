@@ -308,6 +308,33 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2Flipped) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To4x4NoExtrapolation) {
+  MakeOp<float>(0, "bilinear");
+  // Input:
+  //  1, 2, 3
+  //  4, 5, 6
+  //  7, 8, 9
+  AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // Box:
+  // 0.095093 0.024008 1.000000 1.000000
+  AddInputFromArray<float>(TensorShape({1, 4}), {0x1.858054p-4, 0x1.8957d6p-6, 1.0f, 1.0f});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32>(TensorShape({2}), {4, 4});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 4, 4, 1}));
+
+  // clang-format off
+  test::FillValues<float>(&expected,
+    { 1.618574f, 2.269236f, 2.919897f, 3.570559f
+      3.428388f, 4.079050f, 4.729711f, 5.380373f
+      5.238202f, 5.888864f, 6.539525f, 7.190187f
+      7.048016f, 7.698677f, 8.349339f, 9.000000f });
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2FlippedNearestNeighbor) {
   MakeOp<float>(0, "nearest");
   // Input:

@@ -251,7 +251,7 @@ struct CropAndResize<CPUDevice, T> {
             continue;
           }
           if (method_name == "bilinear") {
-            const int bottom_y_index = ceilf(in_y);
+            const int bottom_y_index = std::min(top_y_index + 1, image_height - 1);
             const float y_lerp = in_y - top_y_index;
 
             for (int x = 0; x < crop_width; ++x) {
@@ -265,7 +265,7 @@ struct CropAndResize<CPUDevice, T> {
                 }
                 continue;
               }
-              const int right_x_index = ceilf(in_x);
+              const int right_x_index = std::min(left_x_index + 1, image_width - 1);
               const float x_lerp = in_x - left_x_index;
 
               for (int d = 0; d < depth; ++d) {
@@ -485,8 +485,7 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
             }
 
             if (method_name == "bilinear") {
-              const int left_x_index = floorf(in_x);
-              const int right_x_index = ceilf(in_x);
+              const int right_x_index = std::min(left_x_index + 1, image_width - 1);
               const float x_lerp = in_x - left_x_index;
 
               for (int d = 0; d < depth; ++d) {
@@ -676,7 +675,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
         if (top_y_index < 0 || top_y_index > image_height - 1) {
           continue;
         }
-        const int bottom_y_index = ceilf(in_y);
+        const int bottom_y_index = std::min(top_y_index + 1, image_height - 1);
         const float y_lerp = in_y - top_y_index;
 
         for (int x = 0; x < crop_width; ++x) {
@@ -687,7 +686,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
           if (left_x_index < 0 || left_x_index > image_width - 1) {
             continue;
           }
-          const int right_x_index = ceilf(in_x);
+          const int right_x_index = std::min(left_x_index + 1, image_width - 1);
           const float x_lerp = in_x - left_x_index;
 
           for (int d = 0; d < depth; ++d) {
