@@ -143,6 +143,6 @@ def move_variable_initialization_to_cpu(graph=None):
 
   for op in init_ops:
     op._set_device('/device:CPU:0')
-    op._set_attr('_class', attr_value_pb2.AttrValue(s='loc:@cpu'))
+    op._set_attr('_class', attr_value_pb2.AttrValue(s=b'loc:@cpu'))
 
   return
