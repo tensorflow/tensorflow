@@ -4214,7 +4214,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
     if (e->IsControlEdge()) {
       // Allow duplicate while adding control edge as it would fail (return
       // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+      (*g)->AddControlEdge(new_node, e->dst(), false);
     } else {
       // Conv2D has only 1 output (at slot 0) and merged node also has only 1
       // output (at slot 0).
