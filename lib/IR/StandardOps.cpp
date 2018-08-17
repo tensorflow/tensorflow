@@ -438,8 +438,8 @@ void ReturnOp::print(OpAsmPrinter *p) const {
 const char *ReturnOp::verify() const {
   // ReturnOp must be part of an ML function.
   if (auto *stmt = dyn_cast<OperationStmt>(getOperation())) {
-    MLFunction *func = dyn_cast_or_null<MLFunction>(stmt->getBlock());
-    if (!func || &func->back() != stmt)
+    StmtBlock *block = stmt->getBlock();
+    if (!block || !isa<MLFunction>(block) || &block->back() != stmt)
       return "must be the last statement in the ML function";
 
     // Return success. Checking that operand types match those in the function
