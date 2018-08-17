@@ -72,31 +72,21 @@ py_library(
         ":cross_tower_ops",
         ":shared_variable_creator",
         ":values",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
-        "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "multi_worker_strategy",
-    srcs = ["multi_worker_strategy.py"],
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":mirrored_strategy",
-        ":values",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -185,7 +175,6 @@ py_library(
     ],
     deps = [
         ":mirrored_strategy",
-        ":multi_worker_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
@@ -220,9 +209,13 @@ py_test(
     ],
     deps = [
         ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":strategy_test_lib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:distribute",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
