@@ -45,6 +45,7 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/estimator:linear_test \
     -//tensorflow/python/feature_column:feature_column_v2_test \
     -//tensorflow/python/keras:cudnn_recurrent_test \
+    -//tensorflow/python/kernel_tests:batch_matmul_op_test \
     -//tensorflow/python/kernel_tests:conv1d_test \
     -//tensorflow/python/kernel_tests:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests:conv_ops_3d_test \
@@ -52,6 +53,7 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:dct_ops_test \
     -//tensorflow/python/kernel_tests:depthwise_conv_op_test \
     -//tensorflow/python/kernel_tests:fft_ops_test \
+    -//tensorflow/python/kernel_tests:matmul_op_test \
     -//tensorflow/python/kernel_tests:matrix_inverse_op_test \
     -//tensorflow/python/kernel_tests:matrix_triangular_solve_op_test \
     -//tensorflow/python/kernel_tests:pool_test \
