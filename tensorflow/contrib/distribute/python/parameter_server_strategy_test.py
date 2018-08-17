@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import threading
 from absl.testing import parameterized
 
@@ -69,19 +68,8 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
     if not task_type:
       return distribution, ''
 
-    tf_config = {
-        'cluster': self._cluster_spec,
-        'task': {
-            'type': task_type,
-            'index': task_id
-        }
-    }
-    with self._lock:
-      # Accessing environment variables should be protected by locks because
-      # environment variables are shared by all threads.
-      with test.mock.patch.dict('os.environ',
-                                {'TF_CONFIG': json.dumps(tf_config)}):
-        distribution.configure()
+    distribution.configure(
+        cluster_spec=self._cluster_spec, task_type=task_type, task_id=task_id)
     return distribution, self._workers[task_id].target
 
   def _test_device_assignment_distributed(self, task_type, task_id, num_gpus):
