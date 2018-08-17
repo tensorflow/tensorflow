@@ -85,9 +85,10 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
   return result;
 }
 
-static void initializeMLIRContext(MLIRContext &ctx) {
-  TFControlFlow::registerOperations(ctx);
-}
+// The function to initialize the MLIRContext for different ops is defined in
+// another compilation unit to allow different tests to link in different
+// context initializations (e.g., op registrations).
+extern void initializeMLIRContext(MLIRContext *ctx);
 
 /// Parses the memory buffer and, if successfully parsed, prints the parsed
 /// output. Optionally, convert ML functions into CFG functions.
@@ -99,7 +100,7 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
 
   // Parse the input file.
   MLIRContext context;
-  initializeMLIRContext(context);
+  initializeMLIRContext(&context);
   std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
   if (!module)
     return OptFailure;
@@ -219,7 +220,7 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
 
     // Parse the input file.
     MLIRContext context;
-    initializeMLIRContext(context);
+    initializeMLIRContext(&context);
 
     // TODO: refactor into initializeMLIRContext so the normal parser pass
     // gets to use this.
