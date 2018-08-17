@@ -201,15 +201,23 @@ def _calculate_num_features(sorted_feature_columns):
   return num_features
 
 
-def _generate_feature_name_for_index(sorted_feature_columns):
+def _generate_feature_name_mapping(sorted_feature_columns):
+  """Return a list of feature name for feature ids.
+
+  Args:
+    sorted_feature_columns: a list/set of tf.feature_column sorted by name.
+
+  Returns:
+    feature_name_mapping: a list of feature name.
+  """
   names = []
   for column in sorted_feature_columns:
     if isinstance(column, feature_column_lib._IndicatorColumn):  # pylint:disable=protected-access
       categorical_column = column.categorical_column
       if isinstance(categorical_column,
                     feature_column_lib._VocabularyListCategoricalColumn):  # pylint:disable=protected-access
-        for voc in categorical_column.vocabulary_list:
-          names.append('{}:{}'.format(column.name, voc))
+        for value in categorical_column.vocabulary_list:
+          names.append('{}:{}'.format(column.name, value))
       else:
         for num in categorical_column._num_buckets:  # pylint:disable=protected-access
           names.append('{}:{}'.format(column.name, num))
@@ -938,7 +946,8 @@ def _create_regression_head(label_dimension, weight_column=None):
   # pylint: enable=protected-access
 
 
-def _compute_feature_importance_for_tree(tree, num_features, normalize):
+def _compute_feature_importances_per_tree(tree, num_features):
+  """Computes the importance of each feature in the tree."""
   importances = np.zeros(num_features)
 
   for node in tree.nodes:
@@ -951,21 +960,29 @@ def _compute_feature_importance_for_tree(tree, num_features, normalize):
     else:
       raise ValueError('Unexpected split type %s', node_type)
 
-  if normalize:
-    normalizer = np.sum(importances)
-    if normalizer > 0.0:
-      # Avoid dividing by zero (e.g., when root is pure)
-      importances /= normalizer
-
   return importances
 
 
-def compute_feature_importances(tree_ensemble,
-                                num_features,
-                                normalize=True):
-  tree_importances = [_compute_feature_importance_for_tree(tree,
-                                                           num_features,
-                                                           normalize)
+def _compute_feature_importances(tree_ensemble,
+                                 num_features,
+                                 normalize=True):
+  """Compute the feature importances.
+
+  The higher the value, the more important the feature.
+
+  Args:
+    tree_ensemble: TreeEnsemble.
+    num_features: The total number of feature ids.
+    normalize: If True, normalize the feature importances.
+
+  Returns:
+    sorted_feature_idx: A list of feature_id which is sorted
+      by its feature importance.
+    feature_importances: A list of corresponding feature importance.
+  """
+  tree_importances = [_compute_feature_importances_per_tree(tree,
+                                                            num_features,
+                                                            normalize)
                       for tree in tree_ensemble.trees]
   tree_importances = np.array(tree_importances)
   tree_weights = np.array(tree_ensemble.tree_weights).reshape(-1, 1)
@@ -973,8 +990,8 @@ def compute_feature_importances(tree_ensemble,
                                axis=0) / np.sum(tree_weights)
   if normalize:
     normalizer = np.sum(feature_importances)
-    if normalizer > 0.0:
-      feature_importances /= normalizer
+    assert normalizer > 0, 'Trees are all empty or root node only.'
+    feature_importances /= normalizer
 
   sorted_feature_idx = np.argsort(feature_importances)[::-1]
   return sorted_feature_idx, feature_importances[sorted_feature_idx]
@@ -988,18 +1005,34 @@ class _BoostedTrees(estimator.Estimator):
 
     self._sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
 
-  def compute_feature_importances(self, normalize=True):
+  def experimental_feature_importances(self, normalize=True):
+    """Compute the feature importances.
+
+    The higher the value, the more important the corresponding feature.
+
+    Args:
+      normalize: If True, normalize the feature importances.
+
+    Returns:
+      sorted_feature_names: A list of feature name which is sorted
+        by its feature importance.
+      feature_importances: A list of corresponding feature importance.
+
+    Raises:
+      ValueError: Empty ensemble.
+    """
     tree_ensemble = self._read_tree_ensemble_from_checkpoint()
     if tree_ensemble:
       num_features = _calculate_num_features(self._sorted_feature_columns)
       names_for_idx = np.array(
-          _generate_feature_name_for_index(self._sorted_feature_columns))
-      idx, importances = compute_feature_importances(tree_ensemble,
-                                                     num_features,
-                                                     normalize)
+          _generate_feature_name_mapping(self._sorted_feature_columns))
+      idx, importances = _compute_feature_importances(tree_ensemble,
+                                                      num_features,
+                                                      normalize)
       return names_for_idx[idx], importances
     else:
-      return [], []
+      raise ValueError('Found empty serialized string for TreeEnsemble.'
+                       'You should only call the method after training.')
 
   def _read_tree_ensemble_from_checkpoint(self):
     with context.graph_mode():

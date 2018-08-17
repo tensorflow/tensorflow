@@ -165,7 +165,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     predictions = list(est.predict(input_fn=predict_input_fn))
     self.assertAllClose([[0], [0], [0], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
-    sorted_features, importances = est.compute_feature_importances()
+    sorted_features, importances = est.experimental_feature_importances()
     self.assertAllEqual([], sorted_features)
     self.assertAllEqual([], importances)
 
@@ -626,12 +626,12 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_gains = [[0.133481562138 + 0.400360047817, 0.426666676998, 0.0],  # 1st tree.
                      [0.0, 0.0, 0.0]]                                         # 2nd tree.
 
-    sorted_features, importances = est.compute_feature_importances(normalize=False)
+    sorted_features, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, sorted_features)
     self.assertAllClose(_compute_feature_importances_np(feature_gains, False),
                         importances)
 
-    sorted_features1, importances1 = est.compute_feature_importances(normalize=True)
+    sorted_features1, importances1 = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, sorted_features1)
     self.assertAllClose(_compute_feature_importances_np(feature_gains, True),
                         importances1)
@@ -706,12 +706,12 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_gains = [[15.5952005386, 0.0, 0.0, 0.0],  # 1st tree.
                      [0.0, 0.0, 0.0, 0.0]]            # 2nd tree.
 
-    sorted_features, importances = est.compute_feature_importances(normalize=False)
+    sorted_features, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, sorted_features)
     self.assertAllClose(_compute_feature_importances_np(feature_gains, False),
                         importances)
 
-    sorted_features1, importances1 = est.compute_feature_importances(normalize=True)
+    sorted_features1, importances1 = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, sorted_features1)
     self.assertAllClose(_compute_feature_importances_np(feature_gains, True),
                         importances1)
