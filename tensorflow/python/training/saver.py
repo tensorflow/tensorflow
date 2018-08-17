@@ -1474,25 +1474,10 @@ class Saver(object):
     Returns:
       A `MetaGraphDef` proto.
     """
-    graph = ops.get_default_graph()
-    # Do some sanity checking on collections containing PartitionedVariables. If
-    # a saved collection has a PartitionedVariable, the GraphDef needs to
-    # include concat ops to get the value (or there'll be a lookup error on
-    # load).
-    check_collection_list = collection_list or graph.get_all_collection_keys()
-    for collection_type in check_collection_list:
-      for element in graph.get_collection(collection_type):
-        if isinstance(element, variables.PartitionedVariable):
-          try:
-            graph.get_operation_by_name(element.name)
-          except KeyError:
-            # Create a concat op for this PartitionedVariable. The user may not
-            # need it, but we'll try looking it up on MetaGraph restore since
-            # it's in a collection.
-            element.as_tensor()
+    # pylint: enable=line-too-long
     return export_meta_graph(
         filename=filename,
-        graph_def=graph.as_graph_def(add_shapes=True),
+        graph_def=ops.get_default_graph().as_graph_def(add_shapes=True),
         saver_def=self.saver_def,
         collection_list=collection_list,
         as_text=as_text,
