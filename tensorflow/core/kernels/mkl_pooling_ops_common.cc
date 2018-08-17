@@ -284,8 +284,8 @@ void MklPoolParameters::Init(OpKernelContext* context,
   // Get the data format
   this->data_format = data_format;
 
-  bool isPool2D = (ksize.size() == 4);
-  if (isPool2D) {
+  bool is_pool2d = (ksize.size() == 4);
+  if (is_pool2d) {
     // Pool2D
     // Get the output sizes
     window_rows = GetTensorDim(ksize, data_format, 'H');
@@ -329,7 +329,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
   }
 
   if (depth_window == 1) {  // we are pooling in the D (Pool3D only), H and W
-    if (!isPool2D) {
+    if (!is_pool2d) {
       OP_REQUIRES_OK(
           context, GetWindowedOutputSizeVerbose(tensor_in_planes, window_planes,
                                                 planes_stride, padding,
@@ -348,7 +348,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     // Fail if the depth, height or width are greater than MAX_INT
     // We check depth only for 3D pooling case
 
-    if (!isPool2D) {
+    if (!is_pool2d) {
       OP_REQUIRES(context,
                   FastBoundsCheck(out_planes, std::numeric_limits<int>::max()),
                   errors::InvalidArgument("output depth/planes is too large"));

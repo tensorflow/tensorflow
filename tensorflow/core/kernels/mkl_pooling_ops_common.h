@@ -458,9 +458,9 @@ class MklPoolingOpBase : public OpKernel {
     OP_REQUIRES(context, this->ksize_[0] == 1 && this->stride_[0] == 1,
                 errors::Unimplemented("Pooling is not yet supported on the "
                                       "batch dimension."));
-    bool isPool2D = (this->ksize_.size() == 4);
+    bool is_pool2d = (this->ksize_.size() == 4);
     this->data_format_mkldnn_ =
-        isPool2D ? TFDataFormatToMklDnnDataFormat(this->data_format_tf_)
+        is_pool2d ? TFDataFormatToMklDnnDataFormat(this->data_format_tf_)
                  : TFDataFormatToMklDnn3DDataFormat(this->data_format_tf_);
 
     // We may not get this attribute for this node if it does not go through
@@ -510,8 +510,8 @@ class MklPoolingOpBase : public OpKernel {
   void PoolParamsToDims(const MklPoolParameters* pool_params,
                         memory::dims* filter_dims, memory::dims* strides,
                         memory::dims* padding_left, memory::dims* padding_right,
-                        bool isPool2D) {
-    if (isPool2D) {
+                        bool is_pool2d) {
+    if (is_pool2d) {
       // Pool2D
       *filter_dims =
           memory::dims({pool_params->window_rows, pool_params->window_cols});
