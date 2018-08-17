@@ -300,19 +300,24 @@ template <typename T>
 class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
   static MklConvBwdFilterPrimitive<T>* Get(
-      const MklConvBwdFilterParams& convBwdFilterDims) {
+      const MklConvBwdFilterParams& convBwdFilterDims, bool not_cache) {
     MklConvBwdFilterPrimitive<T>* conv_bwd_filter = nullptr;
 
-    // look into the pool for reusable primitive
-    conv_bwd_filter = dynamic_cast<MklConvBwdFilterPrimitive<T>*>(
+    if (not_cache) { /* Create new primitive always */
+      conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
+    } else {
+      // look into the pool for reusable primitive
+      conv_bwd_filter = dynamic_cast<MklConvBwdFilterPrimitive<T>*> (
         MklConvBwdFilterPrimitiveFactory<T>::GetInstance().GetConvBwdFilter(
             convBwdFilterDims));
 
-    if (conv_bwd_filter == nullptr) {
-      conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
-      MklConvBwdFilterPrimitiveFactory<T>::GetInstance().SetConvBwdFilter(
-          convBwdFilterDims, conv_bwd_filter);
+     if (conv_bwd_filter == nullptr) {
+       conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
+       MklConvBwdFilterPrimitiveFactory<T>::GetInstance().SetConvBwdFilter(
+            convBwdFilterDims, conv_bwd_filter);
+      }
     }
+
     return conv_bwd_filter;
   }
 
@@ -845,8 +850,13 @@ class MklConvCustomBackpropFilterOp
       MklConvBwdFilterParams convBwdFilterDims(fwd_src_dims, fwd_filter_dims,
           diff_bias_dims, diff_dst_dims, strides, dilations, padding_left,
           padding_right, TFPaddingToMklDnnPadding(this->padding_));
-      conv_bwd_filter =
-          MklConvBwdFilterPrimitiveFactory<T>::Get(convBwdFilterDims);
+
+      // MKL DNN allocates large buffers when a conv gradient filter primtive is
+      // created. So we don't cache conv backward primitives when the env
+      // variable TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is set to true.
+      not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
+      conv_bwd_filter = MklConvBwdFilterPrimitiveFactory<T>::Get(
+          convBwdFilterDims, not_cache_);
       auto bwd_filter_pd = conv_bwd_filter->GetPrimitiveDesc();
 
       // allocate output tensors: diff_fitler and diff_bias (w bias)
@@ -938,6 +948,9 @@ class MklConvCustomBackpropFilterOp
       if (diff_filter_reorder_required) {
         diff_filter.InsertReorderToUserMem();
       }
+
+      // delete primitive since it is not cached.
+      if (not_cache_) delete conv_bwd_filter;
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -953,6 +966,7 @@ class MklConvCustomBackpropFilterOp
   const int kInputIndex_InputSizes = 0;
   const int kDilationH = 0, kDilationW = 1;
   engine cpu_engine_ = engine(engine::cpu, 0);
+  bool not_cache_;
 
   // Validate input shapes.
   // Function asserts that input shapes are valid.
