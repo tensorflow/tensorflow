@@ -443,10 +443,83 @@ cc_library(
 )
 
 cc_library(
-    name = "functionalize_control_flow",
-    srcs = ["functionalize_control_flow.cc"],
-    hdrs = ["functionalize_control_flow.h"],
+    name = "functionalize_control_flow_util",
+    srcs = [
+        "functionalize_control_flow_util.cc",
+    ],
+    hdrs = [
+        "functionalize_control_flow_util.h",
+    ],
     deps = [
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "functionalize_cond",
+    srcs = [
+        "functionalize_cond.cc",
+    ],
+    hdrs = [
+        "functionalize_cond.h",
+    ],
+    deps = [
+        ":functionalize_control_flow_util",
+        ":tf2xla_util",
+        "//tensorflow/compiler/jit:union_find",
+        "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "functionalize_control_flow",
+    srcs = [
+        "functionalize_control_flow.cc",
+    ],
+    hdrs = [
+        "functionalize_control_flow.h",
+    ],
+    deps = [
+        ":functionalize_cond",
+        ":functionalize_control_flow_util",
+        ":functionalize_while",
+        ":tf2xla_util",
+        "//tensorflow/compiler/jit:union_find",
+        "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "functionalize_while",
+    srcs = [
+        "functionalize_while.cc",
+    ],
+    hdrs = [
+        "functionalize_while.h",
+    ],
+    deps = [
+        ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -482,6 +555,32 @@ tf_cc_test(
         "//tensorflow/core:resource_variable_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "functionalize_cond_test",
+    srcs = ["functionalize_cond_test.cc"],
+    deps = [
+        ":functionalize_cond",
+        ":functionalize_control_flow",
+        ":test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/compiler/tf2xla/cc:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:resource_variable_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
