@@ -4451,6 +4451,24 @@ tf_kernel_library(
     deps = STRING_DEPS + ["@com_googlesource_code_re2//:re2"],
 )
 
+tf_cc_test(
+    name = "regex_replace_op_test",
+    size = "small",
+    srcs = ["regex_replace_op_test.cc"],
+    deps = [
+        ":regex_replace_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
 tf_kernel_library(
     name = "string_split_op",
     prefix = "string_split_op",

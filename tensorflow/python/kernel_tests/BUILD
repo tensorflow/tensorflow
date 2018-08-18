@@ -747,6 +747,7 @@ tf_py_test(
     size = "small",
     srcs = ["regex_replace_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
