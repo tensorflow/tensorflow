@@ -668,7 +668,7 @@ def assert_element_shape(expected_shapes):
     flatten_tensors = nest.flatten(elements)
     flatten_shapes = nest.flatten(expected_shapes)
     checked_tensors = [
-        with_shape(shape, tensor)
+        with_shape(shape, tensor) if shape else tensor  # Overview unknown shape
         for shape, tensor in zip(flatten_shapes, flatten_tensors)
     ]
     return nest.pack_sequence_as(elements, checked_tensors)
