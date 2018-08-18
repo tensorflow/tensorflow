@@ -756,7 +756,7 @@ class CollectiveAllReduce(CrossTowerOps):
     )
     super(CollectiveAllReduce, self).__init__()
 
-  # TODO(yuefengz, tucker): is index slices supported by collective ops?
+  # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
   def _reduce(self, aggregation, per_device_value, destinations):
     all_reduced = self._batch_all_reduce(aggregation, [per_device_value])[0]
     if destinations is None or _devices_match(per_device_value, destinations):
@@ -768,8 +768,10 @@ class CollectiveAllReduce(CrossTowerOps):
         if d in all_reduced._index:
           index[d] = all_reduced._index[d]
         else:
-          with ops.device(d):
+          with ops.control_dependencies(list(
+              all_reduced._index.values())), ops.device(d):
             index[d] = array_ops.identity(list(all_reduced._index.values())[0])
+
       return value_lib.Mirrored(index)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
