@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -65,11 +64,10 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
   // Slice for a more accurate estimate of bytes read.
   double bytes = 0.0;
   for (auto& instruction : instructions) {
-    if (absl::c_all_of(
-            instruction->users(), [](const HloInstruction* instruction) {
-              return instruction->opcode() == HloOpcode::kSlice ||
-                     instruction->opcode() == HloOpcode::kDynamicSlice;
-            })) {
+    if (c_all_of(instruction->users(), [](const HloInstruction* instruction) {
+          return instruction->opcode() == HloOpcode::kSlice ||
+                 instruction->opcode() == HloOpcode::kDynamicSlice;
+        })) {
       // All users are slice: accumulate bytes of all user slice instructions.
       for (auto& user : instruction->users()) {
         bytes += ShapeUtil::ByteSizeOf(user->shape());
@@ -225,7 +223,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
-  if (!absl::c_all_of(fusion->users(), [](const HloInstruction* user) {
+  if (!c_all_of(fusion->users(), [](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
                (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
                 user->fusion_kind() == HloInstruction::FusionKind::kInput);
@@ -243,11 +241,11 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // If 'fusion' has just one user, then an earlier fusion pass chose not to
   // fuse this producer/comsumer pair (likely because of expensive instruction
   // re-use by the consumer), and so we honor that choice here as well.
-  if (absl::c_any_of(fusion->fused_instructions(),
-                     [](const HloInstruction* instruction) {
-                       return instruction->opcode() != HloOpcode::kParameter &&
-                              GpuInstructionFusion::IsExpensive(*instruction);
-                     })) {
+  if (c_any_of(fusion->fused_instructions(),
+               [](const HloInstruction* instruction) {
+                 return instruction->opcode() != HloOpcode::kParameter &&
+                        GpuInstructionFusion::IsExpensive(*instruction);
+               })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Contains one or more expensive instructions.";
     ++num_fail_expensive_fused_instruction_;

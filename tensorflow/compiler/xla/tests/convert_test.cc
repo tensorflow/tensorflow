@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -448,11 +447,11 @@ std::vector<float> GetInterestingF16ConversionTestCases() {
 XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
   std::vector<float> test_cases = GetInterestingF16ConversionTestCases();
   std::vector<half> input;
-  absl::c_transform(test_cases, std::back_inserter(input),
-                    [](float f) { return Eigen::half(f); });
+  c_transform(test_cases, std::back_inserter(input),
+              [](float f) { return Eigen::half(f); });
   std::vector<float> expected_output;
-  absl::c_transform(input, std::back_inserter(expected_output),
-                    [](Eigen::half h) { return static_cast<float>(h); });
+  c_transform(input, std::back_inserter(expected_output),
+              [](Eigen::half h) { return static_cast<float>(h); });
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> dot_lhs_handle,
@@ -471,8 +470,8 @@ XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
 XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
   std::vector<float> input = GetInterestingF16ConversionTestCases();
   std::vector<half> expected_output;
-  absl::c_transform(input, std::back_inserter(expected_output),
-                    [](float f) { return Eigen::half(f); });
+  c_transform(input, std::back_inserter(expected_output),
+              [](float f) { return Eigen::half(f); });
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> dot_lhs_handle,

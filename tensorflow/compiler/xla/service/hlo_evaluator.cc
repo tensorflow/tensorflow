@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -565,8 +564,7 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
   std::vector<int64> index_count;
   index_count.reserve(output_rank);
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_output_batch_dim =
-        !absl::c_binary_search(dim_numbers.offset_dims(), i);
+    bool is_output_batch_dim = !c_binary_search(dim_numbers.offset_dims(), i);
     index_count.push_back(is_output_batch_dim ? output_shape.dimensions(i) : 1);
   }
 
@@ -583,11 +581,10 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputOffsetIndices(
   std::vector<int64> index_count(output_rank, 1);
   int64 slice_sizes_idx = 0;
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_output_window_dim =
-        absl::c_binary_search(dim_numbers.offset_dims(), i);
+    bool is_output_window_dim = c_binary_search(dim_numbers.offset_dims(), i);
     if (is_output_window_dim) {
-      while (absl::c_binary_search(dim_numbers.collapsed_slice_dims(),
-                                   slice_sizes_idx)) {
+      while (c_binary_search(dim_numbers.collapsed_slice_dims(),
+                             slice_sizes_idx)) {
         slice_sizes_idx++;
       }
       index_count[i] = slice_sizes[slice_sizes_idx++];
@@ -613,13 +610,13 @@ class OutputBatchIndexToInputIndex {
       : dim_numbers_(*dim_numbers), start_indices_(*start_indices) {
     for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
       output_dim_is_batch_dims_.push_back(
-          !absl::c_binary_search(dim_numbers_.offset_dims(), i));
+          !c_binary_search(dim_numbers_.offset_dims(), i));
     }
 
     for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
       int64 index_of_input_dim_in_index_vector =
           std::distance(dim_numbers_.start_index_map().begin(),
-                        absl::c_find(dim_numbers_.start_index_map(), i));
+                        c_find(dim_numbers_.start_index_map(), i));
       if (index_of_input_dim_in_index_vector ==
           dim_numbers_.start_index_map_size()) {
         input_dim_value_to_index_vector_.push_back(-1);
@@ -739,7 +736,7 @@ class OutputOffsetIndexToInputIndex {
     std::vector<int64> window_index_to_output_index;
     int64 output_index_count = 0;
     for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
-      if (absl::c_binary_search(dim_numbers.offset_dims(), i)) {
+      if (c_binary_search(dim_numbers.offset_dims(), i)) {
         window_index_to_output_index.push_back(output_index_count++);
       } else {
         output_index_count++;
@@ -748,7 +745,7 @@ class OutputOffsetIndexToInputIndex {
 
     int64 window_dim_count = 0;
     for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
-      if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+      if (c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
         input_dim_value_to_output_index_.push_back(-1);
       } else {
         input_dim_value_to_output_index_.push_back(

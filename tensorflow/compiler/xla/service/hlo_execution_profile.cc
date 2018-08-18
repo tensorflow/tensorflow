@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
@@ -68,11 +67,11 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
 
   // The profile indices were computed deterministically in
   // HloProfileIndexMap::HloProfileIndexMap.
-  absl::c_sort(computation_and_profile_idx_list,
-               [](const std::pair<const HloComputation*, int64>& left,
-                  const std::pair<const HloComputation*, int64>& right) {
-                 return left.second < right.second;
-               });
+  c_sort(computation_and_profile_idx_list,
+         [](const std::pair<const HloComputation*, int64>& left,
+            const std::pair<const HloComputation*, int64>& right) {
+           return left.second < right.second;
+         });
 
   for (const auto& pair : computation_and_profile_idx_list) {
     CHECK_LT(pair.second, profile_counters_size);
