@@ -17,6 +17,10 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 filegroup(
     name = "base_api_def",
@@ -40,6 +44,7 @@ cc_library(
     name = "excluded_ops_lib",
     srcs = ["excluded_ops.cc"],
     hdrs = ["excluded_ops.h"],
+    copts = if_mkl(["-DINTEL_MKL=1"]),
 )
 
 cc_library(
