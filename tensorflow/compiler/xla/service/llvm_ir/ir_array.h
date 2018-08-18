@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -81,7 +82,7 @@ class IrArray {
         }
       }
       CHECK_NE(index_type_, nullptr);
-      CHECK(c_all_of(multidim, [&](llvm::Value* v) {
+      CHECK(absl::c_all_of(multidim, [&](llvm::Value* v) {
         return index_type_ == v->getType();
       }));
     }

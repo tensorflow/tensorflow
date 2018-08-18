@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -1752,8 +1753,8 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   }
 
   auto is_unstrided_slice = [](const HloInstruction* hlo) {
-    return c_all_of(hlo->slice_strides(),
-                    [](int64 stride) { return stride == 1; });
+    return absl::c_all_of(hlo->slice_strides(),
+                          [](int64 stride) { return stride == 1; });
   };
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
       is_unstrided_slice(slice) && is_unstrided_slice(slice->operand(0))) {
@@ -1930,7 +1931,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
   // This should make fusion easier or use less memory bandwidth in the unfused
   // case.
   if (arg->opcode() == HloOpcode::kConcatenate &&
-      c_linear_search(reduce->dimensions(), arg->concatenate_dimension())) {
+      absl::c_linear_search(reduce->dimensions(),
+                            arg->concatenate_dimension())) {
     HloInstruction* old_reduce = nullptr;
     for (HloInstruction* operand : arg->operands()) {
       HloInstruction* new_reduce = computation_->AddInstruction(

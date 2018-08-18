@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -538,9 +539,9 @@ uint64 HloModule::RandomNew64() const {
 HloComputation* HloModule::GetComputationWithName(
     tensorflow::StringPiece name) {
   auto computations_in_module = computations();
-  auto it = c_find_if(computations_in_module, [&](HloComputation* computation) {
-    return computation->name() == name;
-  });
+  auto it = absl::c_find_if(
+      computations_in_module,
+      [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
 }
 

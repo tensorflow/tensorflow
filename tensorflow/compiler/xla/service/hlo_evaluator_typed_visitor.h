@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -1825,7 +1826,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     std::vector<int64> index_count(updates_rank, 1);
     for (int64 i = 0; i < updates_rank; i++) {
       bool is_update_scatter_dim =
-          !c_binary_search(dim_numbers.update_window_dims(), i);
+          !absl::c_binary_search(dim_numbers.update_window_dims(), i);
       if (is_update_scatter_dim) {
         index_count[i] = updates_shape.dimensions(i);
       }
@@ -1844,7 +1845,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     std::vector<int64> index_count(updates_rank, 1);
     for (int64 i = 0; i < updates_rank; i++) {
       bool is_update_window_dim =
-          c_binary_search(dim_numbers.update_window_dims(), i);
+          absl::c_binary_search(dim_numbers.update_window_dims(), i);
       if (is_update_window_dim) {
         index_count[i] = updates_shape.dimensions(i);
       }
@@ -1871,7 +1872,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         : dim_numbers_(*dim_numbers), scatter_indices_(*scatter_indices) {
       for (int64 i = 0; i < updates_shape.dimensions_size(); i++) {
         update_dim_is_scatter_dims_.push_back(
-            !c_binary_search(dim_numbers_.update_window_dims(), i));
+            !absl::c_binary_search(dim_numbers_.update_window_dims(), i));
       }
 
       for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
@@ -2001,7 +2002,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       std::vector<int64> window_index_to_update_index;
       int64 update_index_count = 0;
       for (int64 i = 0; i < updates_shape.dimensions_size(); i++) {
-        if (c_binary_search(dim_numbers.update_window_dims(), i)) {
+        if (absl::c_binary_search(dim_numbers.update_window_dims(), i)) {
           window_index_to_update_index.push_back(update_index_count++);
         } else {
           update_index_count++;
@@ -2010,7 +2011,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
       int64 window_dim_count = 0;
       for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
-        if (c_binary_search(dim_numbers.inserted_window_dims(), i)) {
+        if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
           input_dim_value_to_update_index_.push_back(-1);
         } else {
           input_dim_value_to_update_index_.push_back(

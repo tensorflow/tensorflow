@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1973,7 +1974,7 @@ HloGatherInstruction::HloGatherInstruction(
   AppendOperand(start_indices);
   gather_dimension_numbers_ =
       MakeUnique<GatherDimensionNumbers>(gather_dim_numbers);
-  c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
+  absl::c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
 }
 
 string HloGatherInstruction::GatherDimensionNumbersToString() const {

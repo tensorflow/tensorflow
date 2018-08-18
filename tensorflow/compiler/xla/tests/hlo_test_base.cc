@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -217,7 +218,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
 
   std::vector<Literal*> fake_argument_ptrs;
-  c_transform(
+  absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
 
@@ -231,7 +232,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   const auto& fake_arguments =
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
   std::vector<Literal*> fake_argument_ptrs;
-  c_transform(
+  absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
 
@@ -266,7 +267,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       MakeFakeArguments(module_or_status.ValueOrDie().get())
           .ConsumeValueOrDie();
   std::vector<Literal*> fake_argument_ptrs;
-  c_transform(
+  absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
   return test_runner_
@@ -321,8 +322,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 HloComputation* HloTestBase::FindComputation(HloModule* module,
                                              tensorflow::StringPiece name) {
   auto computations = module->computations();
-  auto it = c_find_if(computations,
-                      [&](HloComputation* c) { return c->name() == name; });
+  auto it = absl::c_find_if(
+      computations, [&](HloComputation* c) { return c->name() == name; });
   if (it == computations.end()) {
     return nullptr;
   }
@@ -333,8 +334,8 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              tensorflow::StringPiece name) {
   for (const HloComputation* c : module->computations()) {
     auto instructions = c->instructions();
-    auto it = c_find_if(instructions,
-                        [&](HloInstruction* i) { return i->name() == name; });
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->name() == name; });
     if (it != instructions.end()) {
       return *it;
     }

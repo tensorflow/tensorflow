@@ -23,6 +23,7 @@ limitations under the License.
 #include <set>
 #include <sstream>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -901,9 +902,9 @@ void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
 HloInstruction* HloComputation::GetInstructionWithName(
     tensorflow::StringPiece name) {
   auto instructions_in_computation = instructions();
-  auto it = c_find_if(instructions_in_computation, [&](HloInstruction* instr) {
-    return instr->name() == name;
-  });
+  auto it = absl::c_find_if(
+      instructions_in_computation,
+      [&](HloInstruction* instr) { return instr->name() == name; });
   return it == instructions_in_computation.end() ? nullptr : *it;
 }
 
