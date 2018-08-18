@@ -759,8 +759,8 @@ class RestructuredDatasetTest(test.TestCase):
     def create_unknown_shape_dataset(x):
       return script_ops.py_func(
           lambda _: (  # pylint: disable=g-long-lambda
-            np.ones(2, dtype=np.float32),
-            np.zeros((3, 4), dtype=np.int32)),
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
           [x],
           [dtypes.float32, dtypes.int32])
 
@@ -789,8 +789,8 @@ class RestructuredDatasetTest(test.TestCase):
     def create_unknown_shape_dataset(x):
       return script_ops.py_func(
           lambda _: (  # pylint: disable=g-long-lambda
-            np.ones(2, dtype=np.float32),
-            np.zeros((3, 4), dtype=np.int32)),
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
           [x],
           [dtypes.float32, dtypes.int32])
 
@@ -802,7 +802,7 @@ class RestructuredDatasetTest(test.TestCase):
     wrong_shapes = (tensor_shape.TensorShape(2),
                     tensor_shape.TensorShape((3, 10)))
     iterator = (
-      dataset.apply(batching.assert_element_shape(wrong_shapes))
+        dataset.apply(batching.assert_element_shape(wrong_shapes))
         .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -854,8 +854,8 @@ class RestructuredDatasetTest(test.TestCase):
     def create_unknown_shape_dataset(x):
       return script_ops.py_func(
           lambda _: (  # pylint: disable=g-long-lambda
-            np.ones(2, dtype=np.float32),
-            np.zeros((3, 4), dtype=np.int32)),
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
           [x],
           [dtypes.float32, dtypes.int32])
 
@@ -884,8 +884,8 @@ class RestructuredDatasetTest(test.TestCase):
     def create_unknown_shape_dataset(x):
       return script_ops.py_func(
           lambda _: (  # pylint: disable=g-long-lambda
-            np.ones(2, dtype=np.float32),
-            np.zeros((3, 4), dtype=np.int32)),
+              np.ones(2, dtype=np.float32),
+              np.zeros((3, 4), dtype=np.int32)),
           [x],
           [dtypes.float32, dtypes.int32])
 
@@ -897,7 +897,7 @@ class RestructuredDatasetTest(test.TestCase):
     wrong_shapes = (tensor_shape.TensorShape(2),
                     tensor_shape.TensorShape((None, 10)))
     iterator = (
-      dataset.apply(batching.assert_element_shape(wrong_shapes))
+        dataset.apply(batching.assert_element_shape(wrong_shapes))
         .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
