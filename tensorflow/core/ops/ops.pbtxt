@@ -31820,6 +31820,32 @@ op {
   }
 }
 op {
+  name: "StaticRegexReplace"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "pattern"
+    type: "string"
+  }
+  attr {
+    name: "rewrite"
+    type: "string"
+  }
+  attr {
+    name: "replace_global"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "StatsAggregatorHandle"
   output_arg {
     name: "handle"
