@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -116,7 +117,7 @@ Status ParseOneProfileOutputLine(
         ", Regexp: ", regexp_pattern);
   }
 
-  if (!c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
+  if (!absl::c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
     InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
   }
 
@@ -294,7 +295,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
       tensorflow::str_util::Split(profile_output, '\n');
 
   auto while_body_profile_start =
-      c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
+      absl::c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
         return tensorflow::str_util::StartsWith(s,
                                                 "Execution profile for body");
       });

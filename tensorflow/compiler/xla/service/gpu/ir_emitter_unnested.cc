@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -314,13 +315,13 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
   };
 
   // Check the size of input tensors
-  if (!c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
+  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
     return i64_ty;
   }
 
   // Check the size of the internal result tensors
   if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    if (!c_all_of(
+    if (!absl::c_all_of(
             unnested_hlo->fused_instructions_computation()->instructions(),
             hlo_shape_in_range)) {
       return i64_ty;
@@ -1738,7 +1739,7 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
   bool all_tuple_elements_have_buffer =
-      c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
+      absl::c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment()
             .GetUniqueTopLevelSlice(tuple_element)
             .ok();
@@ -2322,10 +2323,10 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   // We'll pass a pointer to each of the elements of `buffers` to our kernel, in
   // this order.
   std::vector<const BufferAllocation*> non_constant_buffers;
-  c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
-            [](const BufferAllocation* allocation) {
-              return !allocation->is_constant();
-            });
+  absl::c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
+                  [](const BufferAllocation* allocation) {
+                    return !allocation->is_constant();
+                  });
 
   std::sort(non_constant_buffers.begin(), non_constant_buffers.end(),
             [](const BufferAllocation* a, const BufferAllocation* b) {
@@ -2582,7 +2583,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     // MemzeroThunk.
     ArraySlice<uint8> literal_bytes(
         reinterpret_cast<const uint8*>(literal.untyped_data()), num_bytes);
-    if (c_all_of(literal_bytes, [](uint8 byte) { return byte == 0; })) {
+    if (absl::c_all_of(literal_bytes, [](uint8 byte) { return byte == 0; })) {
       return {
           MakeUnique<MemzeroThunk>(GetAllocationSlice(*hlo, index), nullptr)};
     }
@@ -3105,7 +3106,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
         CeilOfRatio<int64>(output_dims_in_tiles[i], kTileSize);
   }
   const int64 num_tiles =
-      c_accumulate(output_dims_in_tiles, 1, std::multiplies<int64>());
+      absl::c_accumulate(output_dims_in_tiles, 1, std::multiplies<int64>());
   LaunchDimensions launch_dimensions(num_tiles, kThreadsPerTile);
 
   llvm::Type* index_ty =

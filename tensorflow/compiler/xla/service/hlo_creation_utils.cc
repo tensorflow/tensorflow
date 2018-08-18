@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -149,13 +150,13 @@ StatusOr<HloInstruction*> MakeConcatHlo(ArraySlice<HloInstruction*> operands,
   CHECK_GT(operands.size(), 0);
 
   HloComputation* computation = operands[0]->parent();
-  CHECK(c_all_of(operands, [&](HloInstruction* instr) {
+  CHECK(absl::c_all_of(operands, [&](HloInstruction* instr) {
     return instr->parent() == computation;
   }));
 
   std::vector<const Shape*> operand_shapes;
-  c_transform(operands, std::back_inserter(operand_shapes),
-              [](HloInstruction* instr) { return &instr->shape(); });
+  absl::c_transform(operands, std::back_inserter(operand_shapes),
+                    [](HloInstruction* instr) { return &instr->shape(); });
 
   TF_ASSIGN_OR_RETURN(Shape concat_shape, ShapeInference::InferConcatOpShape(
                                               operand_shapes, dimension));
@@ -228,7 +229,7 @@ StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
   const Shape& operand_shape = operand->shape();
   new_shape_dims.reserve(n + operand_shape.dimensions_size());
   new_shape_dims.insert(new_shape_dims.begin(), n, 1);
-  c_copy(operand_shape.dimensions(), std::back_inserter(new_shape_dims));
+  absl::c_copy(operand_shape.dimensions(), std::back_inserter(new_shape_dims));
   return MakeReshapeHlo(new_shape_dims, operand);
 }
 
@@ -240,7 +241,7 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
   std::vector<int64> expanded_shape_dim_bounds;
   expanded_shape_dim_bounds.reserve(expanded_dims.size() +
                                     operand->shape().dimensions_size() - 1);
-  c_copy(expanded_dims, std::back_inserter(expanded_shape_dim_bounds));
+  absl::c_copy(expanded_dims, std::back_inserter(expanded_shape_dim_bounds));
   std::copy(operand->shape().dimensions().begin() + 1,
             operand->shape().dimensions().end(),
             std::back_inserter(expanded_shape_dim_bounds));
@@ -251,7 +252,7 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
 
 StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
                                               ArraySlice<int64> dims_to_elide) {
-  CHECK(c_is_sorted(dims_to_elide));
+  CHECK(absl::c_is_sorted(dims_to_elide));
 
   const Shape& input_shape = operand->shape();
   // First accumulate in reverse
@@ -268,7 +269,7 @@ StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
     }
   }
 
-  c_reverse(new_shape_dim_bounds);
+  absl::c_reverse(new_shape_dim_bounds);
   Shape output_shape =
       ShapeUtil::MakeShape(input_shape.element_type(), new_shape_dim_bounds);
   return MakeReshapeHlo(output_shape, operand);
@@ -276,7 +277,7 @@ StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
 
 StatusOr<HloInstruction*> InsertDegenerateDims(
     HloInstruction* operand, ArraySlice<int64> dims_to_insert) {
-  CHECK(c_is_sorted(dims_to_insert));
+  CHECK(absl::c_is_sorted(dims_to_insert));
 
   const Shape& operand_shape = operand->shape();
   int64 output_shape_rank =

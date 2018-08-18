@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/algorithm/container.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
@@ -1672,7 +1673,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   std::vector<int64> operand_to_output_dim(operand_shape.dimensions_size(), -1);
   for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
-    if (c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+    if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       operand_index.push_back(index.GetConstantWithIndexType(0));
     } else {
       int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
@@ -1686,7 +1687,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   {
     std::vector<llvm::Value*> gather_index_index_components;
     for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
-      if (!c_binary_search(dim_numbers.offset_dims(), i)) {
+      if (!absl::c_binary_search(dim_numbers.offset_dims(), i)) {
         gather_index_index.push_back(index[i]);
       }
     }
