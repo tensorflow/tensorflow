@@ -26,7 +26,6 @@ import threading
 import numpy as np
 import six
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -102,7 +101,7 @@ class CapturingGraph(ops.Graph):
       The entries are in the order they were captured.
   """
 
-  def __init__(self):
+  def __init__(self, graph=None):
     super(CapturingGraph, self).__init__()
 
     self.captures = collections.OrderedDict()
@@ -112,6 +111,13 @@ class CapturingGraph(ops.Graph):
     # this tensor. Used to enforce that execution order matches program order
     # for resource tensors.
     self._last_op_using_resource_tensor = {}
+
+    if context.executing_eagerly():
+      self._xla_compile = (context.context().device_spec.device_type == "TPU")
+    elif graph is not None:
+      self._xla_compile = getattr(graph, "_xla_compile", False)
+    else:
+      self._xla_compile = False
 
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
@@ -207,7 +213,7 @@ class FuncGraph(CapturingGraph):
       graph: if specified, this FuncGraph will inherit its graph key,
         collections, and seed from `graph`.
     """
-    super(FuncGraph, self).__init__()
+    super(FuncGraph, self).__init__(graph=graph)
 
     self.name = name
     self.inputs = []
@@ -267,9 +273,6 @@ def _register(fn):
   context.context().add_function(fn)
 
 
-_xla_compile_attr = "_XlaCompile"
-
-
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -311,7 +314,6 @@ class _EagerDefinedFunction(object):
       # It might be worth creating a convenient way to re-use status.
       pywrap_tensorflow.TF_FunctionSetAttrValueProto(
           fn, compat.as_str(name), serialized)
-    self._xla_compile = _xla_compile_attr in attrs
 
     # TODO(apassos) avoid creating a FunctionDef (specially to grab the
     # signature, but also in general it's nice not to depend on it.
@@ -365,10 +367,7 @@ class _EagerDefinedFunction(object):
 
     executing_eagerly = ctx.executing_eagerly()
 
-    xla_compile = self._xla_compile or (executing_eagerly and
-                                        ctx.device_spec.device_type == "TPU")
-
-    if xla_compile:
+    if self._graph._xla_compile:  # pylint: disable=protected-access
       # XLA compilation relies upon a custom kernel creator to run functions.
       signature = self.signature
       if executing_eagerly:
@@ -471,6 +470,10 @@ class GraphModeFunction(object):
       attrs: (optional) dict mapping names of attributes to their AttrValue
         values. Attributes in `attrs` will be included in this function's
         definition.
+
+    Raises:
+      ValueError: If number of input_placeholders is not equal to the number
+        of function inputs.
     """
     self._attrs = attrs or {}
     defined_function = _EagerDefinedFunction(
@@ -549,6 +552,7 @@ class GraphModeFunction(object):
     operations = tuple(op for op in backwards_graph.get_operations()
                        if op not in ignored_ops)
 
+    backwards_graph._xla_compile = self._graph._xla_compile  # pylint: disable=protected-access
     self._backward_function = GraphModeFunction(
         backwards_graph.name,
         backwards_graph.inputs,
@@ -729,14 +733,12 @@ def _get_defun_inputs_from_args(args):
   return nest.pack_sequence_as(args, function_inputs)
 
 
-def _trace_and_define_function(name, python_func, compiled, args, kwds,
-                               signature=None):
+def _trace_and_define_function(name, python_func, args, kwds, signature=None):
   """Defines and returns graph-mode version of `python_func`.
 
   Args:
     name: an identifier for the function.
     python_func: the Python function to trace.
-    compiled: whether the graph function should be compiled through XLA.
     args: the positional args with which the Python function should be called;
       ignored if a signature is provided.
     kwds: the keyword args with which the Python function should be called;
@@ -854,8 +856,6 @@ def _trace_and_define_function(name, python_func, compiled, args, kwds,
       _register(f._c_func.func)  # pylint: disable=protected-access
 
   attrs = {}
-  if compiled:
-    attrs[_xla_compile_attr] = attr_value_pb2.AttrValue(b=True)
 
   return GraphModeFunction(
       func_graph.name, func_graph.inputs, func_graph.captures.keys(),
@@ -924,8 +924,7 @@ class _PolymorphicFunction(object):
   def __init__(self,
                python_function,
                name,
-               input_signature=None,
-               compiled=False):
+               input_signature=None):
     """Initializes a polymorphic function.
 
     Args:
@@ -934,7 +933,6 @@ class _PolymorphicFunction(object):
       input_signature: a possibly nested sequence of `TensorSpec` objects
         specifying the input signature of this function. If `None`, a separate
         function is instantiated for each inferred input signature.
-      compiled: if True, the framework will attempt to compile func with XLA.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -953,7 +951,6 @@ class _PolymorphicFunction(object):
       self._args_to_prepend = tuple()
       self._kwds_to_include = {}
     self._name = name
-    self._compiled = compiled
     self._arguments_to_functions = {}
     self._variables = []
 
@@ -1119,7 +1116,7 @@ class _PolymorphicFunction(object):
 
       if graph_function is None:
         graph_function = _trace_and_define_function(
-            self._name, self._python_function, self._compiled, args, kwds,
+            self._name, self._python_function, args, kwds,
             self._input_signature)
         self._variables.extend(
             [v for v in graph_function.variables if v not in self._variables])
@@ -1141,10 +1138,7 @@ class _PolymorphicFunction(object):
     return self._variables
 
 
-# TODO(akshayka): Remove the `compiled` flag and create a separate
-# API for xla compilation (`defun` is already complicated enough
-# as it is, and the keyword argument makes 'compiled' an overloaded concept)
-def defun(func=None, input_signature=None, compiled=False):
+def defun(func=None, input_signature=None):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") trace-compiles a Python function
@@ -1435,9 +1429,10 @@ def defun(func=None, input_signature=None, compiled=False):
     func: function to be compiled. If `func` is None, returns a
       decorator that can be invoked with a single argument - `func`. The
       end result is equivalent to providing all the arguments up front.
-      In other words, defun(compiled=True)(func) is equivalent to
-      defun(func, compiled=True). The former allows the following use case:
-        @tf.contrib.eager.defun(compiled=True)
+      In other words, defun(input_signature=...)(func) is equivalent to
+      defun(func, input_signature=...). The former allows
+      the following use case:
+        @tf.contrib.eager.defun(input_signature=...)
         def foo(...):
           ...
 
@@ -1447,11 +1442,6 @@ def defun(func=None, input_signature=None, compiled=False):
       function is instantiated for each inferred input signature.  If a
       signature is specified, every input to `func` must be a `Tensor`, and
       `func` cannot accept `**kwargs`.
-
-    compiled: If True, an attempt to compile `func` with XLA will be made.
-      If it fails, function will be run normally. Experimental.  Currently
-      supported only for execution on TPUs. For the vast majority of users,
-      this argument should be False.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -1468,7 +1458,7 @@ def defun(func=None, input_signature=None, compiled=False):
     return tf_decorator.make_decorator(
         function,
         _PolymorphicFunction(
-            function, name, input_signature=input_signature, compiled=compiled))
+            function, name, input_signature=input_signature))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -1526,7 +1516,7 @@ def make_defun_op(func, *args, **kwds):
      and which can be called directly the way a `@defun` wrapped function
      can.
   """
-  return _trace_and_define_function(func.__name__, func, False, args, kwds)
+  return _trace_and_define_function(func.__name__, func, args, kwds)
 
 
 class AutomaticControlDependencies(object):
