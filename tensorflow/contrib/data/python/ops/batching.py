@@ -666,20 +666,31 @@ def assert_element_shape(expected_shapes):
     `tf.data.Dataset.apply`
   """
 
+  def _merge_output_shape(original_shapes, expected_shapes):
+    flat_original_shapes = nest.flatten(original_shapes)
+    flat_new_shapes = nest.flatten_up_to(original_shapes, expected_shapes)
+    flat_merged_output_shapes = [
+      original_shape.merge_with(new_shape)
+      for original_shape, new_shape in zip(flat_original_shapes,
+                                           flat_new_shapes)]
+    return nest.pack_sequence_as(original_shapes, flat_merged_output_shapes)
+
   def _check_shape(*elements):
     flatten_tensors = nest.flatten(elements)
     flatten_shapes = nest.flatten(expected_shapes)
     checked_tensors = [
-        with_shape(shape, tensor) if shape else tensor  # Overview unknown shape
+        with_shape(shape, tensor) if shape else tensor  # Ignore unknown shape
         for shape, tensor in zip(flatten_shapes, flatten_tensors)
     ]
     return nest.pack_sequence_as(elements, checked_tensors)
 
   def _apply_fn(dataset):
+    output_shapes = _merge_output_shape(dataset.output_shapes,
+                                        expected_shapes)
     return _RestructuredDataset(
         dataset.map(_check_shape),
         dataset.output_types,
-        output_shapes=expected_shapes,
+        output_shapes=output_shapes,
         output_classes=dataset.output_classes)
 
   return _apply_fn
