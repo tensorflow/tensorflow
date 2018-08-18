@@ -78,9 +78,8 @@ def main(_):
     predict_features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)
     return predict_features
 
-  predictions = estimator.predict(input_fn=predict_input_fn)
-  # TODO(anjalsridhar): This returns a generator object, figure out how to get
-  # meaningful results here.
+  prediction_iterable = estimator.predict(input_fn=predict_input_fn)
+  predictions = [prediction_iterable.next() for _ in range(10)]
   print("Prediction results: {}".format(predictions))
 
 
