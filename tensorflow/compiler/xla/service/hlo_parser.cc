@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
@@ -636,13 +635,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
-        absl::c_transform(
-            *tmp_groups, std::back_inserter(replica_groups),
-            [](const std::vector<int64>& ids) {
-              ReplicaGroup group;
-              *group.mutable_replica_ids() = {ids.begin(), ids.end()};
-              return group;
-            });
+        c_transform(*tmp_groups, std::back_inserter(replica_groups),
+                    [](const std::vector<int64>& ids) {
+                      ReplicaGroup group;
+                      *group.mutable_replica_ids() = {ids.begin(), ids.end()};
+                      return group;
+                    });
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
           shape, operands, replica_groups, barrier ? *barrier : ""));

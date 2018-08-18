@@ -173,7 +173,6 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

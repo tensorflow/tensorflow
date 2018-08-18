@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -132,7 +131,7 @@ bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
       max_rank_layout = &param->shape().layout();
     }
   }
-  return absl::c_all_of(params, [&](HloInstruction* param) {
+  return c_all_of(params, [&](HloInstruction* param) {
     return (ShapeUtil::Rank(param->shape()) < max_rank) ||
            (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
   });
@@ -249,7 +248,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       }
       // Do not fuse a producer if the other operands of the fusion are
       // reachable from the producer, this would create a cycle.
-      if (absl::c_any_of(consumer_operands, [&](HloInstruction* operand) {
+      if (c_any_of(consumer_operands, [&](HloInstruction* operand) {
             return producer != operand &&
                    reachability()->IsReachable(producer, operand);
           })) {
@@ -269,7 +268,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   for (auto& fusion_pair : potential_fusion_list) {
     HloInstruction* producer = fusion_pair.first;
     HloInstruction* consumer = fusion_pair.second;
-    if (!absl::c_any_of(consumer->operands(), [&](HloInstruction* operand) {
+    if (!c_any_of(consumer->operands(), [&](HloInstruction* operand) {
           return producer != operand &&
                  reachability()->IsReachable(producer, operand);
         })) {

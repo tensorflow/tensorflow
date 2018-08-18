@@ -21,7 +21,6 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -380,7 +379,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "DynamicSlice instruction should have 2 operands but sees "
           << proto.operand_ids_size();
       std::vector<int64> slice_sizes(proto.dynamic_slice_sizes_size());
-      absl::c_copy(proto.dynamic_slice_sizes(), slice_sizes.begin());
+      c_copy(proto.dynamic_slice_sizes(), slice_sizes.begin());
       instruction = CreateDynamicSlice(proto.shape(), operands(0), operands(1),
                                        slice_sizes);
       break;

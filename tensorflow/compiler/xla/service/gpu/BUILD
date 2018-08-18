@@ -180,7 +180,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "@com_google_absl//absl/algorithm:container",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -467,7 +466,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:multi_output_fusion",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -515,7 +513,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

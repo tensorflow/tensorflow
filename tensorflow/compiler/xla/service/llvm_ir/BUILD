@@ -88,7 +88,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/algorithm:container",
         "@llvm//:core",
     ],
 )
