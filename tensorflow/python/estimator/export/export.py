@@ -590,5 +590,5 @@ def get_temp_export_dir(timestamped_export_dir):
   (dirname, basename) = os.path.split(timestamped_export_dir)
   temp_export_dir = os.path.join(
       compat.as_bytes(dirname),
-      compat.as_bytes('temp-') + compat.as_bytes(basename))
+      b"temp-" + compat.as_bytes(basename))
   return temp_export_dir
