@@ -2010,6 +2010,7 @@ def _convert_biasaddgrad(pfor_input):
 @RegisterPForWithArgs("ReluGrad")
 @RegisterPForWithArgs("TanhGrad")
 @RegisterPForWithArgs("SigmoidGrad")
+@RegisterPForWithArgs("SoftplusGrad")
 def _convert_grads(pfor_input, op_type, *args, **kw_args):
   del args
   del kw_args
