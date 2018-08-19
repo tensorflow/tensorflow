@@ -956,9 +956,7 @@ def _compute_feature_importances_per_tree(tree, num_features):
   return importances
 
 
-def _compute_feature_importances(tree_ensemble,
-                                 num_features,
-                                 normalize=True):
+def _compute_feature_importances(tree_ensemble, num_features, normalize):
   """Compute the feature importances.
 
   The higher the value, the more important the feature.
@@ -972,6 +970,9 @@ def _compute_feature_importances(tree_ensemble,
     sorted_feature_idx: A list of feature_id which is sorted
       by its feature importance.
     feature_importances: A list of corresponding feature importance.
+
+  Raises:
+    AssertionError: Trees are all empty or root node only when normalizing.
   """
   tree_importances = [_compute_feature_importances_per_tree(tree, num_features)
                       for tree in tree_ensemble.trees]
@@ -996,7 +997,7 @@ class _BoostedTrees(estimator.Estimator):
 
     self._sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
 
-  def experimental_feature_importances(self, normalize=True):
+  def experimental_feature_importances(self, normalize=False):
     """Compute the feature importances.
 
     The higher the value, the more important the corresponding feature.
@@ -1005,9 +1006,9 @@ class _BoostedTrees(estimator.Estimator):
       normalize: If True, normalize the feature importances.
 
     Returns:
-      sorted_feature_names: A list of feature name which is sorted
+      sorted_feature_names: 1-D array of feature name which is sorted
         by its feature importance.
-      feature_importances: A list of corresponding feature importance.
+      feature_importances: 1-D array of the corresponding feature importance.
 
     Raises:
       ValueError: Empty ensemble.
