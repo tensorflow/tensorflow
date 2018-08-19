@@ -190,7 +190,7 @@ class BFCGdrAllocator : public BFCAllocator {
  public:
   BFCGdrAllocator()
       : BFCAllocator(new BasicCPUAllocator(port::kNUMANoAffinity), 1LL << 36,
-                     true, "cpu_rdma_bfc") {}
+                     true, "cpu_gdr_bfc") {}
 };
 class BFCGdrAllocatorFactory : public AllocatorFactory {
  public:
