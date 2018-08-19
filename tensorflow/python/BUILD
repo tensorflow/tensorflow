@@ -138,6 +138,7 @@ py_library(
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/tools:component_api_helper",
         "//third_party/py/numpy",
     ],
 )
