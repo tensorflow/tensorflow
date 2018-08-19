@@ -17,6 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
+from tensorflow import logging
+
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.canned import head as head_lib
@@ -26,13 +30,71 @@ from tensorflow.python.summary import summary
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.ops import tensor_forest_ops
 
+
 _ForestHParams = collections.namedtuple('TreeHParams', [
     'n_trees', 'max_nodes', 'num_splits_to_consider',
-    'split_after_samples'
+    'split_after_samples', 'is_regression',
 ])
+
 TREE_PATHS_PREDICTION_KEY = 'tree_paths'
 VARIANCE_PREDICTION_KEY = 'prediction_variance'
 EPSILON = 0.000001
+
+
+def _ensure_logits(head, logits):
+  # For binary classification problems, convert probabilities to logits.
+  # Includes hack to get around the fact that a probability might be 0 or
+  # 1.
+  if head.logits_dimension == 2:
+    class_1_probs = array_ops.slice(logits, [0, 1], [-1, 1])
+  return math_ops.log(
+      math_ops.maximum(class_1_probs / math_ops.maximum(
+          1.0 - class_1_probs, EPSILON), EPSILON))
+
+
+def _bt_model_fn(features, labels, mode, head, feature_columns, forest_hparams, config, name='tensor_forest'):
+  graph_builder = RandomForestGraphs(
+      forest_hparams, config)
+
+  transformed_features = feature_column_lib._transform_features(
+      features, sorted_feature_columns)
+
+  logits, tree_paths, regression_variance = graph_builder.inference_graph(
+      transformed_features)
+
+  logits = _ensure_logits(head, logits)
+
+  summary.scalar('average_tree_size', graph_builder.average_size())
+
+  training_graph = None
+  if labels is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+    with ops.control_dependencies([logits.op]):
+      training_graph = control_flow_ops.group(
+          graph_builder.training_graph(
+              transformed_features, labels),
+          state_ops.assign_add(training_util.get_global_step(), 1),
+          name=name)
+
+  def _train_op_fn(unused_loss):
+    return training_graph
+
+  estimator_spec = head.create_estimator_spec(
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_train_op_fn,
+      logits=logits)
+
+  extra_predictions = {
+      TREE_PATHS_PREDICTION_KEY: tree_paths
+  }
+  if not forest_hparams.is_classification:
+      extra_predictions[VARIANCE_PREDICTION_KEY] = regression_variance,
+
+  estimator_spec = estimator_spec._replace(
+      predictions=estimator_spec.predictions.update(extra_predictions))
+
+  return estimator_spec
 
 
 class RandomForestGraphs(object):
@@ -42,277 +104,127 @@ class RandomForestGraphs(object):
                params,
                configs,
                tree_configs=None,
-               tree_stats=None,
-               training=True):
+               tree_stats=None):
     self.params = params
     self.configs = configs
-    self.device_assigner = framework_variables.VariableDeviceChooser()
-    logging.info('Constructing forest with params = ')
-    logging.info(self.params.__dict__)
-    self.variables = ForestVariables(
+    self.variables = tensor_forest_ops.ForestVariables(
         self.params,
-        device_assigner=self.device_assigner,
         training=training,
         tree_configs=tree_configs,
         tree_stats=tree_stats)
-
+    tree_params_proto =
     self.decision_trees = [
         RandomDecisionTreeGraphs(self.variables[i], self.params, i)
         for i in range(self.params.num_trees)
     ]
 
-  def get_all_resource_handles(self):
-    return ([self.variables[i].tree for i in range(len(self.decision_trees))] +
-            [self.variables[i].stats for i in range(len(self.decision_trees))])
-
   def training_graph(self,
                      input_data,
                      input_labels,
-                     num_trainers=1,
-                     trainer_id=0,
                      **tree_kwargs):
-    """Constructs a TF graph for training a random forest.
-
-    Args:
-      input_data: A tensor or dict of string->Tensor for input data.
-      input_labels: A tensor or placeholder for labels associated with
-        input_data.
-      num_trainers: Number of parallel trainers to split trees among.
-      trainer_id: Which trainer this instance is.
-      **tree_kwargs: Keyword arguments passed to each tree's training_graph.
-
-    Returns:
-      The last op in the random forest training graph.
-
-    Raises:
-      NotImplementedError: If trying to use bagging with sparse features.
-    """
     tree_graphs = []
-    trees_per_trainer = self.params.num_trees / num_trainers
-    tree_start = int(trainer_id * trees_per_trainer)
-    tree_end = int((trainer_id + 1) * trees_per_trainer)
     seed = self.configs.tf_random_seed
 
-    for i in range(tree_start, tree_end):
-      with ops.device(self.variables.device_dummies[i].device):
-        if seed is not None:
-          seed += i
-        tree_graphs.append(self.decision_trees[i].training_graph(
-            input_data,
-            label,
-            seed,
-            **tree_kwargs))
+    for n, decision_tree in enumerate(self.decision_trees):
+      if seed is not None:
+        seed += n
+      tree_graphs.append(decision_tree.training_graph(
+          input_data,
+          input_labels,
+          seed,
+          **tree_kwargs))
 
     return control_flow_ops.group(*tree_graphs, name='train')
 
   def inference_graph(self, input_data, **inference_args):
-    """Constructs a TF graph for evaluating a random forest.
-
-    Args:
-      input_data: A tensor or dict of string->Tensor for the input data.
-                  This input_data must generate the same spec as the
-                  input_data used in training_graph:  the dict must have
-                  the same keys, for example, and all tensors must have
-                  the same size in their first dimension.
-      **inference_args: Keyword arguments to pass through to each tree.
-
-    Returns:
-      A tuple of (probabilities, tree_paths, variance).
-
-    Raises:
-      NotImplementedError: If trying to use feature bagging with sparse
-        features.
-    """
     probabilities = []
     paths = []
-    for i in range(self.params.num_trees):
-      with ops.device(self.variables.device_dummies[i].device):
-        probs, path = self.decision_trees[i].inference_graph(
-            input_data,
-            **inference_args)
-        probabilities.append(probs)
-        paths.append(path)
-    with ops.device(self.variables.device_dummies[0].device):
-      # shape of all_predict should be [batch_size, num_trees, num_outputs]
-      all_predict = array_ops.stack(probabilities, axis=1)
-      average_values = math_ops.div(
-          math_ops.reduce_sum(all_predict, 1),
-          self.params.num_trees,
-          name='probabilities')
-      tree_paths = array_ops.stack(paths, axis=1)
+    for decision_tree in self.decision_trees:
+      probs, path = decision_tree.inference_graph(
+          input_data,
+          **inference_args)
+      probabilities.append(probs)
+      paths.append(path)
+    # shape of all_predict should be [batch_size, num_trees, num_outputs]
+    all_predict = array_ops.stack(probabilities, axis=1)
+    average_values = math_ops.div(
+        math_ops.reduce_sum(all_predict, 1),
+        self.params.num_trees,
+        name='probabilities')
+    tree_paths = array_ops.stack(paths, axis=1)
 
-      expected_squares = math_ops.div(
-          math_ops.reduce_sum(all_predict * all_predict, 1),
-          self.params.num_trees)
-      regression_variance = math_ops.maximum(
-          0., expected_squares - average_values * average_values)
-      return average_values, tree_paths, regression_variance
+    expected_squares = math_ops.div(
+        math_ops.reduce_sum(all_predict * all_predict, 1),
+        self.params.num_trees)
+    regression_variance = math_ops.maximum(
+        0., expected_squares - average_values * average_values)
+
+    return average_values, tree_paths, regression_variance
 
   def average_size(self):
-    """Constructs a TF graph for evaluating the average size of a forest.
-
-    Returns:
-      The average number of nodes over the trees.
-    """
     sizes = []
-    for i in range(self.params.num_trees):
-      with ops.device(self.variables.device_dummies[i].device):
-        sizes.append(self.decision_trees[i].size())
+    for decision_tree in self.decision_trees:
+      sizes.append(decision_tree.size())
     return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
 
 class RandomDecisionTreeGraphs(object):
   """Builds TF graphs for random tree training and inference."""
 
-  def __init__(self, variables, params, tree_num):
+  def __init__(self, variables, serialized_params_proto, tree_num):
     self.variables = variables
-    self.params = params
+    self.serialized_params_proto = serialized_params_proto
     self.tree_num = tree_num
 
   def training_graph(self,
                      input_data,
                      input_labels,
                      random_seed,
-                     data_spec,
-                     sparse_features=None,
-                     input_weights=None):
-    """Constructs a TF graph for training a random tree.
-
-    Args:
-      input_data: A tensor or placeholder for input data.
-      input_labels: A tensor or placeholder for labels associated with
-        input_data.
-      random_seed: The random number generator seed to use for this tree.  0
-        means use the current time as the seed.
-      data_spec: A data_ops.TensorForestDataSpec object specifying the
-        original feature/columns of the data.
-      sparse_features: A tf.SparseTensor for sparse input data.
-      input_weights: A float tensor or placeholder holding per-input weights,
-        or None if all inputs are to be weighted equally.
-
-    Returns:
-      The last op in the random tree training graph.
-    """
-    leaf_ids = model_ops.traverse_tree_v4(
+                     ):
+    leaf_ids = tensor_forest_ops.traverse_tree(
         self.variables.tree,
         input_data,
-        params=self.params.serialized_params_proto)
+        params=self.serialized_params_proto)
 
-    update_model = model_ops.update_model_v4(
+    update_model = tensor_forest_ops.update_model(
         self.variables.tree,
         leaf_ids,
         input_labels,
-        params=self.params.serialized_params_proto)
+        params=self.serialized_params_proto)
 
-    finished_nodes = stats_ops.process_input_v4(
+    finished_nodes = tensor_forest_ops.process_input(
         self.variables.tree,
         self.variables.stats,
         input_data,
         input_labels,
         leaf_ids,
         random_seed=random_seed,
-        params=self.params.serialized_params_proto)
+        params=self.serialized_params_proto)
 
     with ops.control_dependencies([update_model]):
-      return stats_ops.grow_tree_v4(
+      return tensor_forest_ops.grow_tree_v4(
           self.variables.tree,
           self.variables.stats,
           finished_nodes,
-          params=self.params.serialized_params_proto)
+          params=self.serialized_params_proto)
 
   def inference_graph(self, input_data):
-    """Constructs a TF graph for evaluating a random tree.
-
-    Args:
-      input_data: A tensor or placeholder for input data.
-      data_spec: A TensorForestDataSpec proto specifying the original
-        input columns.
-      sparse_features: A tf.SparseTensor for sparse input data.
-
-    Returns:
-      A tuple of (probabilities, tree_paths).
-    """
-    return model_ops.tree_predictions_v4(
+    return tensor_forest_ops.tree_predictions(
         self.variables.tree,
         input_data,
-        params=self.params.serialized_params_proto)
+        params=self.serialized_params_proto)
 
   def size(self):
-    """Constructs a TF graph for evaluating the current number of nodes.
-
-    Returns:
-      The current number of nodes in the tree.
-    """
     return tensor_forest_ops.tree_size(self.variables.tree)
-
-
-def _ensure_logits(head, logits):
-    # For binary classification problems, convert probabilities to logits.
-    # Includes hack to get around the fact that a probability might be 0 or 1.
-    if head.logits_dimension == 2:
-        class_1_probs = array_ops.slice(logits, [0, 1], [-1, 1])
-        logits = math_ops.log(
-            math_ops.maximum(class_1_probs / math_ops.maximum(
-                1.0 - class_1_probs, EPSILON), EPSILON))
-    return logits
-
-
-def _bt_model_fn(features, labels, mode, head, feature_columns, forest_hparams, config, name='tensor_forest'):
-    """Tensor Forest model_fn.
-
-    Args:
-      features: dict of `Tensor`.
-      labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
-        dtype `int32` or `int64` in the range `[0, n_classes)`.
-      mode: Defines whether this is training, evaluation or prediction.
-        See `ModeKeys`.
-      head: A `head_lib._Head` instance.
-      feature_columns: Iterable of `feature_column._FeatureColumn` model inputs.
-      tree_hparams: TODO. collections.namedtuple for hyper parameters.
-      config: `RunConfig` object to configure the runtime settings.
-      name: Name to use for the model.
-    """
-    graph_builder = tensor_forest_ops.RandomForestGraphs(
-        forest_hparams, config)
-
-    logits, tree_paths, regression_variance = graph_builder.inference_graph(
-        features)
-
-    logits = _ensure_logits(head, logits)
-
-    summary.scalar('average_tree_size', graph_builder.average_size())
-
-    training_graph = None
-    if labels is not None and mode == model_fn_lib.ModeKeys.TRAIN:
-        with ops.control_dependencies([logits.op]):
-            training_graph = control_flow_ops.group(
-                graph_builder.training_graph(
-                    features, labels),
-                state_ops.assign_add(training_util.get_global_step(), 1), name=name)
-
-    def _train_op_fn(unused_loss):
-        return training_graph
-
-    estimator_spec = head.create_estimator_spec(
-        features=features,
-        mode=mode,
-        labels=labels,
-        train_op_fn=_train_op_fn,
-        logits=logits)
-
-    estimator_spec = estimator_spec._replace(
-        predictions=estimator_spec.predictions.update({
-            VARIANCE_PREDICTION_KEY: regression_variance,
-            TREE_PATHS_PREDICTION_KEY: tree_paths
-        }))
-    return estimator_spec
 
 
 @estimator_export('estimator.TensorForestClassifier')
 class TensorForestClassifier(estimator.Estimator):
-  """A Classifier for Tensorflow Tensor Forest models.
 
-  """
+
+"""A Classifier for Tensorflow Tensor Forest models.
+
+"""
 
   def __init__(self,
                feature_columns,
@@ -325,87 +237,92 @@ class TensorForestClassifier(estimator.Estimator):
                num_splits_to_consider=10,
                split_after_samples=250,
                config=None):
-    """Initializes a `TensorForestClassifier` instance.
+  """Initializes a `TensorForestClassifier` instance.
 
-    Example:
+Example:
 
-    ```python
-    feature_1 = numeric_column('feature_1')
-    feature_2 = numeric_column('feature_2')
+```python
+feature_1 = numeric_column('feature_1')
+feature_2 = numeric_column('feature_2')
 
-    classifier = estimator.TensorForestClassifier(
-        feature_columns=[feature_1, feature_2],
-        n_trees=100,
-        ... <some other params>
-    )
+classifier = estimator.TensorForestClassifier(
+    feature_columns=[feature_1, feature_2],
+    n_trees=100,
+    ... <some other params>
+)
 
-    def input_fn_train():
-      ...
-      return dataset
+def input_fn_train():
+  ...
+  return dataset
 
-    classifier.train(input_fn=input_fn_train)
+classifier.train(input_fn=input_fn_train)
 
-    def input_fn_predict():
-      ...
-      return dataset
+def input_fn_predict():
+  ...
+  return dataset
 
-    classifier.predict(input_fn=input_fn_predict)
+classifier.predict(input_fn=input_fn_predict)
 
-    def input_fn_eval():
-      ...
-      return dataset
+def input_fn_eval():
+  ...
+  return dataset
 
-    metrics = classifier.evaluate(input_fn=input_fn_eval)
-    ```
+metrics = classifier.evaluate(input_fn=input_fn_eval)
+```
 
-    Args:
-      feature_columns: An iterable containing all the feature columns used by
-        the model. All items in the set should be instances of classes derived
-	from FeatureColumn.
-      n_classes: Defaults to 2. The number of classes in a classification problem.
-      model_dir: Directory to save model parameters, graph and etc.
-	This can also be used to load checkpoints from the directory
-	into an estimator to continue training a previously saved model.
-      label_vocabulary: A list of strings representing all possible label values.
-	If provided, labels must be of string type and their values must be present
-	in label_vocabulary list. If label_vocabulary is omitted, it is assumed that
-	the labels are already encoded as integer values within {0, 1} for n_classes=2,
-	or encoded as integer values in {0, 1,..., n_classes-1} for n_classes>2.
-	If vocabulary is not provided and labels are of string,
-	an error will be generated.
-      head: A head_lib._Head instance, the loss would be calculated for metrics
-	purpose and not being used for training. If not provided,
-	one will be automatically created based on params
-      n_trees: The number of trees to create. Defaults to 100.
-	There usually isn't any accuracy gain from using higher
-	values (assuming deep enough trees are built).
-      max_nodes: Defaults to 10k. No tree is allowed to grow beyond max_nodes
-	nodes, and training stops when all trees in the forest are this large.
-      num_splits_to_consider: Defaults to sqrt(num_features). In the extremely
-	randomized tree training algorithm, only this many potential splits
-	are evaluated for each tree node.
-      split_after_samples: Defaults to 250. In our online version of extremely
-	randomized tree training, we pick a split for a node after it has
-	accumulated this many training samples.
-      config: RunConfig object to configure the runtime settings.
+Args:
+  feature_columns: An iterable containing all the feature columns used by
+    the model. All items in the set should be instances of classes derived
+    from FeatureColumn.
+  n_classes: Defaults to 2. The number of classes in a classification problem.
+  model_dir: Directory to save model parameters, graph and etc.
+    This can also be used to load checkpoints from the directory
+    into an estimator to continue training a previously saved model.
+  label_vocabulary: A list of strings representing all possible label values.
+    If provided, labels must be of string type and their values must be present
+    in label_vocabulary list. If label_vocabulary is omitted, it is assumed that
+    the labels are already encoded as integer values within {0, 1} for n_classes=2,
+    or encoded as integer values in {0, 1,..., n_classes-1} for n_classes>2.
+    If vocabulary is not provided and labels are of string,
+    an error will be generated.
+  head: A head_lib._Head instance, the loss would be calculated for metrics
+    purpose and not being used for training. If not provided,
+    one will be automatically created based on params
+  n_trees: The number of trees to create. Defaults to 100.
+    There usually isn't any accuracy gain from using higher
+    values (assuming deep enough trees are built).
+  max_nodes: Defaults to 10k. No tree is allowed to grow beyond max_nodes
+    nodes, and training stops when all trees in the forest are this large.
+  num_splits_to_consider: Defaults to sqrt(num_features). In the extremely
+    randomized tree training algorithm, only this many potential splits
+    are evaluated for each tree node.
+  split_after_samples: Defaults to 250. In our online version of extremely
+    randomized tree training, we pick a split for a node after it has
+    accumulated this many training samples.
+  config: RunConfig object to configure the runtime settings.
 
-    Raises:
-      ValueError: when wrong arguments are given or unsupported functionalities
-         are requested.
-    """
-    if head is None:
-        head = head_lib._binary_logistic_or_multi_class_head(
-            n_classes=n_classes,
-            weight_column=None,
-            label_vocabulary=label_vocabulary,
-            loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+Raises:
+  ValueError: when wrong arguments are given or unsupported functionalities
+     are requested.
+"""
+  if head is None:
+    head = head_lib._binary_logistic_or_multi_class_head(
+        n_classes=n_classes,
+        weight_column=None,
+        label_vocabulary=label_vocabulary,
+        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
 
-    forest_hparams = _ForestHParams(
-        n_trees, max_nodes, num_splits_to_consider, split_after_samples)
+  forest_hparams = _ForestHParams(
+      n_trees, max_nodes, num_splits_to_consider, split_after_samples, is_classification=True)
 
-    def _model_fn(features, labels, mode, config):
-        return _bt_model_fn(
-            features, labels, mode, head, feature_columns, forest_hparams, config)
+  assert all(map(lambda fc: isinstance(fc, feature_column_lib.DenseColumn),
+                 feature_columns)), 'Only Dense Column supported'
 
-    super(TensorForestClassifier, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+  sorted_feature_columns = sorted(feature_columns, key=lambda fc: fc.name)
+
+  def _model_fn(features, labels, mode, config):
+    return _bt_model_fn(
+        features, labels, mode, head, feature_columns, forest_hparams, config)
+
+  super(TensorForestClassifier, self).__init__(
+      model_fn=_model_fn, model_dir=model_dir, config=config)
