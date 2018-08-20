@@ -1332,7 +1332,7 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
     return (res_outputs, new_state)
 
 
-class LayerNormBasicGRUCell(rnn_cell_impl._LayerRNNCell):
+class LayerNormBasicGRUCell(rnn_cell_impl.RNNCell):
   """GRU unit with layer normalization.
 
     This class adds layer normalization to a
