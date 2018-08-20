@@ -104,7 +104,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/eager:graph_callable",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:variables",
     ],
