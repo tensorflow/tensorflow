@@ -42,20 +42,20 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void Relu(const float* input_data, const Dims<4>& input_dims,
                  float* output_data, const Dims<4>& output_dims) {
-  Relu(input_data, DimsToShape(input_dims), output_data,
-       DimsToShape(output_dims));
+  Relu(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 inline void Relu1(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  Relu1(input_data, DimsToShape(input_dims), output_data,
-        DimsToShape(output_dims));
+  Relu1(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 inline void Relu6(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  Relu6(input_data, DimsToShape(input_dims), output_data,
-        DimsToShape(output_dims));
+  Relu6(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -583,8 +583,8 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void Logistic(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
-  Logistic(input_data, DimsToShape(input_dims), output_data,
-           DimsToShape(output_dims));
+  Logistic(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+           output_data);
 }
 
 inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
@@ -598,14 +598,14 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
                      int16* output_data, const Dims<4>& output_dims) {
-  Logistic(input_data, DimsToShape(input_dims), output_data,
-           DimsToShape(output_dims));
+  Logistic(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+           output_data);
 }
 
 inline void Tanh(const float* input_data, const Dims<4>& input_dims,
                  float* output_data, const Dims<4>& output_dims) {
-  Tanh(input_data, DimsToShape(input_dims), output_data,
-       DimsToShape(output_dims));
+  Tanh(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+       output_data);
 }
 
 inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
