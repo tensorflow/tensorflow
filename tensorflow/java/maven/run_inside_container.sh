@@ -110,11 +110,17 @@ download_libtensorflow_jni_gpu() {
   cd "${NATIVE_DIR}"
 
   mkdir linux-x86_64
+  mkdir windows-x86_64
 
   curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-gpu-linux-x86_64-${TF_VERSION}.tar.gz" | tar -xvz -C linux-x86_64
+  curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-gpu-windows-x86_64-${TF_VERSION}.zip" -o /tmp/windows.zip
+
+  unzip /tmp/windows.zip -d windows-x86_64
+  rm -f /tmp/windows.zip
 
   # Updated timestamps seem to be required to get Maven to pick up the file.
   touch linux-x86_64/*
+  touch windows-x86_64/*
   cd "${DIR}"
 }
 

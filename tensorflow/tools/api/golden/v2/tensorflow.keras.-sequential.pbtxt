@@ -140,7 +140,7 @@ tf_class {
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\', \'distribute\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -265,10 +265,6 @@ tf_class {
   member_method {
     name: "summary"
     argspec: "args=[\'self\', \'line_length\', \'positions\', \'print_fn\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "symbolic_set_inputs"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "test_on_batch"

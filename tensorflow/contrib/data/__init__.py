@@ -20,7 +20,7 @@ be used in conjunction with the `tf.data.Dataset` API. Note that the
 guarantees as `tf.data`, but we will provide deprecation advice in advance of
 removing existing functionality.
 
-See @{$guide/datasets$Importing Data} for an overview.
+See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@Counter
 @@CheckpointInputPipelineHook

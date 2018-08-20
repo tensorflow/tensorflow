@@ -9,7 +9,7 @@ This guide gets you started programming in the low-level TensorFlow APIs
   * Use high level components ([datasets](#datasets), [layers](#layers), and
     [feature_columns](#feature_columns)) in this low level environment.
   * Build your own training loop, instead of using the one
-    @{$premade_estimators$provided by Estimators}.
+    [provided by Estimators](../guide/premade_estimators.md).
 
 We recommend using the higher level APIs to build models when possible.
 Knowing TensorFlow Core is valuable for the following reasons:
@@ -21,7 +21,7 @@ Knowing TensorFlow Core is valuable for the following reasons:
 
 ## Setup
 
-Before using this guide, @{$install$install TensorFlow}.
+Before using this guide, [install TensorFlow](../install/index.md).
 
 To get the most out of this guide, you should know the following:
 
@@ -145,7 +145,7 @@ browser, and you should see a graph similar to the following:
 
 ![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_add.png)
 
-For more about TensorBoard's graph visualization tools see @{$graph_viz}.
+For more about TensorBoard's graph visualization tools see [TensorBoard: Graph Visualization](../guide/graph_viz.md).
 
 ### Session
 
@@ -303,7 +303,7 @@ while True:
     break
 ```
 
-For more details on Datasets and Iterators see: @{$guide/datasets}.
+For more details on Datasets and Iterators see: [Importing Data](../guide/datasets.md).
 
 ## Layers
 
@@ -398,7 +398,7 @@ and layer reuse impossible.
 
 The easiest way to experiment with feature columns is using the
 `tf.feature_column.input_layer` function. This function only accepts
-@{$feature_columns$dense columns} as inputs, so to view the result
+[dense columns](../guide/feature_columns.md) as inputs, so to view the result
 of a categorical column you must wrap it in an
 `tf.feature_column.indicator_column`. For example:
 
@@ -589,7 +589,7 @@ print(sess.run(y_pred))
 
 To learn more about building models with TensorFlow consider the following:
 
-* @{$custom_estimators$Custom Estimators}, to learn how to build
+* [Custom Estimators](../guide/custom_estimators.md), to learn how to build
   customized models with TensorFlow. Your knowledge of TensorFlow Core will
   help you understand and debug your own models.
 
@@ -597,8 +597,8 @@ If you want to learn more about the inner workings of TensorFlow consider the
 following documents, which go into more depth on many of the topics discussed
 here:
 
-* @{$graphs}
-* @{$tensors}
-* @{$variables}
+* [Graphs and Sessions](../guide/graphs.md)
+* [Tensors](../guide/tensors.md)
+* [Variables](../guide/variables.md)
 
 

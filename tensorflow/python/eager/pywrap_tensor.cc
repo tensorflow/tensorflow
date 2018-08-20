@@ -800,9 +800,6 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   EagerTensorType = &_EagerTensorType;
   Py_INCREF(EagerTensorType);
 #endif
-  // We disable instance based attribute lookup. Its not clear if these
-  // dictionaries are correctly initialized in the first place.
-  EagerTensorType->tp_dictoffset = 0;
   return reinterpret_cast<PyObject*>(EagerTensorType);
 }
 

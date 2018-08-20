@@ -164,11 +164,11 @@ class KinesisDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const string& stream, const string& shard,
             const bool read_indefinitely, const int64 interval)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           stream_(stream),
           shard_(shard),
           read_indefinitely_(read_indefinitely),

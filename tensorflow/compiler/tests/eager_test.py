@@ -443,7 +443,6 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
   def testNestedDefun(self):
-    self.skipTest('Nested defuns do not work on TPU at the moment')
     with self.test_scope():
 
       @function.defun

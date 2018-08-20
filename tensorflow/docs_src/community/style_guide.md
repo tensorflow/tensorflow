@@ -88,7 +88,7 @@ creates a part of the graph and returns output tensors.
 * Operations should contain an extensive Python comment with Args and Returns
  declarations that explain both the type and meaning of each value. Possible
  shapes, dtypes, or ranks should be specified in the description.
- @{$documentation$See documentation details}
+ [See documentation details](../community/documentation.md)
 
 * For increased usability include an example of usage with inputs / outputs
  of the op in Example section.

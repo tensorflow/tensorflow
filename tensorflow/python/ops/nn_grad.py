@@ -471,7 +471,9 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
-        math_ops.matmul(grad_grad[:, None, :], softmax[:, :, None]), axis=1)) *
+        math_ops.matmul(array_ops.expand_dims(grad_grad, 1),
+                        array_ops.expand_dims(softmax, 2)),
+        axis=1)) *
              softmax)
 
   return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))

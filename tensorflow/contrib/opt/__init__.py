@@ -24,6 +24,7 @@ from tensorflow.contrib.opt.python.training.addsign import *
 from tensorflow.contrib.opt.python.training.drop_stale_gradient_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
 from tensorflow.contrib.opt.python.training.external_optimizer import *
+from tensorflow.contrib.opt.python.training.lars_optimizer import *
 from tensorflow.contrib.opt.python.training.ggt import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
 from tensorflow.contrib.opt.python.training.model_average_optimizer import *
@@ -46,6 +47,7 @@ _allowed_symbols = [
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer',
     'ExternalOptimizerInterface',
+    'LARSOptimizer',
     'LazyAdamOptimizer',
     'NadamOptimizer',
     'MovingAverageOptimizer',

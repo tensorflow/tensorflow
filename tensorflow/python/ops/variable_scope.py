@@ -42,6 +42,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -837,9 +838,6 @@ class _VariableStore(object):
       raise ValueError("Variable %s does not exist, or was not created with "
                        "tf.get_variable(). Did you mean to set "
                        "reuse=tf.AUTO_REUSE in VarScope?" % name)
-    if not shape.is_fully_defined() and not initializing_from_value:
-      raise ValueError("Shape of a new variable (%s) must be fully defined, "
-                       "but instead was %s." % (name, shape))
 
     # Create the tensor to initialize the variable with default value.
     if initializer is None:
@@ -854,8 +852,17 @@ class _VariableStore(object):
         # Instantiate initializer if provided initializer is a type object.
         if isinstance(initializer, type(init_ops.Initializer)):
           initializer = initializer(dtype=dtype)
-        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-            shape.as_list(), dtype=dtype, partition_info=partition_info)
+        if shape and shape.is_fully_defined():
+          init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+              shape.as_list(), dtype=dtype, partition_info=partition_info)
+        elif not tf_inspect.getargspec(initializer).args:
+          init_val = initializer
+        else:
+          raise ValueError("You can only pass an initializer function that"
+                           "expects no arguments to its callable when the "
+                           "shape is not fully defined. The given initializer "
+                           "function expects the following args %s" %
+                           tf_inspect.getargspec(initializer).args)
         variable_dtype = dtype.base_dtype
 
     # Create the variable.
@@ -1440,12 +1447,11 @@ def get_variable(name,
       aggregation=aggregation)
 
 
-get_variable_or_local_docstring = (
-    """%s
+get_variable_or_local_docstring = ("""%s
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-@{$variables$Variable Scope How To}
+[Variable Scope How To](https://tensorflow.org/guide/variables)
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1895,8 +1901,8 @@ class variable_scope(object):
 
   Variable scope allows you to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the @{$variables$Variable Scope How To}, here we present only a few basic
-  examples.
+  see the [Variable Scope How To](https://tensorflow.org/guide/variables), here
+  we present only a few basic examples.
 
   Simple example of how to create a new variable:
 

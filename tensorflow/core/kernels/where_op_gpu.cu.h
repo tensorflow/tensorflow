@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_WHERE_OP_GPU_CU_H_
+#define TENSORFLOW_CORE_KERNELS_WHERE_OP_GPU_CU_H_
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
@@ -356,3 +359,5 @@ TF_CALL_WHERE_GPU_TYPES(DECLARE_GPU_SPEC);
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#endif  // TENSORFLOW_CORE_KERNELS_WHERE_OP_GPU_CU_H_

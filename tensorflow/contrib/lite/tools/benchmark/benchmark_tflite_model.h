@@ -20,6 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#ifdef TFLITE_EXTENDED
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#endif  // TFLITE_EXTENDED
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/profiling/profile_summarizer.h"
 #include "tensorflow/contrib/lite/tools/benchmark/benchmark_model.h"
@@ -52,6 +55,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   BenchmarkTfLiteModel();
   BenchmarkTfLiteModel(BenchmarkParams params);
+  virtual ~BenchmarkTfLiteModel() {}
 
   std::vector<Flag> GetFlags() override;
   void LogParams() override;
@@ -59,7 +63,6 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;
-  virtual ~BenchmarkTfLiteModel() {}
 
   struct InputLayerInfo {
     std::string name;
@@ -67,6 +70,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   };
 
  private:
+#ifdef TFLITE_EXTENDED
+  std::unique_ptr<EagerDelegate> delegate_;
+#endif  // TFLITE_EXTENDED
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
   std::vector<InputLayerInfo> inputs;

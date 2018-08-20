@@ -143,8 +143,47 @@ TokKind HloLexer::LexToken() {
         return TokKind::kLparen;
       case ')':
         return TokKind::kRparen;
-      case '/':
-        return LexComment();
+      case '/': {
+        if (PeekCurrentChar() == '*') {
+          // This is the start of a /*...*/ delimited comment. Save the current
+          // location in case the comment is unterminated so the error message
+          // will point to the beginning of the comment.
+          const char* comment_start = current_ptr_;
+          current_ptr_++;
+          // Advance until '*/' is found.
+          while (true) {
+            int current = GetNextChar();
+            if (current == '*' && PeekCurrentChar() == '/') {
+              // End of comment.
+              current_ptr_++;
+              break;
+            }
+            if (current == kEOF) {
+              // Unterminated comment.
+              current_ptr_ = comment_start;
+              return TokKind::kError;
+            }
+          }
+          // Return no token for the comment. Keep lexing.
+          continue;
+        } else if (PeekCurrentChar() == '/') {
+          // This is the start of a '//' delimited comment. Throw away
+          // everything until end of line or file. The end-of-line character(s)
+          // are left unlexed in the buffer which is harmless because these are
+          // skipped later by the lexer. This approach enables support for
+          // different end-of-line encodings.
+          while (true) {
+            int current = PeekCurrentChar();
+            if (current == kEOF || current == '\n' || current == '\r') {
+              break;
+            }
+            current_ptr_++;
+          }
+          continue;
+        }
+        // A lone '/' is an error.
+        return TokKind::kError;
+      }
       case '"':
         return LexString();
     }
@@ -357,16 +396,6 @@ tensorflow::StringPiece HloLexer::GetLine(LocTy loc) const {
   return StringPieceFromPointers(start, end);
 }
 
-TokKind HloLexer::LexComment() {
-  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
-  static LazyRE2 comment_pattern = {R"(\/\*.*?\*\/)"};
-  if (RE2::Consume(&consumable, *comment_pattern)) {
-    current_ptr_ = consumable.begin();
-    return TokKind::kComment;
-  }
-  return TokKind::kError;
-}
-
 // Lexes quoted string with escaping characters. If matched, the quoted string
 // will be unescaped and stored to str_val_.
 TokKind HloLexer::LexString() {
@@ -412,8 +441,6 @@ string TokKindToString(TokKind kind) {
       return "kRparen";
     case TokKind::kArrow:
       return "kArrow";
-    case TokKind::kComment:
-      return "kComment";
     case TokKind::kw_HloModule:
       return "kw_HloModule";
     case TokKind::kw_ENTRY:

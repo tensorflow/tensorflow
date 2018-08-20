@@ -33,6 +33,7 @@ cc_library(
     hdrs = STREAM_EXECUTOR_HEADERS,
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }),
     visibility = ["//visibility:public"],
@@ -84,6 +85,7 @@ cc_library(
     }),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }),
     visibility = ["//visibility:public"],

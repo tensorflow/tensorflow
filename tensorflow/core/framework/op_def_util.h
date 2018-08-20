@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
 
 #include <string>
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -46,6 +47,10 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
 // Searches op_def for input argument with the indicated name.
 // Returns nullptr if no such attr is found.
 const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def);
+
+// Searches api_def for input argument with the indicated name.
+// Returns nullptr if no such attr is found.
+const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def);
 
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.

@@ -16,7 +16,7 @@
 
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
-To use, at program startup, call `tfe.enable_eager_execution()`.
+To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@metrics
 
@@ -67,6 +67,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@execution_mode
 @@async_wait
 @@async_clear_error
+@@set_server_def
 
 @@run_test_in_graph_and_eager_modes
 @@run_all_tests_in_graph_and_eager_modes
@@ -110,6 +111,7 @@ from tensorflow.python.eager.context import async_clear_error
 from tensorflow.python.eager.context import SYNC
 from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
+from tensorflow.python.eager.context import set_server_def
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
 from tensorflow.python.eager.execution_callbacks import inf_callback

@@ -575,6 +575,16 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
   return builder_.IsConstant(operand.op());
 }
 
+LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
+  return xla::Sort(operand.op(), tensorflow::gtl::nullopt, dimension);
+}
+
+LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
+                                            const LocalOp& values,
+                                            int64 dimension) {
+  return xla::Sort(keys.op(), values.op(), dimension);
+}
+
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
     const LocalOp& operand) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
@@ -640,7 +650,6 @@ _FORWARD_UNOP(Sin)
 _FORWARD_UNOP(Tanh)
 _FORWARD_UNOP(IsFinite)
 _FORWARD_UNOP(Neg)
-_FORWARD_UNOP(Sort)
 _FORWARD_UNOP(Sqrt)
 _FORWARD_UNOP(Rsqrt)
 _FORWARD_UNOP(Square)

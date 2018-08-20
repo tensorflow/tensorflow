@@ -417,7 +417,7 @@ class MultiWorkerCollectiveAllReduceTest(
         devices = ["/device:GPU:%d" % i for i in range(num_gpus)]
       else:
         devices = ["/device:CPU:0"]
-      return collective_all_reduce_ops, devices, "local"
+      return collective_all_reduce_ops, devices, ""
     else:
       collective_all_reduce_ops = cross_tower_ops_lib.CollectiveAllReduce(
           3, num_gpus, collective_keys=collective_keys)
@@ -476,7 +476,7 @@ class MultiWorkerCollectiveAllReduceTest(
       destination_list = devices
 
       all_destinations = [
-          None, destination_mirrored, destination_different, destination_str,
+          destination_different, None, destination_mirrored, destination_str,
           destination_list
       ]
 
@@ -539,6 +539,12 @@ class MultiWorkerCollectiveAllReduceTest(
       return
     self._run_between_graph_clients(self._test_reduction, self._cluster_spec,
                                     num_gpus)
+
+  # Collective ops doesn't support strategy with one device.
+  def testReductionLocal(self, num_gpus=2):
+    if context.num_gpus() < num_gpus:
+      return
+    self._test_reduction(None, None, num_gpus, local_mode=True)
 
 
 if __name__ == "__main__":

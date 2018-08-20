@@ -47,6 +47,15 @@ bool IsSequence(PyObject* o);
 //   True if `instance` is a `namedtuple`.
 PyObject* IsNamedtuple(PyObject* o, bool strict);
 
+// Returns a true if its input is a collections.Mapping.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMapping(PyObject* o);
+
 // Implements the same interface as tensorflow.util.nest._same_namedtuples
 // Returns Py_True iff the two namedtuples have the same name and fields.
 // Raises RuntimeError if `o1` or `o2` don't look like namedtuples (don't have

@@ -14,7 +14,7 @@ introduces the API by walking through two simple examples:
 
 Taking slices from an array is the simplest way to get started with `tf.data`.
 
-The @{$premade_estimators$Premade Estimators} chapter describes
+The [Premade Estimators](../guide/premade_estimators.md) chapter describes
 the following `train_input_fn`, from
 [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py),
 to pipe the data into the Estimator:
@@ -91,8 +91,8 @@ print(mnist_ds)
 ```
 
 This will print the following line, showing the
-@{$guide/tensors#shapes$shapes} and
-@{$guide/tensors#data_types$types} of the items in
+[shapes](../guide/tensors.md#shapes) and
+[types](../guide/tensors.md#data_types) of the items in
 the dataset. Note that a `Dataset` does not know how many items it contains.
 
 ``` None
@@ -128,7 +128,7 @@ print(dataset)
 
 Here we see that when a `Dataset` contains structured elements, the `shapes`
 and `types` of the `Dataset` take on the same structure. This dataset contains
-dictionaries of @{$guide/tensors#rank$scalars}, all of type
+dictionaries of [scalars](../guide/tensors.md#rank), all of type
 `tf.float64`.
 
 The first line of the iris `train_input_fn` uses the same functionality, but
@@ -377,11 +377,11 @@ Now you have the basic idea of how to efficiently load data into an
 Estimator. Consider the following documents next:
 
 
-* @{$custom_estimators}, which demonstrates how to build your own
+* [Creating Custom Estimators](../guide/custom_estimators.md), which demonstrates how to build your own
   custom `Estimator` model.
-* The @{$low_level_intro#datasets$Low Level Introduction}, which demonstrates
+* The [Low Level Introduction](../guide/low_level_intro.md#datasets), which demonstrates
   how to experiment directly with `tf.data.Datasets` using TensorFlow's low
   level APIs.
-* @{$guide/datasets} which goes into great detail about additional
+* [Importing Data](../guide/datasets.md) which goes into great detail about additional
   functionality of `Datasets`.
 
