@@ -1,7 +1,4 @@
-// TODO(andydavis) Resolve relative path issue w.r.t invoking mlir-opt in RUN
-// statements (perhaps through using lit config substitutions).
-//
-// RUN: %S/../../mlir-opt %s -o - -check-parser-errors
+// RUN: mlir-opt %s -o - -check-parser-errors
 
 cfgfunc @dim(tensor<1xf32>) {
 bb(%0: tensor<1xf32>):

@@ -1,7 +1,4 @@
-// TODO(andydavis) Resolve relative path issue w.r.t invoking mlir-opt in RUN
-// statements (perhaps through using lit config substitutions).
-//
-// RUN: %S/../../mlir-opt %s -o - | FileCheck %s
+// RUN: mlir-opt %s -o - | FileCheck %s
 
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
 #map0 = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)

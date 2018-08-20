@@ -1,4 +1,4 @@
-// RUN: %S/../../mlir-opt %s -o - | FileCheck %s
+// RUN: mlir-opt %s -o - | FileCheck %s
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0, d1)
 #map0 = (i, j) -> (i, j)

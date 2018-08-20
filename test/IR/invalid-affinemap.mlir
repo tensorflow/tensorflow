@@ -1,5 +1,4 @@
-//
-// RUN: %S/../../mlir-opt %s -o - -check-parser-errors
+// RUN: mlir-opt %s -o - -check-parser-errors
 
 // Check different error cases.
 // -----
