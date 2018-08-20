@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_lookup_ops
@@ -39,6 +42,7 @@ from tensorflow.python.ops.lookup_ops import TextFileIndex
 from tensorflow.python.ops.lookup_ops import TextFileInitializer
 from tensorflow.python.ops.lookup_ops import TextFileStringTableInitializer
 # pylint: enable=unused-import
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util.deprecation import deprecated
 
@@ -285,7 +289,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   return table.lookup(tensor)
 
 
-class MutableHashTable(LookupInterface):
+class MutableHashTable(LookupInterface, checkpointable.CheckpointableBase):
   """A generic mutable hash table implementation.
 
   Data can be inserted by calling the insert method. It does not support
@@ -336,6 +340,13 @@ class MutableHashTable(LookupInterface):
                                                 dtype=value_dtype)
     self._value_shape = self._default_value.get_shape()
 
+    executing_eagerly = context.executing_eagerly()
+    if executing_eagerly and shared_name is None:
+      # TODO(allenl): This will leak memory due to kernel caching by the
+      # shared_name attribute value (but is better than the alternative of
+      # sharing everything by default when executing eagerly; hopefully creating
+      # tables in a loop is uncommon).
+      shared_name = "table_%d" % (ops.uid(),)
     # The table must be shared if checkpointing is requested for multi-worker
     # training to work correctly. Use the node name if no shared_name has been
     # explicitly specified.
@@ -355,9 +366,12 @@ class MutableHashTable(LookupInterface):
           value_dtype=value_dtype,
           value_shape=self._default_value.get_shape(),
           name=name)
+    if executing_eagerly:
+      op_name = None
+    else:
+      op_name = self._table_ref.op.name.split("/")[-1]
     super(MutableHashTable, self).__init__(key_dtype, value_dtype,
-                                           self._table_ref.op.name.split(
-                                               "/")[-1])
+                                           op_name)
 
     if checkpoint:
       saveable = MutableHashTable._Saveable(self, name)
@@ -446,6 +460,10 @@ class MutableHashTable(LookupInterface):
             self._table_ref, self._key_dtype, self._value_dtype, name=name)
     return exported_keys, exported_values
 
+  def _gather_saveables_for_checkpoint(self):
+    """For object-based checkpointing."""
+    return {"table": functools.partial(MutableHashTable._Saveable, table=self)}
+
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for MutableHashTable."""
 
@@ -458,14 +476,15 @@ class MutableHashTable(LookupInterface):
       # pylint: disable=protected-access
       super(MutableHashTable._Saveable, self).__init__(table, specs, name)
 
-    def restore(self, restored_tensors, unused_restored_shapes):
+    def restore(self, restored_tensors, restored_shapes):
+      del restored_shapes  # unused
       # pylint: disable=protected-access
       with ops.colocate_with(self.op._table_ref):
         return gen_lookup_ops.lookup_table_import_v2(
             self.op._table_ref, restored_tensors[0], restored_tensors[1])
 
 
-class MutableDenseHashTable(LookupInterface):
+class MutableDenseHashTable(LookupInterface, checkpointable.CheckpointableBase):
   """A generic mutable hash table implementation using tensors as backing store.
 
   Data can be inserted by calling the insert method. It does not support
@@ -536,6 +555,13 @@ class MutableDenseHashTable(LookupInterface):
     use_node_name_sharing = checkpoint and shared_name is None
     empty_key = ops.convert_to_tensor(
         empty_key, dtype=key_dtype, name="empty_key")
+    executing_eagerly = context.executing_eagerly()
+    if executing_eagerly and shared_name is None:
+      # TODO(allenl): This will leak memory due to kernel caching by the
+      # shared_name attribute value (but is better than the alternative of
+      # sharing everything by default when executing eagerly; hopefully creating
+      # tables in a loop is uncommon).
+      shared_name = "table_%d" % (ops.uid(),)
     self._table_ref = gen_lookup_ops.mutable_dense_hash_table_v2(
         empty_key=empty_key,
         shared_name=shared_name,
@@ -544,8 +570,12 @@ class MutableDenseHashTable(LookupInterface):
         value_shape=self._value_shape,
         initial_num_buckets=initial_num_buckets,
         name=name)
+    if executing_eagerly:
+      op_name = None
+    else:
+      op_name = self._table_ref.op.name.split("/")[-1]
     super(MutableDenseHashTable, self).__init__(
-        key_dtype, value_dtype, self._table_ref.op.name.split("/")[-1])
+        key_dtype, value_dtype, op_name)
 
     if checkpoint:
       saveable = MutableDenseHashTable._Saveable(self, name)
@@ -636,6 +666,11 @@ class MutableDenseHashTable(LookupInterface):
 
     return exported_keys, exported_values
 
+  def _gather_saveables_for_checkpoint(self):
+    """For object-based checkpointing."""
+    return {"table": functools.partial(
+        MutableDenseHashTable._Saveable, table=self)}
+
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for MutableDenseHashTable."""
 
@@ -648,7 +683,8 @@ class MutableDenseHashTable(LookupInterface):
       # pylint: disable=protected-access
       super(MutableDenseHashTable._Saveable, self).__init__(table, specs, name)
 
-    def restore(self, restored_tensors, unused_restored_shapes):
+    def restore(self, restored_tensors, restored_shapes):
+      del restored_shapes  # unused
       # pylint: disable=protected-access
       with ops.colocate_with(self.op._table_ref):
         return gen_lookup_ops.lookup_table_import_v2(
