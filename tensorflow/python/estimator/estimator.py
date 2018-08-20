@@ -153,9 +153,9 @@ class Estimator(object):
           * `params`: Optional `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
-          * `config`: Optional configuration object. Will receive what is passed
-                 to Estimator in `config` parameter, or the default `config`.
-                 Allows updating things in your `model_fn` based on
+          * `config`: Optional `estimator.RunConfig` object. Will receive what
+                 is passed to Estimator as its `config` parameter, or a default
+                 value. Allows setting up things in your `model_fn` based on
                  configuration such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
@@ -167,7 +167,7 @@ class Estimator(object):
         path will be resolved. If `None`, the model_dir in `config` will be used
         if set. If both are set, they must be same. If both are `None`, a
         temporary directory will be used.
-      config: Configuration object.
+      config: `estimator.RunConfig` configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
@@ -185,8 +185,8 @@ class Estimator(object):
     """
     Estimator._assert_members_are_not_overridden(self)
 
-    config = maybe_overwrite_model_dir_and_session_config(config, model_dir)
-    self._config = config
+    self._config = maybe_overwrite_model_dir_and_session_config(config,
+                                                                model_dir)
 
     # The distribute field contains an instance of DistributionStrategy.
     self._train_distribution = self._config.train_distribute
