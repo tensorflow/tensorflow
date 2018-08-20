@@ -1133,29 +1133,21 @@ def set_tf_nccl_install_path(environ_cp):
         if nccl_install_path.startswith("/usr/lib") and re.search('.*linux-gnu', nccl_install_path):
           nccl_root_path = "/usr"
           print("This looks like a system path. Using: " + nccl_root_path)
-          # Look for license
-          nccl_license_path = "/usr/share/doc/libnccl2/NCCL-SLA.txt.gz"
-          print("Assuming license is at " + nccl_license_path)
         else:
           nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
           nccl_root_path = nccl_install_path + "/.."
-          # Look for license
-          nccl_license_path = nccl_root_path + "/NCCL-SLA.txt"
-          nccl_license_path = os.path.realpath(os.path.expanduser(nccl_license_path))
-          print("Assuming license is at " + nccl_license_path)
 
         # Look for header
         nccl_hdr_path = nccl_root_path + "/include/nccl.h"
         nccl_hdr_path = os.path.realpath(os.path.expanduser(nccl_hdr_path))
         print("Assuming header is at " + nccl_hdr_path)
-        if (os.path.exists(nccl_hdr_path) and os.path.exists(nccl_license_path)
-              and os.path.exists(nccl_license_path)):
+        if (os.path.exists(nccl_hdr_path)):
           # Set NCCL_INSTALL_PATH
           environ_cp['NCCL_INSTALL_PATH'] = nccl_root_path
           write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_root_path)
           break
         else:
-          print('The header or license for NCCL2 cannot be found. Please install the libnccl-dev package.')
+          print('The header for NCCL2 cannot be found. Please install the libnccl-dev package.')
       else:
           print('NCCL2 is listed by ldconfig but the library is not found. ' 
                 'Your ldconfig is out of date. Please run sudo ldconfig.')
@@ -1180,10 +1172,6 @@ def set_tf_nccl_install_path(environ_cp):
         nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
         print("This looks like a system path. Using: " + nccl_install_path + nccl_lib_path)
 
-        # Look for license
-        nccl_license_path = "/usr/share/doc/libnccl2/NCCL-SLA.txt.gz"
-        print("Assuming license is at " + nccl_license_path)
-
         # Look for header
         nccl_hdr_path = "/usr/include/nccl.h"
         print("Assuming header is " + nccl_hdr_path)
@@ -1207,17 +1195,12 @@ def set_tf_nccl_install_path(environ_cp):
         nccl_lib_path = os.path.realpath(os.path.expanduser(nccl_lib_path))
         nccl_root_path = nccl_lib_path + "/../.."
 
-        # Look for license
-        nccl_license_path = nccl_root_path + "/NCCL-SLA.txt"
-        nccl_license_path = os.path.realpath(os.path.expanduser(nccl_license_path))
-        print("Assuming license is at " + nccl_license_path)
-
         # Look for header
         nccl_hdr_path = nccl_root_path + "/include/nccl.h"
         nccl_hdr_path = os.path.realpath(os.path.expanduser(nccl_hdr_path))
         print("Assuming header is at " + nccl_hdr_path)
         if os.path.exists(nccl_lib_path) and os.path.exists(
-            nccl_hdr_path) and os.path.exists(nccl_license_path):
+            nccl_hdr_path):
           # Set NCCL_INSTALL_PATH
           environ_cp['NCCL_INSTALL_PATH'] = nccl_root_path
           write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_root_path)
