@@ -57,6 +57,29 @@ def _sparse_id_tensor(shape, vocab_size, seed=112123):
       indices=indices, values=values, dense_shape=shape)
 
 
+def _sparse_id_tensor_with_weights(shape, vocab_size, seed=112123):
+  # Returns a arbitrary `SparseTensor` with given shape and vocab size.
+  assert vocab_size >= shape[-1]
+  np.random.seed(seed)
+  indices = np.array(list(itertools.product(*[range(s) for s in shape])))
+
+  # Values must be distinct from the vocab
+  values = np.ndarray.flatten(np.array([
+      np.random.choice(vocab_size, size=shape[-1], replace=False)
+      for _ in range(np.prod(shape[:-1]))]))
+  weights = np.sort(np.random.rand(*shape), axis=len(shape)-1)
+
+  # Remove entries if weight < 0.5 for sparsity.
+  keep = np.ndarray.flatten(weights < 0.5)  # Remove half of them
+  indices = indices[keep]
+  values = values[keep]
+  weights = np.ndarray.flatten(weights)[keep]
+  return (sparse_tensor_lib.SparseTensor(
+      indices=indices, values=values, dense_shape=shape),
+          sparse_tensor_lib.SparseTensor(
+              indices=indices, values=weights, dense_shape=shape))
+
+
 class FeatureColumnTest(test.TestCase):
 
   def testImmutability(self):
@@ -328,6 +351,34 @@ class FeatureColumnTest(test.TestCase):
     one_hot = fc.one_hot_column(weighted_ids)
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
+
+  def testIntegerizedOneHotColumnForWeightedSparseColumn(self):
+    vocab_size = 5
+    ids = fc.sparse_column_with_integerized_feature("ids", vocab_size)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    one_hot = fc.one_hot_column(weighted_ids)
+    self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
+    self.assertEqual(one_hot.length, vocab_size)
+
+  def testIntegerizedOneHotWeightedSparseColumnShape(self):
+    vocab_size = 5
+    for id_tensor_shape in [[4, 3], [2, 4], [3, 3, 3]]:
+      output_rank = len(id_tensor_shape)
+      a = fc.sparse_column_with_integerized_feature("a", vocab_size)
+      weighted = fc.weighted_sparse_column(a, "weights")
+      one_hot = fc.one_hot_column(weighted)
+      id_tensor, weight_tensor = _sparse_id_tensor_with_weights(
+          id_tensor_shape, vocab_size)
+
+      one_hot_output = one_hot._to_dnn_input_layer(
+          (id_tensor, weight_tensor),
+          output_rank=output_rank)
+      one_hot_output_shape = one_hot_output.get_shape().as_list()
+      expected_shape = id_tensor_shape[:-1] + [vocab_size]
+      self.assertEquals(expected_shape, one_hot_output_shape)
+      with self.test_session() as sess:
+        one_hot_value = sess.run(one_hot_output)
+        self.assertEquals(expected_shape, list(one_hot_value.shape))
 
   def testOneHotColumnWithSparseColumnWithHashKeys(self):
     input_values = ["marlo", "unknown", "omar"]
