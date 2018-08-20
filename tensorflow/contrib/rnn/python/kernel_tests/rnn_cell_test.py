@@ -1152,8 +1152,7 @@ class LayerNormBasicGRUCellTest(test.TestCase):
   def testLayerNormBasicGRUCellWithInputSizeDifferentThanNbUnits(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope("root", initializer=init_ops.Identity()):
-        x = array_ops.zeros(
-          [1, 3])
+        x = array_ops.zeros([1, 3])
         h = array_ops.zeros([1, 2])
         cell = contrib_rnn_cell.LayerNormBasicGRUCell(2)
         g, out_m = cell(x, h)
@@ -1164,6 +1163,57 @@ class LayerNormBasicGRUCellTest(test.TestCase):
         })
 
         expected_h = np.array([[0.06287911, 0.82106697]])
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[1], expected_h, atol=1e-5)
+
+  def testLayerNormBasicWithZerosInputsAndState(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope("root", initializer=init_ops.constant_initializer(1)):
+        x = array_ops.zeros([1, 2])
+        h = array_ops.zeros([1, 2])
+        cell = contrib_rnn_cell.LayerNormBasicGRUCell(2)
+        g, out_m = cell(x, h)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[0., 0.]]),
+          h.name: np.array([[0., 0.]])
+        })
+
+        expected_h = np.array([[0, 0]])
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[1], expected_h, atol=1e-5)
+
+  def testLayerNormBasicWithZerosInputs(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope("root", initializer=init_ops.constant_initializer(1)):
+        x = array_ops.zeros([1, 2])
+        h = array_ops.zeros([1, 2])
+        cell = contrib_rnn_cell.LayerNormBasicGRUCell(2)
+        g, out_m = cell(x, h)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[0., 0.]]),
+          h.name: np.array([[1., 2.]])
+        })
+
+        expected_h = np.array([[0.5, 1]])
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[1], expected_h, atol=1e-5)
+
+  def testLayerNormBasicWithZerosState(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope("root", initializer=init_ops.constant_initializer(1)):
+        x = array_ops.zeros([1, 2])
+        h = array_ops.zeros([1, 2])
+        cell = contrib_rnn_cell.LayerNormBasicGRUCell(2)
+        g, out_m = cell(x, h)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[1., 2.]]),
+          h.name: np.array([[0., 0.]])
+        })
+        print(res[1])
+        expected_h = np.array([[0, 0]])
         self.assertEqual(len(res), 2)
         self.assertAllClose(res[1], expected_h, atol=1e-5)
 
