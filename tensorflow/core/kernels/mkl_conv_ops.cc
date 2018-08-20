@@ -906,6 +906,7 @@ class MklConvOp : public OpKernel {
       //   1. Legacy CPU without AVX512/AVX2, or
       //   2. 1x1 convolution with stride != 1
       not_cache_ = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled() &&
+                    (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
                     (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                      IsConv1x1StrideNot1(filter_dims, strides));
 

@@ -105,6 +105,8 @@ typedef enum {
   Dim3d_I = 1
 } MklDnnDims3D;
 
+static const int kSmallBatchSize = 32;
+
 #ifdef INTEL_MKL_ML_ONLY
 class MklShape {
  public:
