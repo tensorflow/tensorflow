@@ -12,12 +12,13 @@
 		1E6F42DBB39A4A3871D4F848 /* libPods-tflite_simple_example.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 73DBC33C5DD9A526EE6D1EF2 /* libPods-tflite_simple_example.a */; };
 		594C14B11FB9037100EE8BFE /* labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = 594C14AF1FB9037100EE8BFE /* labels.txt */; };
 		594C14B21FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite in Resources */ = {isa = PBXBuildFile; fileRef = 594C14B01FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite */; };
-		59A3D0011CF4E68100C4259F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFF21CF4E68100C4259F /* AppDelegate.mm */; };
 		59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */; };
 		59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */; };
-		59A3D0091CF4E68100C4259F /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.mm */; };
-		59A3D00B1CF4E68100C4259F /* RunModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */; };
-		59A3D00C1CF4E68100C4259F /* RunModelViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 59A3D0001CF4E68100C4259F /* RunModelViewController.xib */; };
+		59A3D0091CF4E68100C4259F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.m */; };
+		DE6FE52C1FBC27BD009685A1 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52B1FBC27BD009685A1 /* Main.storyboard */; };
+		DE6FE52E1FBC27F0009685A1 /* RunModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */; };
+		DE6FE5301FBC3035009685A1 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52F1FBC3035009685A1 /* LaunchScreen.storyboard */; };
+		DE912B871FBECEEA0079D7D2 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = DE912B851FBECEEA0079D7D2 /* AppDelegate.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,19 +28,20 @@
 		5911579B1CF4011C00C31E3A /* tflite_simple_example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tflite_simple_example.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		594C14AF1FB9037100EE8BFE /* labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = labels.txt; sourceTree = "<group>"; };
 		594C14B01FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = mobilenet_v1_1.0_224.tflite; sourceTree = "<group>"; };
-		59A3CFF11CF4E68100C4259F /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
-		59A3CFF21CF4E68100C4259F /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
 		59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grace_hopper.jpg; sourceTree = "<group>"; };
 		59A3CFFA1CF4E68100C4259F /* ios_image_load.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ios_image_load.h; sourceTree = "<group>"; };
 		59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_image_load.mm; sourceTree = "<group>"; };
-		59A3CFFC1CF4E68100C4259F /* main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		59A3CFFC1CF4E68100C4259F /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		59A3CFFD1CF4E68100C4259F /* RunModel-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "RunModel-Info.plist"; sourceTree = "<group>"; };
 		59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunModelViewController.h; sourceTree = "<group>"; };
-		59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
-		59A3D0001CF4E68100C4259F /* RunModelViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = RunModelViewController.xib; sourceTree = "<group>"; };
 		5D6203B9FAEEB9824194DBE8 /* Pods-tflite_simple_example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tflite_simple_example.release.xcconfig"; path = "Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example.release.xcconfig"; sourceTree = "<group>"; };
 		73DBC33C5DD9A526EE6D1EF2 /* libPods-tflite_simple_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tflite_simple_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		987DD5BCAB2DD8B682674E20 /* Pods-tflite_simple_example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tflite_simple_example.debug.xcconfig"; path = "Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example.debug.xcconfig"; sourceTree = "<group>"; };
+		DE6FE52B1FBC27BD009685A1 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
+		DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
+		DE6FE52F1FBC3035009685A1 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		DE912B851FBECEEA0079D7D2 /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		DE912B861FBECEEA0079D7D2 /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,16 +72,17 @@
 		591157921CF4011C00C31E3A = {
 			isa = PBXGroup;
 			children = (
-				59A3CFF11CF4E68100C4259F /* AppDelegate.h */,
-				59A3CFF21CF4E68100C4259F /* AppDelegate.mm */,
+				DE912B861FBECEEA0079D7D2 /* AppDelegate.h */,
+				DE912B851FBECEEA0079D7D2 /* AppDelegate.m */,
 				59A3CFF31CF4E68100C4259F /* data */,
 				59A3CFFA1CF4E68100C4259F /* ios_image_load.h */,
 				59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */,
-				59A3CFFC1CF4E68100C4259F /* main.mm */,
+				59A3CFFC1CF4E68100C4259F /* main.m */,
 				59A3CFFD1CF4E68100C4259F /* RunModel-Info.plist */,
 				59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */,
-				59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */,
-				59A3D0001CF4E68100C4259F /* RunModelViewController.xib */,
+				DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */,
+				DE6FE52B1FBC27BD009685A1 /* Main.storyboard */,
+				DE6FE52F1FBC3035009685A1 /* LaunchScreen.storyboard */,
 				5911579C1CF4011C00C31E3A /* Products */,
 				24D7686C331131624F4454A0 /* Frameworks */,
 				5CE7E4179B26BF77944D8637 /* Pods */,
@@ -124,8 +127,6 @@
 				591157971CF4011C00C31E3A /* Sources */,
 				591157981CF4011C00C31E3A /* Frameworks */,
 				591157991CF4011C00C31E3A /* Resources */,
-				25E1671BDC7334C678FB5DFB /* [CP] Embed Pods Frameworks */,
-				10976C49D86B7F8A59157601 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -175,9 +176,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				59A3D00C1CF4E68100C4259F /* RunModelViewController.xib in Resources */,
+				DE6FE52C1FBC27BD009685A1 /* Main.storyboard in Resources */,
 				594C14B11FB9037100EE8BFE /* labels.txt in Resources */,
 				59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */,
+				DE6FE5301FBC3035009685A1 /* LaunchScreen.storyboard in Resources */,
 				594C14B21FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -185,36 +187,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		10976C49D86B7F8A59157601 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Copy Pods Resources";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		25E1671BDC7334C678FB5DFB /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 		A507411BCC70190B9ABD2721 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -240,9 +212,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				59A3D0091CF4E68100C4259F /* main.mm in Sources */,
-				59A3D0011CF4E68100C4259F /* AppDelegate.mm in Sources */,
-				59A3D00B1CF4E68100C4259F /* RunModelViewController.mm in Sources */,
+				DE912B871FBECEEA0079D7D2 /* AppDelegate.m in Sources */,
+				59A3D0091CF4E68100C4259F /* main.m in Sources */,
+				DE6FE52E1FBC27F0009685A1 /* RunModelViewController.mm in Sources */,
 				59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -342,13 +314,13 @@
 			buildSettings = {
 				CLANG_DEBUG_INFORMATION_LEVEL = default;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = EQHXZ8M8AV;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-				);
+				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -356,8 +328,8 @@
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.tflite-simple-example";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE = "1072bd47-ff19-4e5f-8107-d912748f83f1";
-				PROVISIONING_PROFILE_SPECIFIER = "Google Development";
+				PROVISIONING_PROFILE = "";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SEPARATE_STRIP = NO;
 			};
 			name = Debug;
@@ -372,9 +344,7 @@
 				ENABLE_BITCODE = NO;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-				);
+				HEADER_SEARCH_PATHS = "$(inherited)";
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";

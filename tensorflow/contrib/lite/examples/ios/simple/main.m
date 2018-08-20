@@ -13,10 +13,10 @@
 // limitations under the License.
 
 #import <UIKit/UIKit.h>
+#import "AppDelegate.h"
 
 int main(int argc, char *argv[]) {
   @autoreleasepool {
-    NSString *delegateClassName = @"AppDelegate";
-    return UIApplicationMain(argc, argv, nil, delegateClassName);
+    return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
   }
 }
