@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os as _os
+import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
 
@@ -91,12 +92,13 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
         fp_output.name
     ]
     cmdline = " ".join(cmd)
+    is_windows = _platform.system() == "Windows"
     proc = _subprocess.Popen(
         cmdline,
         shell=True,
         stdout=_subprocess.PIPE,
         stderr=_subprocess.STDOUT,
-        close_fds=True)
+        close_fds=not is_windows)
     stdout, stderr = proc.communicate()
     exitcode = proc.returncode
     if exitcode == 0:
