@@ -207,7 +207,12 @@ sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
-        "//tensorflow:windows": [":simple_console_for_windows"],
+        "//tensorflow:windows": [
+            ":simple_console_for_windows",
+            "//tensorflow/contrib/lite/python:interpreter_test_data",
+            "//tensorflow/contrib/lite/python:tflite_convert",
+            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+        ],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
             "//tensorflow/contrib/lite/python:interpreter_test_data",

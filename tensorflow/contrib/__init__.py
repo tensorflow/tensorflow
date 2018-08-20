@@ -94,8 +94,7 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-if os.name != "nt":
-  from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.recurrent.python import recurrent_api as recurrent
