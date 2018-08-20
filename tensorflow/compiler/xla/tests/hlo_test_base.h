@@ -72,8 +72,7 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  static std::unique_ptr<HloModule> CreateNewModule(
-      const string& name = TestName());
+  std::unique_ptr<HloModule> CreateNewModule(const string& name = TestName());
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -99,10 +98,13 @@ class HloTestBase : public ::testing::Test {
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.
-  static DebugOptions GetDebugOptionsForTest();
+  //
+  // This function is virtual so tests can specify an alternative set of debug
+  // options (e.g. disabling additional passes).
+  virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  static HloModuleConfig GetModuleConfigForTest() {
+  HloModuleConfig GetModuleConfigForTest() {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     return config;

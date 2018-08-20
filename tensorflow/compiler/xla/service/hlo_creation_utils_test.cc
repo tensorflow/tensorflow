@@ -28,7 +28,7 @@ using tensorflow::gtl::ArraySlice;
 
 class HloCreationUtilsTest : public HloTestBase {
  protected:
-  static std::unique_ptr<HloModule> CreateModuleWithProgramShape(
+  std::unique_ptr<HloModule> CreateModuleWithProgramShape(
       PrimitiveType primitive_type, ArraySlice<int64> input_shape_dims,
       ArraySlice<int64> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation) {
