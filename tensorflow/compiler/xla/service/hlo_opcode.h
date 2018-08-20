@@ -156,7 +156,7 @@ enum HloOpcodeProperty {
 // Returns a string representation of the opcode.
 string HloOpcodeString(HloOpcode opcode);
 
-// Returns a string representation of the opcode.
+// Retrieves the opcode enum by name if the opcode exists.
 StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
