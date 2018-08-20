@@ -29,12 +29,11 @@ namespace tensorflow {
 static const int32 LEFT_INDEX = 0;
 static const int32 RIGHT_INDEX = 1;
 
-GrowStats::GrowStats(const TensorForestParams& params, int32 depth)
+GrowStats::GrowStats(const int32& split_after_samples,
+                     const int32& num_splits_to_consider)
     : weight_sum_(0),
-      depth_(depth),
-      split_after_samples_(ResolveParam(params.split_after_samples(), depth)),
-      num_splits_to_consider_(
-          ResolveParam(params.num_splits_to_consider(), depth)),
+      split_after_samples_(split_after_samples),
+      num_splits_to_consider_(num_splits_to_consider),
       num_outputs_(params.num_outputs()) {}
 
 void GrowStats::AddSplit(const decision_trees::BinaryNode& split,
@@ -66,61 +65,15 @@ void GrowStats::RemoveSplit(int split_num) {
 
 ClassificationStats::ClassificationStats(const TensorForestParams& params,
                                          int32 depth)
-    : GrowStats(params, depth), finish_early_(false) {
+    : GrowStats(params, depth) {
   // Early splitting params.
-  if (params.finish_type().type() == SPLIT_FINISH_BASIC) {
-    min_split_samples_ = split_after_samples_;
-    finish_sample_epoch_ = 1;
-    finish_check_every_ = split_after_samples_ * 2;
-  } else {
-    if (!params.has_dominate_fraction() || !params.has_min_split_samples()) {
-      LOG(FATAL) << "dominate_fraction and min_split_samples "
-                 << "required for early-finish strategy.";
-    } else {
-      min_split_samples_ = ResolveParam(params.min_split_samples(), depth);
-      finish_check_every_ =
-          ResolveParam(params.finish_type().check_every_steps(), depth);
-      finish_sample_epoch_ = min_split_samples_ / finish_check_every_;
-
-      dominate_fraction_ = ResolveParam(params.dominate_fraction(), depth_);
-      if (dominate_fraction_ <= 0 || dominate_fraction_ > 1.0) {
-        LOG(FATAL) << "Invalid dominate fraction " << dominate_fraction_;
-      }
-    }
-  }
+  min_split_samples_ = split_after_samples_;
+  finish_sample_epoch_ = 1;
+  finish_check_every_ = split_after_samples_ * 2;
 
   // Pruning params.
-  if (params.pruning_type().type() != SPLIT_PRUNE_NONE) {
-    prune_check_every_ =
-        ResolveParam(params.pruning_type().prune_every_samples(), depth);
-    prune_sample_epoch_ = 1;
-    prune_fraction_ = 0.0;
-    switch (params_.pruning_type().type()) {
-      case SPLIT_PRUNE_HALF:
-        prune_fraction_ = 0.5;
-        break;
-      case SPLIT_PRUNE_QUARTER:
-        prune_fraction_ = 0.25;
-        break;
-      case SPLIT_PRUNE_10_PERCENT:
-        prune_fraction_ = 0.10;
-        break;
-      case SPLIT_PRUNE_HOEFFDING:
-        dominate_fraction_ = ResolveParam(params.dominate_fraction(), depth_);
-        half_ln_dominate_frac_ = 0.5 * log(1.0 / (1.0 - dominate_fraction_));
-        break;
-      default:
-        LOG(WARNING) << "Unknown pruning type";
-    }
-  } else {
-    prune_check_every_ = split_after_samples_ * 2;
-    prune_sample_epoch_ = 1;
-  }
-
-  if (params.use_running_stats_method()) {
-    left_gini_.reset(new RunningGiniScores());
-    right_gini_.reset(new RunningGiniScores());
-  }
+  prune_check_every_ = split_after_samples_ * 2;
+  prune_sample_epoch_ = 1;
 
   single_rand_ = std::unique_ptr<random::PhiloxRandom>(
       new random::PhiloxRandom(random::New64()));
@@ -158,7 +111,7 @@ void ClassificationStats::AdditionalInitializationExample(
 
 bool ClassificationStats::IsFinished() const {
   bool basic = (weight_sum_ >= split_after_samples_) && !is_pure();
-  return basic || finish_early_;
+  return basic;
 }
 
 float ClassificationStats::MaybeCachedGiniScore(int split, float* left_sum,
@@ -214,11 +167,6 @@ void ClassificationStats::CheckPrune() {
   }
   ++prune_sample_epoch_;
 
-  if (params_.pruning_type().type() == SPLIT_PRUNE_HOEFFDING) {
-    CheckPruneHoeffding();
-    return;
-  }
-
   const int to_remove = num_splits() * prune_fraction_;
   if (to_remove <= 0) {
     return;
@@ -254,125 +202,12 @@ void ClassificationStats::CheckPrune() {
   }
 }
 
-void ClassificationStats::CheckPruneHoeffding() {
-  std::vector<float> split_scores(num_splits());
-  // Find best split score
-  float best_split_score = FLT_MAX;
-  for (int i = 0; i < num_splits(); ++i) {
-    float left, right;
-    split_scores[i] = MaybeCachedGiniScore(i, &left, &right);
-    if (split_scores[i] < best_split_score) {
-      best_split_score = split_scores[i];
-    }
-  }
-
-  // We apply the Hoeffding bound to the difference between the best split
-  // score and the i-th split score.
-  // Raw Gini ranges from 0 to 1 - (1/n), but our gini score is weighted.
-  const float num_classes = params_.num_outputs();
-  const float gini_diff_range = weight_sum_ * (1.0 - 1.0 / num_classes);
-  float epsilon = gini_diff_range * sqrt(half_ln_dominate_frac_ / weight_sum_);
-  for (int i = num_splits() - 1; i >= 0; i--) {
-    if (split_scores[i] - best_split_score > epsilon) {
-      RemoveSplit(i);
-    }
-  }
-}
-
 void ClassificationStats::CheckFinishEarly() {
   if (weight_sum_ < min_split_samples_ ||
       weight_sum_ < finish_sample_epoch_ * finish_check_every_) {
     return;
   }
   ++finish_sample_epoch_;
-
-  if (params_.finish_type().type() == SPLIT_FINISH_DOMINATE_HOEFFDING) {
-    CheckFinishEarlyHoeffding();
-  } else if (params_.finish_type().type() == SPLIT_FINISH_DOMINATE_BOOTSTRAP) {
-    CheckFinishEarlyBootstrap();
-  }
-}
-
-void ClassificationStats::CheckFinishEarlyHoeffding() {
-  // Each term in the Gini impurity can range from 0 to 0.5 * 0.5.
-  float range = 0.25 * static_cast<float>(params_.num_outputs()) * weight_sum_;
-
-  float hoeffding_bound =
-      range * sqrt(log(1.0 / (1.0 - dominate_fraction_)) / (2.0 * weight_sum_));
-
-  float unused_left_sum, unused_right_sum;
-  std::function<float(int)> score_fn =
-      std::bind(&ClassificationStats::MaybeCachedGiniScore, this,
-                std::placeholders::_1, &unused_left_sum, &unused_right_sum);
-
-  float best_score;
-  int32 best_index;
-  float second_best_score;
-  int32 second_best_index;
-  GetTwoBest(num_splits(), score_fn, &best_score, &best_index,
-             &second_best_score, &second_best_index);
-
-  finish_early_ = (second_best_score - best_score) > hoeffding_bound;
-}
-
-void ClassificationStats::MakeBootstrapWeights(int index,
-                                               std::vector<float>* weights) {
-  int n = weight_sum_;
-  float denom = static_cast<float>(n) + static_cast<float>(num_outputs_);
-  for (int i = 0; i < num_outputs_; ++i) {
-    // Use the Laplace smoothed per-class probabilities when generating the
-    // bootstrap samples.
-    (*weights)[i] = (left_count(index, i) + 1.0) / denom;
-    (*weights)[num_outputs_ + i] = (right_count(index, i) + 1.0) / denom;
-  }
-}
-
-int ClassificationStats::NumBootstrapSamples() const {
-  float p = 1.0 - dominate_fraction_;
-  int bootstrap_samples = 1;
-  while (p < 1.0) {
-    ++bootstrap_samples;
-    p = p * 2;
-  }
-  return bootstrap_samples;
-}
-
-void ClassificationStats::CheckFinishEarlyBootstrap() {
-  float unused_left_sum, unused_right_sum;
-  std::function<float(int)> score_fn =
-      std::bind(&ClassificationStats::MaybeCachedGiniScore, this,
-                std::placeholders::_1, &unused_left_sum, &unused_right_sum);
-
-  float best_score;
-  int32 best_index;
-  float second_best_score;
-  int32 second_best_index;
-  GetTwoBest(num_splits(), score_fn, &best_score, &best_index,
-             &second_best_score, &second_best_index);
-
-  std::vector<float> weights1(num_outputs_ * 2);
-  MakeBootstrapWeights(best_index, &weights1);
-  random::DistributionSampler ds1(weights1);
-
-  std::vector<float> weights2(num_outputs_ * 2);
-  MakeBootstrapWeights(second_best_index, &weights2);
-  random::DistributionSampler ds2(weights2);
-
-  const int bootstrap_samples = NumBootstrapSamples();
-
-  int worst_g1 = 0;
-  for (int i = 0; i < bootstrap_samples; i++) {
-    int g1 = BootstrapGini(weight_sum_, 2 * num_outputs_, ds1, rng_.get());
-    worst_g1 = std::max(worst_g1, g1);
-  }
-
-  int best_g2 = 99;
-  for (int i = 0; i < bootstrap_samples; i++) {
-    int g2 = BootstrapGini(weight_sum_, 2 * num_outputs_, ds2, rng_.get());
-    best_g2 = std::min(best_g2, g2);
-  }
-
-  finish_early_ = worst_g1 < best_g2;
 }
 
 bool ClassificationStats::BestSplit(SplitCandidate* best) const {
@@ -411,8 +246,7 @@ bool ClassificationStats::BestSplit(SplitCandidate* best) const {
 }
 
 std::unique_ptr<GrowStats> SplitCollectionOperatorFactory::CreateGrowStats(
-    LeafModelType& model_type,
-     int32 depth) const {
+    LeafModelType& model_type, int32 depth) const {
   switch (model_type) {
     case CLASSIFICATION:
       return std::unique_ptr<GrowStats>(
@@ -427,4 +261,4 @@ std::unique_ptr<GrowStats> SplitCollectionOperatorFactory::CreateGrowStats(
       return nullptr;
   }
 };
-}
+}  // namespace tensorflow

@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-	enum LeafModelType { CLASSIFICATION = 0, REGRESSION = 1 };
+enum LeafModelType { CLASSIFICATION = 0, REGRESSION = 1 };
 }
 
 class LeafModelOperator {
@@ -33,15 +33,14 @@ class LeafModelOperator {
   // Returns the value of the requested output, which should be
   // in [0, num_outputs_).  For classification, it's the class count (weighted
   // number of instances seen).  For regression, it's e.g. the average value.
-  virtual float GetOutputValue(const decision_trees::Leaf& leaf,
-                               int32 o) const = 0;
+  float GetOutputValue(const decision_trees::Leaf& leaf, int32 o) const;
 
   // Update the given Leaf's model with the given example.
   virtual void UpdateModel(decision_trees::Leaf* leaf,
                            const InputTarget* target, int example) const = 0;
 
   // Initialize an empty Leaf model.
-  virtual void InitModel(decision_trees::Leaf* leaf) const = 0;
+  void InitModel(decision_trees::Leaf* leaf) const;
 
   virtual void ExportModel(const LeafStat& stat,
                            decision_trees::Leaf* leaf) const = 0;
@@ -53,30 +52,23 @@ class LeafModelOperator {
 // LeafModelOperator that stores class counts in a dense vector.
 class ClassificationLeafModelOperator : public LeafModelOperator {
  public:
-  float GetOutputValue(const decision_trees::Leaf& leaf,
-                       int32 o) const override;
-
   void UpdateModel(decision_trees::Leaf* leaf, const InputTarget* target,
                    int example) const override;
-
-  void InitModel(decision_trees::Leaf* leaf) const override;
 
   void ExportModel(const LeafStat& stat,
                    decision_trees::Leaf* leaf) const override;
 };
 
-
 // LeafModelOperator that stores regression leaf models with constant-value
 // prediction.
 class RegressionLeafModelOperator : public LeafModelOperator {
  public:
-  float GetOutputValue(const decision_trees::Leaf& leaf,
-                       int32 o) const override;
-
+  // TODO(gilberth): Quick experimentation suggests it's not even worth
+  // updating model and just using the seeded values.  Can add this in
+  // with additional_data, though protobuf::Any is slow.  Maybe make it
+  // optional.  Maybe make any update optional.
   void UpdateModel(decision_trees::Leaf* leaf, const InputTarget* target,
                    int example) const override {}
-
-  void InitModel(decision_trees::Leaf* leaf) const override;
 
   void ExportModel(const LeafStat& stat,
                    decision_trees::Leaf* leaf) const override;

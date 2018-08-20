@@ -17,26 +17,27 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_TENSOR_FOREST_RESOURCES_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kerneral/tensor_forest/leaf_model.h"
 #include "tensorflow/core/kerneral/tensor_forest/tensor_forest.pb.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
+typedef TTypes<const float, 2>::ConstTensor DenseTensorType;
 
 class LeafModelResource : public ResourceBase {
  public:
-  LeafModelType(const int32& leaf_model_type) : leaf_model_type_(static_cast<LeafModelType>(leaf_model_type)) {
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(leaf_model_type_);
+  LeafModelResource(const int32& leaf_model_type)
+      : leaf_model_type_(static_cast<LeafModelType>(leaf_model_type)) {
+    model_op_ =
+        LeafModelOperatorFactory::CreateLeafModelOperator(leaf_model_type_);
   };
 
   void MaybeInitialize();
 
   mutex* get_mutex() { return &mu_; }
-  
-  void Reset() {}
 
  private:
   const LeafModelType& leaf_model_type_;
@@ -47,7 +48,6 @@ class LeafModelResource : public ResourceBase {
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
 class DecisionTreeResource : public LeafModelResource {
  public:
-
   string DebugString() override {
     return strings::StrCat("DecisionTree[size=",
                            decision_tree_->decision_tree().nodes_size(), "]");
@@ -55,9 +55,7 @@ class DecisionTreeResource : public LeafModelResource {
 
   const tensor_forest::Model& decision_tree() const { return *decision_tree_; }
 
-  tensor_forest::Model* mutable_decision_tree() {
-    return decision_tree_.get();
-  }
+  tensor_forest::Model* mutable_decision_tree() { return decision_tree_.get(); }
 
   const tensor_forest::Leaf& get_leaf(int32 id) const {
     return decision_tree_->decision_tree().nodes(id).leaf();
@@ -69,10 +67,10 @@ class DecisionTreeResource : public LeafModelResource {
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() override{ decision_tree_.reset(new tensor_forest::Model()); }
+  void Reset() { decision_tree_.reset(new tensor_forest::Model()); }
 
-  int32 TraverseTree(const Tensor& input_data,
-                     int example, int32* depth, TreePath* path) const;
+  int32 TraverseTree(const DenseTensorType& input_data, int example,
+                     TreePath* path) const;
 
   void SplitNode(int32 node_id, SplitCandidate* best,
                  std::vector<int32>* new_children);
@@ -84,13 +82,11 @@ class DecisionTreeResource : public LeafModelResource {
 
 class FertileStatsResource : public LeafModelResource {
  public:
-
   string DebugString() override { return "FertileStats"; }
 
   void ExtractFromProto(const FertileStats& stats);
 
   void PackToProto(FertileStats* stats) const;
-
 
   // Reset the stats for a node, but leave the leaf_stats intact.
   void ResetSplitStats(int32 node_id, int32 depth) {
@@ -98,14 +94,15 @@ class FertileStatsResource : public LeafModelResource {
     collection_op_->InitializeSlot(node_id, depth);
   }
 
+  void MaybeInitialize() override { collection_op_->MaybeInitialize(); }
   // Applies the example to the given leaf's statistics. Also applies it to the
   // node's fertile slot's statistics if or initializes a split candidate,
   // where applicable.  Returns if the node is finished or if it's ready to
   // allocate to a fertile slot.
-  void AddExampleToStatsAndInitialize(
-      const Tensor& input_data,
-      const Tensor& target, const std::vector<int>& examples,
-      int32 node_id, bool* is_finished);
+  void AddExampleToStatsAndInitialize(const DenseTensorType& input_data,
+                                      const DenseTensorType& target,
+                                      const std::vector<int>& examples,
+                                      int32 node_id, bool* is_finished);
 
   // Allocate a fertile slot for each ready node, then new children up to
   // max_fertile_nodes_.
@@ -122,6 +119,27 @@ class FertileStatsResource : public LeafModelResource {
  private:
   std::unique_ptr<SplitCollectionOperator> collection_op_;
   void AllocateNode(int32 node_id, int32 depth);
+};
+
+// Base class for evaluators of decision nodes that effectively copy proto
+// contents into C++ structures for faster execution.
+
+// An evaluator for binary decisions with left and right children.
+// Evaluator for basic inequality decisions (f[x] <= T).
+class BinaryDecisionNodeEvaluator : {
+ public:
+  // Returns the index of the child node.
+  int32 Decide(const std::unique_ptr<DenseTensorType>& dataset,
+               int example) const;
+
+ protected:
+  BinaryDecisionNodeEvaluator(int32 left, int32 right)
+      : left_child_id_(left), right_child_id_(right) {}
+
+  int32 left_child_id_;
+  int32 right_child_id_;
+  int32 feature_num_;
+  float threshold_;
 };
 
 }  // namespace tensorflow

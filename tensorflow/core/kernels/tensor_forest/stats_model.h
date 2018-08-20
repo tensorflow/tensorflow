@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TENSOR_FOREST_RESOURCES_H_
 #define TENSORFLOW_CORE_KERNELS_TENSOR_FOREST_RESOURCES_H_
 
-
 #include <unordered_map>
 #include <vector>
 
@@ -41,7 +40,7 @@ class GrowStats {
   virtual bool IsFinished() const = 0;
   // Perform any initialization.
   virtual void Initialize() = 0;
-  
+
   virtual bool IsInitialized() const {
     return weight_sum_ > 0 || splits_.size() == num_splits_to_consider_;
   }
@@ -65,7 +64,7 @@ class GrowStats {
   const decision_trees::BinaryNode& Split(int split_num) const {
     return splits_[split_num];
   }
-  
+
   void RemoveSplit(int split_num);
 
   int num_splits() const { return splits_.size(); }
@@ -85,8 +84,6 @@ class GrowStats {
   // Add split to the list of candidate splits.
 
   float weight_sum() const { return weight_sum_; }
-
-  int32 depth() const { return depth_; }
 
  protected:
   GrowStats(const TensorForestParams& params, int32 depth);
@@ -113,13 +110,12 @@ class GrowStats {
   const int32 num_outputs_;
 };
 
-
-class ClassificationStats: public GrowStats {
+class ClassificationStats : public GrowStats {
  public:
   ClassificationStats(const TensorForestParams& params, int32 depth);
 
   bool IsFinished() const override;
-  
+
   void Initialize() override {
     Clear();
     total_counts_.resize(num_outputs_);
@@ -145,7 +141,6 @@ class ClassificationStats: public GrowStats {
 
   void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
                           LeafStat* right_stats) const override;
-
 
  protected:
   void ClassificationAddSplitStats() {
@@ -178,7 +173,7 @@ class ClassificationStats: public GrowStats {
     }
     ClassificationRemoveSplitStats(split);
   }
-  
+
   void ClearInternal() override {
     total_counts_.clear();
     left_counts_.clear();
@@ -192,7 +187,7 @@ class ClassificationStats: public GrowStats {
     return total_counts_[class_num] -
            left_counts_[split * num_outputs_ + class_num];
   }
-  
+
   bool is_pure() const override { return num_outputs_seen_ <= 1; }
   // Virtual so we can override these to test.
   virtual void CheckFinishEarly();
@@ -230,14 +225,6 @@ class ClassificationStats: public GrowStats {
   float GiniScore(int split, float* left_sum, float* right_sum) const override;
 
   int NumBootstrapSamples() const;
-
-  // Accessors for RunningGiniScores objects, for testing.
-  virtual const std::unique_ptr<RunningGiniScores>& get_left_gini() const {
-    return left_gini_;
-  }
-  virtual const std::unique_ptr<RunningGiniScores>& get_right_gini() const {
-    return right_gini_;
-  }
 
  private:
   // Tracks how many check_every_samples epochs we've seen go by in weight_sum.
@@ -291,7 +278,7 @@ class RegressionGrowStats : public GrowStats {
     total_sum_.resize(num_outputs_);
     total_sum_squares_.resize(num_outputs_);
   }
-  
+
   void AddExample(const std::unique_ptr<TensorDataSet>& input_data,
                   const InputTarget* target, int example) override;
 
@@ -359,7 +346,6 @@ class SplitCollectionOperatorFactory {
   static std::unique_ptr<GrowStats> CreateGrowStats(
       const LeafModelType& model_type, const int32& num_output);
 };
-
 
 }  // namespace tensorflow
 

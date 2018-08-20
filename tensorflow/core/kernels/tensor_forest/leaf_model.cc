@@ -35,14 +35,28 @@ LeafModelOperatorFactory::CreateLeafModelOperator(
   }
 }
 
-// ------------------------ Dense ----------------------------- //
-float DenseClassificationLeafModelOperator::GetOutputValue(
-    const decision_trees::Leaf& leaf, int32 o) const {
+std::unique_ptr<LeafModelOperator>
+LeafModelOperatorFactory::CreateLeafModelOperator(const int32& model_type,
+                                                  const int32& num_output) {
+  return LeafModelOperatorFactory::CreateLeafModelOperator(
+      static_cast<LeafModelType>(model_type), num_output);
+}
+float LeafModelOperator::GetOutputValue(const decision_trees::Leaf& leaf,
+                                        int32 o) const {
   return leaf.vector().value(o).float_value();
 }
 
-void DenseClassificationLeafModelOperator::UpdateModel(
-    Leaf* leaf, const InputTarget* target, int example) const {
+void LeafModelOperator::InitModel(Leaf* leaf) const {
+  for (int i = 0; i < num_output_; ++i) {
+    leaf->mutable_vector()->add_value();
+  }
+}
+
+// ------------------------ classification ----------------------------- //
+
+void ClassificationLeafModelOperator::UpdateModel(Leaf* leaf,
+                                                  const InputTarget* target,
+                                                  int example) const {
   const int32 int_label = target->GetTargetAsClassIndex(example, 0);
   QCHECK_LT(int_label, num_output_)
       << "Got label greater than indicated number of classes. Is "
@@ -54,29 +68,12 @@ void DenseClassificationLeafModelOperator::UpdateModel(
   val->set_float_value(val->float_value() + weight);
 }
 
-void DenseClassificationLeafModelOperator::InitModel(Leaf* leaf) const {
-  for (int i = 0; i < num_output_; ++i) {
-    leaf->mutable_vector()->add_value();
-  }
-}
-
-void DenseClassificationLeafModelOperator::ExportModel(
+void ClassificationLeafModelOperator::ExportModel(
     const LeafStat& stat, decision_trees::Leaf* leaf) const {
   *leaf->mutable_vector() = stat.classification().dense_counts();
 }
 
-
 // ------------------------ Regression ----------------------------- //
-float RegressionLeafModelOperator::GetOutputValue(
-    const decision_trees::Leaf& leaf, int32 o) const {
-  return leaf.vector().value(o).float_value();
-}
-
-void RegressionLeafModelOperator::InitModel(Leaf* leaf) const {
-  for (int i = 0; i < num_output_; ++i) {
-    leaf->mutable_vector()->add_value();
-  }
-}
 
 void RegressionLeafModelOperator::ExportModel(
     const LeafStat& stat, decision_trees::Leaf* leaf) const {
@@ -89,5 +86,5 @@ void RegressionLeafModelOperator::ExportModel(
   }
 }
 
-}  // namespace tensorforest
+}  // namespace tensorflow
 }  // namespace tensorflow

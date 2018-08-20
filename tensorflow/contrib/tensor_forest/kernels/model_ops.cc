@@ -150,9 +150,7 @@ void TraverseTree(const DecisionTreeResource* tree_resource,
                   const std::function<void(int32, int32)>& set_leaf_id,
                   std::vector<TreePath>* tree_paths) {
   for (int i = start; i < end; ++i) {
-    const int32 id = tree_resource->TraverseTree(
-        data, i, nullptr,
-        (tree_paths == nullptr) ? nullptr : &(*tree_paths)[i]);
+    const int32 id = tree_resource->TraverseTree(data, i, &(*tree_paths)[i]);
     set_leaf_id(i, id);
   }
 }
