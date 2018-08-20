@@ -821,7 +821,10 @@ TEST_F(XlaCompilerTest, Variables) {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
-  auto write = ops::AssignAddVariableOp(scope, var, a);
+  // Adds an identity op around the resource to make sure identity ops propagate
+  // resources correctly.
+  auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+  auto write = ops::AssignAddVariableOp(scope, identity, a);
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
