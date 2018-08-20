@@ -26,7 +26,7 @@ import java.util.Arrays;
  * <p>The native handle of a {@code Tensor} belongs to {@code NativeInterpreterWrapper}, thus not
  * needed to be closed here.
  */
-final class Tensor {
+public final class Tensor {
 
   static Tensor fromHandle(long nativeHandle) {
     return new Tensor(nativeHandle);
@@ -37,9 +37,24 @@ final class Tensor {
     return dtype;
   }
 
+  /**
+   * Returns the number of dimensions (sometimes referred to as <a
+   * href="https://www.tensorflow.org/resources/dims_types.html#rank">rank</a>) of the Tensor.
+   *
+   * <p>Will be 0 for a scalar, 1 for a vector, 2 for a matrix, 3 for a 3-dimensional tensor etc.
+   */
+  public int numDimensions() {
+    return shapeCopy.length;
+  }
+
   /** Returns the size, in bytes, of the tensor data. */
   public int numBytes() {
     return numBytes(nativeHandle);
+  }
+
+  /** Returns the number of elements in a flattened (1-D) view of the tensor. */
+  public int numElements() {
+    return computeNumElements(shapeCopy);
   }
 
   /**
@@ -103,11 +118,20 @@ final class Tensor {
     if (isByteBuffer(input)) {
       return null;
     }
-    int[] inputShape = shapeOf(input);
+    int[] inputShape = computeShapeOf(input);
     if (Arrays.equals(shapeCopy, inputShape)) {
       return null;
     }
     return inputShape;
+  }
+
+  /**
+   * Forces a refresh of the tensor's cached shape.
+   *
+   * <p>This is useful if the tensor is resized or has a dynamic shape.
+   */
+  void refreshShape() {
+    this.shapeCopy = shape(nativeHandle);
   }
 
   /** Returns the type of the data. */
@@ -132,22 +156,31 @@ final class Tensor {
   }
 
   /** Returns the shape of an object as an int array. */
-  static int[] shapeOf(Object o) {
-    int size = numDimensions(o);
+  static int[] computeShapeOf(Object o) {
+    int size = computeNumDimensions(o);
     int[] dimensions = new int[size];
     fillShape(o, 0, dimensions);
     return dimensions;
   }
 
+  /** Returns the number of elements in a flattened (1-D) view of the tensor's shape. */
+  static int computeNumElements(int[] shape) {
+    int n = 1;
+    for (int i = 0; i < shape.length; ++i) {
+      n *= shape[i];
+    }
+    return n;
+  }
+
   /** Returns the number of dimensions of a multi-dimensional array, otherwise 0. */
-  static int numDimensions(Object o) {
+  static int computeNumDimensions(Object o) {
     if (o == null || !o.getClass().isArray()) {
       return 0;
     }
     if (Array.getLength(o) == 0) {
       throw new IllegalArgumentException("Array lengths cannot be 0.");
     }
-    return 1 + numDimensions(Array.get(o, 0));
+    return 1 + computeNumDimensions(Array.get(o, 0));
   }
 
   /** Recursively populates the shape dimensions for a given (multi-dimensional) array. */
@@ -188,7 +221,7 @@ final class Tensor {
               dtype, o.getClass().getName(), oType));
     }
 
-    int[] oShape = shapeOf(o);
+    int[] oShape = computeShapeOf(o);
     if (!Arrays.equals(oShape, shapeCopy)) {
       throw new IllegalArgumentException(
           String.format(
@@ -204,11 +237,11 @@ final class Tensor {
 
   private final long nativeHandle;
   private final DataType dtype;
-  private final int[] shapeCopy;
+  private int[] shapeCopy;
 
   private Tensor(long nativeHandle) {
     this.nativeHandle = nativeHandle;
-    this.dtype = DataType.fromNumber(dtype(nativeHandle));
+    this.dtype = DataType.fromC(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
   }
 
