@@ -58,8 +58,14 @@ public:
 
   // A map from affine map identifier to AffineMap.
   llvm::StringMap<AffineMap *> affineMapDefinitions;
+
   // A map from integer set identifier to IntegerSet.
   llvm::StringMap<IntegerSet *> integerSetDefinitions;
+
+  // This keeps track of all forward references to functions along with the
+  // temporary function used to represent them and the location of the first
+  // reference.
+  llvm::DenseMap<Identifier, std::pair<Function *, SMLoc>> functionForwardRefs;
 
 private:
   ParserState(const ParserState &) = delete;
@@ -579,6 +585,7 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type *> &elements) {
 ///                    | string-literal
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
+///                    | function-id `:` function-type
 ///
 Attribute *Parser::parseAttribute() {
   switch (getToken().getKind()) {
@@ -653,6 +660,42 @@ Attribute *Parser::parseAttribute() {
       return builder.getAffineMapAttr(affineMap);
     return (emitError("expected constant attribute value"), nullptr);
   }
+
+  case Token::at_identifier: {
+    auto nameLoc = getToken().getLoc();
+    Identifier name = builder.getIdentifier(getTokenSpelling().drop_front());
+    consumeToken(Token::at_identifier);
+
+    if (parseToken(Token::colon, "expected ':' and function type"))
+      return nullptr;
+    auto typeLoc = getToken().getLoc();
+    Type *type = parseType();
+    if (!type)
+      return nullptr;
+    auto fnType = dyn_cast<FunctionType>(type);
+    if (!fnType)
+      return (emitError(typeLoc, "expected function type"), nullptr);
+
+    // See if the function has already been defined in the module.
+    Function *function = getModule()->getNamedFunction(name);
+
+    // If not, get or create a forward reference to one.
+    if (!function) {
+      auto &entry = state.functionForwardRefs[name];
+      if (!entry.first) {
+        entry.first = new ExtFunction(name, fnType);
+        entry.second = nameLoc;
+      }
+      function = entry.first;
+    }
+
+    if (function->getType() != type)
+      return (emitError(typeLoc, "reference to function with mismatched type"),
+              nullptr);
+
+    return builder.getFunctionAttr(function);
+  }
+
   default: {
     if (Type *type = parseType())
       return builder.getTypeAttr(type);
@@ -2426,6 +2469,8 @@ public:
   ParseResult parseModule();
 
 private:
+  ParseResult finalizeModule();
+
   ParseResult parseAffineMapDef();
   ParseResult parseIntegerSetDef();
 
@@ -2587,7 +2632,7 @@ ParseResult ModuleParser::parseExtFunc() {
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
-  if (function->getName().ref() != name)
+  if (function->getName() != name)
     return emitError(loc,
                      "redefinition of function named '" + name.str() + "'");
 
@@ -2612,7 +2657,7 @@ ParseResult ModuleParser::parseCFGFunc() {
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
-  if (function->getName().ref() != name)
+  if (function->getName() != name)
     return emitError(loc,
                      "redefinition of function named '" + name.str() + "'");
 
@@ -2639,7 +2684,7 @@ ParseResult ModuleParser::parseMLFunc() {
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
-  if (function->getName().ref() != name)
+  if (function->getName() != name)
     return emitError(loc,
                      "redefinition of function named '" + name.str() + "'");
 
@@ -2655,6 +2700,27 @@ ParseResult ModuleParser::parseMLFunc() {
   return parser.parseFunctionBody();
 }
 
+/// Finish the end of module parsing - when the result is valid, do final
+/// checking.
+ParseResult ModuleParser::finalizeModule() {
+
+  // Resolve all forward references.
+  for (auto forwardRef : getState().functionForwardRefs) {
+    auto name = forwardRef.first;
+
+    // Resolve the reference.
+    auto *resolvedFunction = getModule()->getNamedFunction(name);
+    if (!resolvedFunction)
+      return emitError(forwardRef.second.second,
+                       "reference to undefined function '" + name.str() + "'");
+
+    // TODO(clattner): actually go through and update references in the module
+    // to the new function.
+  }
+
+  return ParseSuccess;
+}
+
 /// This is the top-level module parser.
 ParseResult ModuleParser::parseModule() {
   while (1) {
@@ -2665,7 +2731,7 @@ ParseResult ModuleParser::parseModule() {
 
       // If we got to the end of the file, then we're done.
     case Token::eof:
-      return ParseSuccess;
+      return finalizeModule();
 
     // If we got an error token, then the lexer already emitted an error, just
     // stop.  Someday we could introduce error recovery if there was demand for

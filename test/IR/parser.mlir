@@ -215,6 +215,8 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"() {cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
   "foo"() {if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()
 
+  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifstmt : (i32) -> ()} : () -> ()
+  "foo"() {fn: @attributes : () -> (), if: @ifstmt : (i32) -> ()} : () -> ()
   return
 }
 

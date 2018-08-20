@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
@@ -26,6 +27,11 @@ using namespace mlir;
 
 Function::Function(StringRef name, FunctionType *type, Kind kind)
     : kind(kind), name(Identifier::get(name, type->getContext())), type(type) {}
+
+Function::~Function() {
+  // Clean up function attributes referring to this function.
+  FunctionAttr::dropFunctionReference(this);
+}
 
 MLIRContext *Function::getContext() const { return getType()->getContext(); }
 

@@ -39,6 +39,7 @@ class FloatAttr;
 class StringAttr;
 class TypeAttr;
 class ArrayAttr;
+class FunctionAttr;
 class AffineMapAttr;
 class AffineMap;
 class AffineExpr;
@@ -85,6 +86,7 @@ public:
   ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
   AffineMapAttr *getAffineMapAttr(AffineMap *value);
   TypeAttr *getTypeAttr(Type *type);
+  FunctionAttr *getFunctionAttr(Function *value);
 
   // Affine Expressions and Affine Map.
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,

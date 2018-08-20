@@ -66,7 +66,7 @@ public:
 
 protected:
   Function(StringRef name, FunctionType *type, Kind kind);
-  ~Function() {}
+  ~Function();
 
 private:
   Kind kind;

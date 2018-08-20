@@ -204,16 +204,25 @@ const char *AllocOp::verify() const {
 void ConstantOp::print(OpAsmPrinter *p) const {
   *p << "constant " << *getValue();
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
-  *p << " : " << *getType();
+
+  if (!isa<FunctionAttr>(getValue()))
+    *p << " : " << *getType();
 }
 
 bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
   Attribute *valueAttr;
   Type *type;
 
-  return parser->parseAttribute(valueAttr, "value", result->attributes) ||
-         parser->parseOptionalAttributeDict(result->attributes) ||
-         parser->parseColonType(type) ||
+  if (parser->parseAttribute(valueAttr, "value", result->attributes) ||
+      parser->parseOptionalAttributeDict(result->attributes))
+    return true;
+
+  // 'constant' taking a function reference doesn't get a redundant type
+  // specifier.  The attribute itself carries it.
+  if (auto *fnAttr = dyn_cast<FunctionAttr>(valueAttr))
+    return parser->addTypeToList(fnAttr->getValue()->getType(), result->types);
+
+  return parser->parseColonType(type) ||
          parser->addTypeToList(type, result->types);
 }
 
@@ -244,7 +253,9 @@ const char *ConstantOp::verify() const {
   }
 
   if (isa<FunctionType>(type)) {
-    // TODO: Verify a function attr.
+    if (!isa<FunctionAttr>(value))
+      return "requires 'value' to be a function reference";
+    return nullptr;
   }
 
   return "requires a result type that aligns with the 'value' attribute";

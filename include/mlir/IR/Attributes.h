@@ -22,8 +22,9 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-class MLIRContext;
 class AffineMap;
+class Function;
+class MLIRContext;
 class Type;
 
 /// Instances of the Attribute class are immutable, uniqued, immortal, and owned
@@ -38,7 +39,7 @@ public:
     Type,
     Array,
     AffineMap,
-    // TODO: Function references.
+    Function,
   };
 
   /// Return the classification for this attribute.
@@ -190,6 +191,34 @@ private:
   TypeAttr(Type *value) : Attribute(Kind::Type), value(value) {}
   ~TypeAttr() = delete;
   Type *value;
+};
+
+/// A function attribute represents a reference to a function object.
+///
+/// When working with IR, it is important to know that a function attribute can
+/// exist with a null Function inside of it, which occurs when a function object
+/// is deleted that had an attribute which referenced it.  No references to this
+/// attribute should persist across the transformation, but that attribute will
+/// remain in MLIRContext.
+class FunctionAttr : public Attribute {
+public:
+  static FunctionAttr *get(Function *value, MLIRContext *context);
+
+  Function *getValue() const { return value; }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::Function;
+  }
+
+  /// This function is used by the internals of the Function class to null out
+  /// attributes refering to functions that are about to be deleted.
+  static void dropFunctionReference(Function *value);
+
+private:
+  FunctionAttr(Function *value) : Attribute(Kind::Function), value(value) {}
+  ~FunctionAttr() = delete;
+  Function *value;
 };
 
 } // end namespace mlir.

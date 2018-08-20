@@ -20,6 +20,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OperationSet.h"
@@ -254,6 +255,7 @@ public:
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
+  DenseMap<Function *, FunctionAttr *> functionAttrs;
 
 public:
   MLIRContextImpl() : identifiers(allocator) {
@@ -631,6 +633,34 @@ TypeAttr *TypeAttr::get(Type *type, MLIRContext *context) {
   result = context->getImpl().allocator.Allocate<TypeAttr>();
   new (result) TypeAttr(type);
   return result;
+}
+
+FunctionAttr *FunctionAttr::get(Function *value, MLIRContext *context) {
+  auto *&result = context->getImpl().functionAttrs[value];
+  if (result)
+    return result;
+
+  result = context->getImpl().allocator.Allocate<FunctionAttr>();
+  new (result) FunctionAttr(value);
+  return result;
+}
+
+/// This function is used by the internals of the Function class to null out
+/// attributes refering to functions that are about to be deleted.
+void FunctionAttr::dropFunctionReference(Function *value) {
+  // Check to see if there was an attribute referring to this function.
+  auto &functionAttrs = value->getContext()->getImpl().functionAttrs;
+
+  // If not, then we're done.
+  auto it = functionAttrs.find(value);
+  if (it == functionAttrs.end())
+    return;
+
+  // If so, null out the function reference in the attribute (to avoid dangling
+  // pointers) and remove the entry from the map so the map doesn't contain
+  // dangling keys.
+  it->second->value = nullptr;
+  functionAttrs.erase(it);
 }
 
 /// Perform a three-way comparison between the names of the specified

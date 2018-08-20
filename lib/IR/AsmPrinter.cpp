@@ -415,6 +415,16 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
   case Attribute::Kind::Type:
     printType(cast<TypeAttr>(attr)->getValue());
     break;
+  case Attribute::Kind::Function: {
+    auto *function = cast<FunctionAttr>(attr)->getValue();
+    if (!function) {
+      os << "<<FUNCTION ATTR FOR DELETED FUNCTION>>";
+    } else {
+      os << '@' << function->getName() << " : ";
+      printType(function->getType());
+    }
+    break;
+  }
   }
 }
 
@@ -784,6 +794,11 @@ protected:
         }
       } else if (auto intOp = op->getAs<ConstantAffineIntOp>()) {
         specialName << 'c' << intOp->getValue();
+      } else if (auto constant = op->getAs<ConstantOp>()) {
+        if (isa<FunctionAttr>(constant->getValue()))
+          specialName << 'f';
+        else
+          specialName << "cst";
       }
     }
 
@@ -909,7 +924,7 @@ void FunctionPrinter::printOptionalAttrDict(
   // Filter out any attributes that shouldn't be included.
   SmallVector<NamedAttribute, 8> filteredAttrs;
   for (auto attr : attrs) {
-    auto attrName = attr.first.ref();
+    auto attrName = attr.first.strref();
     // Never print attributes that start with a colon.  These are internal
     // attributes that represent location or other internal metadata.
     if (attrName.startswith(":"))
@@ -946,7 +961,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
 
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
-  if (auto *opInfo = state.operationSet->lookup(op->getName().ref())) {
+  if (auto *opInfo = state.operationSet->lookup(op->getName())) {
     opInfo->printAssembly(op, this);
     return;
   }
@@ -957,7 +972,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
 
 void FunctionPrinter::printDefaultOp(const Operation *op) {
   os << '"';
-  printEscapedString(op->getName().ref(), os);
+  printEscapedString(op->getName(), os);
   os << "\"(";
 
   interleaveComma(op->getOperands(),

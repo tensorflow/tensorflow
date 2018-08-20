@@ -60,14 +60,14 @@ public:
   // Interfaces for working with the symbol table.
 
   /// Look up a function with the specified name, returning null if no such
-  /// name exists.
+  /// name exists.  Function names never include the @ on them.
   Function *getNamedFunction(StringRef name);
   const Function *getNamedFunction(StringRef name) const {
     return const_cast<Module *>(this)->getNamedFunction(name);
   }
 
   /// Look up a function with the specified name, returning null if no such
-  /// name exists.
+  /// name exists.  Function names never include the @ on them.
   Function *getNamedFunction(Identifier name);
 
   const Function *getNamedFunction(Identifier name) const {

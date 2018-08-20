@@ -40,10 +40,13 @@ public:
   Identifier &operator=(const Identifier &other) = default;
 
   /// Return a StringRef for the string.
-  StringRef ref() const { return StringRef(pointer, size()); }
+  StringRef strref() const { return StringRef(pointer, size()); }
+
+  /// Identifiers implicitly convert to StringRefs.
+  operator StringRef() const { return strref(); }
 
   /// Return an std::string.
-  std::string str() const { return ref().str(); }
+  std::string str() const { return strref().str(); }
 
   /// Return a null terminated C string.
   const char *c_str() const { return pointer; }
@@ -59,7 +62,7 @@ public:
   }
 
   /// Return true if this identifier is the specified string.
-  bool is(StringRef string) const { return ref().equals(string); }
+  bool is(StringRef string) const { return strref().equals(string); }
 
   const char *begin() const { return pointer; }
   const char *end() const { return pointer + size(); }
@@ -100,7 +103,7 @@ inline bool operator!=(StringRef lhs, Identifier rhs) { return !rhs.is(lhs); }
 
 // Make identifiers hashable.
 inline llvm::hash_code hash_value(Identifier arg) {
-  return llvm::hash_value(arg.ref());
+  return llvm::hash_value(arg.strref());
 }
 
 } // end namespace mlir

@@ -49,8 +49,15 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
   // CHECK: %c43 = constant 43 {crazy: "foo"} : affineint
   %8 = constant 43 {crazy: "foo"} : affineint
 
-  // CHECK: %4 = constant 4.300000e+01 : bf16
+  // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
+
+  // CHECK: %f = constant @cfgfunc_with_ops : (f32) -> ()
+  %10 = constant @cfgfunc_with_ops : (f32) -> ()
+
+  // CHECK: %f_1 = constant @affine_apply : () -> ()
+  %11 = constant @affine_apply : () -> ()
+
   return
 }
 

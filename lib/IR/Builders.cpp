@@ -111,6 +111,10 @@ TypeAttr *Builder::getTypeAttr(Type *type) {
   return TypeAttr::get(type, context);
 }
 
+FunctionAttr *Builder::getFunctionAttr(Function *value) {
+  return FunctionAttr::get(value, context);
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//

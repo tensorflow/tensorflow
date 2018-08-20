@@ -402,3 +402,19 @@ mlfunc @return_inside_loop() -> i8 {
 
 extfunc @redef()
 extfunc @redef()  // expected-error {{redefinition of function named 'redef'}}
+
+// -----
+
+cfgfunc @foo() {
+bb0:
+  %x = constant @foo : (i32) -> ()  // expected-error {{reference to function with mismatched type}}
+  return
+}
+
+// -----
+
+cfgfunc @foo() {
+bb0:
+  %x = constant @bar : (i32) -> ()  // expected-error {{reference to undefined function 'bar'}}
+  return
+}
