@@ -20,22 +20,23 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.training.checkpointable import base as checkpointable
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
 
-class Metric(object):
+class Metric(checkpointable.CheckpointableBase):
   """A metric holds state for aggregating statistics over an evaluation run.
 
   Example use with eager execution:
@@ -93,11 +94,12 @@ class Metric(object):
   `aggregate()`, it is for use by TensorFlow infrastructure.
   """
 
-  def __init__(self, name=None):
+  def __init__(self, name=None, use_global_variables=False):
     self._built = False
     self._vars = []
     self._initial_values = {}
     self._updates = []
+    self._use_global_variables = use_global_variables
     name = name or self.__class__.__name__
     # Replace things like spaces in name to create a valid scope name.
     scope_name = _to_replace.sub("_", name)
@@ -108,13 +110,25 @@ class Metric(object):
       pos = scope.name.rfind(scope_name)
       self._name = name + scope.name[pos + len(scope_name):]
       self._scope = scope
-    if context.in_graph_mode():
+
+    # Ensures that if the user calls build directly we still set self._built to
+    # True to prevent variables from being recreated.
+    self._build = self.build
+
+    def actual_build(*args, **kwargs):
+      self._build(*args, **kwargs)
+      self._built = True
+    self.build = actual_build
+    self.build.__doc__ = self._build.__doc__
+
+    # Captures construction scope for proper initialization.
+    if context.executing_eagerly():
+      self._construction_scope = context.eager_mode
+    else:
       # We make self.call() into a graph callable here, so that we can
       # return a single op that performs all of the variable updates.
       self._construction_scope = ops.get_default_graph().as_default
       self.call = function.defun(self.call)
-    else:
-      self._construction_scope = context.eager_mode
 
   # ---- API for users ----
   def __call__(self, *args, **kwargs):
@@ -155,10 +169,11 @@ class Metric(object):
       initialization. Under eager execution, the variables are reset to their
       initial values as a side effect and this function returns None.
     """
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      for v in self._vars:
+        v.assign(self._initial_values[v])
+    else:
       return control_flow_ops.group([v.initializer for v in self._vars])
-    for v in self._vars:
-      v.assign(self._initial_values[v])
 
   # ---- To be implemented by descendants ---
   def build(self, *args, **kwargs):
@@ -200,10 +215,10 @@ class Metric(object):
 
   def value(self):
     """In graph mode returns the result Tensor while in eager the callable."""
-    if context.in_graph_mode():
-      return self.result()
-    else:
+    if context.executing_eagerly():
       return self.result
+    else:
+      return self.result()
 
   # We can support two different strategies of for doing data-parallel
   # distributed metric computations:
@@ -245,30 +260,42 @@ class Metric(object):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    collections = None if context.in_eager_mode() else [
-        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
-    ]
-    v = variable_scope.get_variable(
-        name,
-        shape,
-        dtype,
-        initializer,
+    if context.executing_eagerly():
+      collections = None
+    else:
+      if self._use_global_variables:
+        collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+      else:
+        collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      collections += [ops.GraphKeys.METRIC_VARIABLES]
+    # Variables are Checkpointable dependencies of Metrics regardless of the
+    # global/local distinction. Users can avoid saving variables by not adding a
+    # dependency on the Metric.
+    v = self._add_variable_with_custom_getter(
+        name=name,
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
         trainable=False,
         collections=collections,
-        use_resource=True)
+        use_resource=True,
+        getter=variable_scope.get_variable,
+        # Raise duplicate variable exceptions from get_variable rather than
+        # Checkpointable.
+        overwrite=True)
     self._vars.append(v)
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       self._initial_values[v] = v.value()
     return v
 
 
 class Mean(Metric):
   """Computes the (weighted) mean of the given values."""
-  # TODO(josh11b): Maybe have a dtype argument that defaults to tf.float64?
-  # Or defaults to type of the input if it is tf.float32, else tf.float64?
 
-  def __init__(self, name=None, dtype=dtypes.float64):
-    super(Mean, self).__init__(name=name)
+  def __init__(self, name=None, dtype=dtypes.float64,
+               use_global_variables=False):
+    super(Mean, self).__init__(name=name,
+                               use_global_variables=use_global_variables)
     self.dtype = dtype
 
   def build(self, *args, **kwargs):
@@ -316,9 +343,14 @@ class Mean(Metric):
 
 
 class Accuracy(Mean):
-  """Calculates how often `predictions` matches `labels`."""
+  """Calculates how often `predictions` matches `labels`.
+  Attributes:
+    name: name of the accuracy object
+    dtype: data type of the tensor
+  """
 
   def __init__(self, name=None, dtype=dtypes.float64):
+    """Inits Accuracy class with name and dtype."""
     super(Accuracy, self).__init__(name=name, dtype=dtype)
 
   def call(self, labels, predictions, weights=None):
@@ -339,9 +371,155 @@ class Accuracy(Mean):
     Returns:
       The arguments, for easy chaining.
     """
+    check_ops.assert_equal(
+        array_ops.shape(labels), array_ops.shape(predictions),
+        message="Shapes of labels and predictions are unequal")
     matches = math_ops.equal(labels, predictions)
-    matches = math_ops.cast(matches, dtypes.float64)
+    matches = math_ops.cast(matches, self.dtype)
     super(Accuracy, self).call(matches, weights=weights)
+    if weights is None:
+      return labels, predictions
+    return labels, predictions, weights
+
+
+class CategoricalAccuracy(Mean):
+  """Calculates how often `predictions` matches `labels`.
+
+  This class is compatible with `tf.keras.losses.categorical_crossentropy`,
+  `tf.nn.softmax_cross_entropy_with_logits_v2`,
+  `tf.losses.softmax_cross_entropy`.
+
+  Attributes:
+    name: name of the accuracy object.
+    dtype: data type of tensor.
+  """
+
+  def __init__(self, name=None, dtype=dtypes.float64):
+    """Inits CategoricalAccuracy with name and dtype."""
+    super(CategoricalAccuracy, self).__init__(name=name, dtype=dtype)
+
+  def call(self, labels, predictions, weights=None):
+    """Accumulate accuracy statistics.
+
+    `labels` and `predictions` should have the same shape.
+    As argmax is being done here, labels and predictions type
+    can be different.
+
+    Args:
+      labels: One-hot Tensor.
+      predictions: Tensor with the logits or probabilities for each example.
+      weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
+    """
+    check_ops.assert_equal(
+        array_ops.shape(labels), array_ops.shape(predictions),
+        message="Shapes of labels and predictions are unequal")
+    labels = math_ops.argmax(labels, axis=-1)
+    predictions = math_ops.argmax(predictions, axis=-1)
+    matches = math_ops.equal(labels, predictions)
+    matches = math_ops.cast(matches, self.dtype)
+    super(CategoricalAccuracy, self).call(matches, weights=weights)
+    if weights is None:
+      return labels, predictions
+    return labels, predictions, weights
+
+
+class BinaryAccuracy(Mean):
+  """Calculates how often `predictions` matches `labels`.
+
+  This class is compatible with `tf.keras.losses.binary_crossentropy`,
+  `tf.losses.sigmoid_cross_entropy`,
+  `tf.nn.sigmoid_cross_entropy_with_logits`.
+  If there is more than one label, this will become multi-label classification.
+
+  Attributes:
+    name: name of the accuracy object.
+    threshold: Used for rounding off the predictions.
+               If the predictions are,
+                1. probabilities then set the threshold to 0.5.
+                2. logits then set the threshold to 0.
+              You can set the threshold appropriately,
+              to trade off with precision and recall.
+    dtype: data type of tensor.
+  """
+
+  def __init__(self, threshold, name=None, dtype=dtypes.float64):
+    """Inits BinaryAccuracy with name, threshold and dtype."""
+
+    super(BinaryAccuracy, self).__init__(name=name, dtype=dtype)
+    self.threshold = threshold
+
+  def call(self, labels, predictions, weights=None):
+    """Accumulate accuracy statistics.
+
+    `labels` and `predictions` should have the same shape and type.
+
+    Args:
+      labels: Binary Tensor(containing 0 or 1).
+      predictions: Tensor with probabilities or logits.
+      weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
+    """
+    check_ops.assert_equal(
+        array_ops.shape(labels), array_ops.shape(predictions),
+        message="Shapes of labels and predictions are unequal")
+    predictions = ops.convert_to_tensor(predictions)
+    predictions = predictions > self.threshold
+    matches = math_ops.equal(labels, predictions)
+    matches = math_ops.cast(matches, self.dtype)
+    super(BinaryAccuracy, self).call(matches, weights=weights)
+    if weights is None:
+      return labels, predictions
+    return labels, predictions, weights
+
+
+class SparseAccuracy(Mean):
+  """Calculates how often `predictions` matches `labels`.
+
+  This class is compatible with
+  `tf.keras.losses.sparse_categorical_crossentropy`,
+  `tf.nn.sparse_softmax_cross_entropy_with_logits`,
+  `tf.losses.sparse_softmax_cross_entropy`.
+
+  Attributes:
+    name: name of the accuracy object
+    dtype: data type of tensor.
+  """
+
+  def __init__(self, name=None, dtype=dtypes.float64):
+    """Inits SparseAccuracy with name and dtype."""
+
+    super(SparseAccuracy, self).__init__(name=name, dtype=dtype)
+
+  def call(self, labels, predictions, weights=None):
+    """Accumulate accuracy statistics.
+
+    `labels` and `predictions` should have the same shape except the
+    predictions must have one additional trailing dimension equal to the
+    number of classes(you want to predict).
+
+    Type of labels and predictions can be different.
+
+    Args:
+      labels: Tensor of shape (batch_size, ) containing integers
+      predictions: Tensor with the logits or probabilities for each example.
+      weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
+    """
+    check_ops.assert_equal(
+        array_ops.shape(labels), array_ops.shape(predictions)[0],
+        message="First axis of labels and predictions is unequal")
+    predictions = math_ops.argmax(predictions, axis=-1)
+    labels = math_ops.cast(labels, dtypes.int64)
+    matches = math_ops.equal(labels, predictions)
+    matches = math_ops.cast(matches, self.dtype)
+    super(SparseAccuracy, self).call(matches, weights=weights)
     if weights is None:
       return labels, predictions
     return labels, predictions, weights

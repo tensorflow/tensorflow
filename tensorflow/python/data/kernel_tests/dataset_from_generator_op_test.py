@@ -21,17 +21,23 @@ import threading
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
 class DatasetConstructorTest(test.TestCase):
 
-  def _testFromGenerator(self, generator, elem_sequence, num_repeats):
+  def _testFromGenerator(self, generator, elem_sequence, num_repeats,
+                         output_types=None):
+    if output_types is None:
+      output_types = dtypes.int64
     iterator = (
-        dataset_ops.Dataset.from_generator(generator, output_types=dtypes.int64)
+        dataset_ops.Dataset.from_generator(generator, output_types=output_types)
         .repeat(num_repeats)
         .prefetch(5)
         .make_initializable_iterator())
@@ -81,8 +87,8 @@ class DatasetConstructorTest(test.TestCase):
   def testFromGeneratorUsingNdarray(self):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
-    self._testFromGenerator(generator, elem_sequence, 1)
-    self._testFromGenerator(generator, elem_sequence, 5)
+    self._testFromGenerator(generator, elem_sequence, 1, output_types=np.int64)
+    self._testFromGenerator(generator, elem_sequence, 5, output_types=np.int64)
 
   def testFromGeneratorUsingGeneratorExpression(self):
     # NOTE(mrry): Generator *expressions* are not repeatable (or in
@@ -253,9 +259,7 @@ class DatasetConstructorTest(test.TestCase):
       sess.run(init_op)
       self.assertAllEqual([1, 2, 3], sess.run(get_next))
       self.assertAllEqual([4, 5, 6], sess.run(get_next))
-      # NOTE(mrry): Type name in message differs between Python 2 (`long`) and
-      # 3 (`int`).
-      with self.assertRaisesOpError(r"invalid literal for"):
+      with self.assertRaisesOpError("The expected type was int64"):
         sess.run(get_next)
       self.assertAllEqual([7, 8, 9], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -284,6 +288,34 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testFromGeneratorStructureError(self):
+    def generator():
+      yield 1, 2
+      yield 3, 4
+      yield 5
+      yield 6, 7, 8
+      yield 9, 10
+
+    iterator = (dataset_ops.Dataset.from_generator(
+        generator, output_types=(dtypes.int64, dtypes.int64))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertEqual((1, 2), sess.run(get_next))
+      self.assertEqual((3, 4), sess.run(get_next))
+      with self.assertRaisesOpError(
+          r"The expected structure was \(tf\.int64, tf\.int64\)"):
+        sess.run(get_next)
+      with self.assertRaisesOpError(
+          r"The expected structure was \(tf\.int64, tf\.int64\)"):
+        sess.run(get_next)
+      self.assertEqual((9, 10), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testFromGeneratorHeterogeneous(self):
     def generator():
       yield 1
@@ -301,6 +333,148 @@ class DatasetConstructorTest(test.TestCase):
       self.assertAllEqual([2, 3], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testFromGeneratorStopShort(self):
+
+    def generator():
+      yield 0
+      yield 1
+      yield 2
+
+    iterator = (
+        dataset_ops.Dataset.from_generator(
+            generator, output_types=dtypes.int64).make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(0, sess.run(get_next))
+      self.assertAllEqual(1, sess.run(get_next))
+
+  def testFromGeneratorDestructorCalled(self):
+    # Use an `Event` to signal that the generator has been deleted.
+    event = threading.Event()
+
+    class GeneratorWrapper(object):
+
+      def __iter__(self):
+        return self
+
+      def next(self):
+        return self.__next__()
+
+      def __next__(self):
+        return 42
+
+      def __del__(self):
+        event.set()
+
+    iterator = dataset_ops.Dataset.from_generator(
+        GeneratorWrapper,
+        output_types=dtypes.int64).take(2).make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with session.Session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(42, sess.run(get_next))
+      self.assertAllEqual(42, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+      # Test that `GeneratorWrapper` object is destroyed when the
+      # iterator terminates (and the generator iterator is deleted).
+      self.assertTrue(event.is_set())
+
+  def testFromGeneratorWithArgs(self):
+
+    def flat_map_fn(elem):
+
+      def generator_with_arg(n):
+        for _ in range(n):
+          yield np.array(n, dtype=np.int64)
+
+      return dataset_ops.Dataset.from_generator(
+          generator_with_arg, output_types=dtypes.int64, output_shapes=(),
+          args=(elem,))
+
+    iterator = (dataset_ops.Dataset
+                .range(5)
+                .flat_map(flat_map_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      expected = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+      for x in expected:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorWithTwoArgs(self):
+
+    def flat_map_fn(elem, message):
+
+      def generator_with_arg(n, msg):
+        for i in range(n):
+          yield i, msg
+
+      return dataset_ops.Dataset.from_generator(
+          generator_with_arg, output_types=(dtypes.int64, dtypes.string),
+          output_shapes=((), ()), args=(elem, message))
+
+    iterator = (
+        dataset_ops.Dataset.zip(
+            (dataset_ops.Dataset.range(5),
+             dataset_ops.Dataset.from_tensors("Hi!").repeat(None)))
+        .flat_map(flat_map_fn)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      expected = [(0, b"Hi!"),
+                  (0, b"Hi!"), (1, b"Hi!"),
+                  (0, b"Hi!"), (1, b"Hi!"), (2, b"Hi!"),
+                  (0, b"Hi!"), (1, b"Hi!"), (2, b"Hi!"), (3, b"Hi!")]
+      for x in expected:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testGeneratorDatasetFinalizeFunctionCalled(self):
+    # NOTE(mrry): This test tests the internal `_GeneratorDataset`,
+    # which affords more control over what the finalize function can do than
+    # the `Dataset.from_generator()` wrapper.
+
+    # Use an `Event` to signal that the generator has been deleted.
+    event = threading.Event()
+
+    def finalize_fn(_):
+      def finalize_py_func():
+        event.set()
+        return 0
+      return script_ops.py_func(finalize_py_func, [], [dtypes.int64],
+                                stateful=True)
+
+    dummy = constant_op.constant(37)
+    iterator = (dataset_ops._GeneratorDataset(dummy, lambda x: x,
+                                              lambda x: x, finalize_fn)
+                .take(2)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(37, sess.run(get_next))
+      self.assertAllEqual(37, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+        self.assertTrue(event.is_set())
 
 
 if __name__ == "__main__":

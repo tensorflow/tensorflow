@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #if GOOGLE_CUDA
 
 #include <forward_list>
@@ -254,7 +255,7 @@ class NcclReplacePass : public GraphOptimizationPass {
     // Find reduction and broadcast ops and replace them with Send/Recv ops.
     for (Node* node : graph->op_nodes()) {
       StringPiece type = node->type_string();
-      if (!type.starts_with("Nccl")) {
+      if (!str_util::StartsWith(type, "Nccl")) {
         continue;
       }
       if (type == "NcclReduce") {

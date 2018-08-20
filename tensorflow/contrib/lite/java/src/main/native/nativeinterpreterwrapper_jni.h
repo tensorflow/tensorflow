@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <jni.h>
 #include <stdio.h>
+#include <time.h>
 #include <vector>
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -33,6 +34,57 @@ extern std::unique_ptr<OpResolver> CreateOpResolver();
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    allocateTensors
+ *  Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
+    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    getInputTensor
+ *  Signature: (JI)J
+ */
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensor(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle,
+                                                                 jint index);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    getOutputTensor
+ *  Signature: (JI)J
+ */
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensor(JNIEnv* env,
+                                                                  jclass clazz,
+                                                                  jlong handle,
+                                                                  jint index);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    getInputCount
+ *  Signature: (J)I
+ */
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputCount(JNIEnv* env,
+                                                                jclass clazz,
+                                                                jlong handle);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    getOutputCount
+ *  Signature: (J)I
+ */
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputCount(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
@@ -57,7 +109,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JZ)
+ *  Signature: (JZ)V
  */
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
@@ -65,6 +117,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
                                                            jlong handle,
                                                            jboolean state);
 
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jint num_threads);
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
@@ -95,43 +157,63 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJ)J
+ *  Signature: (JJI)J
  */
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle);
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:
- *  Signature: (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;)[J
+ *  Method:    run
+ *  Signature: (JJ)V
  */
-JNIEXPORT jlongArray JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
-    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jobjectArray sizes, jintArray data_types, jintArray nums_of_bytes,
-    jobjectArray values);
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JII)[I
+ *  Signature: (JI)I
  *
- * It gets input dimensions if num_bytes matches number of bytes required by
- * the input, else returns null and throws IllegalArgumentException.
+ * Gets output dimensions.
  */
-JNIEXPORT jintArray JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
-    JNIEnv* env, jclass clazz, jlong handle, jint input_idx, jint num_bytes);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJI[I)
+ *  Signature: (JI)I
  *
- * It resizes dimensions of a input.
+ * Gets output quantization zero point.
  */
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationZeroPoint(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)F
+ *
+ * Gets output quantization scale.
+ */
+JNIEXPORT jfloat JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationScale(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JJI[I)Z
+ *
+ * It returns true if resizing input tensor to different dimensions, else return
+ * false.
+ */
+JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jint input_idx, jintArray dims);

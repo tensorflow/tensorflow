@@ -9,32 +9,86 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "estimator_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":baseline",
+        ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
+        ":early_stopping",
+        ":export",
+        ":exporter",
         ":extenders",
         ":head",
+        ":hooks",
         ":linear",
         ":logit_fns",
         ":multi_head",
         ":replicate_model_fn",
-        "//tensorflow/python:util",
+        ":rnn",
+        ":saved_model_estimator",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+py_library(
+    name = "baseline",
+    srcs = ["python/estimator/baseline.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:baseline",
+    ],
+)
+
+py_test(
+    name = "baseline_test",
+    size = "small",
+    srcs = ["python/estimator/baseline_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":baseline",
+        ":head",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:metric_keys",
+        "//tensorflow/python/estimator:numpy_io",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "boosted_trees",
+    srcs = ["python/estimator/boosted_trees.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:boosted_trees",
+    ],
+)
+
+py_test(
+    name = "boosted_trees_test",
+    size = "medium",
+    srcs = ["python/estimator/boosted_trees_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":boosted_trees",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator:numpy_io",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -43,7 +97,7 @@ py_library(
     srcs = ["python/estimator/dnn.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:nn",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:dnn",
     ],
@@ -51,25 +105,22 @@ py_library(
 
 py_test(
     name = "dnn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/dnn_test.py"],
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
         ":dnn",
         ":head",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:dnn_testing_utils",
         "//tensorflow/python/estimator:export_export",
         "//tensorflow/python/estimator:numpy_io",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -80,7 +131,7 @@ py_library(
     srcs = ["python/estimator/dnn_linear_combined.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:nn",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:dnn_linear_combined",
     ],
@@ -99,17 +150,12 @@ py_test(
     deps = [
         ":dnn_linear_combined",
         ":head",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:dnn_testing_utils",
         "//tensorflow/python/estimator:export_export",
         "//tensorflow/python/estimator:linear_testing_utils",
         "//tensorflow/python/estimator:numpy_io",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -122,10 +168,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:clip_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
@@ -138,20 +181,69 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/extenders_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/62863147
     deps = [
         ":extenders",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
+        "//tensorflow/contrib/predictor",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:linear",
-        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "export",
+    srcs = [
+        "python/estimator/export.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator:model_fn",
+    ],
+)
+
+py_test(
+    name = "export_test",
+    size = "medium",
+    srcs = ["python/estimator/export_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/62863147
+    deps = [
+        ":export",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:model_fn",
+    ],
+)
+
+py_library(
+    name = "exporter",
+    srcs = [
+        "python/estimator/exporter.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python/estimator:exporter",
+    ],
+)
+
+py_test(
+    name = "exporter_test",
+    size = "medium",
+    srcs = ["python/estimator/exporter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":exporter",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:exporter",
     ],
 )
 
@@ -162,50 +254,53 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/ops/losses",
-        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
 py_test(
     name = "head_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/head_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":head",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python:training",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/ops/losses",
-        "//tensorflow/python/saved_model:signature_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "hooks",
+    srcs = [
+        "python/estimator/hooks.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_test(
+    name = "hooks_test",
+    size = "medium",
+    srcs = ["python/estimator/hooks_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":hooks",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -223,7 +318,7 @@ py_library(
 
 py_test(
     name = "linear_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/linear_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -233,15 +328,11 @@ py_test(
     deps = [
         ":head",
         ":linear",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:export_export",
         "//tensorflow/python/estimator:linear_testing_utils",
         "//tensorflow/python/estimator:numpy_io",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -254,10 +345,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework_ops",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:linear",
-        "//tensorflow/python/estimator:util",
     ],
 )
 
@@ -268,9 +358,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":logit_fns",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:session",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:model_fn",
     ],
 )
@@ -282,16 +370,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
-        "//tensorflow/python/saved_model:signature_constants",
         "@six_archive//:six",
     ],
 )
@@ -304,15 +387,10 @@ py_test(
     deps = [
         ":head",
         ":multi_head",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:string_ops",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -325,23 +403,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:device",
-        "//tensorflow/python:device_lib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
-        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
@@ -351,6 +416,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:export_export",
@@ -359,26 +426,114 @@ cuda_py_test(
         "//tensorflow/python/estimator:numpy_io",
         "//tensorflow/python/estimator:optimizers",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python/ops/losses",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
         ":replicate_model_fn",
     ],
     tags = [
         "manual",
         "multi_gpu",
         "notap",
+    ],
+)
+
+py_library(
+    name = "rnn",
+    srcs = ["python/estimator/rnn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":extenders",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/contrib/feature_column:feature_column_py",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:head",
+        "//tensorflow/python/estimator:optimizers",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "rnn_test",
+    size = "medium",
+    srcs = ["python/estimator/rnn_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "noasan",  # times out
+        "notsan",
+        "optonly",  # times out http://b/79220679
+    ],
+    deps = [
+        ":head",
+        ":rnn",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/contrib/data",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:parsing_utils",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "early_stopping",
+    srcs = ["python/estimator/early_stopping.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator",
+    ],
+)
+
+py_test(
+    name = "early_stopping_test",
+    srcs = ["python/estimator/early_stopping_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":early_stopping",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/estimator",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "saved_model_estimator",
+    srcs = ["python/estimator/saved_model_estimator.py"],
+    deps = [
+        ":export",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:export",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+py_test(
+    name = "saved_model_estimator_test",
+    size = "medium",
+    srcs = ["python/estimator/saved_model_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "notsan",
+    ],
+    deps = [
+        ":export",
+        ":saved_model_estimator",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:model_fn",
     ],
 )

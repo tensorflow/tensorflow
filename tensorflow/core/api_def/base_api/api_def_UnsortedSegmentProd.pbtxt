@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "UnsortedSegmentProd"
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor whose rank is equal to the rank of `data`'s
+first dimension.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for dimension 0 which
+has size `num_segments`.
+END
+  }
+  summary: "Computes the product along segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+for an explanation of segments.
+
+This operator is similar to the unsorted segment sum operator found
+[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the product of all
+entries belonging to a segment such that:
+
+\\(output_i = \prod_j data_j\\) where the product is over `j` such
+that `segment_ids[j] == i`.
+
+If there is no entry for a given segment ID `i`, it outputs 1.
+END
+}

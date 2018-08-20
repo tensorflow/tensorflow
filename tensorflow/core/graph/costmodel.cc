@@ -427,7 +427,7 @@ static void AssignSizes(const Graph& g, CostModel* cost_model) {
     if (e->IsControlEdge()) {
       continue;
     }
-    Node* src = e->src();
+    const Node* src = e->src();
 
     // TODO(josh11b): Get an estimate from the Op
     Bytes size(1);

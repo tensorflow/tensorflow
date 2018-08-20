@@ -18,25 +18,50 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
-// Copies 'host_tensor' to an XLA Literal. Fails if host_tensor is of an
-// unsupported type.
-Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal);
+// Returns a BorrowingLiteral that utilizes the same underlying buffer owned by
+// 'host_tensor'.
+Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal);
+// Returns a MutableBorrowingLiteral that utilizes the same underlying buffer
+// owned by 'host_tensor', but is mutable via the xla::Literal methods.
+Status HostTensorToMutableBorrowingLiteral(
+    Tensor* host_tensor, xla::MutableBorrowingLiteral* literal);
+// Similar as above, except the literal shape is explicitly provided and used
+// instead of obtaining it from the 'host_tensor'. The provided literal shape
+// 'xla_shape' must be compatible with the shape of 'host_tensor'.
+Status HostTensorToMutableBorrowingLiteral(
+    const xla::Shape& xla_shape, Tensor* host_tensor,
+    xla::MutableBorrowingLiteral* literal);
 
-// Copies 'literal' to 'host_tensor', which is allocated of type <target_type>.
+// Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
+// owned by 'host_tensors'.
+Status HostTensorsToBorrowingLiteralTuple(
+    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
+    xla::BorrowingLiteral* literal);
+
+// Copies 'literal' to freshly allocated 'host_tensor', which is allocated of
+// type <target_type>.
 // Fails if the literal's primitive type !=
 // DataTypeToPrimitiveType(target_type). Note that <target_type> is not
 // derivable from the type of <literal>, because multiple tensorflow types map
 // to the same XLA type (e.g. INT32 and QINT32 both map to INT32 in
 // XLA).
-Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
-                           Tensor* host_tensor);
+Status LiteralToHostTensor(const xla::LiteralSlice& literal,
+                           DataType target_type, Tensor* host_tensor);
+
+// Copies the contents of 'literal' to a previously allocated tensor
+// 'host_tensor'. The tensor and the literal must have the same number of
+// elements and the same type.
+Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
+                               Tensor* host_tensor);
 
 }  // namespace tensorflow
 

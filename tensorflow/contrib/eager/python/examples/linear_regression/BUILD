@@ -22,6 +22,7 @@ cuda_py_test(
         ":linear_regression",
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 cuda_py_test(

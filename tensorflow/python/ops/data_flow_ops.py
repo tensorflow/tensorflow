@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
@@ -125,15 +126,10 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See @{tf.FIFOQueue} and
-  @{tf.RandomShuffleQueue} for concrete
+  See `tf.FIFOQueue` and
+  `tf.RandomShuffleQueue` for concrete
   implementations of this class, and instructions on how to create
   them.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -157,12 +153,7 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
-      RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
-      raise RuntimeError(
-          "Queues are not supported when eager execution is enabled. "
-          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -177,10 +168,12 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    if context.in_graph_mode():
-      self._name = self._queue_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       self._name = context.context().scope_name
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          queue_ref, None)
+    else:
+      self._name = self._queue_ref.op.name.split("/")[-1]
 
   @staticmethod
   def from_list(index, queues):
@@ -231,9 +224,9 @@ class QueueBase(object):
   @property
   def name(self):
     """The name of the underlying queue."""
-    if context.in_graph_mode():
-      return self._queue_ref.op.name
-    return self._name
+    if context.executing_eagerly():
+      return self._name
+    return self._queue_ref.op.name
 
   @property
   def dtypes(self):
@@ -316,12 +309,12 @@ class QueueBase(object):
     until the element has been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -342,10 +335,10 @@ class QueueBase(object):
         val.get_shape().assert_is_compatible_with(shape)
 
       if self._queue_ref.dtype == _dtypes.resource:
-        return gen_data_flow_ops._queue_enqueue_v2(
+        return gen_data_flow_ops.queue_enqueue_v2(
             self._queue_ref, vals, name=scope)
       else:
-        return gen_data_flow_ops._queue_enqueue(
+        return gen_data_flow_ops.queue_enqueue(
             self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
@@ -359,12 +352,12 @@ class QueueBase(object):
     until all of the elements have been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -387,7 +380,7 @@ class QueueBase(object):
             val.get_shape().with_rank_at_least(1)[0])
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue_many_v2(
+      return gen_data_flow_ops.queue_enqueue_many_v2(
           self._queue_ref, vals, name=scope)
 
   def _dequeue_return_value(self, tensors):
@@ -420,11 +413,11 @@ class QueueBase(object):
     until there is an element to dequeue.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed, the queue is empty, and there are no pending
     enqueue operations that can fulfill this request,
     `tf.errors.OutOfRangeError` will be raised. If the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -436,15 +429,15 @@ class QueueBase(object):
     if name is None:
       name = "%s_Dequeue" % self._name
     if self._queue_ref.dtype == _dtypes.resource:
-      ret = gen_data_flow_ops._queue_dequeue_v2(
+      ret = gen_data_flow_ops.queue_dequeue_v2(
           self._queue_ref, self._dtypes, name=name)
     else:
-      ret = gen_data_flow_ops._queue_dequeue(
+      ret = gen_data_flow_ops.queue_dequeue(
           self._queue_ref, self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       for output, shape in zip(op.values(), self._shapes):
         output.set_shape(shape)
@@ -462,11 +455,11 @@ class QueueBase(object):
     `OutOfRange` exception is raised.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed, the queue contains fewer than `n` elements, and
     there are no pending enqueue operations that can fulfill this
     request, `tf.errors.OutOfRangeError` will be raised. If the
-    session is @{tf.Session.close},
+    session is `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -474,17 +467,17 @@ class QueueBase(object):
       name: A name for the operation (optional).
 
     Returns:
-      The tuple of concatenated tensors that was dequeued.
+      The list of concatenated tensors that was dequeued.
     """
     if name is None:
       name = "%s_DequeueMany" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_many_v2(
+    ret = gen_data_flow_ops.queue_dequeue_many_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       batch_dim = tensor_shape.Dimension(
           tensor_util.constant_value(op.inputs[1]))
@@ -507,7 +500,7 @@ class QueueBase(object):
 
     If the queue is closed and there are more than `0` but fewer than
     `n` elements remaining, then instead of raising a
-    `tf.errors.OutOfRangeError` like @{tf.QueueBase.dequeue_many},
+    `tf.errors.OutOfRangeError` like `tf.QueueBase.dequeue_many`,
     less than `n` elements are returned immediately.  If the queue is
     closed and there are `0` elements left in the queue, then a
     `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
@@ -523,12 +516,12 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueUpTo" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_up_to_v2(
+    ret = gen_data_flow_ops.queue_dequeue_up_to_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       for output, shape in zip(op.values(), self._shapes):
         output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
@@ -560,18 +553,18 @@ class QueueBase(object):
     if name is None:
       name = "%s_Close" % self._name
     if self._queue_ref.dtype == _dtypes.resource:
-      return gen_data_flow_ops._queue_close_v2(
+      return gen_data_flow_ops.queue_close_v2(
           self._queue_ref,
           cancel_pending_enqueues=cancel_pending_enqueues,
           name=name)
     else:
-      return gen_data_flow_ops._queue_close(
+      return gen_data_flow_ops.queue_close(
           self._queue_ref,
           cancel_pending_enqueues=cancel_pending_enqueues,
           name=name)
 
   def is_closed(self, name=None):
-    """ Returns true if queue is closed.
+    """Returns true if queue is closed.
 
     This operation returns true if the queue is closed and false if the queue
     is open.
@@ -601,22 +594,22 @@ class QueueBase(object):
     if name is None:
       name = "%s_Size" % self._name
     if self._queue_ref.dtype == _dtypes.resource:
-      return gen_data_flow_ops._queue_size_v2(self._queue_ref, name=name)
+      return gen_data_flow_ops.queue_size_v2(self._queue_ref, name=name)
     else:
-      return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
+      return gen_data_flow_ops.queue_size(self._queue_ref, name=name)
+
+def _shared_name(shared_name):
+  if context.executing_eagerly():
+    return str(ops.uid())
+  return shared_name
 
 
 @tf_export("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -664,7 +657,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        @{tf.set_random_seed}
+        `tf.set_random_seed`
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -683,14 +676,14 @@ class RandomShuffleQueue(QueueBase):
       # the id of the last op created.)
       string = (str(seed1) + shared_name).encode("utf-8")
       seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
-    queue_ref = gen_data_flow_ops._random_shuffle_queue_v2(
+    queue_ref = gen_data_flow_ops.random_shuffle_queue_v2(
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
         min_after_dequeue=min_after_dequeue,
         seed=seed1,
         seed2=seed2,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -700,13 +693,8 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -748,11 +736,11 @@ class FIFOQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    queue_ref = gen_data_flow_ops._fifo_queue_v2(
+    queue_ref = gen_data_flow_ops.fifo_queue_v2(
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -765,13 +753,8 @@ class PaddingFIFOQueue(QueueBase):
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -827,11 +810,11 @@ class PaddingFIFOQueue(QueueBase):
                        "but received %d dtypes and %d shapes." % (len(dtypes),
                                                                   len(shapes)))
 
-    queue_ref = gen_data_flow_ops._padding_fifo_queue_v2(
+    queue_ref = gen_data_flow_ops.padding_fifo_queue_v2(
         component_types=dtypes,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
@@ -841,13 +824,8 @@ class PaddingFIFOQueue(QueueBase):
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
-
-  @compatibility(eager)
-  Queues are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -895,11 +873,11 @@ class PriorityQueue(QueueBase):
     types = _as_type_list(types)
     shapes = _as_shape_list(shapes, types)
 
-    queue_ref = gen_data_flow_ops._priority_queue_v2(
+    queue_ref = gen_data_flow_ops.priority_queue_v2(
         component_types=types,
         shapes=shapes,
         capacity=capacity,
-        shared_name=shared_name,
+        shared_name=_shared_name(shared_name),
         name=name)
 
     priority_dtypes = [_dtypes.int64] + types
@@ -985,15 +963,15 @@ class Barrier(object):
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._types]
 
-    self._barrier_ref = gen_data_flow_ops._barrier(
+    self._barrier_ref = gen_data_flow_ops.barrier(
         component_types=self._types,
         shapes=self._shapes,
         shared_name=shared_name,
         name=name)
-    if context.in_graph_mode():
-      self._name = self._barrier_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       self._name = context.context().scope_name
+    else:
+      self._name = self._barrier_ref.op.name.split("/")[-1]
 
   @property
   def barrier_ref(self):
@@ -1003,9 +981,9 @@ class Barrier(object):
   @property
   def name(self):
     """The name of the underlying barrier."""
-    if context.in_graph_mode():
-      return self._barrier_ref.op.name
-    return self._name
+    if context.executing_eagerly():
+      return self._name
+    return self._barrier_ref.op.name
 
   def insert_many(self, component_index, keys, values, name=None):
     """For each key, assigns the respective value to the specified component.
@@ -1026,7 +1004,7 @@ class Barrier(object):
     """
     if name is None:
       name = "%s_BarrierInsertMany" % self._name
-    return gen_data_flow_ops._barrier_insert_many(
+    return gen_data_flow_ops.barrier_insert_many(
         self._barrier_ref, keys, values, component_index, name=name)
 
   def take_many(self,
@@ -1073,7 +1051,7 @@ class Barrier(object):
     """
     if name is None:
       name = "%s_BarrierTakeMany" % self._name
-    ret = gen_data_flow_ops._barrier_take_many(
+    ret = gen_data_flow_ops.barrier_take_many(
         self._barrier_ref,
         num_elements,
         self._types,
@@ -1083,7 +1061,7 @@ class Barrier(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Barrier object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       if allow_small_batch:
         batch_dim = None
@@ -1122,7 +1100,7 @@ class Barrier(object):
     """
     if name is None:
       name = "%s_BarrierClose" % self._name
-    return gen_data_flow_ops._barrier_close(
+    return gen_data_flow_ops.barrier_close(
         self._barrier_ref,
         cancel_pending_enqueues=cancel_pending_enqueues,
         name=name)
@@ -1139,7 +1117,7 @@ class Barrier(object):
     """
     if name is None:
       name = "%s_BarrierReadySize" % self._name
-    return gen_data_flow_ops._barrier_ready_size(self._barrier_ref, name=name)
+    return gen_data_flow_ops.barrier_ready_size(self._barrier_ref, name=name)
 
   def incomplete_size(self, name=None):
     """Compute the number of incomplete elements in the given barrier.
@@ -1153,7 +1131,7 @@ class Barrier(object):
     """
     if name is None:
       name = "%s_BarrierIncompleteSize" % self._name
-    return gen_data_flow_ops._barrier_incomplete_size(
+    return gen_data_flow_ops.barrier_incomplete_size(
         self._barrier_ref, name=name)
 
 
@@ -1183,10 +1161,10 @@ class ConditionalAccumulatorBase(object):
     else:
       self._shape = tensor_shape.unknown_shape()
     self._accumulator_ref = accumulator_ref
-    if context.in_graph_mode():
-      self._name = self._accumulator_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       self._name = context.context().scope_name
+    else:
+      self._name = self._accumulator_ref.op.name.split("/")[-1]
 
   @property
   def accumulator_ref(self):
@@ -1563,7 +1541,7 @@ class BaseStagingArea(object):
     of the staging area.
 
     Args:
-      vals: A tensor, a list or tuple of tensors, or a dictionary..
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
 
     Returns:
       A (tensors, indices) tuple where `tensors` is a list of `Tensor` objects
@@ -1582,7 +1560,7 @@ class BaseStagingArea(object):
                          (sorted(vals.keys()), sorted(self._names)))
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
-      vals, indices, n = zip(*[(vals[k], i, k)
+      vals, indices, _ = zip(*[(vals[k], i, k)
                                for i, k in enumerate(self._names)
                                if k in vals])
     else:
@@ -1612,7 +1590,7 @@ class BaseStagingArea(object):
     for val, i in zip(vals, indices):
       dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
-      if not val.dtype == dtype:
+      if val.dtype != dtype:
         raise ValueError("Datatypes do not match. '%s' != '%s'" %
                          (str(val.dtype), str(dtype)))
 
@@ -1626,7 +1604,7 @@ class BaseStagingArea(object):
 
   def _create_device_transfers(self, tensors):
     """Encode inter-device transfers if the current device
-    is not the same as the Staging Area's device
+    is not the same as the Staging Area's device.
     """
 
     if not isinstance(tensors, (tuple, list)):
@@ -1739,11 +1717,6 @@ class StagingArea(BaseStagingArea):
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
-      capacity: (Optional.) Maximum number of elements.
-        An integer. If zero, the Staging Area is unbounded
-      memory_limit: (Optional.) Maximum number of bytes of all tensors
-        in the Staging Area.
-        An integer. If zero, the Staging Area is unbounded
       shapes: (Optional.) Constraints on the shapes of tensors in an element.
         A list of shape tuples or None. This list is the same length
         as dtypes.  If the shape of any tensors in the element are constrained,
@@ -1754,6 +1727,11 @@ class StagingArea(BaseStagingArea):
       shared_name: (Optional.) A name to be used for the shared object. By
         passing the same name to two different python objects they will share
         the underlying staging area. Must be a string.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      memory_limit: (Optional.) Maximum number of bytes of all tensors
+        in the Staging Area.
+        An integer. If zero, the Staging Area is unbounded
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -1769,7 +1747,9 @@ class StagingArea(BaseStagingArea):
     its capacity.
 
     Args:
-      values: Tensor (or a tuple of Tensors) to place into the staging area.
+      values: A single tensor, a list or tuple of tensors, or a dictionary with
+        tensor values. The number of elements must match the length of the
+        list provided to the dtypes argument when creating the StagingArea.
       name: A name for the operation (optional).
 
     Returns:
@@ -1781,10 +1761,11 @@ class StagingArea(BaseStagingArea):
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
 
+      if not isinstance(values, (list, tuple, dict)):
+        values = [values]
+
       # Hard-code indices for this staging area
-      indices = (
-          list(six.moves.range(len(values)))
-          if isinstance(values, (list, tuple)) else None)
+      indices = list(six.moves.range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
@@ -1908,7 +1889,8 @@ class StagingArea(BaseStagingArea):
 
 
 class MapStagingArea(BaseStagingArea):
-  """A `MapStagingArea` is a TensorFlow data structure that stores tensors across multiple steps, and exposes operations that can put and get tensors.
+  """A `MapStagingArea` is a TensorFlow data structure that stores tensors
+  across multiple steps, and exposes operations that can put and get tensors.
 
   Each `MapStagingArea` element is a (key, value) pair.
   Only int64 keys are supported, other types should be
@@ -2372,7 +2354,7 @@ class RecordInput(object):
       return records
     else:
       with ops.name_scope(self._name):
-        batch_list = [[] for i in six.moves.range(self._batches)]
+        batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
         records = [array_ops.reshape(record, []) for record in records]
         for index, protobuf in zip(six.moves.range(len(records)), records):

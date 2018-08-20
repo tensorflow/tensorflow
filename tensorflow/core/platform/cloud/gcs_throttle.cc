@@ -26,10 +26,9 @@ GcsThrottle::GcsThrottle(EnvTime* env_time)
 
 bool GcsThrottle::AdmitRequest() {
   mutex_lock l(mu_);
-  if (!config_.enabled) return true;
   UpdateState();
   if (available_tokens_ < config_.tokens_per_request) {
-    return false;
+    return false || !config_.enabled;
   }
   available_tokens_ -= config_.tokens_per_request;
   return true;
@@ -37,7 +36,6 @@ bool GcsThrottle::AdmitRequest() {
 
 void GcsThrottle::RecordResponse(size_t num_bytes) {
   mutex_lock l(mu_);
-  if (!config_.enabled) return;
   UpdateState();
   available_tokens_ -= request_bytes_to_tokens(num_bytes);
 }
@@ -53,7 +51,7 @@ void GcsThrottle::UpdateState() {
   // TODO(b/72643279): Switch to a monotonic clock.
   int64 now = env_time_->NowSeconds();
   uint64 delta_secs =
-      std::max(0LL, now - static_cast<int64>(last_updated_secs_));
+      std::max(int64{0}, now - static_cast<int64>(last_updated_secs_));
   available_tokens_ += delta_secs * config_.token_rate;
   available_tokens_ = std::min(available_tokens_, config_.bucket_size);
   last_updated_secs_ = now;

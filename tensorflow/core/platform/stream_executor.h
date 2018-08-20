@@ -19,10 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/from_stream_executor_status.h"
 #include "tensorflow/stream_executor/platform/google/dso_loader.h"
 #else
-#include "tensorflow/core/platform/default/from_stream_executor_status.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #endif
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
@@ -36,5 +34,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
+
+namespace perftools {
+namespace gputools {
+
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(jlebar): Remove this once we've completed
+// the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
+
+}  // namespace gputools
+}  // namespace perftools
 
 #endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_

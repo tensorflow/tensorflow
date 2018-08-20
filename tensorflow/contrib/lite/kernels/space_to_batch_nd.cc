@@ -40,9 +40,9 @@ struct SpaceToBatchNDContext {
     paddings = GetInput(context, node, 2);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* block_shape;
-  TfLiteTensor* paddings;
+  const TfLiteTensor* input;
+  const TfLiteTensor* block_shape;
+  const TfLiteTensor* paddings;
   TfLiteTensor* output;
 };
 
@@ -111,10 +111,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
-#define TF_LITE_SPACE_TO_BATCH_ND(type, scalar)                        \
+#define TF_LITE_SPACE_TO_BATCH_ND(type, scalar, pad_value)             \
   type::SpaceToBatchND(GetTensorData<scalar>(op_context.input),        \
                        GetTensorDims(op_context.input),                \
                        GetTensorData<int32_t>(op_context.block_shape), \
@@ -122,39 +121,42 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        GetTensorData<int32_t>(op_context.paddings),    \
                        GetTensorDims(op_context.paddings),             \
                        GetTensorData<scalar>(op_context.output),       \
-                       GetTensorDims(op_context.output))
+                       GetTensorDims(op_context.output), pad_value)
   switch (op_context.input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, float);
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, float, 0);
       } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, float);
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, float, 0);
       }
       break;
     case kTfLiteUInt8:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, uint8_t);
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, uint8_t,
+                                  op_context.output->params.zero_point);
       } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, uint8_t);
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, uint8_t,
+                                  op_context.output->params.zero_point);
       }
       break;
     case kTfLiteInt32:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int32_t);
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int32_t, 0);
       } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int32_t);
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int32_t, 0);
       }
       break;
     case kTfLiteInt64:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int64_t);
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int64_t, 0);
       } else {
-        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int64_t);
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int64_t, 0);
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type is currently not supported by SpaceToBatch.");
+      context->ReportError(
+          context, "Type %d is currently not supported by SpaceToBatch.",
+          op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_SPACE_TO_BATCH_ND

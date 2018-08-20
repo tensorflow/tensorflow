@@ -23,12 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/platform/default/logging.h"
-#include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::algorithm;
@@ -39,7 +34,11 @@ using mkldnn::prop_kind;
 using mkldnn::relu_backward;
 using mkldnn::relu_forward;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -58,7 +57,7 @@ struct MklReluHelpers {
   }
 };
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklReluOp : public OpKernel {
@@ -368,10 +367,7 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
   mkl_context.MklCleanup();
 }
 
-
-
-#else  // INTEL_MKL_ML
-
+#else  // INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T, algorithm alg_kind>
 class MklReluOpBase : public OpKernel {
@@ -393,7 +389,7 @@ class MklReluOpBase : public OpKernel {
 
       Tensor* dst_tensor = nullptr;
       if (src_tensor.dims() == 0) {
-        Compute_Scalar(context);
+        Compute_Scalar(context); // scalar case doesn't use in-place operation
         return;
       }
 
@@ -438,11 +434,17 @@ class MklReluOpBase : public OpKernel {
         dnn_shape_dst.SetMklTensor(false);
         tf_shape_dst = src_tensor.shape();
       }
-      AllocateOutputSetMklShape(context, dst_index, &dst_tensor, tf_shape_dst,
-                                dnn_shape_dst);
+      
+      // Allocate output and MklDnnShape tensors separately for possible
+      // in-place operation
+      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                      {static_cast<const int>(src_index)},
+                                      static_cast<const int>(dst_index),
+                                      tf_shape_dst, &dst_tensor));
+      AllocateOutputSetMklShape(context, dst_index, dnn_shape_dst);
 
       // Destination memory descriptor is same as source memory descriptor.
-      auto dst_md = src_md;
+      auto &dst_md = src_md;
       dst.SetUsrMem(dst_md, dst_tensor);
 
       // execute net
@@ -493,7 +495,7 @@ class MklReluGradOpBase : public OpKernel {
 
       int src_dims_size = src_tensor.dims();
       if (src_dims_size == 0) {
-        Compute_Scalar(context);
+        Compute_Scalar(context); // scalar case doesn't use in-place operation
         return;
       }
 
@@ -582,21 +584,37 @@ class MklReluGradOpBase : public OpKernel {
       // allocate diff_src tensor
       MklDnnShape dnn_shape_diff_src;
       TensorShape tf_shape_diff_src;
-      if (dnn_shape_src.IsMklTensor()) {
+      if (dnn_shape_src.IsMklTensor() ||
+              dnn_shape_diff_dst.IsMklTensor()) {
         dnn_shape_diff_src.SetMklTensor(true);
         auto diff_src_pd = relu_bwd_pd.diff_src_primitive_desc();
         dnn_shape_diff_src.SetMklLayout(&diff_src_pd);
         dnn_shape_diff_src.SetElemType(MklDnnType<T>());
-        dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(),
-                                       dnn_shape_src.GetSizesAsMklDnnDims(),
-                                       dnn_shape_src.GetTfDataFormat());
+        if (dnn_shape_src.IsMklTensor()) {
+          dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(),
+                                         dnn_shape_src.GetSizesAsMklDnnDims(),
+                                         dnn_shape_src.GetTfDataFormat());
+        } else {
+          dnn_shape_diff_src.SetTfLayout(dnn_shape_diff_dst.GetDimension(),
+                                 dnn_shape_diff_dst.GetSizesAsMklDnnDims(),
+                                 dnn_shape_diff_dst.GetTfDataFormat());
+        }
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
         dnn_shape_diff_src.SetMklTensor(false);
+        // both src and diff_dst are TensorFlow layout,
+        // so it is ok to get TensorFlow shape.
         tf_shape_diff_src = src_tensor.shape();
       }
-      AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
-                                tf_shape_diff_src, dnn_shape_diff_src);
+
+      // Allocate diff_src and MklDnnShape tensors separately for possible
+      // in-place operation
+      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                      {static_cast<const int>(diff_dst_index)},
+                                      static_cast<const int>(diff_src_index),
+                                      tf_shape_diff_src,
+                                      &diff_src_tensor));
+      AllocateOutputSetMklShape(context, diff_src_index, dnn_shape_diff_src);
 
       // diff_src memory descriptor is same as memory descriptor for both
       // inputs.
@@ -852,7 +870,7 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
                           MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 
 // register dnn kernels for supported operations and supported types
 #define REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES(type)              \

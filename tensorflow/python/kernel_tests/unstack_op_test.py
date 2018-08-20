@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functional tests for Unpack Op."""
+"""Functional tests for Unstack Op."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -49,7 +49,7 @@ class UnstackOpTest(test.TestCase):
           data = np.random.randn(*shape).astype(dtype)
           # Convert data to a single tensorflow tensor
           x = constant_op.constant(data)
-          # Unpack into a list of tensors
+          # Unstack into a list of tensors
           cs = array_ops.unstack(x, num=shape[0])
           self.assertEqual(type(cs), list)
           self.assertEqual(len(cs), shape[0])
@@ -66,7 +66,7 @@ class UnstackOpTest(test.TestCase):
           data = np.random.randn(*shape).astype(dtype)
           # Convert data to a single tensorflow tensor
           x = constant_op.constant(data)
-          # Unpack into a list of tensors
+          # Unstack into a list of tensors
           cs = array_ops.unstack(x, num=shape[0])
           self.assertEqual(type(cs), list)
           self.assertEqual(len(cs), shape[0])

@@ -49,7 +49,6 @@ class ExperimentalTest(test.TestCase):
                      "\nTHIS FUNCTION IS EXPERIMENTAL. It may change or "
                      "be removed at any time, and without warning."
                      "\n"
-                     "\n"
                      "\nArgs:"
                      "\n  arg0: Arg 0."
                      "\n  arg1: Arg 1."

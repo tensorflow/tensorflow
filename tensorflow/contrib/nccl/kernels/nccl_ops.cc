@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "src/nccl.h"
+#include "third_party/nccl/nccl.h"
 #include "tensorflow/contrib/nccl/kernels/nccl_manager.h"
 #include "tensorflow/core/framework/op_kernel.h"
 

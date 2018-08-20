@@ -35,8 +35,8 @@ from tensorflow.python.training import training_util
 class PruningHParamsTest(test.TestCase):
   PARAM_LIST = [
       "name=test", "threshold_decay=0.9", "pruning_frequency=10",
-      "do_not_prune=[conv1,conv2]", "sparsity_function_end_step=100",
-      "target_sparsity=0.9"
+      "sparsity_function_end_step=100", "target_sparsity=0.9",
+      "weight_sparsity_map=[conv1:0.8,conv2/kernel:0.8]"
   ]
   TEST_HPARAMS = ",".join(PARAM_LIST)
 
@@ -55,9 +55,10 @@ class PruningHParamsTest(test.TestCase):
     self.assertEqual(p._spec.name, "test")
     self.assertAlmostEqual(p._spec.threshold_decay, 0.9)
     self.assertEqual(p._spec.pruning_frequency, 10)
-    self.assertAllEqual(p._spec.do_not_prune, ["conv1", "conv2"])
     self.assertEqual(p._spec.sparsity_function_end_step, 100)
     self.assertAlmostEqual(p._spec.target_sparsity, 0.9)
+    self.assertEqual(p._weight_sparsity_map["conv1"], 0.8)
+    self.assertEqual(p._weight_sparsity_map["conv2/kernel"], 0.8)
 
   def testInitWithExternalSparsity(self):
     with self.test_session():
@@ -110,12 +111,12 @@ class PruningTest(test.TestCase):
       self.assertAllEqual(np.count_nonzero(masked_weights_val), 100)
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
-      self.assertAllEqual(np.count_nonzero(masked_weights_val), 51)
+      self.assertAllEqual(np.count_nonzero(masked_weights_val), 50)
 
   def _blockMasking(self, hparams, weights, expected_mask):
 
     threshold = variables.Variable(0.0, name="threshold")
-    sparsity = variables.Variable(0.51, name="sparsity")
+    sparsity = variables.Variable(0.5, name="sparsity")
     test_spec = ",".join(hparams)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
 
@@ -138,7 +139,26 @@ class PruningTest(test.TestCase):
     weights_max = constant_op.constant(
         [[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
          [0.0, -0.3, 0.0, -0.4]])
-    expected_mask = [[0, 0, 0, 0], [0, 0, 0, 0], [1, 1, 1, 1], [1, 1, 1, 1]]
+    expected_mask = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                     [1., 1., 1., 1.], [1., 1., 1., 1.]]
+
+    self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
+                       expected_mask)
+    self._blockMasking(param_list + ["block_pooling_function=AVG"], weights_avg,
+                       expected_mask)
+
+  def testBlockMaskingWithHigherDimensions(self):
+    param_list = ["block_height=2", "block_width=2", "threshold_decay=0"]
+
+    # Weights as in testBlockMasking, but with one extra dimension.
+    weights_avg = constant_op.constant(
+        [[[0.1, 0.1, 0.2, 0.2], [0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4],
+          [0.3, 0.3, 0.4, 0.4]]])
+    weights_max = constant_op.constant(
+        [[[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
+          [0.0, -0.3, 0.0, -0.4]]])
+    expected_mask = [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                      [1., 1., 1., 1.], [1., 1., 1., 1.]]]
 
     self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
                        expected_mask)
@@ -161,11 +181,12 @@ class PruningTest(test.TestCase):
       masked_weights_val = masked_weights.eval()
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
-      self.assertAllEqual(np.count_nonzero(masked_weights_val), 51)
+      self.assertAllEqual(np.count_nonzero(masked_weights_val), 50)
 
   def testConditionalMaskUpdate(self):
     param_list = [
-        "pruning_frequency=2", "begin_pruning_step=1", "end_pruning_step=6"
+        "pruning_frequency=2", "begin_pruning_step=1", "end_pruning_step=6",
+        "nbins=100"
     ]
     test_spec = ",".join(param_list)
     pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
@@ -190,6 +211,37 @@ class PruningTest(test.TestCase):
     # Weights pruned at steps 0,2,4,and,6
     expected_non_zero_count = [100, 100, 80, 80, 60, 60, 40, 40, 40, 40]
     self.assertAllEqual(expected_non_zero_count, non_zero_count)
+
+  def testWeightSpecificSparsity(self):
+    param_list = [
+        "begin_pruning_step=1", "pruning_frequency=1", "end_pruning_step=100",
+        "target_sparsity=0.5", "weight_sparsity_map=[layer2/weights:0.75]",
+        "threshold_decay=0.0"
+    ]
+    test_spec = ",".join(param_list)
+    pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
+
+    with variable_scope.variable_scope("layer1"):
+      w1 = variables.Variable(
+          math_ops.linspace(1.0, 100.0, 100), name="weights")
+      _ = pruning.apply_mask(w1)
+    with variable_scope.variable_scope("layer2"):
+      w2 = variables.Variable(
+          math_ops.linspace(1.0, 100.0, 100), name="weights")
+      _ = pruning.apply_mask(w2)
+
+    p = pruning.Pruning(pruning_hparams)
+    mask_update_op = p.conditional_mask_update_op()
+    increment_global_step = state_ops.assign_add(self.global_step, 1)
+
+    with self.test_session() as session:
+      variables.global_variables_initializer().run()
+      for _ in range(110):
+        session.run(mask_update_op)
+        session.run(increment_global_step)
+
+      self.assertAllEqual(
+          session.run(pruning.get_weight_sparsity()), [0.5, 0.75])
 
 
 if __name__ == "__main__":

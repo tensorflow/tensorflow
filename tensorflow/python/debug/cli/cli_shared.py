@@ -175,7 +175,7 @@ def format_tensor(tensor,
     include_numeric_summary: Whether a text summary of the numeric values (if
       applicable) will be included.
     write_path: A path to save the tensor value (after any slicing) to
-      (optinal). `numpy.save()` is used to save the value.
+      (optional). `numpy.save()` is used to save the value.
 
   Returns:
     An instance of `debugger_cli_common.RichTextLines` representing the
@@ -451,42 +451,48 @@ def get_error_intro(tf_error):
       sample commands for debugging.
   """
 
-  op_name = tf_error.op.name
+  if hasattr(tf_error, "op") and hasattr(tf_error.op, "name"):
+    op_name = tf_error.op.name
+  else:
+    op_name = None
 
   intro_lines = [
       "--------------------------------------",
       RL("!!! An error occurred during the run !!!", "blink"),
       "",
-      "You may use the following commands to debug:",
   ]
 
   out = debugger_cli_common.rich_text_lines_from_rich_line_list(intro_lines)
 
-  out.extend(
-      _recommend_command("ni -a -d -t %s" % op_name,
-                         "Inspect information about the failing op.",
-                         create_link=True))
-  out.extend(
-      _recommend_command("li -r %s" % op_name,
-                         "List inputs to the failing op, recursively.",
-                         create_link=True))
+  if op_name is not None:
+    out.extend(debugger_cli_common.RichTextLines(
+        ["You may use the following commands to debug:"]))
+    out.extend(
+        _recommend_command("ni -a -d -t %s" % op_name,
+                           "Inspect information about the failing op.",
+                           create_link=True))
+    out.extend(
+        _recommend_command("li -r %s" % op_name,
+                           "List inputs to the failing op, recursively.",
+                           create_link=True))
 
-  out.extend(
-      _recommend_command(
-          "lt",
-          "List all tensors dumped during the failing run() call.",
-          create_link=True))
+    out.extend(
+        _recommend_command(
+            "lt",
+            "List all tensors dumped during the failing run() call.",
+            create_link=True))
+  else:
+    out.extend(debugger_cli_common.RichTextLines([
+        "WARNING: Cannot determine the name of the op that caused the error."]))
 
   more_lines = [
       "",
-      "Op name:    " + op_name,
+      "Op name:    %s" % op_name,
       "Error type: " + str(type(tf_error)),
       "",
       "Details:",
       str(tf_error),
       "",
-      "WARNING: Using client GraphDef due to the error, instead of "
-      "executor GraphDefs.",
       "--------------------------------------",
       "",
   ]

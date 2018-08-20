@@ -56,9 +56,9 @@ limitations under the License.
 //
 // To add values to feature_lists:
 //   AppendFeatureValues({4.0},
-//                       GetFeatureList("movie_ratings", &se)->Add());
+//                       GetFeatureList("images", &se)->Add());
 //   AppendFeatureValues({5.0, 3.0},
-//                       GetFeatureList("movie_ratings", &se)->Add());
+//                       GetFeatureList("images", &se)->Add());
 // This will create a feature list keyed as "images" with two features:
 //   feature_lists {
 //     feature_list {
@@ -182,13 +182,25 @@ struct FeatureTrait<
 // Returns true if sequence_example has a feature_list with the specified key.
 bool HasFeatureList(const string& key, const SequenceExample& sequence_example);
 
+template <typename T>
+struct TypeHasFeatures : std::false_type {};
+
+template <>
+struct TypeHasFeatures<Example> : std::true_type {};
+
+template <>
+struct TypeHasFeatures<Features> : std::true_type {};
+
 // A family of template functions to return mutable Features proto from a
 // container proto. Supported ProtoTypes: Example, Features.
 template <typename ProtoType>
-Features* GetFeatures(ProtoType* proto);
+typename std::enable_if<TypeHasFeatures<ProtoType>::value, Features*>::type
+GetFeatures(ProtoType* proto);
 
 template <typename ProtoType>
-const Features& GetFeatures(const ProtoType& proto);
+typename std::enable_if<TypeHasFeatures<ProtoType>::value,
+                        const Features&>::type
+GetFeatures(const ProtoType& proto);
 
 // Base declaration of a family of template functions to return a read only
 // repeated field of feature values.
@@ -300,7 +312,7 @@ bool HasFeature(const string& key, const Features& features);
 template <typename... FeatureType>
 bool HasFeature(const string& key, const Example& example) {
   return HasFeature<FeatureType...>(key, GetFeatures(example));
-};
+}
 
 // DEPRECATED: use HasFeature instead.
 // TODO(gorban): update all clients in a followup CL.

@@ -53,8 +53,8 @@ class PermuteBijectorTest(test.TestCase):
           bijector.permutation,
           bijector.inverse(expected_y),
           bijector.forward(expected_x),
-          bijector.forward_log_det_jacobian(expected_x),
-          bijector.inverse_log_det_jacobian(expected_y),
+          bijector.forward_log_det_jacobian(expected_x, event_ndims=1),
+          bijector.inverse_log_det_jacobian(expected_y, event_ndims=1),
       ], feed_dict={permutation_ph: expected_permutation})
       self.assertEqual("permute", bijector.name)
       self.assertAllEqual(expected_permutation, permutation_)
@@ -78,10 +78,9 @@ class PermuteBijectorTest(test.TestCase):
     x = np.random.randn(4, 2, 3)
     y = x[..., permutation]
     with self.test_session():
-      bijector = Permute(
-          permutation=permutation,
-          validate_args=True)
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-6, atol=0)
+      bijector = Permute(permutation=permutation, validate_args=True)
+      assert_bijective_and_finite(
+          bijector, x, y, event_ndims=1, rtol=1e-6, atol=0)
 
 if __name__ == "__main__":
   test.main()

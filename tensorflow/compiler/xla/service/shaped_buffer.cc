@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include <set>
 #include <string>
 #include <utility>
 
@@ -25,10 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 
@@ -41,7 +39,34 @@ ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
       on_device_shape_(on_device_shape),
       platform_(platform),
       device_ordinal_(device_ordinal),
-      buffers_(on_device_shape) {}
+      buffers_(&on_device_shape_) {}
+
+ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
+    : on_host_shape_(std::move(s.on_host_shape_)),
+      on_device_shape_(std::move(s.on_device_shape_)),
+      platform_(s.platform_),
+      device_ordinal_(s.device_ordinal_),
+      buffers_(std::move(s.buffers_)) {
+  // s.buffers_ has a pointer to s.on_device_shape_. When we move s.buffers_
+  // into buffers_, we also need to update this pointer so that buffers_ doesn't
+  // point into s.
+  buffers_.replace_shape_ptr(&on_device_shape_);
+}
+
+ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
+  on_host_shape_ = std::move(s.on_host_shape_);
+  on_device_shape_ = std::move(s.on_device_shape_);
+  platform_ = s.platform_;
+  device_ordinal_ = s.device_ordinal_;
+  buffers_ = std::move(s.buffers_);
+  // buffers_ has a pointer to its on_device_shape_. When we move s.buffers_
+  // into buffers_, we also need to update this pointer so that buffers_ doesn't
+  // point into s.
+  buffers_.replace_shape_ptr(&on_device_shape_);
+  return *this;
+}
+
+ShapedBuffer::~ShapedBuffer() {}
 
 void ShapedBuffer::clear() {
   for (auto& pair : buffers_) {
@@ -79,18 +104,6 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
   return out;
 }
 
-/* static */
-StatusOr<std::unique_ptr<ScopedShapedBuffer>> ScopedShapedBuffer::MakeScoped(
-    ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator) {
-  auto scoped_buffer = WrapUnique(new ScopedShapedBuffer(
-      shaped_buffer->on_host_shape(), shaped_buffer->on_device_shape(),
-      allocator, shaped_buffer->device_ordinal()));
-  scoped_buffer->buffers_ = shaped_buffer->buffers();
-  shaped_buffer->clear();
-
-  return std::move(scoped_buffer);
-}
-
 ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
                                        const Shape& on_device_shape,
                                        DeviceMemoryAllocator* allocator,
@@ -99,30 +112,50 @@ ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
                    device_ordinal),
       allocator_(allocator) {}
 
-ScopedShapedBuffer::~ScopedShapedBuffer() {
+ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
+                                       DeviceMemoryAllocator* allocator)
+    : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
+
+ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
+    : ShapedBuffer(static_cast<ShapedBuffer&&>(s)), allocator_(s.allocator_) {
+  // Null out s.allocator_ so it doesn't try to free anything in its destructor.
+  s.allocator_ = nullptr;
+}
+
+ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+  Deallocate();
+
+  *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
+  allocator_ = s.allocator_;
+  // Null out s.allocator_ so it doesn't try to free anything in its destructor.
+  s.allocator_ = nullptr;
+  return *this;
+}
+
+ScopedShapedBuffer::~ScopedShapedBuffer() { Deallocate(); }
+
+ShapedBuffer ScopedShapedBuffer::release() {
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
+  return shaped_buffer;
+}
+
+void ScopedShapedBuffer::Deallocate() {
+  // allocator_ will be null if we were moved-from.
+  if (allocator_ == nullptr) {
+    return;
+  }
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
-  std::set<void*> deallocated_opaques;
+  tensorflow::gtl::FlatSet<void*> deallocated_ptrs;
   for (auto& pair : buffers_) {
     se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
-        deallocated_opaques.count(memory_base.opaque()) == 0) {
-      deallocated_opaques.insert(memory_base.opaque());
-      TF_CHECK_OK(
-          this->allocator_->Deallocate(this->device_ordinal(), &memory_base));
+        deallocated_ptrs.insert(memory_base.opaque()).second) {
+      TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
-}
-
-std::unique_ptr<ShapedBuffer> ScopedShapedBuffer::release() {
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(
-      on_host_shape(), on_device_shape(), platform(), device_ordinal());
-
-  shaped_buffer->buffers() = buffers();
-  clear();
-
-  return shaped_buffer;
 }
 
 }  // namespace xla

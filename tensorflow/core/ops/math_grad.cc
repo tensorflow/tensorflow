@@ -372,6 +372,22 @@ Status ConjGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Conj", ConjGrad);
 
+Status CastGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: SrcT", "dy: DstT"},
+      // Ret val defs
+      {"dx: SrcT"},
+      // Attr defs
+      {{"SrcT: type"}, {"DstT: type"}},
+      // Nodes
+      {{{"dx"}, "Cast", {"dy"}, {{"SrcT", "$DstT"}, {"DstT", "$SrcT"}}}});
+  return Status::OK();
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Cast", CastGrad);
+
 // Cwise binary ops
 //
 // TODO(zhifengc): This can be arrange as a function in the standard
@@ -478,6 +494,19 @@ Status RealDivGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("RealDiv", RealDivGrad);
+
+Status UnsafeDivGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"gx"}, "UnsafeDiv", {"dz", "y"}},
+      {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dz"}},
+      {{"nx_y2"}, "UnsafeDiv", {"nx", "y2"}},
+      {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("UnsafeDiv", UnsafeDivGrad);
 
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

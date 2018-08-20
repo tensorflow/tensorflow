@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experiment class collecting information needed for a single training run."""
+"""Experiment class collecting information for a single training run (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +30,6 @@ import os
 import time
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import export_strategy
@@ -34,19 +38,19 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.python.estimator import estimator as core_estimator
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 __all__ = ["Experiment"]
 
 
 def _get_standardized_predicate_fn(predicate_fn):
-  pred_fn_args = estimator_util.fn_args(predicate_fn)
+  pred_fn_args = function_utils.fn_args(predicate_fn)
   if "checkpoint_path" not in pred_fn_args:
     # pylint: disable=unused-argument
     def _pred_fn_wrapper(eval_results, checkpoint_path):
@@ -91,7 +95,7 @@ class _EvalAndExportListener(basic_session_run_hooks.CheckpointSaverListener):
     # Load and cache the path of the most recent checkpoint to avoid duplicate
     # searches on GCS.
     logging.info("Checking for checkpoint in %s", self._model_dir)
-    latest_path = saver.latest_checkpoint(self._model_dir)
+    latest_path = checkpoint_management.latest_checkpoint(self._model_dir)
 
     if not latest_path:
       logging.warning("Skipping evaluation and export since model has not been "
@@ -118,6 +122,10 @@ class _EvalAndExportListener(basic_session_run_hooks.CheckpointSaverListener):
 class Experiment(object):
   """Experiment is a class containing all information needed to train a model.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   After an experiment is created (by passing an Estimator and inputs for
   training and evaluation), an Experiment instance knows how to invoke training
   and eval loops in a sensible fashion for distributed training.
@@ -125,16 +133,8 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behavior.
-  @deprecated_args(
-      "2016-10-23",
-      "local_eval_frequency is deprecated as local_run will be renamed to "
-      "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
-      "instead. Note, however, that the default for min_eval_frequency is 1, "
-      "meaning models will be evaluated every time a new checkpoint is "
-      "available. In contrast, the default for local_eval_frequency is None, "
-      "resulting in evaluation occurring only after training has completed. "
-      "min_eval_frequency is ignored when calling the deprecated local_run.",
-      "local_eval_frequency")
+  @deprecated(None, "Please switch to tf.estimator.train_and_evaluate. You will"
+              " also have to convert to a tf.estimator.Estimator.")
   def __init__(self,
                estimator,
                train_input_fn,
@@ -152,7 +152,8 @@ class Experiment(object):
                export_strategies=None,
                train_steps_per_iteration=None,
                checkpoint_and_export=False,
-               saving_listeners=None):
+               saving_listeners=None,
+               check_interval_secs=5):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -161,16 +162,16 @@ class Experiment(object):
 
     Args:
       estimator: Object implementing Estimator interface, which could be a
-        combination of @{tf.contrib.learn.Trainable} and
-        @{tf.contrib.learn.Evaluable} (deprecated), or
-        @{tf.estimator.Estimator}.
+        combination of `tf.contrib.learn.Trainable` and
+        `tf.contrib.learn.Evaluable` (deprecated), or
+        `tf.estimator.Estimator`.
       train_input_fn: function, returns features and labels for training.
       eval_input_fn: function, returns features and labels for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used. This should be `None` if the `estimator` is
-        @{tf.estimator.Estimator}. If metrics are provided they will be
+        `tf.estimator.Estimator`. If metrics are provided they will be
         *appended* to the default set.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
@@ -190,8 +191,9 @@ class Experiment(object):
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
         If 0, the evaluation will only happen after training.
-        If None, defaults to 1, unless model_dir is on GCS, in which case the
-        default is 1000.
+        If None, defaults to 1. To avoid checking for new checkpoints too
+        frequent, the interval is further limited to be at least
+        check_interval_secs between checks.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: Iterable of `ExportStrategy`s, or a single one, or
@@ -215,7 +217,10 @@ class Experiment(object):
       saving_listeners: list of `CheckpointSaverListener` objects. Used by
         tf.estimator.Estimator for callbacks that run immediately before or
         after checkpoint savings.
-
+      check_interval_secs:
+        Minimum time between subsequent checks for a new checkpoint. This
+        mostly applies if both min_eval_frequency and the time spent per
+        training step is low.
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
         or if export_strategies has the wrong type.
@@ -261,13 +266,9 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._checkpoint_and_export = checkpoint_and_export
     self._saving_listeners = saving_listeners
-    # Using 1 on a non-cached file system requires a lot of overhead to
-    # read the checkpoint state file. This is particular bad on GCS, so
-    # we use a different default. This is a temporary band-aid, to be
-    # fixed holistically later (b/36498507).
-    default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
     self._min_eval_frequency = min_eval_frequency if (
-        min_eval_frequency is not None) else default_min_eval_frequency
+        min_eval_frequency is not None) else 1
+    self._check_interval_secs = check_interval_secs
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
@@ -357,7 +358,7 @@ class Experiment(object):
         self._start_server()
     elif config.cluster_spec and config.master:
       raise ValueError(
-          "For distributed runtime, Experiment class only works with"
+          "For distributed runtime, Experiment class only works with "
           "tf.contrib.learn.RunConfig for now, but provided {}".format(
               type(config)))
 
@@ -467,10 +468,15 @@ class Experiment(object):
         on which that evaluation was based.
         At the beginning of evaluation, the passed `eval_results` will be None
         so it's expected that the predicate function handles that gracefully.
-        When `predicate_fn` is not specified, continuous eval will run in an
-        infinite loop (if `train_steps` is None). or exit once global step
-        reaches `train_steps`.
-
+        Continuous eval behavior under different conditions:
+          * When `predicate_fn` is specified:
+            + if `train_steps` is None, run until `predicate_fn` returns False.
+            + if `train_steps` is specified, run until either global step
+              reaches `train_steps` or `predicate_fn` returns False.
+          * When `predicate_fn` is not specified:
+            + if `train_steps` is None, run in an infinite loop.
+            + if `train_steps` is specified, run until global step reaches
+              `train_steps`.
       export: Whether to export from this step. Default is 'True'.
 
     Raises:
@@ -499,7 +505,7 @@ class Experiment(object):
     eval_result = None
     last_warning_time = 0
     while (not predicate_fn or predicate_fn(
-        eval_result, checkpoint_path=previous_path if eval_result else None)):
+        eval_result, checkpoint_path=previous_path)):
       # Exit if we have already reached number of steps to train.
       if self._has_training_stopped(eval_result):
         logging.info("Exiting continuous eval, global_step=%s >= "
@@ -510,7 +516,8 @@ class Experiment(object):
       start = time.time()
 
       error_msg = None
-      latest_path = saver.latest_checkpoint(self._estimator.model_dir)
+      latest_path = checkpoint_management.latest_checkpoint(
+          self._estimator.model_dir)
       if not latest_path:
         error_msg = ("Estimator is not fitted yet. "
                      "Will start an evaluation when a checkpoint is ready.")
@@ -646,12 +653,19 @@ class Experiment(object):
         self._train_monitors += [saver_hook]
       else:
         if self._min_eval_frequency:
+          # Using low min_eval_frequency (default is 1) on a non-cached file
+          # system requires a lot of overhead to read the checkpoint state file.
+          # This is particular bad on GCS and CNS. See also b/36498507 for
+          # context. `check_interval_secs = 5` avoids polling a remote
+          # fileystem too often.
+
           self._train_monitors += [
               monitors.ValidationMonitor(
                   input_fn=self._eval_input_fn,
                   eval_steps=self._eval_steps,
                   metrics=self._eval_metrics,
                   every_n_steps=self._min_eval_frequency,
+                  check_interval_secs=self._check_interval_secs,
                   name=eval_dir_suffix,
                   hooks=self._eval_hooks)
           ]
@@ -765,7 +779,8 @@ class Experiment(object):
           saving_listeners=self._saving_listeners)
 
       logging.info("Evaluating model now.")
-      latest_checkpoint = saver.latest_checkpoint(self._estimator.model_dir)
+      latest_checkpoint = checkpoint_management.latest_checkpoint(
+          self._estimator.model_dir)
       eval_result = self._call_evaluate(
           input_fn=self._eval_input_fn,
           steps=self._eval_steps,
@@ -928,7 +943,3 @@ def _new_attr_context(obj, attr):
     yield
   finally:
     setattr(obj, attr, saved)
-
-
-def _is_gcs(model_dir):
-  return model_dir and model_dir.startswith("gs://")

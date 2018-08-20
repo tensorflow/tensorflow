@@ -39,8 +39,9 @@ class UnravelIndexOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& indices_tensor = ctx->input(0);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices_tensor.shape()) ||
-                         TensorShapeUtils::IsScalar(indices_tensor.shape()),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(indices_tensor.shape()) ||
+                    TensorShapeUtils::IsScalar(indices_tensor.shape()),
                 errors::InvalidArgument(
                     "The indices can only be scalar or vector, got \"",
                     indices_tensor.shape().DebugString(), "\""));
@@ -88,10 +89,11 @@ class UnravelIndexOp : public OpKernel {
       output = output.constant(indices_tensor.scalar<Tidx>()());
       output = output.binaryExpr(strides, mod_op<Tidx>()) / strides_shifted;
     } else {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                              0, TensorShape({dims_tensor.NumElements(),
-                                              indices_tensor.NumElements()}),
-                              &output_tensor));
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output(0,
+                                    TensorShape({dims_tensor.NumElements(),
+                                                 indices_tensor.NumElements()}),
+                                    &output_tensor));
 
       auto output = output_tensor->matrix<Tidx>();
 

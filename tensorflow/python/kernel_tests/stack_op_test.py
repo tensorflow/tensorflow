@@ -50,7 +50,7 @@ class StackOpTest(test.TestCase):
           # Convert [data[0], data[1], ...] separately to tensorflow
           # TODO(irving): Remove list() once we handle maps correctly
           xs = list(map(constant_op.constant, data))
-          # Pack back into a single tensorflow tensor
+          # Stack back into a single tensorflow tensor
           c = array_ops.stack(xs)
           self.assertAllEqual(c.eval(), data)
 
@@ -78,7 +78,7 @@ class StackOpTest(test.TestCase):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
         for dtype in [np.bool, np.float32, np.int32, np.int64]:
           data = np.random.randn(*shape).astype(dtype)
-          # Pack back into a single tensorflow tensor directly using np array
+          # Stack back into a single tensorflow tensor directly using np array
           c = array_ops.stack(data)
           # This is implemented via a Const:
           self.assertEqual(c.op.type, "Const")
@@ -223,7 +223,7 @@ class StackOpTest(test.TestCase):
       array_ops.stack(t, axis=-3)
 
 
-class AutomaticPackingTest(test.TestCase):
+class AutomaticStackingTest(test.TestCase):
 
   def testSimple(self):
     with self.test_session(use_gpu=True):

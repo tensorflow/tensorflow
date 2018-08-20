@@ -48,9 +48,9 @@ class BatchFeatures {
   Status GetFeatureColumnSizes(int64* const num_dense_float_features,
                                int64* const num_sparse_float_features,
                                int64* const num_sparse_int_features) const {
-    QCHECK_NE(num_dense_float_features, nullptr);
-    QCHECK_NE(num_sparse_float_features, nullptr);
-    QCHECK_NE(num_sparse_int_features, nullptr);
+    QCHECK_NE(num_dense_float_features, static_cast<int64*>(nullptr));
+    QCHECK_NE(num_sparse_float_features, static_cast<int64*>(nullptr));
+    QCHECK_NE(num_sparse_int_features, static_cast<int64*>(nullptr));
     *num_dense_float_features = dense_float_feature_columns_.size();
     *num_sparse_float_features = sparse_float_feature_columns_.size();
     *num_sparse_int_features = sparse_int_feature_columns_.size();

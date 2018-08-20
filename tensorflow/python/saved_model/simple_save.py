@@ -23,8 +23,10 @@ from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('saved_model.simple_save')
 def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
   """Convenience function to build a SavedModel suitable for serving.
 

@@ -122,6 +122,34 @@ class GatherTest(xla_test.XLATestCase):
             gather_np = np.take(params, indices, axis=axis)
             self.assertAllEqual(gather_np, gather_value)
 
+  def testIndicesWithDifferentDimensions(self):
+    with self.test_session():
+      for dtype in self.numeric_tf_types:
+        params = array_ops.placeholder(dtype=dtype)
+        indices = array_ops.placeholder(dtype=np.int32)
+        with self.test_scope():
+          gather = array_ops.gather(params, indices)
+        self.assertAllEqual(
+            7, gather.eval(feed_dict={params: [4, 7, 2], indices: 1}))
+        self.assertAllEqual(
+            [7], gather.eval(feed_dict={params: [4, 7, 2], indices: [1]}))
+        self.assertAllEqual(
+            [[7]], gather.eval(feed_dict={params: [4, 7, 2], indices: [[1]]}))
+
+  def testGatherPrecision(self):
+    with self.test_session() as session, self.test_scope():
+      data = np.array([[0, 0, 0, 0], [0, 2 * (1 + np.exp2(-8)), 0, 0],
+                       [0, 0, 0, 0], [0.015789, 0.0985, 0.55789, 0.3842]])
+      indices = np.array([1, 2, 3, 1])
+      dtype = dtypes.float32
+      params_np = self._buildParams(data, dtype)
+      params = array_ops.placeholder(dtype=dtype)
+      indices_tf = constant_op.constant(indices)
+      gather_t = array_ops.gather(params, indices_tf)
+      gather_val = session.run(gather_t, feed_dict={params: params_np})
+      np_val = params_np[indices]
+      self.assertAllEqual(np_val, gather_val)
+
 
 class GatherBenchmark(test.Benchmark):
   """Microbenchmarks for the gather op."""

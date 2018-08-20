@@ -16,42 +16,19 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 
 #include <vector>
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-
-// HostConst: forced to generate output on the host.
-// Only used by testlib; no op is registered for this kernel
-// externally (i.e., in array_ops.cc)
-REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"), HostConstantOp);
-#endif  // TENSORFLOW_USE_SYCL
-
-// Register the HostConst Op
-// Returns a constant tensor on the host.  Useful for writing C++ tests
-// and benchmarks which run on GPU but require arguments pinned to the host.
-// Used by test::graph::HostConstant.
-// value: Attr `value` is the tensor to return.
-REGISTER_OP("HostConst")
-    .Output("output: dtype")
-    .Attr("value: tensor")
-    .Attr("dtype: type");
-
 namespace test {
 namespace graph {
 

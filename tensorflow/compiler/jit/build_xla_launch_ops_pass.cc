@@ -40,7 +40,7 @@ static Status BuildLaunchNode(
     Graph* graph, Node** node) {
   NodeDef def;
   def.set_name(graph->NewName(nodename));
-  def.set_op("_XlaLaunch");
+  def.set_op("XlaLaunch");
   def.set_device(device_name);
   AddNodeAttr("Tconstants", constant_dtypes, &def);
   AddNodeAttr("Targs", arg_dtypes, &def);
@@ -79,7 +79,7 @@ static Status ReplaceNodeWithXlaLaunch(Graph* graph, Node* node) {
       node->input_types().begin() + num_constant_args,
       node->input_types().begin() + num_constant_args + num_nonconst_args);
 
-  // Build a _XlaLaunch operator to execute the function body.
+  // Build a XlaLaunch operator to execute the function body.
   Node* launch_node;
   TF_RETURN_IF_ERROR(BuildLaunchNode(
       graph->NewName(node->name()), node->type_string(), node->def().attr(),

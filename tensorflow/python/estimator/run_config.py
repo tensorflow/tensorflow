@@ -25,13 +25,16 @@ import os
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
+from tensorflow.python.util import function_utils
+from tensorflow.python.util.tf_export import estimator_export
 
 
 _USE_DEFAULT = object()
+_VALID_DEVICE_FN_ARGS = set(['op'])
 
 # A list of the property names in RunConfig that the user is allowed to change.
 _DEFAULT_REPLACEABLE_LIST = [
@@ -43,7 +46,11 @@ _DEFAULT_REPLACEABLE_LIST = [
     'session_config',
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
-    'log_step_count_steps'
+    'log_step_count_steps',
+    'train_distribute',
+    'device_fn',
+    'protocol',
+    'eval_distribute',
 ]
 
 _SAVE_CKPT_ERR = (
@@ -278,6 +285,26 @@ def _validate_properties(run_config):
   _validate('tf_random_seed', lambda seed: isinstance(seed, six.integer_types),
             message='tf_random_seed must be integer.')
 
+  _validate('device_fn', lambda device_fn: six.callable(device_fn) and
+            set(function_utils.fn_args(device_fn)) == _VALID_DEVICE_FN_ARGS,
+            message='device_fn must be callable with exactly'
+                    ' one argument "op".')
+
+  _validate('protocol',
+            lambda protocol: protocol in (None, "grpc", "grpc+verbs"),
+            message='protocol should be grpc or grpc+verbs')
+
+
+def get_default_session_config():
+  """Returns tf.ConfigProto instance."""
+
+  rewrite_opts = rewriter_config_pb2.RewriterConfig(
+      meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE)
+  graph_opts = config_pb2.GraphOptions(rewrite_options=rewrite_opts)
+
+  return config_pb2.ConfigProto(allow_soft_placement=True,
+                                graph_options=graph_opts)
+
 
 class TaskType(object):
   MASTER = 'master'
@@ -287,6 +314,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
+@estimator_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 
@@ -299,7 +327,11 @@ class RunConfig(object):
                session_config=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               log_step_count_steps=100):
+               log_step_count_steps=100,
+               train_distribute=None,
+               device_fn=None,
+               protocol=None,
+               eval_distribute=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -313,7 +345,7 @@ class RunConfig(object):
     a list of task addresses.
 
     `task` has two attributes: `type` and `index`, where `type` can be any of
-    the task types in `cluster`. ` When `TF_CONFIG` contains said information,
+    the task types in `cluster`. When `TF_CONFIG` contains said information,
     the following properties are set on this class:
 
     * `cluster_spec` is parsed from `TF_CONFIG['cluster']`. Defaults to {}. If
@@ -344,7 +376,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'worker', 'index': 1}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
       assert config.num_ps_replicas == 2
@@ -362,7 +394,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'chief', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host0:2222'
       assert config.task_id == 0
       assert config.num_ps_replicas == 2
@@ -380,7 +412,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'evaluator', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == ''
       assert config.evaluator_master == ''
       assert config.task_id == 0
@@ -422,8 +454,21 @@ class RunConfig(object):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
-        global step/sec will be logged during training.
-
+        global step/sec and the loss will be logged during training.
+      train_distribute: An optional instance of
+        `tf.contrib.distribute.DistributionStrategy`. If specified,
+        then Estimator will distribute the user's model during training,
+        according to the policy specified by that strategy.
+      device_fn: A callable invoked for every `Operation` that takes the
+        `Operation` and returns the device string. If `None`, defaults to
+        the device function returned by `tf.train.replica_device_setter`
+        with round-robin strategy.
+      protocol: An optional argument which specifies the protocol used when
+        starting server. None means default to grpc.
+      eval_distribute: An optional instance of
+        `tf.contrib.distribute.DistributionStrategy`. If specified,
+        then Estimator will distribute the user's model during evaluation,
+        according to the policy specified by that strategy.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -459,9 +504,59 @@ class RunConfig(object):
         session_config=session_config,
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-        log_step_count_steps=log_step_count_steps)
+        log_step_count_steps=log_step_count_steps,
+        train_distribute=train_distribute,
+        device_fn=device_fn,
+        protocol=protocol,
+        eval_distribute=eval_distribute)
 
     self._init_distributed_setting_from_environment_var(tf_config)
+
+    self._maybe_overwrite_session_config_for_distributed_training()
+
+  def _maybe_overwrite_session_config_for_distributed_training(self):
+    """Overwrites the session_config for distributed training.
+
+    The default overwrite is optimized for between-graph training. Subclass
+    should override this method if necessary.
+    """
+    # Get session_config only for between-graph distributed mode (cluster_spec
+    # is present).
+    if not self._session_config and self._cluster_spec:
+      RunConfig._replace(
+          self,
+          allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
+          session_config=self._get_default_session_config_distributed())
+
+  def _get_default_session_config_distributed(self):
+    """Returns None or tf.ConfigProto instance with default device_filters set.
+
+    Device filters are set such that chief/master and worker communicates with
+    only ps. session_config=None for evaluators or any other TaskType.
+    """
+
+    rewrite_opts = rewriter_config_pb2.RewriterConfig(
+        meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE)
+    graph_opts = config_pb2.GraphOptions(rewrite_options=rewrite_opts)
+
+    device_filters = None
+    if self._task_type == TaskType.MASTER:
+      device_filters = ['/job:ps', '/job:master']
+    elif self._task_type == TaskType.CHIEF:
+      device_filters = ['/job:ps', '/job:chief']
+    elif self._task_type == TaskType.WORKER:
+      device_filters = ['/job:ps', '/job:worker/task:%d' % self._task_id]
+    elif self._task_type == TaskType.PS:
+      device_filters = ['/job:ps', '/job:worker', '/job:master']
+    else:
+      # If the task_type is `EVALUATOR` or something other than the ones in
+      # TaskType then don't set any device filters.
+      return None
+
+    return config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        graph_options=graph_opts,
+        device_filters=device_filters)
 
   def _init_distributed_setting_from_environment_var(self, tf_config):
     """Initialize distributed properties based on `tf_config`."""
@@ -560,6 +655,16 @@ class RunConfig(object):
   @property
   def cluster_spec(self):
     return self._cluster_spec
+
+  @property
+  def device_fn(self):
+    """Returns the device_fn.
+
+    If device_fn is not `None`, it overrides the default
+    device function used in `Estimator`.
+    Otherwise the default one is used.
+    """
+    return self._device_fn
 
   @property
   def evaluation_master(self):
@@ -670,12 +775,29 @@ class RunConfig(object):
     """Returns the platform defined (in TF_CONFIG) service dict."""
     return self._service
 
+  @property
+  def train_distribute(self):
+    """Optional `tf.contrib.distribute.DistributionStrategy` for training.
+    """
+    return self._train_distribute
+
+  @property
+  def eval_distribute(self):
+    """Optional `tf.contrib.distribute.DistributionStrategy` for evaluation.
+    """
+    return self._eval_distribute
+
+  @property
+  def protocol(self):
+    """Returns the optional protocol value."""
+    return self._protocol
+
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.
 
     Only the properties in the following list are allowed to be replaced:
 
-      - `model_dir`.
+      - `model_dir`,
       - `tf_random_seed`,
       - `save_summary_steps`,
       - `save_checkpoints_steps`,
@@ -684,6 +806,10 @@ class RunConfig(object):
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
+      - `train_distribute`,
+      - `device_fn`,
+      - `protocol`.
+      - `eval_distribute`,
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

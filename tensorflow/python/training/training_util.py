@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
@@ -30,7 +29,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
-
 
 # Picked a long key value to minimize the chance of collision with user defined
 # collection keys.
@@ -46,11 +44,13 @@ def global_step(sess, global_step_tensor):
   """Small helper to get the global step.
 
   ```python
-  # Creates a variable to hold the global_step.
+  # Create a variable to hold the global_step.
   global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
-  # Creates a session.
+  # Create a session.
   sess = tf.Session()
-  # Initializes the variable.
+  # Initialize the variable
+  sess.run(global_step_tensor.initializer)
+  # Get the variable value.
   print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
   global_step: 10
@@ -64,7 +64,7 @@ def global_step(sess, global_step_tensor):
   Returns:
     The global step value.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return int(global_step_tensor.numpy())
   return int(sess.run(global_step_tensor))
 
@@ -121,18 +121,18 @@ def create_global_step(graph=None):
   graph = graph or ops.get_default_graph()
   if get_global_step(graph) is not None:
     raise ValueError('"global_step" already exists.')
+  if context.executing_eagerly():
+    with ops.device('cpu:0'):
+      return variable_scope.get_variable(
+          ops.GraphKeys.GLOBAL_STEP,
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                       ops.GraphKeys.GLOBAL_STEP])
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    if context.in_eager_mode():
-      with ops.device('cpu:0'):
-        return variable_scope.get_variable(
-            ops.GraphKeys.GLOBAL_STEP,
-            shape=[],
-            dtype=dtypes.int64,
-            initializer=init_ops.zeros_initializer(),
-            trainable=False,
-            collections=[ops.GraphKeys.GLOBAL_VARIABLES,
-                         ops.GraphKeys.GLOBAL_STEP])
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],
@@ -170,8 +170,7 @@ def assert_global_step(global_step_tensor):
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor) or
-          isinstance(global_step_tensor,
-                     resource_variable_ops.ResourceVariable)):
+          resource_variable_ops.is_resource_variable(global_step_tensor)):
     raise TypeError(
         'Existing "global_step" must be a Variable or Tensor: %s.' %
         global_step_tensor)

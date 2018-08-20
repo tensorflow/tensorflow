@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -35,6 +36,11 @@ namespace {
 REGISTER_OP("TestParams").Output("o: float");
 REGISTER_OP("TestInput").Output("a: float").Output("b: float");
 REGISTER_OP("TestMul").Input("a: float").Input("b: float").Output("o: float");
+REGISTER_OP("TestUnary").Input("a: float").Output("o: float");
+REGISTER_OP("TestBinary")
+    .Input("a: float")
+    .Input("b: float")
+    .Output("o: float");
 
 // Compares that the order of nodes in 'inputs' respects the
 // pair orders described in 'ordered_pairs'.
@@ -81,7 +87,7 @@ TEST(AlgorithmTest, ReversePostOrder) {
   BinaryOp("TestMul", w2, {input, 1}, b.opts().WithName("t3"));
 
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
   std::vector<Node*> order;
 
   // Test reverse post order:
@@ -139,12 +145,59 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
     BinaryOp("TestMul", w1, {input, 1}, b.opts().WithName("t3"));
 
     Graph g(OpRegistry::Global());
-    TF_ASSERT_OK(b.ToGraph(&g));
+    TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
     std::vector<Node*> order;
 
     // Test reverse post order generates expected ordering.
-    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorID());
-    EXPECT_TRUE(ExpectBefore({{"t3", "t2"}}, order, &error));
+    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorName());
+    EXPECT_TRUE(ExpectBefore({{"t2", "t3"}}, order, &error));
+  }
+}
+
+TEST(AlgorithmTest, PostOrderWithEdgeFilter) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  string error;
+  Node* n0 = ops::SourceOp("TestParams", b.opts().WithName("n0"));
+  Node* n1 = ops::UnaryOp("TestUnary", n0, b.opts().WithName("n1"));
+  Node* n2 = ops::UnaryOp("TestUnary", n1, b.opts().WithName("n2"));
+  Node* n3 = ops::BinaryOp("TestBinary", n2, n0, b.opts().WithName("n3"));
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
+
+  g.AddEdge(g.FindNodeId(n3->id()), 0, g.FindNodeId(n1->id()), 1);
+
+  std::vector<Node*> post_order;
+  auto edge_filter = [&](const Edge& e) {
+    return !(e.src()->id() == n3->id() && e.dst()->id() == n1->id());
+  };
+
+  std::vector<Node*> expected_post_order = {
+      g.sink_node(),          g.FindNodeId(n3->id()), g.FindNodeId(n2->id()),
+      g.FindNodeId(n1->id()), g.FindNodeId(n0->id()), g.source_node()};
+
+  std::vector<Node*> expected_reverse_post_order = expected_post_order;
+  std::reverse(expected_reverse_post_order.begin(),
+               expected_reverse_post_order.end());
+
+  GetPostOrder(g, &post_order, /*stable_comparator=*/{},
+               /*edge_filter=*/edge_filter);
+
+  ASSERT_EQ(expected_post_order.size(), post_order.size());
+  for (int i = 0; i < post_order.size(); i++) {
+    CHECK_EQ(post_order[i], expected_post_order[i])
+        << post_order[i]->name() << " vs. " << expected_post_order[i]->name();
+  }
+
+  std::vector<Node*> reverse_post_order;
+  GetReversePostOrder(g, &reverse_post_order, /*stable_comparator=*/{},
+                      /*edge_filter=*/edge_filter);
+
+  ASSERT_EQ(expected_reverse_post_order.size(), reverse_post_order.size());
+  for (int i = 0; i < reverse_post_order.size(); i++) {
+    CHECK_EQ(reverse_post_order[i], expected_reverse_post_order[i])
+        << reverse_post_order[i]->name() << " vs. "
+        << expected_reverse_post_order[i]->name();
   }
 }
 }  // namespace

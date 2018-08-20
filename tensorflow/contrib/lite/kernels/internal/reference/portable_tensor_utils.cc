@@ -12,11 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
+
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
 
 namespace tflite {
 namespace tensor_utils {
@@ -25,6 +32,36 @@ float PortableClip(float f, float abs_limit) {
   float result = (abs_limit < f) ? abs_limit : f;
   result = (-abs_limit > result) ? -abs_limit : result;
   return result;
+}
+
+bool PortableIsZeroVector(const float* vector, int v_size) {
+  for (int i = 0; i < v_size; ++i) {
+    if (*vector++ != 0.0f) return false;
+  }
+  return true;
+}
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float* min_value,
+                                     float* max_value, float* scaling_factor) {
+  auto minmax = std::minmax_element(values, values + size);
+  *min_value = *minmax.first;
+  *max_value = *minmax.second;
+  const int kScale = 127;
+  const float range = std::max(std::abs(*min_value), std::abs(*max_value));
+  if (range == 0) {
+    memset(quantized_values, 0, size * sizeof(int8_t));
+    *scaling_factor = 1;
+    return;
+  }
+  *scaling_factor = range / kScale;
+  const float scaling_factor_inv = 1.0f / *scaling_factor;
+  for (int i = 0; i < size; ++i) {
+    const int32_t quantized_value =
+        static_cast<int32_t>(TfLiteRound(values[i] * scaling_factor_inv));
+    // Clamp: just in case some odd numeric offset.
+    quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
+  }
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
@@ -36,13 +73,41 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
   for (int b = 0; b < n_batch; b++) {
     const float* matrix_ptr = matrix;
     for (int r = 0; r < m_rows; r++) {
+      float dot_prod = 0.0f;
       const float* vector_in_batch = vector + b * m_cols;
       for (int c = 0; c < m_cols; c++) {
-        *result_in_batch += *matrix_ptr++ * *vector_in_batch++;
+        dot_prod += *matrix_ptr++ * *vector_in_batch++;
       }
+      *result_in_batch += dot_prod;
       result_in_batch += result_stride;
     }
   }
+}
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  int batch, row, col;
+  for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
+    const float batch_scaling_factor = scaling_factors[batch];
+    // Get the address of the first row.
+    const int8_t* row_ptr = matrix;
+    for (row = 0; row < m_rows; ++row, result += result_stride) {
+      // Initialize the dot product sum for the row to 0.
+      int32_t dotprod = 0;
+#if defined(__GNUC__)
+      // Prefetch the row to cache.
+      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
+                         3 /* temporal locality */);
+#endif
+      // For every block of 16 8-bit elements (128-bit register) from each row.
+      for (col = 0; col < m_cols; ++col, ++row_ptr) {
+        dotprod += (*row_ptr) * (vectors[col]);
+      }  // for col
+      *result += (dotprod * batch_scaling_factor);
+    }  // for row
+  }    // for batch
 }
 
 void PortableVectorVectorCwiseProduct(const float* vector1,
@@ -134,6 +199,13 @@ void PortableSub1Vector(const float* vector, int v_size, float* result) {
 
 void PortableZeroVector(float* vector, int v_size) {
   memset(vector, 0, v_size * sizeof(float));
+}
+
+void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
+                                  const float scale, float* result) {
+  for (int v = 0; v < v_size; ++v) {
+    *result++ = scale * *vector++;
+  }
 }
 
 void PortableClipVector(const float* vector, int v_size, float abs_limit,

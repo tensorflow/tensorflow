@@ -358,11 +358,11 @@ class MklSliceOp : public OpKernel {
         /* data format = NCHW */
 
 #pragma omp parallel for
-        for (size_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
+        for (ssize_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
           T* ip = in_buf + (d0 * in_strides[0]);
           T* op = op_buf + ((d0 - begin[0]) * out_strides[0]);
 #pragma omp parallel for
-          for (size_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
+          for (ssize_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
             T* ip1 = ip + (d1 * in_strides[1]);
             T* op1 = op + ((d1 - begin[1]) * out_strides[1]);
             // For NCHW, H and W will be contiguous. So we can copy
@@ -376,15 +376,15 @@ class MklSliceOp : public OpKernel {
         /* data_format = NHWC */
 
 #pragma omp parallel for
-        for (size_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
+        for (ssize_t d0 = begin[0]; d0 < begin[0] + size[0]; d0++) {
           T* ip = in_buf + (d0 * in_strides[0]);
           T* op = op_buf + ((d0 - begin[0]) * out_strides[0]);
 #pragma omp parallel for
-          for (size_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
+          for (ssize_t d1 = begin[1]; d1 < begin[1] + size[1]; d1++) {
             T* ip1 = ip + (d1 * in_strides[1]);
             T* op1 = op + ((d1 - begin[1]) * out_strides[1]);
 #pragma omp parallel for
-            for (size_t d2 = begin[2]; d2 < begin[2] + size[2]; d2++) {
+            for (ssize_t d2 = begin[2]; d2 < begin[2] + size[2]; d2++) {
               T* ip2 = ip1 + (d2 * in_strides[2]);
               T* ip3 = ip2 + begin[3];
               T* op2 = op1 + ((d2 - begin[2]) * out_strides[2]);

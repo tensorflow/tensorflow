@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_SELF_ADJOINT_EIG_V2_OP_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_SELF_ADJOINT_EIG_V2_OP_IMPL_H_
+
 // See docs in ../ops/linalg_ops.cc.
 
 #include "third_party/eigen3/Eigen/Core"
@@ -22,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -61,6 +65,9 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
       return;
     }
 
+    // This algorithm relies on denormals, so switch them back on locally.
+    port::ScopedDontFlushDenormal dont_flush_denormals;
+
     Eigen::SelfAdjointEigenSolver<Matrix> eig(
         inputs[0],
         compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
@@ -81,3 +88,5 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
 };
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_SELF_ADJOINT_EIG_V2_OP_IMPL_H_

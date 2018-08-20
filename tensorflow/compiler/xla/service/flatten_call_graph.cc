@@ -93,7 +93,7 @@ Status FlattenNode(const CallGraphNode& node) {
       auto current = worklist.back();
       worklist.pop_back();
       for (auto* instruction : current->instructions()) {
-        if (GetInstructionCallContext(instruction) !=
+        if (GetInstructionCallContext(instruction->opcode()) !=
             CallContext::kSequential) {
           continue;
         }

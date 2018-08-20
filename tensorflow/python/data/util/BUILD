@@ -63,6 +63,41 @@ py_test(
 )
 
 py_library(
+    name = "structure",
+    srcs = ["structure.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nest",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "structure_test",
+    size = "small",
+    srcs = ["structure_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nest",
+        ":structure",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
     name = "convert",
     srcs = ["convert.py"],
     srcs_version = "PY2AND3",
@@ -70,6 +105,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 
@@ -86,14 +122,26 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "random_seed",
+    srcs = ["random_seed.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+    ],
+)
+
+py_test(
+    name = "random_seed_test",
+    size = "small",
+    srcs = ["random_seed_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_seed",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:util",
+    ],
 )

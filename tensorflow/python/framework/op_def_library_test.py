@@ -36,13 +36,12 @@ def _unknown_shape(op):
   return [tensor_shape.unknown_shape() for _ in op.outputs]
 
 
-@test_util.with_c_api
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._lib = test_ops._op_def_lib
 
-  def _add_op(self, ascii):
+  def _add_op(self, ascii):  # pylint: disable=redefined-builtin
     op_def = op_def_pb2.OpDef()
     text_format.Merge(ascii, op_def)
     self._lib.add_op(op_def)
@@ -1330,13 +1329,12 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
             self.assertEqual(t_c, [x.dtype for x in c])
 
 
-@test_util.with_c_api
 class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._lib = test_ops._op_def_lib
 
-  def _add_op(self, ascii):
+  def _add_op(self, ascii):  # pylint: disable=redefined-builtin
     op_def = op_def_pb2.OpDef()
     text_format.Merge(ascii, op_def)
     self._lib.add_op(op_def)

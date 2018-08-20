@@ -17,9 +17,14 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
+int TfLiteIntArrayGetSizeInBytes(int size) {
+  static TfLiteIntArray dummy;
+  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+}
+
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   TfLiteIntArray* ret =
-      (TfLiteIntArray*)malloc(sizeof(*ret) + sizeof(ret->data[0]) * size);
+      (TfLiteIntArray*)malloc(TfLiteIntArrayGetSizeInBytes(size));
   ret->size = size;
   return ret;
 }
@@ -55,19 +60,23 @@ TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src) {
 
 void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
-void TfLiteTensorFree(TfLiteTensor* t) {
+void TfLiteTensorDataFree(TfLiteTensor* t) {
   if (t->allocation_type == kTfLiteDynamic && t->data.raw) {
     free(t->data.raw);
   }
-  if (t->dims) TfLiteIntArrayFree(t->dims);
   t->data.raw = NULL;
+}
+
+void TfLiteTensorFree(TfLiteTensor* t) {
+  TfLiteTensorDataFree(t);
+  if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        TfLiteQuantizationParams quantization, char* buffer,
                        size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, TfLiteTensor* tensor) {
+                       const void* allocation, bool is_variable, TfLiteTensor* tensor) {
   TfLiteTensorFree(tensor);
   tensor->type = type;
   tensor->name = name;
@@ -77,6 +86,7 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
   tensor->bytes = size;
   tensor->allocation_type = allocation_type;
   tensor->allocation = allocation;
+  tensor->is_variable = is_variable;
 }
 
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {

@@ -495,9 +495,9 @@ class ConcatOpTest(test.TestCase):
         p = []
         shape = np.array([7, 13])
         if test.is_gpu_available():
-          num_tensors = 10000
+          num_tensors = 5000
         else:
-          num_tensors = 1000
+          num_tensors = 500
         for i in np.arange(num_tensors):
           input_shape = shape
           placeholder = array_ops.placeholder(dtypes.float32, shape=input_shape)
@@ -526,7 +526,7 @@ class ConcatOpTest(test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = []
       t2 = []
-      output = gen_array_ops._concat_v2([t1, t2], 0).eval()
+      output = gen_array_ops.concat_v2([t1, t2], 0).eval()
       self.assertFalse(output)  # Checks that output is empty
 
   def testConcatInvalidAxis(self):
@@ -534,20 +534,20 @@ class ConcatOpTest(test.TestCase):
       with self.test_session(use_gpu=True):
         t1 = [1]
         t2 = [2]
-        gen_array_ops._concat_v2([t1, t2], 1).eval()
+        gen_array_ops.concat_v2([t1, t2], 1).eval()
 
   def testConcatNegativeAxis(self):
     with self.test_session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
 
-      c = gen_array_ops._concat_v2([t1, t2], -2)
+      c = gen_array_ops.concat_v2([t1, t2], -2)
       self.assertEqual([4, 3], c.get_shape().as_list())
       output = c.eval()
       self.assertAllEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
                           output)
 
-      c = gen_array_ops._concat_v2([t1, t2], -1)
+      c = gen_array_ops.concat_v2([t1, t2], -1)
       self.assertEqual([2, 6], c.get_shape().as_list())
       output = c.eval()
       self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
@@ -606,6 +606,17 @@ class ConcatOpTest(test.TestCase):
           inp_tensors_placeholders, -2, output_shape=[2, 3],
           gather_indexes=[2, 0], feed_dict=feed_dict)
 
+  def testConcatAxisType(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        t1 = [[1, 2, 3], [4, 5, 6]]
+        t2 = [[7, 8, 9], [10, 11, 12]]
+
+        c = gen_array_ops.concat_v2([t1, t2],
+                                    constant_op.constant(1, dtype=dtype))
+        self.assertEqual([2, 6], c.get_shape().as_list())
+        output = c.eval()
+        self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
 
 class ConcatOffsetTest(test.TestCase):
 
@@ -615,7 +626,7 @@ class ConcatOffsetTest(test.TestCase):
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 5], dtypes.int32)
       s2 = constant_op.constant([2, 20, 5], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1, s2])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
       ans = sess.run(off)
       self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
 
@@ -624,7 +635,7 @@ class ConcatOffsetTest(test.TestCase):
       cdim = constant_op.constant(1, dtypes.int32)
       s0 = constant_op.constant([[2, 3, 5]], dtypes.int32)
       s1 = constant_op.constant([[2, 7, 5]], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1])
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    r"should be a vector"):
         sess.run(off)
@@ -634,7 +645,7 @@ class ConcatOffsetTest(test.TestCase):
       cdim = constant_op.constant(4, dtypes.int32)
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 5], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1])
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    r"Concat dim is out of range: 4 vs. 3"):
         sess.run(off)
@@ -644,7 +655,7 @@ class ConcatOffsetTest(test.TestCase):
       cdim = constant_op.constant(1, dtypes.int32)
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 5, 10], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1])
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    r"should contain 3 elem"):
         sess.run(off)
@@ -654,7 +665,7 @@ class ConcatOffsetTest(test.TestCase):
       cdim = constant_op.constant(1, dtypes.int32)
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 10], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1])
       with self.assertRaisesRegexp(
           errors_impl.InvalidArgumentError,
           r"All dimensions except 1 must match. Input 1 has shape \[2 7 10\] "
@@ -667,7 +678,7 @@ class ConcatOffsetTest(test.TestCase):
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 5], dtypes.int32)
       s2 = constant_op.constant([2, 20, 5], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1, s2])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
       ans = sess.run(off)
       self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
 
@@ -675,7 +686,7 @@ class ConcatOffsetTest(test.TestCase):
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([1, 3, 5], dtypes.int32)
       s2 = constant_op.constant([3, 3, 5], dtypes.int32)
-      off = gen_array_ops._concat_offset(cdim, [s0, s1, s2])
+      off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
       ans = sess.run(off)
       self.assertAllEqual(ans, [[0, 0, 0], [2, 0, 0], [3, 0, 0]])
 

@@ -46,6 +46,9 @@ class S3FileSystem : public FileSystem {
 
   Status Stat(const string& fname, FileStatistics* stat) override;
 
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
+
   Status DeleteFile(const string& fname) override;
 
   Status CreateDir(const string& name) override;
@@ -55,6 +58,7 @@ class S3FileSystem : public FileSystem {
   Status GetFileSize(const string& fname, uint64* size) override;
 
   Status RenameFile(const string& src, const string& target) override;
+
  private:
   // Returns the member S3 client, initializing as-needed.
   // When the client tries to access the object in S3, e.g.,

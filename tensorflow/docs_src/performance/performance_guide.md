@@ -41,7 +41,7 @@ approaches to identifying issues:
     utilization is not approaching 80-100%, then the input pipeline may be the
     bottleneck.
 *   Generate a timeline and look for large blocks of white space (waiting). An
-    example of generating a timeline exists as part of the @{$jit$XLA JIT}
+    example of generating a timeline exists as part of the [XLA JIT](../performance/xla/jit.md)
     tutorial.
 *   Check CPU usage. It is possible to have an optimized input pipeline and lack
     the CPU cycles to process the pipeline.
@@ -68,7 +68,7 @@ the CPU.
 
 #### Using the tf.data API
 
-The @{$datasets$tf.data API} is replacing `queue_runner` as the recommended API
+The [tf.data API](../guide/datasets.md) is replacing `queue_runner` as the recommended API
 for building input pipelines. This
 [ResNet example](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/cifar10_main.py)
 ([arXiv:1512.03385](https://arxiv.org/abs/1512.03385))
@@ -78,7 +78,7 @@ training CIFAR-10 illustrates the use of the `tf.data` API along with
 The `tf.data` API utilizes C++ multi-threading and has a much lower overhead
 than the Python-based `queue_runner` that is limited by Python's multi-threading
 performance. A detailed performance guide for the `tf.data` API can be found
-[here](#datasets_performance).
+[here](../performance/datasets_performance.md).
 
 While feeding data using a `feed_dict` offers a high level of flexibility, in
 general `feed_dict` does not provide a scalable solution. If only a single GPU
@@ -94,7 +94,7 @@ sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 #### Fused decode and crop
 
 If inputs are JPEG images that also require cropping, use fused
-@{tf.image.decode_and_crop_jpeg} to speed up preprocessing.
+`tf.image.decode_and_crop_jpeg` to speed up preprocessing.
 `tf.image.decode_and_crop_jpeg` only decodes the part of
 the image within the crop window. This significantly speeds up the process if
 the crop window is much smaller than the full image. For imagenet data, this
@@ -174,7 +174,7 @@ faster using `NHWC` than the normally most efficient `NCHW`.
 ### Common fused Ops
 
 Fused Ops combine multiple operations into a single kernel for improved
-performance. There are many fused Ops within TensorFlow and @{$xla$XLA} will
+performance. There are many fused Ops within TensorFlow and [XLA](../performance/xla/index.md) will
 create fused Ops when possible to automatically improve performance. Collected
 below are select fused Ops that can greatly improve performance and may be
 overlooked.
@@ -187,14 +187,14 @@ some models makes up a large percentage of the operation time. Using fused batch
 norm can result in a 12%-30% speedup.
 
 There are two commonly used batch norms and both support fusing. The core
-@{tf.layers.batch_normalization} added fused starting in TensorFlow 1.3.
+`tf.layers.batch_normalization` added fused starting in TensorFlow 1.3.
 
 ```python
 bn = tf.layers.batch_normalization(
     input_layer, fused=True, data_format='NCHW')
 ```
 
-The contrib @{tf.contrib.layers.batch_norm} method has had fused as an option
+The contrib `tf.contrib.layers.batch_norm` method has had fused as an option
 since before TensorFlow 1.0.
 
 ```python
@@ -205,43 +205,43 @@ bn = tf.contrib.layers.batch_norm(input_layer, fused=True, data_format='NCHW')
 
 There are many ways to specify an RNN computation in TensorFlow and they have
 trade-offs with respect to model flexibility and performance. The
-@{tf.nn.rnn_cell.BasicLSTMCell} should be considered a reference implementation
+`tf.nn.rnn_cell.BasicLSTMCell` should be considered a reference implementation
 and used only as a last resort when no other options will work.
 
 When using one of the cells, rather than the fully fused RNN layers, you have a
-choice of whether to use @{tf.nn.static_rnn} or @{tf.nn.dynamic_rnn}.  There
+choice of whether to use `tf.nn.static_rnn` or `tf.nn.dynamic_rnn`.  There
 shouldn't generally be a performance difference at runtime, but large unroll
-amounts can increase the graph size of the @{tf.nn.static_rnn} and cause long
-compile times.  An additional advantage of @{tf.nn.dynamic_rnn} is that it can
+amounts can increase the graph size of the `tf.nn.static_rnn` and cause long
+compile times.  An additional advantage of `tf.nn.dynamic_rnn` is that it can
 optionally swap memory from the GPU to the CPU to enable training of very long
 sequences.  Depending on the model and hardware configuration, this can come at
 a performance cost.  It is also possible to run multiple iterations of
-@{tf.nn.dynamic_rnn} and the underlying @{tf.while_loop} construct in parallel,
+`tf.nn.dynamic_rnn` and the underlying `tf.while_loop` construct in parallel,
 although this is rarely useful with RNN models as they are inherently
 sequential.
 
-On NVIDIA GPUs, the use of @{tf.contrib.cudnn_rnn} should always be preferred
+On NVIDIA GPUs, the use of `tf.contrib.cudnn_rnn` should always be preferred
 unless you want layer normalization, which it doesn't support.  It is often at
-least an order of magnitude faster than @{tf.contrib.rnn.BasicLSTMCell} and
-@{tf.contrib.rnn.LSTMBlockCell} and uses 3-4x less memory than
-@{tf.contrib.rnn.BasicLSTMCell}.
+least an order of magnitude faster than `tf.contrib.rnn.BasicLSTMCell` and
+`tf.contrib.rnn.LSTMBlockCell` and uses 3-4x less memory than
+`tf.contrib.rnn.BasicLSTMCell`.
 
 If you need to run one step of the RNN at a time, as might be the case in
 reinforcement learning with a recurrent policy, then you should use the
-@{tf.contrib.rnn.LSTMBlockCell} with your own environment interaction loop
-inside a @{tf.while_loop} construct. Running one step of the RNN at a time and
+`tf.contrib.rnn.LSTMBlockCell` with your own environment interaction loop
+inside a `tf.while_loop` construct. Running one step of the RNN at a time and
 returning to Python is possible, but it will be slower.
 
-On CPUs, mobile devices, and if @{tf.contrib.cudnn_rnn} is not available on
+On CPUs, mobile devices, and if `tf.contrib.cudnn_rnn` is not available on
 your GPU, the fastest and most memory efficient option is
-@{tf.contrib.rnn.LSTMBlockFusedCell}.
+`tf.contrib.rnn.LSTMBlockFusedCell`.
 
-For all of the less common cell types like @{tf.contrib.rnn.NASCell},
-@{tf.contrib.rnn.PhasedLSTMCell}, @{tf.contrib.rnn.UGRNNCell},
-@{tf.contrib.rnn.GLSTMCell}, @{tf.contrib.rnn.Conv1DLSTMCell},
-@{tf.contrib.rnn.Conv2DLSTMCell}, @{tf.contrib.rnn.LayerNormBasicLSTMCell},
+For all of the less common cell types like `tf.contrib.rnn.NASCell`,
+`tf.contrib.rnn.PhasedLSTMCell`, `tf.contrib.rnn.UGRNNCell`,
+`tf.contrib.rnn.GLSTMCell`, `tf.contrib.rnn.Conv1DLSTMCell`,
+`tf.contrib.rnn.Conv2DLSTMCell`, `tf.contrib.rnn.LayerNormBasicLSTMCell`,
 etc., one should be aware that they are implemented in the graph like
-@{tf.contrib.rnn.BasicLSTMCell} and as such will suffer from the same poor
+`tf.contrib.rnn.BasicLSTMCell` and as such will suffer from the same poor
 performance and high memory usage.  One should consider whether or not those
 trade-offs are worth it before using these cells. For example, while layer
 normalization can speed up convergence, because cuDNN is 20x faster the fastest
@@ -257,7 +257,7 @@ the CPU in use. Speedups for training and inference on CPU are documented below
 in [Comparing compiler optimizations](#comparing-compiler-optimizations).
 
 To install the most optimized version of TensorFlow,
-@{$install_sources$build and install} from source. If there is a need to build
+[build and install](../install/install_sources.md) from source. If there is a need to build
 TensorFlow on a platform that has different hardware than the target, then
 cross-compile with the highest optimizations for the target platform. The
 following command is an example of using `bazel` to compile for a specific
@@ -298,7 +298,7 @@ each of the towers. How each tower gets the updated variables and how the
 gradients are applied has an impact on the performance, scaling, and convergence
 of the model.  The rest of this section provides an overview of variable
 placement and the towering of a model on multiple GPUs.
-@{$performance_models$High-Performance Models} gets into more details regarding
+[High-Performance Models](../performance/performance_models.md) gets into more details regarding
 more complex methods that can be used to share and update variables between
 towers.
 
@@ -307,7 +307,7 @@ and even how the hardware has been configured. An example of this, is that two
 systems can be built with NVIDIA Tesla P100s but one may be using PCIe and the
 other [NVLink](http://www.nvidia.com/object/nvlink.html). In that scenario, the
 optimal solution for each system may be different. For real world examples, read
-the @{$performance/benchmarks$benchmark} page which details the settings that
+the [benchmark](../performance/benchmarks.md) page which details the settings that
 were optimal for a variety of platforms. Below is a summary of what was learned
 from benchmarking various platforms and configurations:
 
@@ -433,7 +433,7 @@ scenarios.
 ## Optimizing for CPU
 
 CPUs, which includes Intel® Xeon Phi™, achieve optimal performance when
-TensorFlow is @{$install_sources$built from source} with all of the instructions
+TensorFlow is [built from source](../install/install_sources.md) with all of the instructions
 supported by the target CPU.
 
 Beyond using the latest instruction sets, Intel® has added support for the
@@ -464,7 +464,7 @@ equal to the number of physical cores rather than logical cores.
   config = tf.ConfigProto()
   config.intra_op_parallelism_threads = 44
   config.inter_op_parallelism_threads = 44
-  tf.session(config=config)
+  tf.Session(config=config)
 
 ```
 
@@ -475,7 +475,7 @@ optimizations.
 ### TensorFlow with Intel® MKL DNN
 
 Intel® has added optimizations to TensorFlow for Intel® Xeon® and Intel® Xeon
-Phi™ though the use of Intel® Math Kernel Library for Deep Neural Networks
+Phi™ through the use of the Intel® Math Kernel Library for Deep Neural Networks
 (Intel® MKL-DNN) optimized primitives. The optimizations also provide speedups
 for the consumer line of processors, e.g. i5 and i7 Intel processors. The Intel
 published paper
@@ -581,9 +581,9 @@ Each variable that impacts performance is discussed below.
     for optimal settings.
 
 *   **intra_op_parallelism_threads**: Setting this equal to the number of
-    physical cores is recommended. Setting the value to 0, which is the default
-    and will result in the value being set to the number of logical cores, is an
-    option to try for some architectures.  This value and `OMP_NUM_THREADS`
+    physical cores is recommended. Setting the value to 0, which is the default,
+    results in the value being set to the number of logical cores - this is an
+    alternate option to try for some architectures.  This value and `OMP_NUM_THREADS`
     should be equal.
 
 *   **inter_op_parallelism_threads**: Setting this equal to the number of

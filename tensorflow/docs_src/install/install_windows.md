@@ -1,4 +1,4 @@
-# Installing TensorFlow on Windows
+# Install TensorFlow on Windows
 
 This guide explains how to install TensorFlow on Windows. Although these
 instructions might also work on other Windows variants, we have only
@@ -17,12 +17,14 @@ You must choose one of the following types of TensorFlow to install:
     NVIDIA® GPU, you must install this version. Note that this version of
     TensorFlow is typically much easier to install (typically,
     in 5 or 10 minutes), so even if you have an NVIDIA GPU, we recommend
-    installing this version first.
+    installing this version first. Prebuilt binaries will use AVX instructions.
   * **TensorFlow with GPU support**. TensorFlow programs typically run
     significantly faster on a GPU than on a CPU. Therefore, if your
     system has a NVIDIA® GPU meeting the prerequisites shown below
     and you need to run performance-critical applications, you should
     ultimately install this version.
+
+<a name="NVIDIARequirements"></a>
 
 ### Requirements to run TensorFlow with GPU support
 
@@ -41,13 +43,14 @@ installed on your system:
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
     the cuDNN DLL to your `%PATH%` environment variable.
-  * GPU card with CUDA Compute Capability 3.0 or higher.  See
+  * GPU card with CUDA Compute Capability 3.0 or higher for building
+    from source and 3.5 or higher for our binaries. See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
     list of supported GPU cards.
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cuDNN64_7.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
@@ -153,14 +156,10 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
-TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-There is also a helpful [script](https://gist.github.com/mrry/ee5dbcfdd045fa48a27d56664411d41c)
-for Windows TensorFlow installation issues.
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 ## Common installation problems
 

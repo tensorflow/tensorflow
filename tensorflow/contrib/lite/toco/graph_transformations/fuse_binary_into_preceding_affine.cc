@@ -50,7 +50,17 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
 
   // TODO(b/62904716): Bias array should become 1-D when padding removed.
   const int depth = bias_shape.dims(bias_shape.dimensions_count() - 1);
-  CHECK_EQ(depth, operand_shape.dims(operand_shape.dimensions_count() - 1));
+  int operand_channel_increment = 0;
+  if (operand_shape.dimensions_count() >= 1 &&
+      operand_shape.dims(operand_shape.dimensions_count() - 1) ==
+          bias_shape.dims(bias_shape.dimensions_count() - 1)) {
+    operand_channel_increment = 1;
+  } else if (operand_shape.dimensions_count() == 0 ||
+             operand_shape.dims(operand_shape.dimensions_count() - 1) == 1) {
+    operand_channel_increment = 0;
+  } else {
+    LOG(FATAL) << "Operand shape mismatch.";
+  }
 
   enum class OpType { BiasPlusOperand, BiasMinusOperand, OperandMinusBias };
 
@@ -60,9 +70,10 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
                                   ? OpType::BiasMinusOperand
                                   : OpType::OperandMinusBias;
 
+  int operand_channel = 0;
   for (int i = 0; i < depth; i++) {
     float& bias_val = bias_data[i];
-    const float operand_val = operand_data[i];
+    const float operand_val = operand_data[operand_channel];
     if (optype == OpType::BiasPlusOperand) {
       bias_val += operand_val;
     } else if (optype == OpType::BiasMinusOperand) {
@@ -72,6 +83,7 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
     } else {
       LOG(FATAL) << "Should not get here.";
     }
+    operand_channel += operand_channel_increment;
   }
 }
 
@@ -262,8 +274,14 @@ bool FuseBinaryIntoPrecedingAffine::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  const auto& weights = model->GetArray(preceding_op->inputs[1]);
-  const auto& bias = model->GetArray(preceding_op->inputs[2]);
+  const auto& weights_name = preceding_op->inputs[1];
+  const auto& bias_name = preceding_op->inputs[2];
+  const auto& weights = model->GetArray(weights_name);
+  const auto& bias = model->GetArray(bias_name);
+  const int count_ops_consuming_bias = CountOpsWithInput(*model, bias_name);
+  const int count_ops_consuming_weights =
+      CountOpsWithInput(*model, weights_name);
+
   if (binary_op->type == OperatorType::kAdd ||
       binary_op->type == OperatorType::kSub) {
     if (!bias.buffer) {
@@ -273,11 +291,25 @@ bool FuseBinaryIntoPrecedingAffine::Run(Model* model, std::size_t op_index) {
           LogName(*binary_op), LogName(*preceding_op));
       return false;
     }
+    if (count_ops_consuming_bias > 1) {
+      AddMessageF(
+          "Not fusing %s because the bias of the preceding %s is consumed by "
+          "another op",
+          LogName(*binary_op), LogName(*preceding_op));
+      return false;
+    }
   } else {
     if (!weights.buffer || !bias.buffer) {
       AddMessageF(
           "Not fusing %s because the preceding %s has non-constant weights or "
           "bias arrays",
+          LogName(*binary_op), LogName(*preceding_op));
+      return false;
+    }
+    if (count_ops_consuming_weights > 1 || count_ops_consuming_bias > 1) {
+      AddMessageF(
+          "Not fusing %s because the weights or bias of the preceding %s is "
+          "consumed by another op",
           LogName(*binary_op), LogName(*preceding_op));
       return false;
     }

@@ -22,7 +22,6 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -51,6 +50,13 @@ def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
       [ExtractBitsFromFloat16(x) for x in proto_values])
 
 
+def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  # TODO: Remove the conversion if cython supports np.float16_t
+  fast_tensor_util.AppendFloat16ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values, dtype=np.float16).view(np.uint16))
+
+
 def ExtractBitsFromBFloat16(x):
   return np.asscalar(
       np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
@@ -61,15 +67,18 @@ def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
       [ExtractBitsFromBFloat16(x) for x in proto_values])
 
 
+def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendBFloat16ArrayToTensorProto(
+      tensor_proto, np.asarray(
+          proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype:
-          SlowAppendBFloat16ArrayToTensorProto,
-      # TODO(sesse): We should have a
-      # fast_tensor_util.AppendFloat16ArrayToTensorProto,
-      # but it seems np.float16_t doesn't exist?
+          FastAppendBFloat16ArrayToTensorProto,
       np.float16:
-          SlowAppendFloat16ArrayToTensorProto,
+          _MediumAppendFloat16ArrayToTensorProto,
       np.float32:
           fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64:
@@ -557,17 +566,18 @@ def MakeNdarray(tensor):
   dtype = tensor_dtype.as_numpy_dtype
 
   if tensor.tensor_content:
-    return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
-  elif tensor_dtype == dtypes.float16:
+    return (np.frombuffer(tensor.tensor_content, dtype=dtype).copy()
+            .reshape(shape))
+  elif tensor_dtype == dtypes.float16 or tensor_dtype == dtypes.bfloat16:
     # the half_val field of the TensorProto stores the binary representation
     # of the fp16: we need to reinterpret this as a proper float16
     if len(tensor.half_val) == 1:
       tmp = np.array(tensor.half_val[0], dtype=np.uint16)
-      tmp.dtype = np.float16
+      tmp.dtype = tensor_dtype.as_numpy_dtype
       return np.repeat(tmp, num_elements).reshape(shape)
     else:
       tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
-      tmp.dtype = np.float16
+      tmp.dtype = tensor_dtype.as_numpy_dtype
       return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
@@ -585,8 +595,7 @@ def MakeNdarray(tensor):
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
   elif tensor_dtype in [
       dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16, dtypes.int8,
-      dtypes.qint32, dtypes.quint8, dtypes.qint8, dtypes.qint16, dtypes.quint16,
-      dtypes.bfloat16
+      dtypes.qint32, dtypes.quint8, dtypes.qint8, dtypes.qint16, dtypes.quint16
   ]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
@@ -823,17 +832,32 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   all-or-nothing.
 
   Args:
-    tensor: The rank-1 Tensor to be evaluated.
+    tensor: The rank-0 or rank-1 Tensor to be evaluated.
 
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
+
+  Raises:
+    ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
-  if context.in_eager_mode():
+  if isinstance(tensor, ops.EagerTensor):
     return tensor_shape.as_shape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
+  if tensor.get_shape().ndims == 0:
+    value = constant_value(tensor)
+    if value is None:
+      raise ValueError(
+          "Received a scalar with unknown value as shape; require a statically "
+          "known scalar with value '-1' to describe an unknown shape.")
+    if value != -1:
+      raise ValueError(
+          "Received a scalar value '%s' as shape; require a statically known "
+          "scalar with value '-1' to describe an unknown shape." % value)
+    return tensor_shape.unknown_shape()
+
   shape = tensor.get_shape().with_rank(1)
-  if tensor.get_shape() == [0]:
+  if shape == [0]:
     return tensor_shape.scalar()
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
@@ -917,8 +941,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
-  Check whether an object is a tensor. Equivalent to
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+  Check whether an object is a tensor. This check is equivalent to calling
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
+  if all the component variables of a MirroredVariable or a TowerLocalVariable
+  are tensors.
 
   Args:
     x: A python object to check.
@@ -926,4 +952,5 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a tensor, `False` if not.
   """
-  return isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x)  # pylint: disable=protected-access
+  return (isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x) or  # pylint: disable=protected-access
+          (hasattr(x, "is_tensor_like") and x.is_tensor_like))

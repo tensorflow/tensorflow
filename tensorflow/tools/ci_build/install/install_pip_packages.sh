@@ -16,10 +16,10 @@
 
 set -e
 
-# We don't apt-get install so that we can install a newer version of pip. Not
-# needed after we upgrade to Ubuntu 16.04
-easy_install -U pip
-easy_install3 -U pip
+# We don't apt-get install so that we can install a newer version of pip.
+# Only needed for Ubuntu 14.04 and 16.04; not needed for 18.04 and Debian 8,9?
+easy_install -U pip==9.0.3
+easy_install3 -U pip==9.0.3
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
@@ -51,8 +51,8 @@ pip2 install --upgrade markdown==2.6.8
 pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
-pip2 install --upgrade protobuf==3.3.0
-pip3 install --upgrade protobuf==3.3.0
+pip2 install --upgrade protobuf==3.6.0
+pip3 install --upgrade protobuf==3.6.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -60,8 +60,13 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
-pip2 install --no-binary=:all: --upgrade numpy==1.12.0
-pip3 install --no-binary=:all: --upgrade numpy==1.12.0
+if $(cat /etc/*-release | grep -q 14.04); then
+  pip2 install --no-binary=:all: --upgrade numpy==1.14.5
+  pip3 install --no-binary=:all: --upgrade numpy==1.14.5
+else
+  pip2 install --upgrade numpy==1.14.5
+  pip3 install --upgrade numpy==1.14.5
+fi
 
 pip2 install scipy==0.18.1
 pip3 install scipy==0.18.1
@@ -104,3 +109,17 @@ pip2 install --upgrade gast
 pip3 install --upgrade gast
 pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
+
+# Install last working version of setuptools.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0
+
+# Keras
+pip2 install keras_applications==1.0.4 --no-deps
+pip3 install keras_applications==1.0.4 --no-deps
+pip2 install keras_preprocessing==1.0.2 --no-deps
+pip3 install keras_preprocessing==1.0.2 --no-deps
+
+# Install last working version of setuptools.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0

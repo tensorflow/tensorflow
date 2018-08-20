@@ -300,7 +300,7 @@ class ProfileOptionBuilder(object):
     # pylint: disable=line-too-long
     """Only show profiler nodes consuming no less than 'min_float_ops'.
 
-    Please see https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profilerg3doc/profile_model_architecture.md
+    Please see https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/g3doc/profile_model_architecture.md
     on the caveats of calculating float operations.
 
     Args:

@@ -52,7 +52,7 @@ END
   summary: "Sparse update \'*var\' as FOBOS algorithm with fixed learning rate."
   description: <<END
 That is for rows we have grad for, we update var as follows:
-prox_v = var - alpha * grad
-var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
+$$prox_v = var - alpha * grad$$
+$$var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}$$
 END
 }

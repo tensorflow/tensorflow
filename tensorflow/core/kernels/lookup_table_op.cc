@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -62,8 +63,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     mutex_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-          default_val);
+          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
 
     return Status::OK();
@@ -78,9 +78,8 @@ class MutableHashTableOfScalars final : public LookupInterface {
       table_.clear();
     }
     for (int64 i = 0; i < key_values.size(); ++i) {
-      gtl::InsertOrUpdate(&table_,
-                          SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-                          SubtleMustCopyUnlessStringOrFloat(value_values(i)));
+      gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
+                          SubtleMustCopyIfIntegral(value_values(i)));
     }
     return Status::OK();
   }
@@ -172,8 +171,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
     mutex_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
-      ValueArray* value_vec = gtl::FindOrNull(
-          table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)));
+      ValueArray* value_vec =
+          gtl::FindOrNull(table_, SubtleMustCopyIfIntegral(key_values(i)));
       if (value_vec != nullptr) {
         for (int64 j = 0; j < value_dim; j++) {
           value_values(i, j) = value_vec->at(j);
@@ -203,8 +202,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
         V value = value_values(i, j);
         value_vec.push_back(value);
       }
-      gtl::InsertOrUpdate(
-          &table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)), value_vec);
+      gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
+                          value_vec);
     }
     return Status::OK();
   }
@@ -342,7 +341,7 @@ class MutableDenseHashTable final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override LOCKS_EXCLUDED(mu_) {
-    const int64 num_elements = key.dim_size(0);
+    const int64 num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
     const int64 key_size = key_shape_.num_elements();
     const int64 value_size = value_shape_.num_elements();
     if (key.NumElements() != num_elements * key_size) {
@@ -379,15 +378,14 @@ class MutableDenseHashTable final : public LookupInterface {
           for (int64 j = 0; j < value_size; ++j) {
             // TODO(andreasst): check if we can get rid of SubtleMustCopy
             // here and elsewhere in this file.
-            value_matrix(i, j) = SubtleMustCopyUnlessStringOrFloat(
-                value_buckets_matrix(bucket_index, j));
+            value_matrix(i, j) =
+                SubtleMustCopyIfIntegral(value_buckets_matrix(bucket_index, j));
           }
           break;
         }
         if (IsEqualKey(key_buckets_matrix, bucket_index, empty_key_matrix, 0)) {
           for (int64 j = 0; j < value_size; ++j) {
-            value_matrix(i, j) =
-                SubtleMustCopyUnlessStringOrFloat(default_flat(j));
+            value_matrix(i, j) = SubtleMustCopyIfIntegral(default_flat(j));
           }
           break;
         }
@@ -405,8 +403,9 @@ class MutableDenseHashTable final : public LookupInterface {
 
   Status Insert(OpKernelContext* ctx, const Tensor& key,
                 const Tensor& value) override LOCKS_EXCLUDED(mu_) {
-    if (key.NumElements() != key.dim_size(0) * key_shape_.num_elements()) {
-      TensorShape expected_shape({key.dim_size(0)});
+    const int64 batch_size = (key.dims() == 0) ? 1 : key.dim_size(0);
+    if (key.NumElements() != batch_size * key_shape_.num_elements()) {
+      TensorShape expected_shape({batch_size});
       expected_shape.AppendShape(key_shape_);
       return errors::InvalidArgument("Expected key shape ",
                                      expected_shape.DebugString(), " got ",
@@ -417,7 +416,7 @@ class MutableDenseHashTable final : public LookupInterface {
     // rather than updates. That means we may grow the table even though we
     // don't need to. As long as the number of keys inserted in one call is
     // small compared to the size of the map, the impact of this is minimal.
-    const int64 pending_num_entries = num_entries_ + key.dim_size(0);
+    const int64 pending_num_entries = num_entries_ + batch_size;
     if (pending_num_entries > num_buckets_ * max_load_factor_) {
       int64 new_num_buckets = num_buckets_;
       do {
@@ -502,7 +501,7 @@ class MutableDenseHashTable final : public LookupInterface {
  private:
   Status DoInsert(OpKernelContext* ctx, const Tensor& key, const Tensor& value,
                   bool ignore_empty_key) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    const int64 num_elements = key.dim_size(0);
+    const int64 num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
     const int64 value_size = value_shape_.num_elements();
     const int64 key_size = key_shape_.num_elements();
     const auto key_matrix = key.shaped<K, 2>({num_elements, key_size});
@@ -531,7 +530,7 @@ class MutableDenseHashTable final : public LookupInterface {
         if (IsEqualKey(key_buckets_matrix, bucket_index, key_matrix, i)) {
           for (int64 j = 0; j < value_size; ++j) {
             value_buckets_matrix(bucket_index, j) =
-                SubtleMustCopyUnlessStringOrFloat(value_matrix(i, j));
+                SubtleMustCopyIfIntegral(value_matrix(i, j));
           }
           break;
         }
@@ -539,11 +538,11 @@ class MutableDenseHashTable final : public LookupInterface {
           ++num_entries_;
           for (int64 j = 0; j < key_size; ++j) {
             key_buckets_matrix(bucket_index, j) =
-                SubtleMustCopyUnlessStringOrFloat(key_matrix(i, j));
+                SubtleMustCopyIfIntegral(key_matrix(i, j));
           }
           for (int64 j = 0; j < value_size; ++j) {
             value_buckets_matrix(bucket_index, j) =
-                SubtleMustCopyUnlessStringOrFloat(value_matrix(i, j));
+                SubtleMustCopyIfIntegral(value_matrix(i, j));
           }
           break;
         }
@@ -814,16 +813,21 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
       LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
                     value_dtype>)
 
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32, string);
+REGISTER_KERNEL(int64, double);
+REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, int32);
+REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(string, double);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
-REGISTER_KERNEL(int64, string);
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(string, string);
-REGISTER_KERNEL(string, bool);
-REGISTER_KERNEL(int32, int32);
 
 #undef REGISTER_KERNEL
 
@@ -844,11 +848,20 @@ REGISTER_KERNEL(int32, int32);
       LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int64);
-REGISTER_KERNEL(int64, string);
-REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, int32);
+REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(int64, Variant);
+REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, int32);
+REGISTER_KERNEL(string, int64);
 
 #undef REGISTER_KERNEL
 
@@ -869,10 +882,19 @@ REGISTER_KERNEL(int64, float);
       LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int64, double);
+REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, int32);
+REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, int32);
+REGISTER_KERNEL(string, int64);
 
 #undef REGISTER_KERNEL
 
@@ -893,12 +915,20 @@ REGISTER_KERNEL(string, bool);
       LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, int32);
 REGISTER_KERNEL(int64, bool);
+REGISTER_KERNEL(int64, double);
+REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, int32);
+REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, Variant);
+REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, int32);
+REGISTER_KERNEL(string, int64);
 
 #undef REGISTER_KERNEL
 

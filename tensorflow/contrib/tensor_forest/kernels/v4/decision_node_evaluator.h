@@ -55,12 +55,10 @@ class InequalityDecisionNodeEvaluator : public BinaryDecisionNodeEvaluator {
  protected:
   int32 feature_num_;
   float threshold_;
-
-  // If decision is '<=' as opposed to '<'.
-  bool include_equals_;
+  ::tensorflow::decision_trees::InequalityTest_Type _test_type;
 };
 
-// Evalutor for splits with multiple weighted features.
+// Evaluator for splits with multiple weighted features.
 class ObliqueInequalityDecisionNodeEvaluator
     : public BinaryDecisionNodeEvaluator {
  public:

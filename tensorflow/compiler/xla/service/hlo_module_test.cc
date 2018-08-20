@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -38,7 +38,7 @@ class HloModuleTest : public HloTestBase {
   std::unique_ptr<HloComputation> CreateConstantComputation() {
     auto builder = HloComputation::Builder("Constant");
     builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
     return builder.Build();
   }
 
@@ -122,7 +122,7 @@ TEST_F(HloModuleTest, CloneHasFusion) {
   {
     auto b = HloComputation::Builder("Entry");
     auto input = b.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
     b.AddInstruction(
         HloInstruction::CreateFusion(r0f32_, HloInstruction::FusionKind::kInput,
                                      /*operands=*/{input}, fused_computation));
@@ -173,7 +173,7 @@ TEST_F(HloModuleTest, LargeConstantToString) {
   auto builder = HloComputation::Builder("Constant");
   std::vector<float> values(16, 42.0);
   builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>(values)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(values)));
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(

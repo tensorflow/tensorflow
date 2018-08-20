@@ -1,4 +1,5 @@
 tensorflow/core
+tensorflow/core/kernels/boosted_trees
 tensorflow/core/profiler
 tensorflow/python
 tensorflow/contrib/boosted_trees/proto
@@ -10,7 +11,6 @@ tensorflow/contrib/mpi
 tensorflow/contrib/mpi_collectives
 tensorflow/contrib/session_bundle
 tensorflow/contrib/tensor_forest/proto
-tensorflow/contrib/tensorboard/graph_explorer/proto
 tensorflow/contrib/tensorboard/plugins/projector
 tensorflow/contrib/tensorboard/plugins/trace
 tensorflow/contrib/tpu/proto

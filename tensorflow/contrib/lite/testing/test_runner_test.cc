@@ -31,6 +31,7 @@ class ConcreteTestRunner : public TestRunner {
   void ResetTensor(int id) override {}
   void SetInput(int id, const string& csv_values) override {}
   void SetExpectation(int id, const string& csv_values) override {}
+  string ReadOutput(int id) override { return ""; }
   void Invoke() override {}
   bool CheckResults() override { return true; }
   bool CheckFloatSizes(size_t bytes, size_t values) {

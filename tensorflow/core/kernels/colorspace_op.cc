@@ -71,7 +71,7 @@ class RGBToHSVOp : public OpKernel {
                                         TensorShape({input_data.dimension(0)}),
                                         &trange));
 
-    typename TTypes<T, 1>::Tensor range = trange.tensor<T, 1>();
+    typename TTypes<T, 1>::Tensor range(trange.tensor<T, 1>());
 
     functor::RGBToHSV<Device, T>()(context->eigen_device<Device>(), input_data,
                                    range, output_data);

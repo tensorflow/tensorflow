@@ -52,24 +52,28 @@ class RealNVPTest(test_util.VectorDistributionTestHelpers, test.TestCase):
       forward_x = nvp.forward(x)
       # Use identity to invalidate cache.
       inverse_y = nvp.inverse(array_ops.identity(forward_x))
-      fldj = nvp.forward_log_det_jacobian(x)
+      forward_inverse_y = nvp.forward(inverse_y)
+      fldj = nvp.forward_log_det_jacobian(x, event_ndims=1)
       # Use identity to invalidate cache.
-      ildj = nvp.inverse_log_det_jacobian(array_ops.identity(forward_x))
+      ildj = nvp.inverse_log_det_jacobian(
+          array_ops.identity(forward_x), event_ndims=1)
       variables.global_variables_initializer().run()
       [
           forward_x_,
           inverse_y_,
+          forward_inverse_y_,
           ildj_,
           fldj_,
       ] = sess.run([
           forward_x,
           inverse_y,
+          forward_inverse_y,
           ildj,
           fldj,
       ])
       self.assertEqual("real_nvp", nvp.name)
-      self.assertAllClose(forward_x_, forward_x_, rtol=1e-6, atol=0.)
-      self.assertAllClose(x_, inverse_y_, rtol=1e-5, atol=0.)
+      self.assertAllClose(forward_x_, forward_inverse_y_, rtol=1e-1, atol=0.)
+      self.assertAllClose(x_, inverse_y_, rtol=1e-1, atol=0.)
       self.assertAllClose(ildj_, -fldj_, rtol=1e-6, atol=0.)
 
   def testMutuallyConsistent(self):

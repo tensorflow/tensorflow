@@ -202,6 +202,9 @@ struct sqrt_grad : base<T, Eigen::internal::scalar_sqrt_gradient_op<T>> {};
 template <typename T>
 struct rsqrt_grad : base<T, Eigen::internal::scalar_rsqrt_gradient_op<T>> {};
 
+template <typename T>
+struct igamma_grad_a : base<T, Eigen::internal::scalar_igamma_der_a_op<T>> {};
+
 }  // end namespace functor
 
 }  // end namespace tensorflow

@@ -25,8 +25,7 @@ limitations under the License.
 #endif
 #include <memory>
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 string Hostname() {
@@ -54,5 +53,4 @@ bool GetCurrentDirectory(string* dir) {
 }
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import sample_stats
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.platform import test
 
@@ -454,6 +455,16 @@ class PercentileTestWithNearestInterpolation(test.TestCase):
     with self.test_session():
       with self.assertRaisesOpError("rank"):
         pct.eval(feed_dict={q_ph: [0.5]})
+
+  def test_finds_max_of_long_array(self):
+    # d - 1 == d in float32 and d = 3e7.
+    # So this test only passes if we use double for the percentile indices.
+    # If float is used, it fails with InvalidArgumentError about an index out of
+    # bounds.
+    x = math_ops.linspace(0., 3e7, num=int(3e7))
+    with self.test_session():
+      minval = sample_stats.percentile(x, q=0, validate_args=True)
+      self.assertAllEqual(0, minval.eval())
 
 
 if __name__ == "__main__":

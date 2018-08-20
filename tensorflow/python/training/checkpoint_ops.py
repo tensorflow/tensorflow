@@ -149,7 +149,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_rows_present = num_rows_to_load
   if remap_rows:
     row_remapping, num_rows_present = (
-        gen_checkpoint_ops._generate_vocab_remapping(  # pylint: disable=protected-access
+        gen_checkpoint_ops.generate_vocab_remapping(
             new_vocab_file=new_row_vocab_file,
             old_vocab_file=old_row_vocab_file,
             new_vocab_offset=new_row_vocab_offset,
@@ -168,7 +168,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_cols_present = new_col_vocab_size
   if remap_cols:
     col_remapping, num_cols_present = (
-        gen_checkpoint_ops._generate_vocab_remapping(  # pylint: disable=protected-access
+        gen_checkpoint_ops.generate_vocab_remapping(
             new_vocab_file=new_col_vocab_file,
             old_vocab_file=old_col_vocab_file,
             new_vocab_offset=0,  # Offset is unused for cols (no partitioning).
@@ -178,7 +178,7 @@ def _load_and_remap_matrix(ckpt_path,
       num_rows_to_load * new_col_vocab_size -
       num_rows_present * num_cols_present, 1
   ])
-  return_tensor = gen_checkpoint_ops._load_and_remap_matrix(  # pylint: disable=protected-access
+  return_tensor = gen_checkpoint_ops.load_and_remap_matrix(
       ckpt_path=ckpt_path,
       old_tensor_name=old_tensor_name,
       row_remapping=row_remapping,

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 # MaxPoolGrad.
 def _AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding):
   del outputs  # Unused by average-pooling gradients.
-  return gen_nn_ops._avg_pool3d_grad(
+  return gen_nn_ops.avg_pool3d_grad(
       inputs.get_shape().as_list(),
       output_gradients,
       ksize=ksize,
@@ -41,7 +41,7 @@ def _AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding):
       padding=padding)
 
 
-class Pooling3DTest(XLATestCase):
+class Pooling3DTest(xla_test.XLATestCase):
 
   def _VerifyValues(self, pool_func, input_sizes, window, strides, padding,
                     expected):
@@ -187,8 +187,14 @@ class Pooling3DTest(XLATestCase):
         padding="VALID",
         expected=[29.5, 32.5, 50.5, 53.5, 176.5, 179.5, 197.5, 200.5])
 
-  def _VerifyGradient(self, pool_func, pool_grad_func, input_sizes, ksize,
-                      strides, padding):
+  def _VerifyGradient(self,
+                      pool_func,
+                      pool_grad_func,
+                      input_sizes,
+                      ksize,
+                      strides,
+                      padding,
+                      pool_grad_grad_func=None):
     """Verifies the output values of the pooling gradient function.
 
     Args:
@@ -198,6 +204,7 @@ class Pooling3DTest(XLATestCase):
       ksize: The kernel size dimensions
       strides: The stride dimensions
       padding: Padding type.
+      pool_grad_grad_func: Second-order gradient function, if available.
     """
     ksize = [1] + ksize + [1]
     strides = [1] + strides + [1]
@@ -218,6 +225,8 @@ class Pooling3DTest(XLATestCase):
       output_gradient_vals = np.arange(
           1, output_vals.size + 1, dtype=np.float32)
       output_gradient_vals = output_gradient_vals.reshape(output_vals.shape)
+      output_grad_grad_vals = np.arange(1, x.size + 1, dtype=np.float32)
+      output_grad_grad_vals = output_grad_grad_vals.reshape(x.shape)
 
       # Use the Tensorflow CPU pooling gradient to compute the expected input
       # gradients.
@@ -236,6 +245,22 @@ class Pooling3DTest(XLATestCase):
             {inputs: x,
              output_gradients: output_gradient_vals})
 
+        output_grad_gradients = array_ops.placeholder(
+            dtypes.float32, shape=expected_input_gradient_vals.shape)
+        if pool_grad_grad_func is not None:
+          expected_grad_gradients = pool_grad_grad_func(
+              inputs,
+              outputs,
+              output_grad_gradients,
+              ksize=ksize,
+              strides=strides,
+              padding=padding,
+              data_format="NDHWC")
+          expected_grad_gradients_vals = sess.run(expected_grad_gradients, {
+              inputs: x,
+              output_grad_gradients: output_grad_grad_vals
+          })
+
       # Run the gradient op on the XLA device
       with self.test_scope():
         outputs = array_ops.placeholder(dtypes.float32, shape=output_vals.shape)
@@ -246,6 +271,16 @@ class Pooling3DTest(XLATestCase):
             ksize=ksize,
             strides=strides,
             padding=padding)
+        if pool_grad_grad_func is not None:
+          actual_grad_gradients = pool_grad_grad_func(
+              inputs,
+              outputs,
+              output_grad_gradients,
+              ksize=ksize,
+              strides=strides,
+              padding=padding,
+              data_format="NDHWC")
+
       actual = sess.run(actual_input_gradients, {
           inputs: x,
           outputs: output_vals,
@@ -260,28 +295,49 @@ class Pooling3DTest(XLATestCase):
           atol=1e-6)
       self.assertShapeEqual(actual, inputs)
 
+      if pool_grad_grad_func is not None:
+        actual_grad_gradients_vals = sess.run(
+            actual_grad_gradients, {
+                inputs: x,
+                outputs: output_vals,
+                output_grad_gradients: output_grad_grad_vals
+            })
+
+        # Compare the Tensorflow and XLA results.
+        self.assertAllClose(
+            expected_grad_gradients_vals,
+            actual_grad_gradients_vals,
+            rtol=1e-4,
+            atol=1e-6)
+        self.assertShapeEqual(actual_grad_gradients_vals, outputs)
+
   def testMaxPoolGradValidPadding1_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[1, 3, 3, 3, 1],
         ksize=[1, 1, 1],
         strides=[1, 1, 1],
-        padding="VALID")
+        padding="VALID",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testMaxPoolGradValidPadding2_1_6_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 3, 6, 3],
         ksize=[2, 2, 2],
         strides=[1, 1, 1],
-        padding="VALID")
+        padding="VALID",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testMaxPoolGradValidPadding2_1_7_3d(self):
+    # TODO(b/73062247): the bfloat16 implementation of MaxPool3DGradGrad does
+    # not have enough precision for this test case to pass if
+    # pool_grad_grad_func is passed.
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 5, 7, 3],
         ksize=[2, 2, 2],
         strides=[1, 1, 1],
@@ -290,47 +346,52 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradValidPadding2_2_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 2, 2, 2, 3],
         ksize=[2, 2, 2],
         strides=[2, 2, 2],
-        padding="VALID")
+        padding="VALID",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testMaxPoolGradSamePadding1_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 2, 4, 1],
         ksize=[1, 1, 1],
         strides=[1, 1, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testMaxPoolGradSamePadding2_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 2, 4, 1],
         ksize=[2, 2, 2],
         strides=[1, 1, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testMaxPoolGradSamePadding2_2_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 5, 2, 4, 3],
         ksize=[2, 2, 2],
         strides=[2, 2, 2],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testMaxPoolGradSamePadding3_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[1, 3, 3, 7, 1],
         ksize=[3, 3, 3],
         strides=[1, 1, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
   def testAvgPoolGradValidPadding1_1_3d(self):
     self._VerifyGradient(

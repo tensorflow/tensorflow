@@ -12,12 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TF_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
-#define TF_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
 
-// TDOD(ghodrat): Remove this header file and the dependency to internal data
+// TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
+
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
 
 #ifndef USE_NEON
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
@@ -39,6 +43,16 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int m_cols, const float* vector,
                                              int n_batch, float* result,
                                              int result_stride);
+
+// Matrix multiplication for quantized values using symmetric quantization.
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
 
 // Cwise product of two vectors.
 void PortableVectorVectorCwiseProduct(const float* vector1,
@@ -114,8 +128,26 @@ void PortableCopyVector(const float* vector, int v_size, float* result);
 // Fill vector with 0.f.
 void PortableZeroVector(float* vector, int v_size);
 
+// Multiply all elements of vector with a scalar.
+void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                                  float* result);
+void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                              float* result);
+
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
+
+// Check if all entries of a vector are zero.
+bool PortableIsZeroVector(const float* vector, int v_size);
+bool NeonIsZeroVector(const float* vector, int v_size);
+
+// Symmetric quantizer.
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float* min,
+                                     float* max, float* scaling_factor);
+void NeonSymmetricQuantizeFloats(const float* values, const int size,
+                                 int8_t* quantized_values, float* min,
+                                 float* max, float* scaling_factor);
 
 // Shift left a vector in place with v_size size.
 void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
@@ -135,4 +167,4 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
 }  // namespace tensor_utils
 }  // namespace tflite
 
-#endif  // TF_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_

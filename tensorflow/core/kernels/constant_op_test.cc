@@ -60,6 +60,7 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
   std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, device.get(),
                                               cpu_allocator(), const_node,
                                               TF_GRAPH_DEF_VERSION, &status));
+  TF_ASSERT_OK(status);
 
   OpKernelContext::Params params;
   params.device = device.get();
@@ -77,7 +78,7 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
     EXPECT_EQ(ctx.persistent_memory_allocated(), 480);
   }
 
-  // Remove memry leak errors.
+  // Remove memory leak errors.
   for (auto allocator_pair : ctx.wrapped_allocators()) {
     allocator_pair.second->GetRecordsAndUnRef();
   }

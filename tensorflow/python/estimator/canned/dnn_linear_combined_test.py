@@ -26,7 +26,7 @@ import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.estimator import warm_starting_util
+from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import dnn_testing_utils
 from tensorflow.python.estimator.canned import linear_testing_utils
@@ -100,7 +100,8 @@ def _linear_regressor_fn(feature_columns,
                          weight_column=None,
                          optimizer='Ftrl',
                          config=None,
-                         partitioner=None):
+                         partitioner=None,
+                         sparse_combiner='sum'):
   return dnn_linear_combined.DNNLinearCombinedRegressor(
       model_dir=model_dir,
       linear_feature_columns=feature_columns,
@@ -108,7 +109,8 @@ def _linear_regressor_fn(feature_columns,
       label_dimension=label_dimension,
       weight_column=weight_column,
       input_layer_partitioner=partitioner,
-      config=config)
+      config=config,
+      linear_sparse_combiner=sparse_combiner)
 
 
 class LinearOnlyRegressorPartitionerTest(
@@ -163,7 +165,8 @@ def _linear_classifier_fn(feature_columns,
                           label_vocabulary=None,
                           optimizer='Ftrl',
                           config=None,
-                          partitioner=None):
+                          partitioner=None,
+                          sparse_combiner='sum'):
   return dnn_linear_combined.DNNLinearCombinedClassifier(
       model_dir=model_dir,
       linear_feature_columns=feature_columns,
@@ -172,7 +175,8 @@ def _linear_classifier_fn(feature_columns,
       weight_column=weight_column,
       label_vocabulary=label_vocabulary,
       input_layer_partitioner=partitioner,
-      config=config)
+      config=config,
+      linear_sparse_combiner=sparse_combiner)
 
 
 class LinearOnlyClassifierTrainingTest(
@@ -866,7 +870,7 @@ class DNNLinearCombinedWarmStartingTest(test.TestCase):
                 learning_rate=0.0),
             # The provided regular expression will only warm-start the deep
             # portion of the model.
-            warm_start_from=warm_starting_util.WarmStartSettings(
+            warm_start_from=estimator.WarmStartSettings(
                 ckpt_to_initialize_from=dnn_lc_classifier.model_dir,
                 vars_to_warm_start='.*(dnn).*')))
 

@@ -129,25 +129,40 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
       return None
 
 
-def copy_op_handler(info, op, copy_shape=True):
+def copy_op_handler(info, op, new_inputs, copy_shape=False, nodedef_fn=None):
   """Copy a `tf.Operation`.
 
   Args:
     info: Transform._TmpInfo instance.
     op: the `tf.Operation` to be copied.
+    new_inputs: The new inputs for this op.
     copy_shape: also copy the shape of the tensor
+    nodedef_fn: If provided, a function that will be run on the NodeDef
+      and should return a mutated NodeDef before a new Operation is created.
+      This is useful as certain features cannot be set on the Operation and
+      must be modified in NodeDef.
+
   Returns:
     A `(op, op_outputs)` tuple containing the transformed op and its outputs.
   """
+  # The `new_inputs` was added to this function. For compatibility reason,
+  # let's raise an error if `new_inputs` is a boolean.
+  if isinstance(new_inputs, bool):
+    raise TypeError("the `new_inputs` argument must be an iterable.")
+
   # pylint: disable=protected-access
 
   # Clone the node def:
-  node_def_ = deepcopy(op._node_def)
+  node_def_ = deepcopy(op.node_def)
 
   # Transform name:
   name_ = info.new_name(op.name)
   name_ = info.graph_.unique_name(name_)
   node_def_.name = name_
+
+  # Mutate NodeDef if requested:
+  if nodedef_fn is not None:
+    node_def_ = nodedef_fn(node_def_)
 
   # Copy the other inputs needed for initialization
   output_types_ = op._output_types[:]
@@ -155,10 +170,10 @@ def copy_op_handler(info, op, copy_shape=True):
 
   # Make a copy of the op_def too.
   # Its unique to every _type_ of Operation.
-  op_def_ = deepcopy(op._op_def)
+  op_def_ = deepcopy(op.op_def)
 
   # Initialize a new Operation instance
-  op_ = tf_ops.Operation(node_def_, info.graph_, [], output_types_,
+  op_ = tf_ops.Operation(node_def_, info.graph_, new_inputs, output_types_,
                          [], input_types_, None, op_def_)
 
   # copy the shape over
@@ -170,11 +185,9 @@ def copy_op_handler(info, op, copy_shape=True):
   # attribute to exist, we will create a dummy original_op first and then
   # later finalise it with the actual original_op when all the ops have
   # been copied.
+  # TODO(fkp): Stop worrying about _original_op and remove this code?
   if op._original_op:
     op_._original_op = op._original_op
-
-  # Add op to the graph
-  info.graph_._add_op(op_)
 
   return op_, op_.outputs
 
@@ -328,6 +341,14 @@ class _TmpInfo(object):
                             for key in self.graph.get_all_collection_keys())
     self.cyclic_ops = []
     self.transform_original_op_handler = transform_op_if_inside_handler
+    # The graph is transformed op by op, in the same order the original ops
+    # were created. However, this is sometimes not possible due to cycles
+    # (i.e. while loops). So when the transformer creates a new op whose
+    # inputs do not exist yet, temporary placeholders are created and stored
+    # in this `tmp_cyclic_ts` container. During a second pass,
+    # those temporary tensors are replaced by the proper transformed tensors
+    # (see the function `_finalize_cycles`).
+    self.tmp_cyclic_ts = []
 
   def new_name(self, name):
     """Compute a destination name from a source name.
@@ -428,10 +449,10 @@ class Transformer(object):
 
     # Create temporary info used during this transform call
     info = _TmpInfo(sgv, dst_graph, dst_scope, src_scope)
-    info.transform_original_op_handler = self.transform_original_op_handler
 
     self._copy_ops(info)
-    self._connect_ops(info)
+    self._finalize_cycles(info)
+    self._connect_control_inputs(info)
 
     # Compute information about the transformation
     res_info = TransformerInfo(info)
@@ -440,10 +461,10 @@ class Transformer(object):
 
   def _copy_ops(self, info):
     """Copy ops without connecting them."""
-    for op in info.sgv.ops:
-      logging.debug("Copying op: %s", op.name)
-      # TODO(fkp): return a subgraph?
-      op_, op_outputs_ = self.transform_op_handler(info, op)
+    sorted_ops = sorted(info.sgv.ops, key=lambda op: op._id)  # pylint: disable=protected-access
+    for op in sorted_ops:
+      new_inputs = [self._transformed_t(info, t, op) for t in op.inputs]
+      op_, op_outputs_ = self.transform_op_handler(info, op, new_inputs)
       if op is op_:
         raise ValueError("In-place transformation not allowed.")
 
@@ -456,27 +477,36 @@ class Transformer(object):
         info.transformed_ts[op_output] = op_output_
         self.assign_collections_handler(info, op_output, op_output_)
 
-  def _connect_ops(self, info):
+  def _finalize_cycles(self, info):
+    """Reconnects the cyclic tensors."""
+    for t, tmp_t_, consumer_op in info.tmp_cyclic_ts:
+      if t not in info.transformed_ts:
+        raise ValueError("The tensor {} should be transformed by now.".format(
+            t.name))
+      if consumer_op not in info.transformed_ops:
+        raise ValueError("The op {} should be transformed by now.".format(
+            consumer_op.name))
+      t_ = info.transformed_ts[t]
+      consumer_op_ = info.transformed_ops[consumer_op]
+      t_index_ = list(consumer_op_.inputs).index(tmp_t_)
+      consumer_op_._update_input(t_index_, t_)  # pylint: disable=protected-access
+
+  def _connect_control_inputs(self, info):
     """Connect the previously copied ops."""
     for op in info.sgv.ops:
-      logging.debug("Finalizing op: %s", op.name)
+      logging.debug("Connecting control inputs of op: %s", op.name)
       op_ = info.transformed_ops[op]
 
-      # pylint: disable=protected-access
-      if op_.inputs:
-        raise ValueError("The newly transformed op should not have "
-                         "any inputs yet: {}".format(op_.name))
-      inputs_ = [self._transformed_t(info, t) for t in op.inputs]
-      for t in inputs_:
-        op_._add_input(t)
-
       # Finalize original op.
+      # TODO(fkp): Stop worrying about _original_op and remove this code?
+      # pylint: disable=protected-access
       if op._original_op:
-        original_op = info.transform_original_op_handler(info, op._original_op)
+        original_op = self.transform_original_op_handler(info, op._original_op)
         if original_op is None:
           logging.debug("Could not find original op for: %s", op_.name)
         else:
           op_._original_op = original_op
+      # pylint: enable=protected-access
 
       # Finalize control inputs:
       control_inputs_ = [self.transform_control_input_handler(info, ci)
@@ -525,19 +555,38 @@ class Transformer(object):
 
     return sgv_.remap(input_map_, output_map_)
 
-  def _transformed_t(self, info, t):
+  def _transformed_t(self, info, t, consumer_op):
     """Return tre transformed tensor of `t`."""
-    if t not in info.transformed_ts:
-      # If op is not in the subgraph.
-      if t in info.sgv_inputs_set:
-        # t is an input of the subgraph.
-        return self.transform_external_input_handler(info, t)
-      else:
-        # t is a hidden input of the subgraph.
-        return self.transform_external_hidden_input_handler(info, t)
-    else:
-      # If op is in the subgraph, just return its transformed.
+    if t in info.transformed_ts:
+      # If op is in the subgraph, just return its transformed counterpart.
       return info.transformed_ts[t]
+
+    if t in info.sgv_inputs_set:
+      # `t` is an input of the subgraph.
+      return self.transform_external_input_handler(info, t)
+    elif t.op in info.ops:
+      # `t` is an internal tensor but is not transformed yet because it
+      # belongs to a graph cycle.
+      logging.debug("Cyclic tensor: t.name = %s", t.name)
+      # Try to find an existing tensor we can use for now,
+      # otherwise create one. We'll rewire this later.
+      if consumer_op.type == "Merge":
+        first_input = consumer_op.inputs[0]
+        tmp_t_ = self._transformed_t(info, first_input, consumer_op)
+      elif t.op.type == "Enter":
+        enter_input = t.op.inputs[0]
+        tmp_t_ = self._transformed_t(info, enter_input, consumer_op)
+      else:
+        with info.graph_.as_default():
+          tmp_t_ = util.make_placeholder_from_tensor(t, scope=info.scope_,
+                                                     prefix="geph_tmp")
+        logging.debug("Created temporary placeholder: %s.", tmp_t_.name)
+      # Register as temporary and return.
+      info.tmp_cyclic_ts.append((t, tmp_t_, consumer_op))
+      return tmp_t_
+    else:
+      # `t` is a hidden input of the subgraph.
+      return self.transform_external_hidden_input_handler(info, t)
 
 
 def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
@@ -624,6 +673,40 @@ def copy_with_input_replacements(sgv, replacement_ts,
       sgv, dst_graph, dst_scope, src_scope, reuse_dst_scope=reuse_dst_scope)
 
 
+def _add_control_flow_ops(ops, control_ios):
+  """Complete `ops` so that the transformed graph is valid.
+
+  Partially copying a graph can lead to a malformed graph. For instance,
+  copying half of a while construct is likely to result in an invalid graph.
+  This function attempts to add missing ops so that the transformation result
+  in a valid graph.
+
+  Args:
+    ops: list of ops (modifed in-place).
+    control_ios: object created by a call to `util.ControlOutputs`.
+  """
+  # Find while contexts.
+  control_flow_contexts = set()
+  for op in ops:
+    cfc = op._control_flow_context  # pylint: disable=protected-access
+    if cfc:
+      control_flow_contexts.add(cfc)
+  # Find new ops.
+  new_ops = []
+  for cfc in control_flow_contexts:
+    if cfc.IsWhileContext():
+      new_ops += select.get_walks_intersection_ops(
+          [enter_t.op for enter_t in cfc.loop_enters],
+          [exit_t.op for exit_t in cfc.loop_exits],
+          control_ios=control_ios)
+  # Add new ops.
+  new_ops_set = set(new_ops)
+  ops_set = frozenset(ops)
+  for op in new_ops_set:
+    if op not in ops_set:
+      ops.append(op)
+
+
 def graph_replace(target_ts, replacement_ts, dst_scope="",
                   src_scope="", reuse_dst_scope=False):
   """Create a new graph which compute the targets from the replaced Tensors.
@@ -657,8 +740,13 @@ def graph_replace(target_ts, replacement_ts, dst_scope="",
                                           control_ios=control_ios)
   if not ops:
     raise ValueError("Targets and replacements are not connected!")
+
+  # Complete ops to avoid malformed control flow.
+  # TODO(fkp): Consider moving this function deeper (in the transformer?).
+  _add_control_flow_ops(ops, control_ios)
+
   # Create a copy of the relevant subgraph
-  _, info = copy_with_input_replacements(
+  unused_sgv_, info = copy_with_input_replacements(
       ops, replacement_ts, None, dst_scope, src_scope, reuse_dst_scope)
   # Return the transformed targets but keep the original if the transformed
   # counterpart cannot be found

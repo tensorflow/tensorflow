@@ -56,7 +56,7 @@ class _CudnnRNN(base_layer.Layer):
   Cudnn RNNs have two major differences from other platform-independent RNNs tf
   provides:
   * Cudnn LSTM and GRU are mathematically different from their tf counterparts.
-    (e.g. @{tf.contrib.rnn.LSTMBlockCell} and @{tf.nn.rnn_cell.GRUCell}.
+    (e.g. `tf.contrib.rnn.LSTMBlockCell` and `tf.nn.rnn_cell.GRUCell`.
   * Cudnn-trained checkpoints are not directly compatible with tf RNNs:
     * They use a single opaque parameter buffer for the entire (possibly)
       multi-layer multi-directional RNN; Whereas tf RNN weights are per-cell and
@@ -142,6 +142,9 @@ class _CudnnRNN(base_layer.Layer):
   """
   # pylint:enable=line-too-long
 
+  # TODO(allenl): Document object-based saving and checkpoint compatibility once
+  # it's implemented for more cuDNN Layers.
+
   # The following are constants defined by subclasses.
   # Type of RNN cell.
   _rnn_mode = None
@@ -179,7 +182,7 @@ class _CudnnRNN(base_layer.Layer):
       dropout: dropout rate, a number between [0, 1]. Dropout is applied between
           each layer (no dropout is applied for a model with a single layer).
           When set to 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
           for behavior.
       dtype: tf.float16, tf.float32 or tf.float64
       kernel_initializer: starting value to initialize the weight.
@@ -355,13 +358,19 @@ class _CudnnRNN(base_layer.Layer):
             "CUDA/CuDNN generations.")
       # Initialize opaque params with a tensor.
       self.kernel = vs.get_variable(
-          "opaque_kernel", initializer=opaque_params_t, validate_shape=False)
+          "opaque_kernel", dtype=self._plain_dtype,
+          initializer=opaque_params_t, validate_shape=False)
     # Create saveable in the outer scope of the cudnn subgraph, such that
     # alternative subgraph with platform-independent rnn cells can load the
     # checkpoints directly.
     if not (self.built or vs.get_variable_scope().reuse is True):
       self._create_saveable()
     self.built = True
+
+  def _gather_saveables_for_checkpoint(self):
+    raise NotImplementedError(
+        "This cell does not yet support object-based saving. File a feature "
+        "request if this limitation bothers you.")
 
   def call(self, inputs, initial_state=None, training=True):
     """Runs the forward step for the RNN model.
@@ -499,6 +508,8 @@ class _CudnnRNN(base_layer.Layer):
         direction=self.direction,
         scope=vs.get_variable_scope(),
         name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
+    self._saveable._add_checkpointable_dependencies(  # pylint: disable=protected-access
+        checkpointable=self, dtype=self._plain_dtype)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 
@@ -520,6 +531,16 @@ class CudnnLSTM(_CudnnRNN):
     """
     return ([self.num_layers * self.num_dirs, batch_size, self.num_units],
             [self.num_layers * self.num_dirs, batch_size, self.num_units])
+
+  @property
+  def _gather_saveables_for_checkpoint(self):
+    if self._direction == CUDNN_RNN_UNIDIRECTION:
+      # Skip one inheritance level to avoid NotImplementedError.
+      return super(_CudnnRNN, self)._gather_saveables_for_checkpoint
+    else:
+      raise NotImplementedError(
+          "Object-based saving does not currently support bidirectional LSTM "
+          "cells. File a feature request if this limitation bothers you.")
 
 
 class _CudnnRNNNoInputC(_CudnnRNN):

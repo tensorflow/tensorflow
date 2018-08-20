@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -168,7 +169,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Arg");
+      gnode->set_op(FunctionLibraryDefinition::kArgOp);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
@@ -278,7 +279,7 @@ class FunctionInstantiationHelper {
       auto it = index_.lower_bound(node_name);
       while (it != index_.end() && it->first <= node_colon_bound) {
         if (it->first == node_name ||
-            tensorflow::StringPiece(it->first).starts_with(node_colon)) {
+            tensorflow::str_util::StartsWith(it->first, node_colon)) {
           nid = it->second.nid;
           break;
         }
@@ -328,7 +329,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Retval");
+      gnode->set_op(FunctionLibraryDefinition::kRetOp);
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", (*ret_index)++, gnode);
@@ -502,8 +503,8 @@ string Print(const NodeDef& n) {
   std::vector<StringPiece> dat;
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
-    if (s.Consume("^")) {
-      dep.push_back(s.ToString());
+    if (str_util::ConsumePrefix(&s, "^")) {
+      dep.push_back(std::string(s));
     } else {
       dat.push_back(s);
     }
@@ -558,9 +559,9 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == "_Arg") {
+    if (n->op() == FunctionLibraryDefinition::kArgOp) {
       arg.push_back(n);
-    } else if (n->op() == "_Retval") {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -814,6 +815,10 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(
         strings::StrCat("_state_handle", "=", options.state_handle));
   }
+  if (!options.executor_type.empty()) {
+    entries.push_back(
+        strings::StrCat("_executor_type", "=", options.executor_type));
+  }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }
@@ -860,12 +865,15 @@ Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
   return Status::OK();
 }
 
-Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets) {
+Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
+                                         bool allow_dead_tensors) {
   rets->clear();
   rets->reserve(rets_.size());
   for (size_t i = 0; i < rets_.size(); ++i) {
     if (rets_[i].has_val) {
       rets->emplace_back(std::move(rets_[i].val));
+    } else if (allow_dead_tensors) {
+      rets->emplace_back();
     } else {
       return errors::Internal("Retval[", i, "] does not have value");
     }
@@ -912,10 +920,12 @@ FunctionLibraryDefinition::FunctionDefAndOpRegistration::
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
-    : default_registry_(other.default_registry_), func_grad_(other.func_grad_) {
+    : default_registry_(other.default_registry_) {
+  tf_shared_lock l(other.mu_);
   for (const auto& it : other.function_defs_) {
     TF_CHECK_OK(AddFunctionDef(it.second->fdef));
   }
+  func_grad_ = other.func_grad_;
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
@@ -935,8 +945,19 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
 
 FunctionLibraryDefinition::~FunctionLibraryDefinition() {}
 
-const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
-  auto iter = function_defs_.find(name);
+bool FunctionLibraryDefinition::Contains(const string& func) const {
+  tf_shared_lock l(mu_);
+  return function_defs_.find(func) != function_defs_.end();
+}
+
+const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
+  tf_shared_lock l(mu_);
+  return FindHelper(func);
+}
+
+const FunctionDef* FunctionLibraryDefinition::FindHelper(
+    const string& func) const {
+  auto iter = function_defs_.find(func);
   if (iter == function_defs_.end()) {
     return nullptr;
   } else {
@@ -945,6 +966,7 @@ const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
+  mutex_lock l(mu_);
   bool added;
   return AddFunctionDefHelper(fdef, &added);
 }
@@ -976,6 +998,7 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
+  mutex_lock l(mu_);
   bool added;
   return AddGradientDefHelper(grad, &added);
 }
@@ -1001,13 +1024,17 @@ Status FunctionLibraryDefinition::AddGradientDefHelper(const GradientDef& grad,
 
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionLibraryDefinition& other) {
+  // Clone `other` to ensure thread-safety (grabbing `other`'s lock for
+  // the duration of the function could lead to deadlock).
+  FunctionLibraryDefinition clone(other);
+  mutex_lock l(mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
   std::vector<string> funcs_with_grads;
   Status s;
   bool added;
-  for (auto iter : other.function_defs_) {
+  for (auto iter : clone.function_defs_) {
     s = AddFunctionDefHelper(iter.second->fdef, &added);
     if (!s.ok()) {
       Remove(funcs, funcs_with_grads);
@@ -1017,7 +1044,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       funcs.push_back(iter.second->fdef.signature().name());
     }
   }
-  for (auto iter : other.func_grad_) {
+  for (auto iter : clone.func_grad_) {
     GradientDef grad;
     grad.set_function_name(iter.first);
     grad.set_gradient_func(iter.second);
@@ -1037,6 +1064,7 @@ Status FunctionLibraryDefinition::AddLibrary(
     const FunctionDefLibrary& lib_def) {
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
+  mutex_lock l(mu_);
   std::vector<string> funcs;
   std::vector<string> funcs_with_grads;
   Status s;
@@ -1061,6 +1089,15 @@ Status FunctionLibraryDefinition::AddLibrary(
       funcs_with_grads.push_back(grad.function_name());
     }
   }
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
+                                                  const FunctionDef& fdef) {
+  mutex_lock l(mu_);
+  bool added;
+  TF_RETURN_IF_ERROR(RemoveFunction(func));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, &added));
   return Status::OK();
 }
 
@@ -1098,11 +1135,17 @@ void FunctionLibraryDefinition::Remove(
 }
 
 string FunctionLibraryDefinition::FindGradient(const string& func) const {
+  tf_shared_lock l(mu_);
+  return gtl::FindWithDefault(func_grad_, func, "");
+}
+
+string FunctionLibraryDefinition::FindGradientHelper(const string& func) const {
   return gtl::FindWithDefault(func_grad_, func, "");
 }
 
 Status FunctionLibraryDefinition::LookUp(
     const string& op, const OpRegistrationData** op_reg_data) const {
+  tf_shared_lock l(mu_);
   auto iter = function_defs_.find(op);
   if (iter != function_defs_.end()) {
     *op_reg_data = &iter->second->op_registration_data;
@@ -1126,18 +1169,22 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
-  const string& grad_name = FindGradient(func_name);
-  // If 'func' has a user-defined gradient function, uses the grad
-  // function's attrs to see if noinline is specified. Otherwise,
-  // uses func's attrs.
-  if (!grad_name.empty()) {
-    return Find(grad_name);
+  {
+    tf_shared_lock l(mu_);
+    const string& grad_name = FindGradientHelper(func_name);
+    // If 'func' has a user-defined gradient function, uses the grad
+    // function's attrs to see if noinline is specified. Otherwise,
+    // uses func's attrs.
+    if (!grad_name.empty()) {
+      return FindHelper(grad_name);
+    }
+    return FindHelper(func_name);
   }
-  return Find(func_name);
 }
 
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
+  tf_shared_lock l(mu_);
   for (const auto& f : function_defs_) {
     *lib.add_function() = f.second->fdef;
   }

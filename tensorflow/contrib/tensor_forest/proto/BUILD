@@ -6,14 +6,6 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_proto_library(
     name = "fertile_stats_proto",
     srcs = ["fertile_stats.proto"],

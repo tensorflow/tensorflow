@@ -121,6 +121,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":data_flow_grad",
+        ":image_grad",
         ":math_grad",
         ":nn_grad",
     ],
@@ -332,6 +333,36 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "image_grad",
+    srcs = ["gradients/image_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_op_registry",
+        ":gradients",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_image_grad_test",
+    srcs = ["gradients/image_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":image_grad",
+        ":testutil",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "math_grad",
     srcs = ["gradients/math_grad.cc"],
     deps = [
@@ -348,9 +379,11 @@ tf_cc_test(
     srcs = ["gradients/math_grad_test.cc"],
     deps = [
         ":cc_ops",
+        ":client_session",
         ":grad_op_registry",
         ":grad_testutil",
         ":gradient_checker",
+        ":gradients",
         ":math_grad",
         ":testutil",
         "//tensorflow/core:lib_internal",
@@ -530,7 +563,7 @@ cc_library_with_android_deps(
         "//tensorflow/core/api_def:base_api_def",
     ],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
@@ -595,7 +628,6 @@ tf_cc_binary(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//tensorflow:darwin": [
             "-lm",
             "-lpthread",
@@ -618,18 +650,6 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(

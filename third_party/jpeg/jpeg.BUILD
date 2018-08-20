@@ -22,7 +22,6 @@ libjpegturbo_copts = select({
         "-w",
     ],
     ":windows": WIN_COPTS,
-    ":windows_msvc": WIN_COPTS,
     "//conditions:default": [
         "-O3",
         "-w",
@@ -145,9 +144,9 @@ cc_library(
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/jsimd.h",
         "simd/jccolor-altivec.c",
         "simd/jcgray-altivec.c",
+        "simd/jcsample.h",
         "simd/jcsample-altivec.c",
         "simd/jdcolor-altivec.c",
         "simd/jdmerge-altivec.c",
@@ -157,15 +156,15 @@ cc_library(
         "simd/jidctfst-altivec.c",
         "simd/jidctint-altivec.c",
         "simd/jquanti-altivec.c",
-        "simd/jsimd_powerpc.c",
+        "simd/jsimd.h",
         "simd/jsimd_altivec.h",
-        "simd/jcsample.h",
+        "simd/jsimd_powerpc.c",
     ],
     hdrs = [
-      "simd/jdmrgext-altivec.c",  # should have been named .inc
-      "simd/jccolext-altivec.c",  # should have been named .inc
-      "simd/jcgryext-altivec.c",  # should have been named .inc
-      "simd/jdcolext-altivec.c",  # should have been named .inc
+        "simd/jccolext-altivec.c",  # should have been named .inc
+        "simd/jcgryext-altivec.c",  # should have been named .inc
+        "simd/jdcolext-altivec.c",  # should have been named .inc
+        "simd/jdmrgext-altivec.c",  # should have been named .inc
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
@@ -272,8 +271,10 @@ cc_library(
         "jchuff.h",
         "jconfig.h",
         "jdct.h",
+        "jerror.h",
         "jinclude.h",
         "jmorecfg.h",
+        "jpegint.h",
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
@@ -291,8 +292,10 @@ cc_library(
         "jchuff.h",
         "jconfig.h",
         "jdct.h",
+        "jerror.h",
         "jinclude.h",
         "jmorecfg.h",
+        "jpegint.h",
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
@@ -421,7 +424,6 @@ genrule(
     outs = ["jconfig.h"],
     cmd = select({
         ":windows": "cp $(location jconfig_win.h) $@",
-        ":windows_msvc": "cp $(location jconfig_win.h) $@",
         ":k8": "cp $(location jconfig_nowin_simd.h) $@",
         ":armeabi-v7a": "cp $(location jconfig_nowin_simd.h) $@",
         ":arm64-v8a": "cp $(location jconfig_nowin_simd.h) $@",
@@ -439,7 +441,6 @@ genrule(
     outs = ["jconfigint.h"],
     cmd = select({
         ":windows": "cp $(location jconfigint_win.h) $@",
-        ":windows_msvc": "cp $(location jconfigint_win.h) $@",
         "//conditions:default": "cp $(location jconfigint_nowin.h) $@",
     }),
 )
@@ -526,12 +527,12 @@ config_setting(
 
 config_setting(
     name = "armeabi-v7a",
-    values = {"android_cpu": "armeabi-v7a"},
+    values = {"cpu": "armeabi-v7a"},
 )
 
 config_setting(
     name = "arm64-v8a",
-    values = {"android_cpu": "arm64-v8a"},
+    values = {"cpu": "arm64-v8a"},
 )
 
 config_setting(
@@ -540,12 +541,6 @@ config_setting(
 )
 
 config_setting(
-    name = "windows_msvc",
-    values = {"cpu": "x64_windows_msvc"},
-)
-
-config_setting(
-   name = "linux_ppc64le",
-   values = {"cpu": "ppc"},
-
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
 )

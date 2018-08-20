@@ -21,8 +21,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+
+#define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
 namespace tensorflow {
 
@@ -109,10 +112,6 @@ class LibCurlProxy : public LibCurl {
   }
 
   void curl_free(void* p) override { ::curl_free(p); }
-
-  const char* curl_easy_strerror(CURLcode errornum) override {
-    return ::curl_easy_strerror(errornum);
-  }
 };
 }  // namespace
 
@@ -129,20 +128,21 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   //       default in //third_party:curl.BUILD and can be customized via an
   //       environment variable.
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
-  libcurl_->curl_easy_setopt(
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(
       curl_, CURLOPT_USERAGENT,
-      strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
+      strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str()));
   // Do not use signals for timeouts - does not work in multi-threaded programs.
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
-                             CURL_HTTP_VERSION_2_0);
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L));
+
+  // TODO(b/74351157): Enable HTTP/2.
 
   // Set up the progress meter.
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
-                             &CurlHttpRequest::ProgressCallback);
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
+                                           &CurlHttpRequest::ProgressCallback));
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -175,13 +175,13 @@ void CurlHttpRequest::SetUri(const string& uri) {
   CheckNotSent();
   is_uri_set_ = true;
   uri_ = uri;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str());
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str()));
 }
 
 void CurlHttpRequest::SetRange(uint64 start, uint64 end) {
   CheckNotSent();
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_RANGE,
-                             strings::StrCat(start, "-", end).c_str());
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_RANGE, strings::StrCat(start, "-", end).c_str()));
 }
 
 void CurlHttpRequest::AddHeader(const string& name, const string& value) {
@@ -206,11 +206,19 @@ void CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
   }
 }
 
+void CurlHttpRequest::SetRequestStats(RequestStats* stats) {
+  CheckNotSent();
+  CHECK(stats_ == nullptr) << "SetRequestStats already called";
+  stats_ = stats;
+}
+
 void CurlHttpRequest::SetDeleteRequest() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE");
+  method_ = RequestMethod::kDelete;
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE"));
 }
 
 Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
@@ -218,6 +226,7 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kPut;
   if (put_body_) {
     fclose(put_body_);
   }
@@ -232,9 +241,9 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
 
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(put_body_));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                           reinterpret_cast<void*>(put_body_)));
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
   // FILE * userdata set with CURLOPT_READDATA.
   return Status::OK();
@@ -244,26 +253,28 @@ void CurlHttpRequest::SetPutEmptyBody() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
-  curl_headers_ =
-      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
-                             &CurlHttpRequest::ReadCallback);
+  method_ = RequestMethod::kPut;
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  AddHeader("Content-Length", "0");
+  AddHeader("Transfer-Encoding", "identity");
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                           &CurlHttpRequest::ReadCallback));
 }
 
 void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kPost;
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
-                             &CurlHttpRequest::ReadCallback);
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                           &CurlHttpRequest::ReadCallback));
   post_body_buffer_ = StringPiece(buffer, size);
 }
 
@@ -271,13 +282,14 @@ void CurlHttpRequest::SetPostEmptyBody() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
-  curl_headers_ =
-      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
-                             &CurlHttpRequest::ReadCallback);
+  method_ = RequestMethod::kPost;
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1));
+  AddHeader("Content-Length", "0");
+  AddHeader("Transfer-Encoding", "identity");
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                           &CurlHttpRequest::ReadCallback));
 }
 
 void CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
@@ -287,22 +299,21 @@ void CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
   out_buffer->clear();
   response_buffer_ = out_buffer;
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
-                             &CurlHttpRequest::WriteCallback);
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
+                                           &CurlHttpRequest::WriteCallback));
 }
 
 void CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
   CHECK(buffer != nullptr);
   CheckNotSent();
 
-  direct_response_ = DirectResponseState{buffer, size, 0};
-
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
-                             &CurlHttpRequest::WriteCallbackDirect);
+  direct_response_ = DirectResponseState{buffer, size, 0, 0};
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_WRITEFUNCTION, &CurlHttpRequest::WriteCallbackDirect));
 }
 
 bool CurlHttpRequest::IsDirectResponse() const {
@@ -320,24 +331,15 @@ size_t CurlHttpRequest::WriteCallbackDirect(const void* ptr, size_t size,
   size_t curl_bytes_received = size * nmemb;
   size_t user_buffer_bytes_available =
       state->buffer_size_ - state->bytes_transferred_;
-
-  // The HTTP server may send a response body that is longer than what we
-  // expected. We must not use CHECK() for this situation, because that would
-  // imply a code bug (in this client code) where none exists; the violation of
-  // expectations would have been caused by the server, not the client. So we
-  // report a log warning, if an HTTP server is misbehaving.
-  if (curl_bytes_received > user_buffer_bytes_available) {
-    LOG(WARNING) << "The HTTP response body that we received is longer than we "
-                    "requested or expected. "
-                 << "Total bytes requested: " << state->buffer_size_
-                 << " Bytes received (so far) in HTTP response body: "
-                 << (state->bytes_transferred_ + curl_bytes_received);
-  }
-
   size_t bytes_to_copy =
       std::min<size_t>(curl_bytes_received, user_buffer_bytes_available);
   memcpy(&state->buffer_[state->bytes_transferred_], ptr, bytes_to_copy);
   state->bytes_transferred_ += bytes_to_copy;
+  state->bytes_received_ += curl_bytes_received;
+  // If we didn't have room to store the full response, returning less than
+  // curl_bytes_received here will abort the transfer and curl_easy_perform()
+  // will return CURLE_WRITE_ERROR. We will detect and handle this error there,
+  // and can use state->bytes_received_ as stored above for logging purposes.
   return bytes_to_copy;
 }
 
@@ -392,9 +394,9 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
           .StopCapture()
           .OneLiteral(": ")
           .GetResult(&value, &name)) {
-    string str_value = value.ToString();
+    string str_value = std::string(value);
     str_util::StripTrailingWhitespace(&str_value);
-    that->response_headers_[name.ToString()] = str_value;
+    that->response_headers_[std::string(name)] = str_value;
   }
   return size * nmemb;
 }
@@ -406,37 +408,54 @@ Status CurlHttpRequest::Send() {
   is_sent_ = true;
 
   if (curl_headers_) {
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_);
+    CHECK_CURL_OK(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_));
   }
   if (resolve_list_) {
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_RESOLVE, resolve_list_);
+    CHECK_CURL_OK(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_RESOLVE, resolve_list_));
   }
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
-                             &CurlHttpRequest::HeaderCallback);
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
+                                           &CurlHttpRequest::HeaderCallback));
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, request_timeout_secs_);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
-                             connect_timeout_secs_);
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT,
+                                           request_timeout_secs_));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
+                                           connect_timeout_secs_));
 
   char error_buffer[CURL_ERROR_SIZE] = {0};
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer));
 
-  const auto curl_result = libcurl_->curl_easy_perform(curl_);
+  if (stats_ != nullptr) {
+    stats_->RecordRequest(this, uri_, method_);
+  }
+
+  const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
+  TF_RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
 
   double written_size = 0;
-  libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD, &written_size);
+  CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD,
+                                            &written_size));
 
-  libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
+  CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE,
+                                            &response_code_));
 
-  const auto& error_message = strings::StrCat(
-      "Error executing an HTTP request (HTTP response code ", response_code_,
-      ", error code ", curl_result, ", error message '", error_buffer, "')");
+  auto get_error_message = [this]() -> string {
+    string error_message = strings::StrCat(
+        "Error executing an HTTP request: HTTP response code ", response_code_);
+    StringPiece body = GetResponse();
+    if (!body.empty()) {
+      return strings::StrCat(
+          error_message, " with body '",
+          body.substr(0, std::min(body.size(), response_to_error_limit_)), "'");
+    }
+    return error_message;
+  };
 
   Status result;
-  StringPiece response = GetResponse();
-  string extended_error_message;
   switch (response_code_) {
     // The group of response codes indicating that the request achieved
     // the expected goal.
@@ -444,46 +463,36 @@ Status CurlHttpRequest::Send() {
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
-      if (curl_result != CURLE_OK) {
-        // This means the server executed the request successfully, but then
-        // something went wrong during the transmission of the response.
-        result = errors::Unavailable(error_message);
-      } else {
-        result = Status::OK();
-      }
+      result = Status::OK();
       break;
+
     case 416:  // Requested Range Not Satisfiable
       // The requested range had no overlap with the available range.
-      // This doesn't indicate an error, but this does mean an empty response
-      // body.
+      // This doesn't indicate an error, but we should produce an empty response
+      // body. (Not all servers do; GCS returns a short error message body.)
       response_buffer_->clear();
+      if (IsDirectResponse()) {
+        direct_response_.bytes_transferred_ = 0;
+      }
       result = Status::OK();
       break;
 
     // INVALID_ARGUMENT indicates a problem with how the request is constructed.
     case 400:  // Bad Request
     case 411:  // Length Required
-      result = errors::InvalidArgument(error_message);
+      result = errors::InvalidArgument(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
-      if (!response.empty()) {
-        extended_error_message = strings::StrCat(
-            error_message, ", response ",
-            response.substr(
-                0, std::min(response.size(), response_to_error_limit_)));
-        result = errors::PermissionDenied(extended_error_message);
-      } else {
-        result = errors::PermissionDenied(error_message);
-      }
+      result = errors::PermissionDenied(get_error_message());
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
     case 404:  // Not found
     case 410:  // Gone
-      result = errors::NotFound(error_message);
+      result = errors::NotFound(get_error_message());
       break;
 
     // FAILED_PRECONDITION indicates that the request failed because some
@@ -493,26 +502,35 @@ Status CurlHttpRequest::Send() {
     case 303:  // See Other
     case 304:  // Not Modified
     case 307:  // Temporary Redirect
-    case 308:  // Resume Incomplete
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
-      result = errors::FailedPrecondition(error_message);
+      result = errors::FailedPrecondition(get_error_message());
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
-    // is just retried without any modification.
+    // is just retried without any modification. 308 return codes are intended
+    // for write requests that can be retried. See the documentation and the
+    // official library:
+    // https://cloud.google.com/storage/docs/json_api/v1/how-tos/resumable-upload
+    // https://github.com/google/apitools/blob/master/apitools/base/py/transfer.py
+    case 308:  // Resume Incomplete
     case 409:  // Conflict
     case 429:  // Too Many Requests
     case 500:  // Internal Server Error
     case 502:  // Bad Gateway
     case 503:  // Service Unavailable
     default:   // All other HTTP response codes also should be retried.
-      result = errors::Unavailable(error_message);
+      result = errors::Unavailable(get_error_message());
       break;
   }
   if (!result.ok()) {
     response_buffer_->clear();
   }
+
+  if (stats_ != nullptr) {
+    stats_->RecordResponse(this, uri_, method_, result);
+  }
+
   return result;
 }
 
@@ -581,19 +599,50 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
                << " bytes for " << now - that->last_progress_timestamp_
                << " seconds and will be aborted. CURL timing information: "
                << "lookup time: " << lookup_time << " ("
-               << that->libcurl_->curl_easy_strerror(lookup_time_status)
+               << curl_easy_strerror(lookup_time_status)
                << "), connect time: " << connect_time << " ("
-               << that->libcurl_->curl_easy_strerror(connect_time_status)
+               << curl_easy_strerror(connect_time_status)
                << "), pre-transfer time: " << pretransfer_time << " ("
-               << that->libcurl_->curl_easy_strerror(pretransfer_time_status)
+               << curl_easy_strerror(pretransfer_time_status)
                << "), start-transfer time: " << starttransfer_time << " ("
-               << that->libcurl_->curl_easy_strerror(starttransfer_time_status)
-               << ")";
+               << curl_easy_strerror(starttransfer_time_status) << ")";
     return 1;  // Will abort the request.
   }
 
   // No progress was made since the last call, but we should wait a bit longer.
   return 0;
+}
+
+Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
+                                         const char* error_buffer) {
+  if (code == CURLE_OK) {
+    return Status::OK();
+  }
+  string error_message = strings::StrCat(
+      "Error executing an HTTP request: libcurl code ", code, " meaning '",
+      curl_easy_strerror(code), "', error details: ");
+  // Special-case response-too-large errors as FAILED_PRECONDITION.
+  if (code == CURLE_WRITE_ERROR && IsDirectResponse() &&
+      direct_response_.bytes_received_ > direct_response_.buffer_size_) {
+    string overflow_message = strings::StrCat(
+        "Received ", direct_response_.bytes_received_, " response bytes ",
+        "for a ", direct_response_.buffer_size_, "-byte buffer");
+    uint64 response_code = 0;
+    const CURLcode get_response_result = libcurl_->curl_easy_getinfo(
+        curl_, CURLINFO_RESPONSE_CODE, &response_code);
+    // Special-case 416 Range Not Satisfied responses; they sometimes have
+    // a response body (e.g. GCS sends one with an error message) but we
+    // pretend as though they don't, so actually ignore this error.
+    if (get_response_result == CURLE_OK && response_code == 416) {
+      return Status::OK();
+    }
+    return errors::FailedPrecondition(
+        strings::StrCat(error_message, overflow_message));
+  }
+  // Return Unavailable to retry by default. There may be other permanent
+  // failures that should be distinguished.
+  return errors::Unavailable(
+      strings::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 
 }  // namespace tensorflow

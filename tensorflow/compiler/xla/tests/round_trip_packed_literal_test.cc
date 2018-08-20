@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/packed_literal_reader.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -100,7 +100,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
-  LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*round_tripped, *actual));
 }
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
@@ -135,7 +135,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
-  LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*round_tripped, *actual));
 }
 
 }  // namespace

@@ -52,6 +52,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
@@ -66,7 +67,7 @@ __all__ = [
     "crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
     "crf_unary_score", "crf_binary_score", "CrfForwardRnnCell",
     "viterbi_decode", "crf_decode", "CrfDecodeForwardRnnCell",
-    "CrfDecodeBackwardRnnCell"
+    "CrfDecodeBackwardRnnCell", "crf_multitag_sequence_score"
 ]
 
 
@@ -90,9 +91,13 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
     batch_size = array_ops.shape(inputs, out_type=tag_indices.dtype)[0]
     example_inds = array_ops.reshape(
         math_ops.range(batch_size, dtype=tag_indices.dtype), [-1, 1])
-    return array_ops.gather_nd(
+    sequence_scores = array_ops.gather_nd(
         array_ops.squeeze(inputs, [1]),
         array_ops.concat([example_inds, tag_indices], axis=1))
+    sequence_scores = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                                      array_ops.zeros_like(sequence_scores),
+                                      sequence_scores)
+    return sequence_scores
 
   def _multi_seq_fn():
     # Compute the scores of the given tag sequence.
@@ -105,8 +110,58 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
   return utils.smart_cond(
       pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
                           1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
+
+
+def crf_multitag_sequence_score(inputs, tag_bitmap, sequence_lengths,
+                                transition_params):
+  """Computes the unnormalized score of all tag sequences matching tag_bitmap.
+
+  tag_bitmap enables more than one tag to be considered correct at each time
+  step. This is useful when an observed output at a given time step is
+  consistent with more than one tag, and thus the log likelihood of that
+  observation must take into account all possible consistent tags.
+
+  Using one-hot vectors in tag_bitmap gives results identical to
+  crf_sequence_score.
+
+  Args:
+    inputs: A [batch_size, max_seq_len, num_tags] tensor of unary potentials
+        to use as input to the CRF layer.
+    tag_bitmap: A [batch_size, max_seq_len, num_tags] boolean tensor
+        representing all active tags at each index for which to calculate the
+        unnormalized score.
+    sequence_lengths: A [batch_size] vector of true sequence lengths.
+    transition_params: A [num_tags, num_tags] transition matrix.
+  Returns:
+    sequence_scores: A [batch_size] vector of unnormalized sequence scores.
+  """
+
+  # If max_seq_len is 1, we skip the score calculation and simply gather the
+  # unary potentials of all active tags.
+  def _single_seq_fn():
+    filtered_inputs = array_ops.where(
+        tag_bitmap, inputs,
+        array_ops.fill(array_ops.shape(inputs), float("-inf")))
+    return math_ops.reduce_logsumexp(
+        filtered_inputs, axis=[1, 2], keepdims=False)
+
+  def _multi_seq_fn():
+    # Compute the logsumexp of all scores of sequences matching the given tags.
+    filtered_inputs = array_ops.where(
+        tag_bitmap, inputs,
+        array_ops.fill(array_ops.shape(inputs), float("-inf")))
+    return crf_log_norm(
+        inputs=filtered_inputs,
+        sequence_lengths=sequence_lengths,
+        transition_params=transition_params)
+
+  return utils.smart_cond(
+      pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
+                          1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
 
 
 def crf_log_norm(inputs, sequence_lengths, transition_params):
@@ -128,7 +183,12 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
   # If max_seq_len is 1, we skip the algorithm and simply reduce_logsumexp over
   # the "initial state" (the unary potentials).
   def _single_seq_fn():
-    return math_ops.reduce_logsumexp(first_input, [1])
+    log_norm = math_ops.reduce_logsumexp(first_input, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
+    return log_norm
 
   def _multi_seq_fn():
     """Forward computation of alpha values."""
@@ -137,13 +197,21 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
     # Compute the alpha values in the forward algorithm in order to get the
     # partition function.
     forward_cell = CrfForwardRnnCell(transition_params)
+    # Sequence length is not allowed to be less than zero.
+    sequence_lengths_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_lengths.dtype),
+        sequence_lengths - 1)
     _, alphas = rnn.dynamic_rnn(
         cell=forward_cell,
         inputs=rest_of_input,
-        sequence_length=sequence_lengths - 1,
+        sequence_length=sequence_lengths_less_one,
         initial_state=first_input,
         dtype=dtypes.float32)
     log_norm = math_ops.reduce_logsumexp(alphas, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
     return log_norm
 
   max_seq_len = array_ops.shape(inputs)[1]
@@ -166,8 +234,8 @@ def crf_log_likelihood(inputs,
     sequence_lengths: A [batch_size] vector of true sequence lengths.
     transition_params: A [num_tags, num_tags] transition matrix, if available.
   Returns:
-    log_likelihood: A scalar containing the log-likelihood of the given sequence
-        of tag indices.
+    log_likelihood: A [batch_size] `Tensor` containing the log-likelihood of
+      each example, given the sequence of tag indices.
     transition_params: A [num_tags, num_tags] transition matrix. This is either
         provided by the caller or created in this function.
   """
@@ -182,7 +250,7 @@ def crf_log_likelihood(inputs,
                                        transition_params)
   log_norm = crf_log_norm(inputs, sequence_lengths, transition_params)
 
-  # Normalize the scores to get the log-likelihood.
+  # Normalize the scores to get the log-likelihood per example.
   log_likelihood = sequence_scores - log_norm
   return log_likelihood, transition_params
 
@@ -479,15 +547,19 @@ def crf_decode(potentials, transition_params, sequence_length):
     initial_state = array_ops.slice(potentials, [0, 0, 0], [-1, 1, -1])
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
+    # Sequence length is not allowed to be less than zero.
+    sequence_length_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_length.dtype),
+        sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,
         inputs=inputs,
-        sequence_length=sequence_length - 1,
+        sequence_length=sequence_length_less_one,
         initial_state=initial_state,
         time_major=False,
         dtype=dtypes.int32)
     backpointers = gen_array_ops.reverse_sequence(  # [B, T - 1, O]
-        backpointers, sequence_length - 1, seq_dim=1)
+        backpointers, sequence_length_less_one, seq_dim=1)
 
     # Computes backward decoding. Extract tag indices from backpointers.
     crf_bwd_cell = CrfDecodeBackwardRnnCell(num_tags)
@@ -497,7 +569,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     decode_tags, _ = rnn.dynamic_rnn(  # [B, T - 1, 1]
         crf_bwd_cell,
         inputs=backpointers,
-        sequence_length=sequence_length - 1,
+        sequence_length=sequence_length_less_one,
         initial_state=initial_state,
         time_major=False,
         dtype=dtypes.int32)
@@ -511,7 +583,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     return decode_tags, best_score
 
   return utils.smart_cond(
-      pred=math_ops.equal(
-          potentials.shape[1].value or array_ops.shape(potentials)[1], 1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      pred=math_ops.equal(potentials.shape[1].value or
+                          array_ops.shape(potentials)[1], 1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)

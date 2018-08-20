@@ -38,7 +38,7 @@ class SimpleCostModel : public ParallelCostModel {
     const int64 min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
     // Return target parallel task count in [1, max_parallelism_].
     return std::min(max_parallelism_,
-                    std::max(1LL, instruction_cost / min_cost_per_thread));
+                    std::max(int64{1}, instruction_cost / min_cost_per_thread));
   }
 
  private:
@@ -63,7 +63,7 @@ class DefaultCostModel : public ParallelCostModel {
     int64 max_parallelism;
     // Calculate flops-to-bytes-ratio for 'instruction'.
     const int64 bytes_accessed =
-        std::max(1LL, cost_analysis_->bytes_accessed(*instruction));
+        std::max(int64{1}, cost_analysis_->bytes_accessed(*instruction));
     const float flops_to_bytes_ratio =
         cost_analysis_->flop_count(*instruction) /
         static_cast<float>(bytes_accessed);
@@ -71,7 +71,7 @@ class DefaultCostModel : public ParallelCostModel {
     if (flops_to_bytes_ratio <= 1.0) {
       // Limit max parallelism for I/O bound instructions by assuming a
       // sub-linear scaling function (fit based on empirical benchmark results).
-      // TODO(29630486) Develop system bandwidth model.
+      // TODO(b/29630486) Develop system bandwidth model.
       max_parallelism =
           std::ceil(std::sqrt(tensorflow::port::NumSchedulableCPUs()));
       // Use shape size instruction cost and L2 cache size min per-thread cost.
@@ -81,7 +81,7 @@ class DefaultCostModel : public ParallelCostModel {
       // Use max parallelism for compute bound instructions.
       max_parallelism = max_parallelism_;
       // Calculate the instruction cost in cycles.
-      // TODO(29630486) Improve on this linear cost model.
+      // TODO(b/29630486) Improve on this linear cost model.
       // Consider making 'min_cost_per_thread' be a function of the target
       // bandwidth limit for instructions with low arithmetic complexity.
       instruction_cost =
@@ -93,7 +93,7 @@ class DefaultCostModel : public ParallelCostModel {
     }
     // Return target parallel task count in [1, max_parallelism_].
     return std::min(max_parallelism,
-                    std::max(1LL, instruction_cost / min_cost_per_thread));
+                    std::max(int64{1}, instruction_cost / min_cost_per_thread));
   }
 
  private:
@@ -104,7 +104,9 @@ class DefaultCostModel : public ParallelCostModel {
 
 ParallelTaskAssignment::ParallelTaskAssignment(
     const int64 max_parallelism,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size, HloModule* module) {
+    const HloCostAnalysis::ShapeSizeFunction& shape_size, HloModule* module,
+    const TargetMachineFeatures* target_machine_features)
+    : target_machine_features_(*target_machine_features) {
   VLOG(1) << "ParallelTaskAssignment max_parallelism: " << max_parallelism;
   // Run cost analysis on 'module'.
   auto cost_analysis = MakeUnique<HloCostAnalysis>(shape_size);
@@ -127,25 +129,28 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
   // Currently, we do not assign parallel tasks to instructions with at least
   // one of the following properties:
   // *) Internal threading (library calls to kConv, kDot, kFft, kCustomCall).
-  // *) Emit custom loops (kSelectAndScatter, FusionKind::kTransposeDot).
+  // *) Emit custom loops (kSelectAndScatter).
+  // *) Operations that are not thread safe (like infeed and rng).
   // *) Tuple-shaped.
   // TODO(b/27458679) Parallelize instructions which are skipped here.
-  if (instruction->opcode() == HloOpcode::kParameter ||
-      instruction->opcode() == HloOpcode::kConstant ||
-      instruction->opcode() == HloOpcode::kCall ||
-      instruction->opcode() == HloOpcode::kCustomCall ||
-      instruction->opcode() == HloOpcode::kSelectAndScatter ||
-      instruction->opcode() == HloOpcode::kGetTupleElement ||
-      instruction->opcode() == HloOpcode::kBitcast ||
-      instruction->opcode() == HloOpcode::kFft ||
-      (instruction->opcode() == HloOpcode::kConvolution &&
-       PotentiallyImplementedAsEigenConvolution(*instruction)) ||
-      PotentiallyImplementedAsEigenDot(*instruction) ||
-      (instruction->opcode() == HloOpcode::kFusion &&
+  auto opcode = instruction->opcode();
+  if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
+      opcode == HloOpcode::kCall || opcode == HloOpcode::kCustomCall ||
+      opcode == HloOpcode::kDot || opcode == HloOpcode::kSelectAndScatter ||
+      opcode == HloOpcode::kGetTupleElement || opcode == HloOpcode::kBitcast ||
+      opcode == HloOpcode::kFft || opcode == HloOpcode::kInfeed ||
+      opcode == HloOpcode::kOutfeed || opcode == HloOpcode::kRng ||
+      (opcode == HloOpcode::kConvolution &&
+       PotentiallyImplementedAsEigenConvolution(*instruction,
+                                                target_machine_features_)) ||
+      PotentiallyImplementedAsEigenDot(*instruction,
+                                       target_machine_features_) ||
+      (opcode == HloOpcode::kFusion &&
        instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
       ShapeUtil::IsTuple(instruction->shape())) {
     return 1;
   }
+
   // Consult 'cost_model_' to compute target parallel task count.
   return cost_model_->GetParallelTaskCount(instruction);
 }
@@ -230,7 +235,8 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 void ParallelTaskAssigner::ComputeTargetParallelTasks(
     HloModule* module, HloToParallelTasks* hlo_to_parallel_tasks) {
   ParallelTaskAssignment parallel_task_assignment(max_parallelism_,
-                                                  shape_size_function_, module);
+                                                  shape_size_function_, module,
+                                                  &target_machine_features_);
 
   // Compute parallel task counts for all instructions in 'module'.
   for (auto* computation : module->computations()) {

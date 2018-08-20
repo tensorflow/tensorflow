@@ -51,15 +51,17 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
   return out;
 }
 
-CallContext GetInstructionCallContext(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
+CallContext GetInstructionCallContext(HloOpcode opcode) {
+  switch (opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kFusion:
       return CallContext::kParallel;
@@ -101,7 +103,7 @@ void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
 
 void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   CHECK_EQ(instruction->parent(), computation());
-  const CallContext context = GetInstructionCallContext(instruction);
+  const CallContext context = GetInstructionCallContext(instruction->opcode());
   if (!instruction->called_computations().empty()) {
     CHECK(context == CallContext::kSequential ||
           context == CallContext::kParallel);

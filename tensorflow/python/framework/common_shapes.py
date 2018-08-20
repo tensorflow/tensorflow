@@ -28,13 +28,25 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 
 
+def has_fully_defined_shape(tensor):
+  """Returns true if tensor has a fully defined shape."""
+  return isinstance(tensor, ops.EagerTensor) or tensor.shape.is_fully_defined()
+
+
+def rank(tensor):
+  """Return a rank if it is a tensor, else return None."""
+  if isinstance(tensor, ops.Tensor):
+    return tensor._rank()  # pylint: disable=protected-access
+  return None
+
+
 def scalar_shape(unused_op):
   """Shape function for ops that output a scalar value."""
   return [tensor_shape.scalar()]
 
 
 def unchanged_shape(op):
-  """Shape function for ops that output an tensor like their first input."""
+  """Shape function for ops that output a tensor like their first input."""
   return [op.inputs[0].get_shape()]
 
 

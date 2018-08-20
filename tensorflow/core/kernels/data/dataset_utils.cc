@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
 
@@ -40,9 +41,8 @@ Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  *out_iterator = returned_dataset->MakeIterator(
-      strings::StrCat(prefix, "[", thread_index, "]"));
-  return Status::OK();
+  return returned_dataset->MakeIterator(
+      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
 }  // namespace dataset

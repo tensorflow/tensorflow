@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "IgnoreErrorsDataset"
-  summary: "Creates a dataset that contains the elements of `input_dataset` ignoring errors."
-}

@@ -83,14 +83,14 @@ class AtrousConvolutionTest(test.TestCase):
     checks = []
 
     def add_check(check, *args, **kwargs):
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         args_val, kwargs_val = self.evaluate([args, kwargs])
         check(*args_val, **kwargs_val)
       else:
         checks.append((check, args, kwargs))
 
     yield add_check
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       all_values = self.evaluate([[args, kwargs] for _, args, kwargs in checks])
       for (check, _, _), (args, kwargs) in zip(checks, all_values):
         check(*args, **kwargs)
@@ -124,7 +124,7 @@ class AtrousConvolutionTest(test.TestCase):
         x, w, "VALID", dilation_rate=[2, 2], data_format="NCHW")
     self.assertEqual(y.shape.as_list(), [1, 20, None, None])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolution2D(self):
     with self._delay_checks() as add_check:
       for padding in ["SAME", "VALID"]:
@@ -139,7 +139,7 @@ class AtrousConvolutionTest(test.TestCase):
                   dilation_rate=dilation_rate,
               )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolution3D(self):
     with self._delay_checks() as add_check:
       for padding in ["SAME", "VALID"]:
@@ -158,7 +158,7 @@ class AtrousConvolutionTest(test.TestCase):
                   dilation_rate=dilation_rate,
               )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolution1D(self):
     with self._delay_checks() as add_check:
       for padding in ["SAME", "VALID"]:
@@ -173,7 +173,7 @@ class AtrousConvolutionTest(test.TestCase):
                   dilation_rate=[rate],
               )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolutionNC(self):
     if test.is_gpu_available(cuda_only=True):
       # "NCW" and "NCHW" formats are currently supported only on CUDA.
@@ -197,7 +197,7 @@ class AtrousConvolutionTest(test.TestCase):
                 data_format="NCHW",
             )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousSequence(self):
     """Tests optimization of sequence of atrous convolutions.
 

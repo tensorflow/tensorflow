@@ -505,18 +505,6 @@ class BatchSequencesWithStatesTest(test.TestCase):
         expected_seq4_batch2=expected_seq4_batch2)
 
 
-class BatchSequencesWithStatesTestWithCApi(BatchSequencesWithStatesTest):
-
-  def setUp(self):
-    self._prev_value = ops._USE_C_API
-    ops._USE_C_API = True
-    super(BatchSequencesWithStatesTestWithCApi, self).setUp()
-
-  def tearDown(self):
-    super(BatchSequencesWithStatesTestWithCApi, self).tearDown()
-    ops._USE_C_API = self._prev_value
-
-
 class PaddingTest(test.TestCase):
 
   def testPaddingInvalidLengths(self):

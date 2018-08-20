@@ -90,21 +90,21 @@ class UnpackOp : public OpKernel {
     }
 #endif  // TENSORFLOW_USE_SYCL
 
-    int64 before_dim = 1;
+    Eigen::DenseIndex before_dim = 1;
     for (int i = 0; i < axis; ++i) {
       before_dim *= input_shape.dim_size(i);
     }
 
-    int64 after_dim = 1;
+    Eigen::DenseIndex after_dim = 1;
     for (int i = axis + 1; i < input_shape.dims(); ++i) {
       after_dim *= input_shape.dim_size(i);
     }
-    const int64 axis_dim = input_shape.dim_size(axis);
+    const Eigen::DenseIndex axis_dim = input_shape.dim_size(axis);
 
     // Except for shape, unpack is a special case of split, so we reuse the
     // same computational kernels.
     auto input_reshaped =
-        input.shaped<T, 3>({1, before_dim, axis_dim * after_dim});
+        input.shaped<T, 2>({before_dim, axis_dim * after_dim});
 
     for (int i = 0; i < num; ++i) {
       Tensor* output;
@@ -112,12 +112,12 @@ class UnpackOp : public OpKernel {
                      context->allocate_output(i, output_shape, &output));
 
       if (output_shape.num_elements() > 0) {
-        auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
-        Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
-        Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
-        functor::Split<Device, T>()(context->eigen_device<Device>(),
-                                    output_shaped, input_reshaped, indices,
-                                    sizes);
+        auto output_shaped = output->shaped<T, 2>({before_dim, after_dim});
+        Eigen::DSizes<Eigen::DenseIndex, 2> indices{0, i * after_dim};
+        Eigen::DSizes<Eigen::DenseIndex, 2> sizes{before_dim, after_dim};
+        functor::Split<Device, T, 2>()(context->eigen_device<Device>(),
+                                       output_shaped, input_reshaped, indices,
+                                       sizes);
       }
     }
   }

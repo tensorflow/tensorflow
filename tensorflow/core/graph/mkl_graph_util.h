@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_MKL_GRAPH_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -90,7 +89,7 @@ inline string GetMklOpName(const string& name) {
 // @input: name of the op
 // @input: T datatype to be used for checking op
 // @return: true if opname is registered as Mkl op; false otherwise
-static inline bool IsMklOp(const std::string& op_name, DataType T) {
+static inline bool IsMklOp(const string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
   bool result =
       kernel.find(kMklOpLabelPattern) != string::npos && (T == DT_FLOAT);
@@ -104,7 +103,7 @@ static inline bool IsMklOp(const std::string& op_name, DataType T) {
 // @input: T datatype to be used for checking op
 // @return: true if opname is registered as element-wise Mkl op;
 // false otherwise
-static inline bool IsMklElementWiseOp(const std::string& op_name, DataType T) {
+static inline bool IsMklElementWiseOp(const string& op_name, DataType T) {
   if (!IsMklOp(op_name, T)) {
     return false;
   }

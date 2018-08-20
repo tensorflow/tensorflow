@@ -1,0 +1,9 @@
+path: "tensorflow.keras.layers.InputSpec"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.InputSpec\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'dtype\', \'shape\', \'ndim\', \'max_ndim\', \'min_ndim\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+}

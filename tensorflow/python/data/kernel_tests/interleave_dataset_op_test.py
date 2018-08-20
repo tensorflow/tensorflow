@@ -201,6 +201,20 @@ class InterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testEmptyInput(self):
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices([])
+        .repeat(None)
+        .interleave(dataset_ops.Dataset.from_tensors, cycle_length=2)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

@@ -24,14 +24,14 @@ namespace {
 
 class TestTime : public EnvTime {
  public:
-  uint64 NowMicros() override { return now_; }
+  uint64 NowNanos() override { return now_micros_ * kMicrosToNanos; }
 
-  void SetTime(uint64 now_micros) { now_ = now_micros; }
+  void SetTime(uint64 now_micros) { now_micros_ = now_micros; }
 
-  void AdvanceSeconds(int64 secs) { now_ += secs * 1000000L; }
+  void AdvanceSeconds(int64 secs) { now_micros_ += secs * kSecondsToMicros; }
 
  private:
-  uint64 now_ = 1234567890000000ULL;
+  uint64 now_micros_ = 1234567890000000ULL;
 };
 
 class GcsThrottleTest : public ::testing::Test {
@@ -94,6 +94,24 @@ TEST_F(GcsThrottleTest, ReverseTime) {
   EXPECT_EQ(100000, throttle_.available_tokens());
   time_.AdvanceSeconds(1);
   EXPECT_EQ(200000, throttle_.available_tokens());
+}
+
+TEST(GcsThrottleDisabledTest, Disabled) {
+  TestTime time;
+  GcsThrottle throttle(&time);
+  ASSERT_FALSE(throttle.is_enabled());  // Verify throttle is disabled.
+
+  EXPECT_EQ(0, throttle.available_tokens());
+  time.AdvanceSeconds(1);
+  EXPECT_EQ(100000, throttle.available_tokens());
+  EXPECT_TRUE(throttle.AdmitRequest());
+  EXPECT_EQ(99900, throttle.available_tokens());
+  time.AdvanceSeconds(1);
+  EXPECT_EQ(199900, throttle.available_tokens());
+  throttle.RecordResponse(128000000);  // 128 MB response.
+  EXPECT_LT(0, throttle.available_tokens());
+  // Admit request even without available tokens
+  EXPECT_TRUE(throttle.AdmitRequest());
 }
 
 }  // namespace

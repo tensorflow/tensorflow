@@ -27,6 +27,9 @@ namespace tensorflow {
 DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
     : name_backing_store_(128) {
   for (Device* d : devices) {
+    CHECK(d->device_mgr_ == nullptr);
+    d->device_mgr_ = this;
+
     devices_.push_back(d);
 
     // Register under the (1) full name and (2) canonical name.
@@ -94,8 +97,8 @@ Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     for (auto&& itr : device_map_) {
       device_names.push_back(itr.first);
     }
-    LOG(WARNING) << "Unknown device: " << name
-                 << " all devices: " << str_util::Join(device_names, ", ");
+    VLOG(1) << "Unknown device: " << name
+            << " all devices: " << str_util::Join(device_names, ", ");
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;

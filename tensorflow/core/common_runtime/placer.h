@@ -87,6 +87,8 @@ class Placer {
   // placement if the SessionOptions entry in 'options_' requests it.
   void AssignAndLog(int assigned_device, Node* node) const;
   void LogDeviceAssignment(const Node* node) const;
+  bool ClientHandlesErrorFormatting() const;
+  string RichNodeName(const Node* node) const;
 
   Graph* const graph_;              // Not owned.
   const DeviceSet* const devices_;  // Not owned.

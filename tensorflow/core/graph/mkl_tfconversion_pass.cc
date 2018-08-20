@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <set>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -222,7 +221,7 @@ Status MklToTfConversionPass::InsertInputConversionNode(
            BaseType(n->input_type(0)));
 
   // Check ordering of edges
-  for (uint i = 0; i < 4; i++) {
+  for (uint32 i = 0; i < 4; i++) {
     CHECK_EQ((edges[i]->dst_input() == i), true);
   }
 

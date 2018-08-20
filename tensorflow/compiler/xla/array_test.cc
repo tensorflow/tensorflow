@@ -60,6 +60,25 @@ TEST(ArrayTest, InitializerListCtor) {
   EXPECT_EQ(arr(1, 2), 6);
 }
 
+TEST(ArrayTest, InitializerListCtorHalf) {
+  Array<Eigen::half> d2({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}});
+  EXPECT_EQ(d2.dim(0), 2);
+  EXPECT_EQ(d2.dim(1), 3);
+
+  Array<Eigen::half> d3({{{1.0f}, {4.0f}}, {{1.0f}, {4.0f}}, {{1.0f}, {4.0f}}});
+  EXPECT_EQ(d3.dim(0), 3);
+  EXPECT_EQ(d3.dim(1), 2);
+  EXPECT_EQ(d3.dim(2), 1);
+
+  Array<Eigen::half> d4(
+      {{{{1.0f}, {4.0f}}, {{1.0f}, {4.0f}}, {{1.0f}, {4.0f}}},
+       {{{1.0f}, {4.0f}}, {{1.0f}, {4.0f}}, {{1.0f}, {4.0f}}}});
+  EXPECT_EQ(d4.dim(0), 2);
+  EXPECT_EQ(d4.dim(1), 3);
+  EXPECT_EQ(d4.dim(2), 2);
+  EXPECT_EQ(d4.dim(3), 1);
+}
+
 TEST(ArrayTest, IndexingReadWrite) {
   Array<int> arr({2, 3});
 

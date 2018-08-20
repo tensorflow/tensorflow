@@ -22,9 +22,9 @@ import collections
 import functools
 import re
 
-from tensorflow.python.eager import context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -35,6 +35,11 @@ _PRINT_DEPRECATION_WARNINGS = True
 
 # Remember which deprecation warnings have been printed already.
 _PRINTED_WARNING = {}
+
+
+class DeprecatedNamesAlreadySet(Exception):
+  """Raised when setting deprecated names multiple times for the same symbol."""
+  pass
 
 
 def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
@@ -85,6 +90,27 @@ def _call_location(outer=False):
     stack = tf_inspect.stack(0)  # 0 avoids generating unused context
     entry = stack[3 if outer else 2]
     return '%s:%d' % (entry[1], entry[2])
+
+
+def _wrap_decorator(wrapped_function):
+  """Indicate that one function wraps another.
+
+  This decorator wraps a function using `tf_decorator.make_decorator`
+  so that doc generation scripts can pick up original function
+  signature.
+  It would be better to use @functools.wrap decorator, but it would
+  not update function signature to match wrapped function in Python 2.
+
+  Args:
+    wrapped_function: The function that decorated function wraps.
+
+  Returns:
+    Function that accepts wrapper function as an argument and returns
+    `TFDecorator` instance.
+  """
+  def wrapper(wrapper_func):
+    return tf_decorator.make_decorator(wrapped_function, wrapper_func)
+  return wrapper
 
 
 def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
@@ -144,7 +170,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
   if tf_inspect.isclass(func_or_class):
 
     # Make a new class with __init__ wrapped in a warning.
-    class NewClass(func_or_class):  # pylint: disable=missing-docstring
+    class _NewClass(func_or_class):  # pylint: disable=missing-docstring
       __doc__ = decorator_utils.add_notice_to_docstring(
           func_or_class.__doc__, 'Please use %s instead.' % name,
           'DEPRECATED CLASS',
@@ -153,27 +179,28 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
       __name__ = func_or_class.__name__
       __module__ = _call_location(outer=True)
 
+      @_wrap_decorator(func_or_class.__init__)
       def __init__(self, *args, **kwargs):
-        if hasattr(NewClass.__init__, '__func__'):
+        if hasattr(_NewClass.__init__, '__func__'):
           # Python 2
-          NewClass.__init__.__func__.__doc__ = func_or_class.__init__.__doc__
+          _NewClass.__init__.__func__.__doc__ = func_or_class.__init__.__doc__
         else:
           # Python 3
-          NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
+          _NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
 
         if _PRINT_DEPRECATION_WARNINGS:
           # We're making the alias as we speak. The original may have other
           # aliases, so we cannot use it to check for whether it's already been
           # warned about.
-          if NewClass.__init__ not in _PRINTED_WARNING:
+          if _NewClass.__init__ not in _PRINTED_WARNING:
             if warn_once:
-              _PRINTED_WARNING[NewClass.__init__] = True
+              _PRINTED_WARNING[_NewClass.__init__] = True
             logging.warning(
                 'From %s: The name %s is deprecated. Please use %s instead.\n',
                 _call_location(), deprecated_name, name)
-        super(NewClass, self).__init__(*args, **kwargs)
+        super(_NewClass, self).__init__(*args, **kwargs)
 
-    return NewClass
+    return _NewClass
   else:
     decorator_utils.validate_callable(func_or_class, 'deprecated')
 
@@ -195,6 +222,35 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
         func_or_class, new_func, 'deprecated',
         _add_deprecated_function_notice_to_docstring(
             func_or_class.__doc__, None, 'Please use %s instead.' % name))
+
+
+def deprecated_endpoints(*args):
+  """Decorator for marking endpoints deprecated.
+
+  This decorator does not print deprecation messages.
+  TODO(annarev): eventually start printing deprecation warnings when
+  @deprecation_endpoints decorator is added.
+
+  Args:
+    *args: Deprecated endpoint names.
+
+  Returns:
+    A function that takes symbol as an argument and adds
+    _tf_deprecated_api_names to that symbol.
+    _tf_deprecated_api_names would be set to a list of deprecated
+    endpoint names for the symbol.
+  """
+  def deprecated_wrapper(func):
+    # pylint: disable=protected-access
+    if '_tf_deprecated_api_names' in func.__dict__:
+      raise DeprecatedNamesAlreadySet(
+          'Cannot set deprecated names for %s to %s. '
+          'Deprecated names are already set to %s.' % (
+              func.__name__, str(args), str(func._tf_deprecated_api_names)))
+    func._tf_deprecated_api_names = args
+    # pylint: disable=protected-access
+    return func
+  return deprecated_wrapper
 
 
 def deprecated(date, instructions, warn_once=True):
@@ -332,13 +388,13 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     Args:
       names_to_ok_vals: dict from string arg_name to a list of values,
         possibly empty, which should not elicit a warning.
-      arg_spec: Output from tf_inspect.getargspec on the called function.
+      arg_spec: Output from tf_inspect.getfullargspec on the called function.
 
     Returns:
       Dictionary from arg_name to DeprecatedArgSpec.
     """
-    arg_name_to_pos = dict(
-        (name, pos) for (pos, name) in enumerate(arg_spec.args))
+    arg_name_to_pos = {
+        name: pos for pos, name in enumerate(arg_spec.args)}
     deprecated_positional_args = {}
     for arg_name, spec in iter(names_to_ok_vals.items()):
       if arg_name in arg_name_to_pos:
@@ -352,16 +408,16 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     decorator_utils.validate_callable(func, 'deprecated_args')
     deprecated_arg_names = _get_arg_names_to_ok_vals()
 
-    arg_spec = tf_inspect.getargspec(func)
+    arg_spec = tf_inspect.getfullargspec(func)
     deprecated_positions = _get_deprecated_positional_arguments(
         deprecated_arg_names, arg_spec)
 
     is_varargs_deprecated = arg_spec.varargs in deprecated_arg_names
-    is_kwargs_deprecated = arg_spec.keywords in deprecated_arg_names
+    is_kwargs_deprecated = arg_spec.varkw in deprecated_arg_names
 
     if (len(deprecated_positions) + is_varargs_deprecated + is_kwargs_deprecated
         != len(deprecated_arg_names_or_tuples)):
-      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.keywords]
+      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.varkw]
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
       raise ValueError('The following deprecated arguments are not present '
@@ -400,7 +456,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
       """Deprecation wrapper."""
       # TODO(apassos) figure out a way to have reasonable performance with
       # deprecation warnings and eager mode.
-      if context.in_graph_mode() and _PRINT_DEPRECATION_WARNINGS:
+      if is_in_graph_mode.IS_IN_GRAPH_MODE() and _PRINT_DEPRECATION_WARNINGS:
         invalid_args = []
         named_args = tf_inspect.getcallargs(func, *args, **kwargs)
         for arg_name, spec in iter(deprecated_positions.items()):
@@ -411,7 +467,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
         if is_varargs_deprecated and len(args) > len(arg_spec.args):
           invalid_args.append(arg_spec.varargs)
         if is_kwargs_deprecated and kwargs:
-          invalid_args.append(arg_spec.keywords)
+          invalid_args.append(arg_spec.varkw)
         for arg_name in deprecated_arg_names:
           if (arg_name in kwargs and
               not (deprecated_positions[arg_name].has_ok_value and

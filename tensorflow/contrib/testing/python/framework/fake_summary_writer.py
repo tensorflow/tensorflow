@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
 
@@ -51,6 +52,7 @@ class FakeSummaryWriter(object):
     self._added_graphs = []
     self._added_meta_graphs = []
     self._added_session_logs = []
+    self._added_run_metadata = {}
 
   @property
   def summaries(self):
@@ -85,7 +87,11 @@ class FakeSummaryWriter(object):
     if expected_added_graphs is not None:
       test_case.assertEqual(expected_added_graphs, self._added_graphs)
     if expected_added_meta_graphs is not None:
-      test_case.assertEqual(expected_added_meta_graphs, self._added_meta_graphs)
+      test_case.assertEqual(len(expected_added_meta_graphs),
+                            len(self._added_meta_graphs))
+      for expected, actual in zip(expected_added_meta_graphs,
+                                  self._added_meta_graphs):
+        test_util.assert_meta_graph_protos_equal(test_case, expected, actual)
     if expected_session_logs is not None:
       test_case.assertEqual(expected_session_logs, self._added_session_logs)
 
@@ -121,6 +127,11 @@ class FakeSummaryWriter(object):
   def add_session_log(self, session_log, global_step=None):
     # pylint: disable=unused-argument
     self._added_session_logs.append(session_log)
+
+  def add_run_metadata(self, run_metadata, tag, global_step=None):
+    if (global_step is not None) and (global_step < 0):
+      raise ValueError('Invalid global_step %s.' % global_step)
+    self._added_run_metadata[tag] = run_metadata
 
   def flush(self):
     pass

@@ -390,6 +390,26 @@ class WishartCholeskyTest(test.TestCase):
                 chol_scale, dtype=np.int32),
             validate_args=False)
 
+  def testSampleBroadcasts(self):
+    dims = 2
+    batch_shape = [2, 3]
+    sample_shape = [2, 1]
+    scale = np.float32([
+        [[1., 0.5],
+         [0.5, 1.]],
+        [[0.5, 0.25],
+         [0.25, 0.75]],
+    ])
+    scale = np.reshape(np.concatenate([scale, scale, scale], axis=0),
+                       batch_shape + [dims, dims])
+    wishart = distributions.WishartFull(df=5, scale=scale)
+    x = wishart.sample(sample_shape, seed=42)
+    with self.test_session() as sess:
+      x_ = sess.run(x)
+    expected_shape = sample_shape + batch_shape + [dims, dims]
+    self.assertAllEqual(expected_shape, x.shape)
+    self.assertAllEqual(expected_shape, x_.shape)
+
 
 if __name__ == "__main__":
   test.main()

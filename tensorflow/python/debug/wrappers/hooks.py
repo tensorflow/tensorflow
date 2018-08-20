@@ -31,15 +31,18 @@ from tensorflow.python.training import session_run_hook
 class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """Command-line-interface debugger hook.
 
-  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
-  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  Can be used as a hook for `tf.train.MonitoredSession`s and
+  `tf.estimator.Estimator`s. Provides a substitute for
+  `tfdbg.LocalCLIDebugWrapperSession` in cases where the session is not directly
+  available.
   """
 
   def __init__(self, ui_type="curses", dump_root=None, thread_name_filter=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
-      ui_type: (str) user-interface type.
+      ui_type: (`str`) requested user-interface type. Currently supported:
+        (curses | readline).
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
@@ -153,8 +156,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
 class DumpingDebugHook(session_run_hook.SessionRunHook):
   """A debugger hook that dumps debug data to filesystem.
 
-  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
-  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  Can be used as a hook for `tf.train.MonitoredSession`s and
+  `tf.estimator.Estimator`s.
   """
 
   def __init__(self,
@@ -229,8 +232,8 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
   When the arguments of debug_utils.watch_graph changes, strongly consider
   changing arguments here too so that features are available to tflearn users.
 
-  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
-  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  Can be used as a hook for `tf.train.MonitoredSession`s and
+  `tf.estimator.Estimator`s.
   """
 
   def __init__(self,
@@ -345,6 +348,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._send_traceback_and_source_code = send_traceback_and_source_code
     self._sent_graph_version = -1
+    grpc_wrapper.register_signal_handler()
 
   def before_run(self, run_context):
     if self._send_traceback_and_source_code:

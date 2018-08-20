@@ -51,13 +51,13 @@ constexpr std::array<DataType, 9> kNumericTypes = {
     {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
      DT_COMPLEX64, DT_BFLOAT16}};
 
-constexpr std::array<DataType, 8> kCpuAllTypes = {
-    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE,
+constexpr std::array<DataType, 9> kCpuAllTypes = {
+    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
      DT_COMPLEX64, DT_BOOL}};
 
-constexpr std::array<DataType, 8> kGpuAllTypes = {
-    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE,
-     DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 10> kGpuAllTypes = {
+    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -203,7 +203,7 @@ class XlaOpRegistry {
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
   // Registrations present under the same key must satisfy IsCompatible above,
   // and this is checked during registration.
-  std::unordered_multimap<string, std::unique_ptr<OpRegistration>> ops_
+  std::unordered_map<string, std::vector<std::unique_ptr<OpRegistration>>> ops_
       GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?
@@ -279,7 +279,7 @@ class XlaOpRegistrar {
 
 #define REGISTER_XLA_OP_UNIQ(CTR, BUILDER, OP)                                 \
   static ::tensorflow::XlaOpRegistrar xla_op_registrar__body__##CTR##__object( \
-      XlaOpRegistrationBuilder::BUILDER.Build(                                 \
+      ::tensorflow::XlaOpRegistrationBuilder::BUILDER.Build(                   \
           [](::tensorflow::OpKernelConstruction* context)                      \
               -> ::tensorflow::OpKernel* { return new OP(context); }));
 

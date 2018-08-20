@@ -212,7 +212,7 @@ class ReparameterizationType(object):
     reparameterized, and straight-through gradients are either partially
     unsupported or are not supported at all. In this case, for purposes of
     e.g. RL or variational inference, it is generally safest to wrap the
-    sample results in a `stop_gradients` call and instead use policy
+    sample results in a `stop_gradients` call and use policy
     gradients / surrogate loss instead.
   """
 
@@ -338,6 +338,27 @@ class Distribution(_BaseDistribution):
   cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
   ```
 
+  #### Shapes
+
+  There are three important concepts associated with TensorFlow Distributions
+  shapes:
+  - Event shape describes the shape of a single draw from the distribution;
+    it may be dependent across dimensions. For scalar distributions, the event
+    shape is `[]`. For a 5-dimensional MultivariateNormal, the event shape is
+    `[5]`.
+  - Batch shape describes independent, not identically distributed draws, aka a
+    "collection" or "bunch" of distributions.
+  - Sample shape describes independent, identically distributed draws of batches
+    from the distribution family.
+
+  The event shape and the batch shape are properties of a Distribution object,
+  whereas the sample shape is associated with a specific call to `sample` or
+  `log_prob`.
+
+  For detailed usage examples of TensorFlow Distributions shapes, see
+  [this tutorial](
+  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding_TensorFlow_Distributions_Shapes.ipynb)
+
   #### Parameter values leading to undefined statistics or distributions.
 
   Some distributions do not have well-defined statistics for all initialization
@@ -413,13 +434,17 @@ class Distribution(_BaseDistribution):
     for i, t in enumerate(graph_parents):
       if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if not name or name[-1] != "/":  # `name` is not a name scope
+      non_unique_name = name or type(self).__name__
+      with ops.name_scope(non_unique_name) as name:
+        pass
     self._dtype = dtype
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._parameters = parameters or {}
     self._graph_parents = graph_parents
-    self._name = name or type(self).__name__
+    self._name = name
 
   @classmethod
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
@@ -499,9 +524,10 @@ class Distribution(_BaseDistribution):
   def parameters(self):
     """Dictionary of parameters used to instantiate this `Distribution`."""
     # Remove "self", "__class__", or other special variables. These can appear
-    # if the subclass used `parameters = locals()`.
-    return dict((k, v) for k, v in self._parameters.items()
-                if not k.startswith("__") and k != "self")
+    # if the subclass used:
+    # `parameters = dict(locals())`.
+    return {k: v for k, v in self._parameters.items()
+            if not k.startswith("__") and k != "self"}
 
   @property
   def reparameterization_type(self):
@@ -593,7 +619,7 @@ class Distribution(_BaseDistribution):
     Returns:
       batch_shape: `TensorShape`, possibly unknown.
     """
-    return self._batch_shape()
+    return tensor_shape.as_shape(self._batch_shape())
 
   def _event_shape_tensor(self):
     raise NotImplementedError("event_shape_tensor is not implemented")
@@ -626,7 +652,7 @@ class Distribution(_BaseDistribution):
     Returns:
       event_shape: `TensorShape`, possibly unknown.
     """
-    return self._event_shape()
+    return tensor_shape.as_shape(self._event_shape())
 
   def is_scalar_event(self, name="is_scalar_event"):
     """Indicates that `event_shape == []`.
@@ -696,11 +722,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._log_prob(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log(self._prob(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.log(self._prob(value, **kwargs))
 
   def log_prob(self, value, name="log_prob"):
     """Log probability density/mass function.
@@ -723,11 +746,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._prob(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.exp(self._log_prob(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.exp(self._log_prob(value, **kwargs))
 
   def prob(self, value, name="prob"):
     """Probability density/mass function.
@@ -750,11 +770,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._log_cdf(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log(self._cdf(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.log(self._cdf(value, **kwargs))
 
   def log_cdf(self, value, name="log_cdf"):
     """Log cumulative distribution function.
@@ -787,11 +804,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._cdf(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.exp(self._log_cdf(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.exp(self._log_cdf(value, **kwargs))
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function.
@@ -820,11 +834,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._log_survival_function(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log1p(-self.cdf(value, **kwargs))
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.log1p(-self.cdf(value, **kwargs))
 
   def log_survival_function(self, value, name="log_survival_function"):
     """Log survival function.
@@ -858,11 +869,8 @@ class Distribution(_BaseDistribution):
       value = ops.convert_to_tensor(value, name="value")
       try:
         return self._survival_function(value, **kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return 1. - self.cdf(value, **kwargs)
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return 1. - self.cdf(value, **kwargs)
 
   def survival_function(self, value, name="survival_function"):
     """Survival function.
@@ -907,10 +915,7 @@ class Distribution(_BaseDistribution):
   def _call_quantile(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
       value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._quantile(value, **kwargs)
-      except NotImplementedError as original_exception:
-        raise original_exception
+      return self._quantile(value, **kwargs)
 
   def quantile(self, value, name="quantile"):
     """Quantile function. Aka "inverse cdf" or "percent point function".
@@ -956,11 +961,8 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       try:
         return self._variance()
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.square(self._stddev())
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.square(self._stddev())
 
   def _stddev(self):
     raise NotImplementedError("stddev is not implemented")
@@ -988,11 +990,8 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       try:
         return self._stddev()
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.sqrt(self._variance())
-        except NotImplementedError:
-          raise original_exception
+      except NotImplementedError:
+        return math_ops.sqrt(self._variance())
 
   def _covariance(self):
     raise NotImplementedError("covariance is not implemented")
@@ -1104,6 +1103,34 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return self._kl_divergence(other)
+
+  def __str__(self):
+    return ("tf.distributions.{type_name}("
+            "\"{self_name}\""
+            "{maybe_batch_shape}"
+            "{maybe_event_shape}"
+            ", dtype={dtype})".format(
+                type_name=type(self).__name__,
+                self_name=self.name,
+                maybe_batch_shape=(", batch_shape={}".format(self.batch_shape)
+                                   if self.batch_shape.ndims is not None
+                                   else ""),
+                maybe_event_shape=(", event_shape={}".format(self.event_shape)
+                                   if self.event_shape.ndims is not None
+                                   else ""),
+                dtype=self.dtype.name))
+
+  def __repr__(self):
+    return ("<tf.distributions.{type_name} "
+            "'{self_name}'"
+            " batch_shape={batch_shape}"
+            " event_shape={event_shape}"
+            " dtype={dtype}>".format(
+                type_name=type(self).__name__,
+                self_name=self.name,
+                batch_shape=self.batch_shape,
+                event_shape=self.event_shape,
+                dtype=self.dtype.name))
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):

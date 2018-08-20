@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
@@ -25,7 +29,39 @@ GTEST_API_ int main(int argc, char** argv) {
     return 2;
   }
 
+  // If the --benchmarks flag is passed in then only run the benchmarks, not the
+  // tests.
+  for (int i = 1; i < argc; i++) {
+    tensorflow::StringPiece arg(argv[i]);
+    if (arg == "--benchmarks" ||
+        tensorflow::str_util::StartsWith(arg, "--benchmarks=")) {
+      const char* pattern = nullptr;
+      if (tensorflow::str_util::StartsWith(arg, "--benchmarks=")) {
+        pattern = argv[i] + strlen("--benchmarks=");
+      } else {
+        // Handle flag of the form '--benchmarks foo' (no '=').
+        if (i + 1 >= argc ||
+            tensorflow::str_util::StartsWith(argv[i + 1], "--")) {
+          LOG(ERROR) << "--benchmarks flag requires an argument.";
+          return 2;
+        }
+        pattern = argv[i + 1];
+      }
+      // Unfortunately Google's internal benchmark infrastructure has a
+      // different API than Tensorflow's.
+      testing::InitGoogleTest(&argc, argv);
+#if defined(PLATFORM_GOOGLE)
+      base::SetFlag(&FLAGS_benchmarks, pattern);
+      RunSpecifiedBenchmarks();
+#else
+      tensorflow::testing::Benchmark::Run(pattern);
+#endif
+      return 0;
+    }
+  }
+
   testing::InitGoogleTest(&argc, argv);
+
   if (argc > 1) {
     LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return 2;

@@ -65,7 +65,7 @@ class DeterminantOpTest(test.TestCase):
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
       self._compareLogDeterminantBase(
-          matrix_x, gen_linalg_ops._log_matrix_determinant(matrix_x))
+          matrix_x, gen_linalg_ops.log_matrix_determinant(matrix_x))
 
   def testBasic(self):
     # 2x2 matrices

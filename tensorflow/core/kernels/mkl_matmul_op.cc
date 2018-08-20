@@ -25,11 +25,17 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "mkl_cblas.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+
+// This header file is part of MKL ML, need equivalent file in MKL DNN
+#ifndef INTEL_MKL_DNN_ONLY
+#include "mkl_cblas.h"
+#else
+#include "mkldnn.h"
+#endif
 
 namespace tensorflow {
 
@@ -100,7 +106,6 @@ class MklMatMulOp : public OpKernel {
  private:
   bool transpose_a_;
   bool transpose_b_;
-
   // --------------------------------------------------------------------------
   //
   // @brief Matrix-Matrix Multiplication with FP32 tensors, a, b, c using CBLAS
@@ -150,10 +155,25 @@ class MklMatMulOp : public OpKernel {
     // 1.0 and 0.0 respectively.
     const float alpha = 1.0f;
     const float beta = 0.0f;
+#if defined(INTEL_MKL_DNN_ONLY)
+    const char* const ftrans[] = {"N", "T", "C"};
+    int index_transa = transa ? 1 : 0;
+    int index_transb = transb ? 1 : 0;
+    VLOG(2) << "MKL DNN SGEMM called";
+    // MKL DNN only supports the Fortran api and requires column major while
+    // Tensorflow uses row major so we reverse the order A and B
+    mkldnn_sgemm(ftrans[index_transb], ftrans[index_transa], &n, &m, &k, &alpha,
+                 b, &ldb, a, &lda, &beta, c, &ldc);
+#else
+    // MKL ML binary uses CBLAS API
     cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
                 transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
                 ldb, beta, c, ldc);
+#endif
   }
+
+  // MKLDNN only supports SGEMM
+#ifndef INTEL_MKL_DNN_ONLY
 
   // Matrix-Matrix Multiplication with FP64 tensors. For detailed info about
   // parameters, look at FP32 function description.
@@ -170,33 +190,34 @@ class MklMatMulOp : public OpKernel {
   // Matrix-Matrix Multiplication with Complex64 (std::complex<float>) tensors.
   // For detailed info about parameters, look at FP32 function description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
-                   const int k, const std::complex<float>* a, const int lda,
-                   const std::complex<float>* b, const int ldb,
-                   std::complex<float>* c, int const ldc) {
+                   const int k, const complex64* a, const int lda,
+                   const complex64* b, const int ldb, complex64* c,
+                   int const ldc) {
     const MKL_Complex8 alpha = {1.0f, 0.0f};
     const MKL_Complex8 beta = {0.0f, 0.0f};
     cblas_cgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k,
-                static_cast<const void*>(&alpha), static_cast<const void*>(a),
-                lda, static_cast<const void*>(b), ldb,
-                static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
+                transb ? CblasTrans : CblasNoTrans, m, n, k, &alpha,
+                reinterpret_cast<const MKL_Complex8*>(a), lda,
+                reinterpret_cast<const MKL_Complex8*>(b), ldb, &beta,
+                reinterpret_cast<MKL_Complex8*>(c), ldc);
   }
 
   // Matrix-Matrix Multiplication with Complex128 (std::complex<double>)
   // tensors. For detailed info about parameters, look at FP32 function
   // description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
-                   const int k, const std::complex<double>* a, const int lda,
-                   const std::complex<double>* b, const int ldb,
-                   std::complex<double>* c, const int ldc) {
+                   const int k, const complex128* a, const int lda,
+                   const complex128* b, const int ldb, complex128* c,
+                   const int ldc) {
     const MKL_Complex16 alpha = {1.0, 0.0};
     const MKL_Complex16 beta = {0.0, 0.0};
     cblas_zgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k,
-                static_cast<const void*>(&alpha), static_cast<const void*>(a),
-                lda, static_cast<const void*>(b), ldb,
-                static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
+                transb ? CblasTrans : CblasNoTrans, m, n, k, &alpha,
+                reinterpret_cast<const MKL_Complex16*>(a), lda,
+                reinterpret_cast<const MKL_Complex16*>(b), ldb, &beta,
+                reinterpret_cast<MKL_Complex16*>(c), ldc);
   }
+#endif
 };
 
 #define REGISTER_CPU(T)                                         \
@@ -207,9 +228,12 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
+
+#ifndef INTEL_MKL_DNN_ONLY
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
+#endif
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

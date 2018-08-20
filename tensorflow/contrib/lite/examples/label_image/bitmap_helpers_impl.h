@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
-#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
+#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
+#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
+
+#include "tensorflow/contrib/lite/examples/label_image/label_image.h"
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/string_util.h"
 #include "tensorflow/contrib/lite/version.h"
-
-#include "tensorflow/contrib/lite/examples/label_image/label_image.h"
 
 namespace tflite {
 namespace label_image {
@@ -31,7 +31,6 @@ template <class T>
 void resize(T* out, uint8_t* in, int image_height, int image_width,
             int image_channels, int wanted_height, int wanted_width,
             int wanted_channels, Settings* s) {
-
   int number_of_pixels = image_height * image_width * image_channels;
   std::unique_ptr<Interpreter> interpreter(new Interpreter);
 
@@ -45,7 +44,7 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   interpreter->SetInputs({0, 1});
   interpreter->SetOutputs({2});
 
-  // set paramters of tensors
+  // set parameters of tensors
   TfLiteQuantizationParams quant;
   interpreter->SetTensorParametersReadWrite(
       0, kTfLiteFloat32, "input",
@@ -57,10 +56,13 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
       {1, wanted_height, wanted_width, wanted_channels}, quant);
 
   ops::builtin::BuiltinOpResolver resolver;
-  TfLiteRegistration* resize_op =
-      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR);
-  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, nullptr,
-                                     resize_op, nullptr);
+  const TfLiteRegistration* resize_op =
+      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR, 1);
+  auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
+      malloc(sizeof(TfLiteResizeBilinearParams)));
+  params->align_corners = false;
+  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, params, resize_op,
+                                     nullptr);
 
   interpreter->AllocateTensors();
 
@@ -92,4 +94,4 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
 }  // namespace label_image
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
+#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_

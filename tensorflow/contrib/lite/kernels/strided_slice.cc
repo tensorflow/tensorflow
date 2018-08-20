@@ -48,11 +48,11 @@ struct StridedSliceContext {
     output = GetOutput(context, node, kOutputTensor);
     dims = NumDimensions(input);
   }
-  TfLiteStridedSliceParams* params;
-  TfLiteTensor* input;
-  TfLiteTensor* begin;
-  TfLiteTensor* end;
-  TfLiteTensor* strides;
+  const TfLiteStridedSliceParams* params;
+  const TfLiteTensor* input;
+  const TfLiteTensor* begin;
+  const TfLiteTensor* end;
+  const TfLiteTensor* strides;
   TfLiteTensor* output;
   int dims;
 };
@@ -87,6 +87,8 @@ inline int32_t ClampedIndex(int32_t index, int dim, bool pos_stride) {
                           std::min(std::max(index, -dim), dim - 1), dim));
 }
 
+// TODO(b/77971377) this logic should be removed, as it's a duplication of
+// StartForAxis() & StopForAxis() in kernels/internal/reference/reference_ops.h
 inline int32_t GetBeginValueAtIndex(StridedSliceContext* op_context, int idx) {
   const int dim = op_context->input->dims->data[idx];
   const bool pos_stride = GetTensorData<int32_t>(op_context->strides)[idx] > 0;
@@ -119,10 +121,19 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     int32_t begin = GetBeginValueAtIndex(op_context, idx);
     int32_t end = GetEndValueAtIndex(op_context, idx);
 
+    // When shrinking an axis, the end position does not matter (and can be
+    // incorrect when negative indexing is used, see Issue #19260). Always use
+    // begin + 1 to generate a length 1 slice, since begin has
+    // already been adjusted for negative indices by GetBeginValueAtIndex.
+    const bool shrink_axis = op_context->params->shrink_axis_mask & (1 << idx);
+    if (shrink_axis) {
+      end = begin + 1;
+    }
+
     // This is valid for both positive and negative strides
     int32_t dim_shape = ceil((end - begin) / static_cast<float>(stride));
     dim_shape = dim_shape < 0 ? 0 : dim_shape;
-    if (!(op_context->params->shrink_axis_mask & (1 << idx))) {
+    if (!shrink_axis) {
       output_shape_vector.push_back(dim_shape);
     }
   }
@@ -181,7 +192,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
   std::vector<int32_t> starts;
@@ -189,8 +199,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   std::vector<int32_t> strides;
 
   for (int idx = op_context.dims - 1; idx >= 0; --idx) {
-    starts.emplace_back(GetBeginValueAtIndex(&op_context, idx));
-    stops.emplace_back(GetEndValueAtIndex(&op_context, idx));
+    starts.emplace_back(GetTensorData<int32_t>(op_context.begin)[idx]);
+    stops.emplace_back(GetTensorData<int32_t>(op_context.end)[idx]);
     strides.emplace_back(GetTensorData<int32_t>(op_context.strides)[idx]);
   }
 
@@ -200,19 +210,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     strides.emplace_back(1);
   }
 
-  op_context.params->begin_mask =
+  int begin_mask =
       ReverseMaskBits(op_context.params->begin_mask, op_context.dims);
-  op_context.params->end_mask =
-      ReverseMaskBits(op_context.params->end_mask, op_context.dims);
-  op_context.params->shrink_axis_mask =
+  int end_mask = ReverseMaskBits(op_context.params->end_mask, op_context.dims);
+  int shrink_axis_mask =
       ReverseMaskBits(op_context.params->shrink_axis_mask, op_context.dims);
 
-#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                      \
-  kernel_type::StridedSlice(                                               \
-      GetTensorData<data_type>(op_context.input),                          \
-      GetTensorDims(op_context.input), op_context.params->begin_mask,      \
-      op_context.params->end_mask, op_context.params->shrink_axis_mask,    \
-      starts, stops, strides, GetTensorData<data_type>(op_context.output), \
+#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                          \
+  kernel_type::StridedSlice(                                                   \
+      GetTensorData<data_type>(op_context.input),                              \
+      GetTensorDims(op_context.input), begin_mask, end_mask, shrink_axis_mask, \
+      starts, stops, strides, GetTensorData<data_type>(op_context.output),     \
       GetTensorDims(op_context.output))
 
   switch (op_context.input->type) {
@@ -231,10 +239,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_STRIDED_SLICE(reference_ops, int64_t);
       }
       break;
+    case kTfLiteUInt8:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, uint8_t);
+      }
+      break;
     default:
       context->ReportError(context,
-                           "Type is currently not supported "
-                           "by StridedSlice.");
+                           "Type %d is currently not supported "
+                           "by StridedSlice.",
+                           op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_STRIDED_SLICE

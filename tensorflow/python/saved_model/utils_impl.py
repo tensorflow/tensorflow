@@ -18,15 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.saved_model import constants
+from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TensorInfo helpers.
 
 
+@tf_export("saved_model.utils.build_tensor_info")
 def build_tensor_info(tensor):
   """Utility function to build TensorInfo proto.
 
@@ -50,6 +57,7 @@ def build_tensor_info(tensor):
   return tensor_info
 
 
+@tf_export("saved_model.utils.get_tensor_from_tensor_info")
 def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
   """Returns the Tensor or SparseTensor described by a TensorInfo proto.
 
@@ -81,3 +89,45 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
         _get_tensor(tensor_info.coo_sparse.dense_shape_tensor_name))
   else:
     raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+
+
+# Path helpers.
+
+
+def get_or_create_variables_dir(export_dir):
+  """Return variables sub-directory, or create one if it doesn't exist."""
+  variables_dir = get_variables_dir(export_dir)
+  if not file_io.file_exists(variables_dir):
+    file_io.recursive_create_dir(variables_dir)
+  return variables_dir
+
+
+def get_variables_dir(export_dir):
+  """Return variables sub-directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir),
+      compat.as_text(constants.VARIABLES_DIRECTORY))
+
+
+def get_variables_path(export_dir):
+  """Return the variables path, used as the prefix for checkpoint files."""
+  return os.path.join(
+      compat.as_text(get_variables_dir(export_dir)),
+      compat.as_text(constants.VARIABLES_FILENAME))
+
+
+def get_or_create_assets_dir(export_dir):
+  """Return assets sub-directory, or create one if it doesn't exist."""
+  assets_destination_dir = get_assets_dir(export_dir)
+
+  if not file_io.file_exists(assets_destination_dir):
+    file_io.recursive_create_dir(assets_destination_dir)
+
+  return assets_destination_dir
+
+
+def get_assets_dir(export_dir):
+  """Return path to asset directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir),
+      compat.as_text(constants.ASSETS_DIRECTORY))

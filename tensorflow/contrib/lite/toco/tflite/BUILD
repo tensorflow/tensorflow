@@ -24,8 +24,10 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -36,6 +38,7 @@ tf_cc_test(
     srcs = [
         "operator_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":operator",
         "//tensorflow/contrib/lite/toco:tooling_util",
@@ -54,6 +57,7 @@ cc_library(
         "types.h",
     ],
     deps = [
+        "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
     ],
@@ -64,6 +68,7 @@ tf_cc_test(
     srcs = [
         "types_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":types",
         "@com_google_googletest//:gtest_main",
@@ -96,6 +101,7 @@ tf_cc_test(
     srcs = [
         "export_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":export",
         "//tensorflow/contrib/lite/schema:schema_fbs",
@@ -115,9 +121,11 @@ cc_library(
     deps = [
         ":operator",
         ":types",
+        "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/contrib/lite/toco:tooling_util",
+        "//tensorflow/contrib/lite/tools:verifier",
         "@flatbuffers",
     ],
 )
@@ -127,6 +135,7 @@ tf_cc_test(
     srcs = [
         "import_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":import",
         "//tensorflow/contrib/lite:schema_fbs_version",
@@ -134,16 +143,4 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

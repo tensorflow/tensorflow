@@ -159,7 +159,7 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
           const int64 band_start =
               num_lower_diags < 0
                   ? 0
-                  : std::min(n, std::max(0ll, row - num_lower_diags));
+                  : std::min(n, std::max(int64{0}, row - num_lower_diags));
           const int64 band_end =
               num_upper_diags < 0
                   ? n

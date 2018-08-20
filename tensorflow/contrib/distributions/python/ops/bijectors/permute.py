@@ -28,7 +28,8 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -36,7 +37,7 @@ __all__ = [
 ]
 
 
-class Permute(bijector_lib.Bijector):
+class Permute(bijector.Bijector):
   """Permutes the rightmost dimension of a `Tensor`.
 
   ```python
@@ -74,6 +75,14 @@ class Permute(bijector_lib.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, permutation, validate_args=False, name=None):
     """Creates the `Permute` bijector.
 
@@ -114,6 +123,7 @@ class Permute(bijector_lib.Bijector):
         ], permutation)
       self._permutation = permutation
       super(Permute, self).__init__(
+          forward_min_event_ndims=1,
           is_constant_jacobian=True,
           validate_args=validate_args,
           name=name or "permute")
@@ -132,7 +142,10 @@ class Permute(bijector_lib.Bijector):
         axis=-1)
 
   def _inverse_log_det_jacobian(self, y):
-    return constant_op.constant(0., dtype=y.dtype)
+    # is_constant_jacobian = True for this bijector, hence the
+    # `log_det_jacobian` need only be specified for a single input, as this will
+    # be tiled to match `event_ndims`.
+    return constant_op.constant(0., dtype=y.dtype.base_dtype)
 
   def _forward_log_det_jacobian(self, x):
-    return constant_op.constant(0., dtype=x.dtype)
+    return constant_op.constant(0., dtype=x.dtype.base_dtype)

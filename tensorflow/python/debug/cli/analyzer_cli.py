@@ -186,6 +186,15 @@ class DebugAnalyzer(object):
         default="",
         help="List only Tensors passing the filter of the specified name")
     ap.add_argument(
+        "-fenn",
+        "--filter_exclude_node_names",
+        dest="filter_exclude_node_names",
+        type=str,
+        default="",
+        help="When applying the tensor filter, exclude node with names "
+        "matching the regular expression. Applicable only if --tensor_filter "
+        "or -f is used.")
+    ap.add_argument(
         "-n",
         "--node_name_filter",
         dest="node_name_filter",
@@ -484,6 +493,10 @@ class DebugAnalyzer(object):
 
     Returns:
       Output text lines as a RichTextLines object.
+
+    Raises:
+      ValueError: If `--filter_exclude_node_names` is used without `-f` or
+        `--tensor_filter` being used.
     """
 
     # TODO(cais): Add annotations of substrings for dumped tensor names, to
@@ -520,8 +533,15 @@ class DebugAnalyzer(object):
         _add_main_menu(output, node_name=None, enable_list_tensors=False)
         return output
 
-      data_to_show = self._debug_dump.find(filter_callable)
+      data_to_show = self._debug_dump.find(
+          filter_callable,
+          exclude_node_names=parsed.filter_exclude_node_names)
     else:
+      if parsed.filter_exclude_node_names:
+        raise ValueError(
+            "The flag --filter_exclude_node_names is valid only when "
+            "the flag -f or --tensor_filter is used.")
+
       data_to_show = self._debug_dump.dumped_tensor_data
 
     # TODO(cais): Implement filter by lambda on tensor value.

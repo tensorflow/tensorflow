@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 
@@ -65,7 +65,7 @@ class GrpcChannelCache {
   // was created to handle.  Worker names are in the format
   //  /job:<job identifier>/task:<task id>
   // e.g. /job:mnist/task:2
-  virtual void ListWorkers(std::vector<string>* workers) const = 0;
+  virtual void ListWorkers(std::vector<string>* workers) = 0;
 
   // If found, returns a gRPC channel that is connected to the remote
   // worker named by 'target'. 'target' is of the following

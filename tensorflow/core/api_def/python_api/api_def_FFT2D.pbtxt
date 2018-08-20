@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "FFT2D"
+  endpoint {
+    name: "spectral.fft2d"
+  }
+  endpoint {
+    name: "fft2d"
+  }
+}

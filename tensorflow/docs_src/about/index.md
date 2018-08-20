@@ -3,10 +3,9 @@
 This section provides a few documents about TensorFlow itself,
 including the following:
 
-  * @{$roadmap$Roadmap}, which summarizes upcoming additions to TensorFlow.
-  * @{$uses$TensorFlow in Use}, which provides a link to our model zoo and
+  * [TensorFlow in Use](../about/uses.md), which provides a link to our model zoo and
     lists some popular ways that TensorFlow is being used.
-  * @{$bib$TensorFlow White Papers}, which provides abstracts of white papers
+  * [TensorFlow White Papers](../about/bib.md), which provides abstracts of white papers
     about TensorFlow.
-  * @{$attribution$Attribution}, which specifies how to attribute and refer
+  * [Attribution](../about/attribution.md), which specifies how to attribute and refer
     to TensorFlow.

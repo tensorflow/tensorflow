@@ -39,7 +39,7 @@ from tensorflow.python.platform import test
 class AccumulateNBenchmark(test.Benchmark):
 
   def _AccumulateNTemplate(self, inputs, init, shape, validate_shape):
-    var = gen_state_ops._temporary_variable(
+    var = gen_state_ops.temporary_variable(
         shape=shape, dtype=inputs[0].dtype.base_dtype)
     ref = state_ops.assign(var, init, validate_shape=validate_shape)
     update_ops = [
@@ -47,8 +47,7 @@ class AccumulateNBenchmark(test.Benchmark):
             ref, tensor, use_locking=True).op for tensor in inputs
     ]
     with ops.control_dependencies(update_ops):
-      return gen_state_ops._destroy_temporary_variable(
-          ref, var_name=var.op.name)
+      return gen_state_ops.destroy_temporary_variable(ref, var_name=var.op.name)
 
   def _AccumulateNInitializedWithFirst(self, inputs):
     return self._AccumulateNTemplate(
@@ -60,7 +59,7 @@ class AccumulateNBenchmark(test.Benchmark):
   def _AccumulateNInitializedWithMerge(self, inputs):
     return self._AccumulateNTemplate(
         inputs,
-        init=array_ops.zeros_like(gen_control_flow_ops._merge(inputs)[0]),
+        init=array_ops.zeros_like(gen_control_flow_ops.merge(inputs)[0]),
         shape=tensor_shape.vector(0),
         validate_shape=False)
 

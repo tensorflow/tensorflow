@@ -79,9 +79,10 @@ class MaskedAutoregressiveFlowTest(test_util.VectorDistributionTestHelpers,
       forward_x = ma.forward(x)
       # Use identity to invalidate cache.
       inverse_y = ma.inverse(array_ops.identity(forward_x))
-      fldj = ma.forward_log_det_jacobian(x)
+      fldj = ma.forward_log_det_jacobian(x, event_ndims=1)
       # Use identity to invalidate cache.
-      ildj = ma.inverse_log_det_jacobian(array_ops.identity(forward_x))
+      ildj = ma.inverse_log_det_jacobian(
+          array_ops.identity(forward_x), event_ndims=1)
       variables.global_variables_initializer().run()
       [
           forward_x_,

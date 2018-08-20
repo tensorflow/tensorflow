@@ -1,16 +1,18 @@
 index.md
 
 ### Python
-install_linux.md
-install_mac.md
-install_windows.md
-install_sources.md
+install_linux.md: Ubuntu
+install_mac.md: MacOS
+install_windows.md: Windows
+install_raspbian.md: Raspbian
+install_sources.md: From source
+install_sources_windows.md: From source on Windows
 >>>
 migration.md
 
 ### Other Languages
-install_java.md
-install_go.md
-install_c.md
+install_java.md: Java
+install_go.md: Go
+install_c.md: C
 
 

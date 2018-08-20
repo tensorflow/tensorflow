@@ -42,11 +42,12 @@ If you've finished walking through the quick start guide, you may want to try bu
 
 ### Build libhexagon\_nn\_skel.so
 
-Download Hexagon NN library from codeaurora.org and build it.
+Download Hexagon NN library from codeaurora.org and build it. For Hexagon SDK 3.0, we need use the compatible version([721b2d58f](https://source.codeaurora.org/quic/hexagon_nn/nnlib/commit/?id=721b2d58f0f4e2d5b182f41e6b7c4db5356bf0fb)) of nnlib.
 
 ```shell
 git clone https://source.codeaurora.org/quic/hexagon_nn/nnlib
 cd nnlib
+git reset 721b2d58f --hard
 ```
 
 Just follow the instructions in `README.HOW_TO_BUILD`. You can find the file `libhexagon_nn_skel.so` in `hexagon_Release_dynamic_toolv72_v60/ship`.
@@ -141,16 +142,16 @@ Configuring the installer for this system's environment...
 
 Launching installer...
 
-An internal LaunchAnywhere application error has occured and this application cannot proceed. (LAX)
+An internal LaunchAnywhere application error has occurred and this application cannot proceed. (LAX)
 
 Stack Trace:
 java.lang.IllegalArgumentException: Malformed \uxxxx encoding.
-	at java.util.Properties.loadConvert(Properties.java:574)
-	at java.util.Properties.load0(Properties.java:391)
-	at java.util.Properties.load(Properties.java:317)
-	at com.zerog.common.java.util.PropertiesUtil.loadProperties(Unknown Source)
-	at com.zerog.lax.LAX.<init>(Unknown Source)
-	at com.zerog.lax.LAX.main(Unknown Source)
+  at java.util.Properties.loadConvert(Properties.java:574)
+  at java.util.Properties.load0(Properties.java:391)
+  at java.util.Properties.load(Properties.java:317)
+  at com.zerog.common.java.util.PropertiesUtil.loadProperties(Unknown Source)
+  at com.zerog.lax.LAX.<init>(Unknown Source)
+  at com.zerog.lax.LAX.main(Unknown Source)
 ```
 
 It can be solved by temporarily assigning the `PS1` environment variable to something simple, such as '$'.

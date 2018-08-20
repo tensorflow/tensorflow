@@ -21,6 +21,7 @@
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace tensorforest {

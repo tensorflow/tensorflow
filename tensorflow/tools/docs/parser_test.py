@@ -24,6 +24,7 @@ import sys
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import parser
 
 
@@ -37,11 +38,25 @@ def test_function_with_args_kwargs(unused_arg, *unused_args, **unused_kwargs):
   pass
 
 
-class TestClass(object):
+class ParentClass(object):
+
+  @doc_controls.do_not_doc_inheritable
+  def hidden_method(self):
+    pass
+
+
+class TestClass(ParentClass):
   """Docstring for TestClass itself."""
 
   def a_method(self, arg='default'):
     """Docstring for a method."""
+    pass
+
+  def hidden_method(self):
+    pass
+
+  @doc_controls.do_not_generate_docs
+  def hidden_method2(self):
     pass
 
   class ChildClass(object):
@@ -76,8 +91,9 @@ class ParserTest(googletest.TestCase):
         pass
 
     string = (
-        'A @{tf.reference}, another @{tf.reference}, a member '
-        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in it}.')
+        'A @{tf.reference}, another @{tf.reference$with\nnewline}, a member '
+        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in '
+        'it}.')
     duplicate_of = {'tf.third': 'tf.fourth'}
     index = {'tf.reference': HasOneMember,
              'tf.reference.foo': HasOneMember.foo,
@@ -93,7 +109,7 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('A <a href="../../tf/reference.md">'
                      '<code>tf.reference</code></a>, '
                      'another <a href="../../tf/reference.md">'
-                     '<code>tf.reference</code></a>, '
+                     'with\nnewline</a>, '
                      'a member <a href="../../tf/reference.md#foo">'
                      '<code>tf.reference.foo</code></a>, '
                      'and a <a href="../../tf/fourth.md">link '
@@ -173,6 +189,104 @@ class ParserTest(googletest.TestCase):
 
     # Make sure this file is contained as the definition location.
     self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
+
+  def test_docs_for_class_should_skip(self):
+
+    class Parent(object):
+
+      @doc_controls.do_not_doc_inheritable
+      def a_method(self, arg='default'):
+        pass
+
+    class Child(Parent):
+
+      def a_method(self, arg='default'):
+        pass
+
+    index = {
+        'Child': Child,
+        'Child.a_method': Child.a_method,
+    }
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    tree = {
+        'Child': ['a_method'],
+    }
+
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
+
+    page_info = parser.docs_for_object(
+        full_name='Child', py_object=Child, parser_config=parser_config)
+
+    # Make sure the `a_method` is not present
+    self.assertEqual(0, len(page_info.methods))
+
+  def test_docs_for_message_class(self):
+
+    class CMessage(object):
+
+      def hidden(self):
+        pass
+
+    class Message(object):
+
+      def hidden2(self):
+        pass
+
+    class MessageMeta(object):
+
+      def hidden3(self):
+        pass
+
+    class ChildMessage(CMessage, Message, MessageMeta):
+
+      def my_method(self):
+        pass
+
+    index = {
+        'ChildMessage': ChildMessage,
+        'ChildMessage.hidden': ChildMessage.hidden,
+        'ChildMessage.hidden2': ChildMessage.hidden2,
+        'ChildMessage.hidden3': ChildMessage.hidden3,
+        'ChildMessage.my_method': ChildMessage.my_method,
+    }
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    tree = {'ChildMessage': ['hidden', 'hidden2', 'hidden3', 'my_method']}
+
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
+
+    page_info = parser.docs_for_object(
+        full_name='ChildMessage',
+        py_object=ChildMessage,
+        parser_config=parser_config)
+
+    self.assertEqual(1, len(page_info.methods))
+    self.assertEqual('my_method', page_info.methods[0].short_name)
 
   def test_docs_for_module(self):
     # Get the current module.
@@ -397,7 +511,6 @@ class ParserTest(googletest.TestCase):
     self.assertIn('<code>test_function', docs)
 
   def test_argspec_for_functools_partial(self):
-
     # pylint: disable=unused-argument
     def test_function_for_partial1(arg1, arg2, kwarg1=1, kwarg2=2):
       pass
@@ -408,42 +521,95 @@ class ParserTest(googletest.TestCase):
 
     # pylint: disable=protected-access
     # Make sure everything works for regular functions.
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
-                                  None, (1, 2))
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(1, 2),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     self.assertEqual(expected, parser._get_arg_spec(test_function_for_partial1))
 
     # Make sure doing nothing works.
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
-                                  None, (1, 2))
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(1, 2),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting args from the front works.
-    expected = tf_inspect.ArgSpec(['arg2', 'kwarg1', 'kwarg2'], None, None,
-                                  (1, 2))
+    expected = tf_inspect.FullArgSpec(
+        args=['arg2', 'kwarg1', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(1, 2),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.ArgSpec(['kwarg2',], None, None, (2,))
+    expected = tf_inspect.FullArgSpec(
+        args=['kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(2,),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, 1, 2, 3)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting kwargs works.
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg2'], None, None, (2,))
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(2,),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, kwarg1=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1'], None, None, (1,))
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg1'],
+        varargs=None,
+        varkw=None,
+        defaults=(1,),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.ArgSpec(['arg1'], None, None, ())
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1'],
+        varargs=None,
+        varkw=None,
+        defaults=(),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1,
                                 arg2=0, kwarg1=0, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure *args, *kwargs is accounted for.
-    expected = tf_inspect.ArgSpec([], 'my_args', 'my_kwargs', ())
+    expected = tf_inspect.FullArgSpec(
+        args=[],
+        varargs='my_args',
+        varkw='my_kwargs',
+        defaults=(),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial2, 0, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
@@ -523,10 +689,6 @@ class TestParseFunctionDetails(googletest.TestCase):
 class TestGenerateSignature(googletest.TestCase):
 
   def test_known_object(self):
-    if sys.version_info >= (3, 0):
-      print('Warning: Doc generation is not supported from python3.')
-      return
-
     known_object = object()
     reverse_index = {id(known_object): 'location.of.object.in.api'}
 

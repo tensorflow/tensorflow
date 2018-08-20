@@ -16,20 +16,6 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["LICENSE"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "kernels/v4/*",
-            "proto/*",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 # ---------------------------------- V2 ops ------------------------------------------#
 filegroup(
     name = "v2_op_sources",
@@ -237,7 +223,6 @@ tf_kernel_library(
         ":model_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -333,7 +318,6 @@ tf_kernel_library(
         ":stats_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -497,6 +481,7 @@ py_library(
         ":tensor_forest_v4_ops_py",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_py",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -530,6 +515,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
+        "//tensorflow/contrib/estimator:head",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
@@ -552,7 +538,6 @@ py_test(
     srcs = ["client/random_forest_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_windows",
         "nomac",  # b/63258195
         "notsan",
     ],

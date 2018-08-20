@@ -26,8 +26,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -41,6 +43,9 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Any values less than `clip_value_min` are set to `clip_value_min`. Any values
   greater than `clip_value_max` are set to `clip_value_max`.
 
+  Note: `clip_value_min` needs to be smaller or equal to `clip_value_max` for
+  correct results.
+
   Args:
     t: A `Tensor`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -53,7 +58,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     A clipped `Tensor`.
 
   Raises:
-    ValueError: if the clip tensors would trigger array broadcasting
+    ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
   """
   with ops.name_scope(name, "clip_by_value",
@@ -70,6 +75,35 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     _ = t.shape.merge_with(t_max.shape)
 
   return t_max
+  # TODO(scottzhu): switch to use new implmentation in 2 weeks.
+    # return gen_math_ops.clip_by_value(
+    #     t, clip_value_min, clip_value_max, name=name)
+
+
+# TODO(scottzhu): switch to use new implmentation in 2 weeks.
+# @ops.RegisterGradient("ClipByValue")
+def _clip_by_value_grad(op, grad):
+  """Returns grad of clip_by_value."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  z = op.inputs[2]
+  gdtype = grad.dtype
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  sz = array_ops.shape(z)
+  gradshape = array_ops.shape(grad)
+  zeros = array_ops.zeros(gradshape, gdtype)
+  xymask = math_ops.less(x, y)
+  xzmask = math_ops.greater(x, z)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  rx, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
+  xgrad = array_ops.where(math_ops.logical_or(xymask, xzmask), zeros, grad)
+  ygrad = array_ops.where(xymask, grad, zeros)
+  zgrad = array_ops.where(xzmask, grad, zeros)
+  gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
+  gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
+  gz = array_ops.reshape(math_ops.reduce_sum(zgrad, rz), sz)
+  return (gx, gy, gz)
 
 
 @tf_export("clip_by_norm")
@@ -110,7 +144,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    l2norm = math_ops.sqrt(math_ops.reduce_sum(t * t, axes, keep_dims=True))
+    l2norm = math_ops.sqrt(math_ops.reduce_sum(t * t, axes, keepdims=True))
     intermediate = t * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
@@ -213,6 +247,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Raises:
     TypeError: If `t_list` is not a sequence.
+    InvalidArgumentError: If global norm is not finite.
   """
   if (not isinstance(t_list, collections.Sequence)
       or isinstance(t_list, six.string_types)):
@@ -220,6 +255,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
+  use_norm = numerics.verify_tensor_all_finite(use_norm,
+                                               "Found Inf or NaN global norm.")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:

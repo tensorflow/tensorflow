@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -79,6 +80,10 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"Size", NC_METADATA},
         {"Shape", NC_METADATA},
         {"Rank", NC_METADATA},
+        {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
+        {"CollectiveReduce", NC_COLLECTIVE},
+        {"CollectiveBcastSend", NC_COLLECTIVE},
+        {"CollectiveBcastRecv", NC_COLLECTIVE},
     });
 
 #undef REF_CLASS
@@ -261,6 +266,28 @@ Status Node::input_node(int idx, const Node** const_n) const {
   return Status::OK();
 }
 
+// InputTensor
+
+bool InputTensor::operator==(const InputTensor& other) const {
+  return node == other.node && index == other.index;
+}
+
+uint64 InputTensor::Hash::operator()(InputTensor const& s) const {
+  return Hash64Combine(std::hash<const Node*>()(s.node),
+                       std::hash<int>()(s.index));
+}
+
+// OutputTensor
+
+bool OutputTensor::operator==(const OutputTensor& other) const {
+  return node == other.node && index == other.index;
+}
+
+uint64 OutputTensor::Hash::operator()(OutputTensor const& s) const {
+  return Hash64Combine(std::hash<const Node*>()(s.node),
+                       std::hash<int>()(s.index));
+}
+
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
@@ -339,7 +366,7 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   return node;
 }
 
-Node* Graph::CopyNode(Node* node) {
+Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
   Node* copy = AllocateNode(node->props_, node);
@@ -522,6 +549,12 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
   ToGraphDefSubRange(graph_def, 0);
 }
 
+GraphDef Graph::ToGraphDefDebug() const {
+  GraphDef ret;
+  ToGraphDef(&ret);
+  return ret;
+}
+
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
@@ -561,6 +594,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
         inputs[edge->dst_input()] = edge;
       }
     }
+    // Sort the control inputs for more predictable serialization.
+    std::sort(inputs.begin() + node->num_inputs(), inputs.end(),
+              [](const Edge* a, const Edge* b) -> bool {
+                return a->src()->name() < b->src()->name();
+              });
     node_def->clear_input();
     node_def->mutable_input()->Reserve(inputs.size());
 
@@ -683,7 +721,7 @@ Status Graph::AddWhileContext(StringPiece frame_name,
                               std::vector<OutputTensor> body_outputs,
                               WhileContext** result) {
   auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
-      frame_name.ToString(),
+      std::string(frame_name),
       WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
                    cond_output, std::move(body_inputs),
                    std::move(body_outputs))));

@@ -278,13 +278,8 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegexp(
         TypeError,
-        r"tensor_list argument must be a list. Got \"EagerTensor\""):
+        r"tensors argument must be a list or a tuple. Got.*EagerTensor"):
       pywrap_tensorflow.TFE_Py_TensorShapeSlice(t1, -2)
-
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"tensor_list argument must be a list. Got \"tuple\""):
-      pywrap_tensorflow.TFE_Py_TensorShapeSlice((t1,), -2)
 
   def testNegativeSliceDim(self):
     t1 = _create_tensor([1, 2], dtype=dtypes.int32)
@@ -296,6 +291,11 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
   def testUnicode(self):
     self.assertEqual(constant_op.constant(u"asdf").numpy(), b"asdf")
+
+  def testFloatTensor(self):
+    self.assertEqual(dtypes.float64, _create_tensor(np.float64()).dtype)
+    self.assertEqual(dtypes.float32, _create_tensor(np.float32()).dtype)
+    self.assertEqual(dtypes.float32, _create_tensor(0.0).dtype)
 
   def testSliceDimOutOfRange(self):
     t1 = _create_tensor([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int32)

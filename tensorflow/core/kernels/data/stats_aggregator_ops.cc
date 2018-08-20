@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/data/stats_aggregator.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 
 #include <memory>
 
@@ -20,10 +20,24 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace {
+
+static mutex* get_counters_map_lock() {
+  static mutex counters_map_lock(LINKER_INITIALIZED);
+  return &counters_map_lock;
+}
+
+static std::unordered_map<string, monitoring::Counter<1>*>* get_counters_map() {
+  static std::unordered_map<string, monitoring::Counter<1>*>* counters_map =
+      new std::unordered_map<string, monitoring::Counter<1>*>;
+  return counters_map;
+}
 
 class StatsAggregatorImpl : public StatsAggregator {
  public:
@@ -38,6 +52,11 @@ class StatsAggregatorImpl : public StatsAggregator {
     }
   }
 
+  void AddScalar(const string& name, float value) override {
+    mutex_lock l(mu_);
+    scalars_[name] = value;
+  }
+
   void EncodeToProto(Summary* out_summary) override {
     mutex_lock l(mu_);
     for (const auto& pair : histograms_) {
@@ -47,13 +66,34 @@ class StatsAggregatorImpl : public StatsAggregator {
       Summary::Value* value = out_summary->add_value();
       value->set_tag(name);
       histogram.EncodeToProto(value->mutable_histo(),
-                              true /* preserve_zero_buckets */);
+                              false /* doesn't preserve zero buckets */);
     }
+    for (const auto& pair : scalars_) {
+      Summary::Value* value = out_summary->add_value();
+      value->set_tag(pair.first);
+      value->set_simple_value(pair.second);
+    }
+  }
+
+  void IncrementCounter(const string& name, const string& label,
+                        int64 val) override {
+    mutex_lock l(*get_counters_map_lock());
+    auto counters_map = get_counters_map();
+    if (counters_map->find(name) == counters_map->end()) {
+      counters_map->emplace(
+          name, monitoring::Counter<1>::New(
+                    /*streamz name*/ "/tensorflow/" + name,
+                    /*streamz description*/
+                    name + " generated or consumed by the component.",
+                    /*streamz label name*/ "component_descriptor"));
+    }
+    counters_map->at(name)->GetCell(label)->IncrementBy(val);
   }
 
  private:
   mutex mu_;
   std::unordered_map<string, histogram::Histogram> histograms_ GUARDED_BY(mu_);
+  std::unordered_map<string, float> scalars_ GUARDED_BY(mu_);
   TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorImpl);
 };
 

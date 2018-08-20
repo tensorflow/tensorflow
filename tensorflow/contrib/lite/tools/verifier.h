@@ -19,14 +19,33 @@ limitations under the License.
 #include <stdio.h>
 
 #include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/model.h"
 
 namespace tflite {
+
+class AlwaysTrueResolver : public OpResolver {
+ public:
+  AlwaysTrueResolver() {}
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override {
+    static TfLiteRegistration null_registration = {nullptr, nullptr, nullptr,
+                                                   nullptr};
+    return &null_registration;
+  }
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+    static TfLiteRegistration null_registration = {nullptr, nullptr, nullptr,
+                                                   nullptr};
+    return &null_registration;
+  }
+};
 
 // Verifies the integrity of a Tensorflow Lite flatbuffer model file.
 // Currently, it verifies:
 // * The file is following a legit flatbuffer schema.
 // * The model is in supported version.
-bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter);
+// * All ops used in the model are supported by OpResolver.
+bool Verify(const void* buf, size_t len, const OpResolver& resolver,
+            ErrorReporter* error_reporter);
 
 }  // namespace tflite
 

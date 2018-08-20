@@ -39,7 +39,7 @@ class TestableSizeTrackingAllocator : public Allocator {
     port::Free(ptr);
   }
   bool TracksAllocationSizes() override { return true; }
-  size_t RequestedSize(void* ptr) override {
+  size_t RequestedSize(const void* ptr) override {
     const auto& iter = size_map_.find(ptr);
     EXPECT_NE(size_map_.end(), iter);
     return iter->second;
@@ -47,7 +47,7 @@ class TestableSizeTrackingAllocator : public Allocator {
   void GetStats(AllocatorStats* stats) override { stats->Clear(); }
 
  private:
-  std::unordered_map<void*, size_t> size_map_;
+  std::unordered_map<const void*, size_t> size_map_;
 };
 
 class NoMemoryAllocator : public Allocator {

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -35,7 +34,7 @@ from tensorflow.python.training import gradient_descent
 
 class OptimizerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -44,11 +43,10 @@ class OptimizerTest(test.TestCase):
                                                     name='a_%d' % i)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
                                                     name='b_%d' % i)
-      def loss(v0, v1):
-        return 5 * v0 + 3 * v1
+      def loss():
+        return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
       # Note that for eager execution, minimize expects a function instead of a
       # Tensor.
-      cost = loss if context.in_eager_mode() else loss(var0, var1)
       global_step = resource_variable_ops.ResourceVariable(
           array_ops.zeros([], dtypes.int64), name='global_step_%d' % i)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
@@ -58,7 +56,7 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([1.0, 2.0], self.evaluate(var0))
       self.assertAllClose([3.0, 4.0], self.evaluate(var1))
       # Run 1 step of sgd through optimizer
-      opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
+      opt_op = sgd_op.minimize(loss, global_step, [var0, var1])
       self.evaluate(opt_op)
       # Validate updated params
       self.assertAllClose([-14., -13.], self.evaluate(var0))
@@ -114,7 +112,7 @@ class OptimizerTest(test.TestCase):
         self.assertAllClose([3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)],
                             var1.eval())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoVariables(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       # pylint: disable=cell-var-from-loop
@@ -125,12 +123,11 @@ class OptimizerTest(test.TestCase):
             [3.0, 4.0], dtype=dtype, trainable=False, name='b')
         return 5 * var0 + var1
       # pylint: enable=cell-var-from-loop
-      cost = loss if context.in_eager_mode() else loss()
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
       with self.assertRaisesRegexp(ValueError, 'No.*variables'):
-        sgd_op.minimize(cost)
+        sgd_op.minimize(loss)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -140,16 +137,15 @@ class OptimizerTest(test.TestCase):
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
                                                     name='b%d' % i)
       # pylint: disable=cell-var-from-loop
-      def loss(_):
+      def loss():
         return 5 * var0
       # pylint: enable=cell-var-from-loop
-      cost = loss if context.in_eager_mode() else loss(var1)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
       with self.assertRaisesRegexp(ValueError, 'No gradients'):
         # var1 has no gradient
-        sgd_op.minimize(cost, var_list=[var1])
+        sgd_op.minimize(loss, var_list=[var1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -158,15 +154,14 @@ class OptimizerTest(test.TestCase):
                                                     name='a_%d' % i)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
                                                     name='b_%d' % i)
-      def loss(unused_v1, unused_v2):
+      def loss():
         return constant_op.constant(5.0)
-      cost = loss if context.in_eager_mode() else loss(var0, var1)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
       with self.assertRaisesRegexp(ValueError,
                                    'No gradients provided for any variable'):
-        sgd_op.minimize(cost, var_list=[var0, var1])
+        sgd_op.minimize(loss, var_list=[var0, var1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -180,7 +175,7 @@ class OptimizerTest(test.TestCase):
                                    'No gradients provided for any variable'):
         sgd_op.apply_gradients([(None, var0), (None, var1)])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -189,11 +184,10 @@ class OptimizerTest(test.TestCase):
                                                     name='a%d' % i)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
                                                     name='b%d' % i)
-      def loss(v0, v1):
-        return 5 * v0 + 3 * v1
-      cost = loss if context.in_eager_mode() else loss(var0, var1)
+      def loss():
+        return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
-      grads_and_vars = sgd_op.compute_gradients(cost, [var0, var1])
+      grads_and_vars = sgd_op.compute_gradients(loss, [var0, var1])
       # Convert gradients to tf.Variables
       converted_grads = [
           resource_variable_ops.ResourceVariable(array_ops.zeros([2], dtype),
@@ -220,6 +214,21 @@ class OptimizerTest(test.TestCase):
       # Validate updated params
       self.assertAllClose([-14., -13.], self.evaluate(var0))
       self.assertAllClose([-6., -5.], self.evaluate(var1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComputeGradientsWithTensors(self):
+    x = ops.convert_to_tensor(1.0)
+    def f():
+      return x * x
+    sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
+    grads_and_vars = sgd_op.compute_gradients(f, [x])
+    self.assertEqual(1, len(grads_and_vars))
+    grad, x_as_var = grads_and_vars[0]
+    self.assertIs(x, x_as_var)
+    self.assertEqual(2.0, self.evaluate(grad))
+
+    with self.assertRaises(NotImplementedError):
+      sgd_op.apply_gradients(grads_and_vars)
 
   def testTrainOp(self):
     with self.test_session():

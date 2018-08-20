@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DecodeCompressed"
+  endpoint {
+    name: "io.decode_compressed"
+  }
+  endpoint {
+    name: "decode_compressed"
+    deprecated: true
+  }
+}

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -61,12 +62,12 @@ op {
 )";
 
 void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(s.contains(expected))
+  EXPECT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
 void ExpectDoesNotHaveSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_FALSE(s.contains(expected))
+  EXPECT_FALSE(str_util::StrContains(s, expected))
       << "'" << s << "' contains '" << expected << "'";
 }
 

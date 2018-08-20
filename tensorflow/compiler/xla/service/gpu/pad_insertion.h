@@ -31,6 +31,7 @@ class PadInsertion : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  StatusOr<bool> RunOnComputation(HloComputation* computation);
   // Returns if any changes are made to the parent computation.
   bool CanonicalizeForwardConvolution(HloInstruction* conv);
   bool CanonicalizeBackwardFilterConvolution(HloInstruction* backward_conv);

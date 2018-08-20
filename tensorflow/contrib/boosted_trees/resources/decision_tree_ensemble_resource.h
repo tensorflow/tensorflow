@@ -126,7 +126,8 @@ class DecisionTreeEnsembleResource : public StampedResource {
       return;
     }
     used_ids->Add(handler_id);
-    std::rotate(first, used_ids->end() - 1, used_ids->end());
+    // Keep the list of used handlers sorted.
+    std::sort(used_ids->begin(), used_ids->end());
   }
 
   std::vector<int64> GetUsedHandlers() const {

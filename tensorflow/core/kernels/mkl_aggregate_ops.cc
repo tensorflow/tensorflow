@@ -24,20 +24,20 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::stream;
 using mkldnn::sum;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
@@ -285,7 +285,7 @@ class MklAddNOp : public OpKernel {
   } MklAddNOpContext;
 };
 
-#else  // INTEL_MKL_ML
+#else  // INTEL_MKL_ML_ONLY
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
  public:
@@ -318,9 +318,9 @@ class MklAddNOp : public OpKernel {
       // if the shapes of two tensors are not same raise op error
       TensorShape src1_shape, src2_shape;
       src1_shape = input1_in_mkl_format ? src1_mkl_shape.GetTfShape()
-                  : src1_tensor.shape();
+                                        : src1_tensor.shape();
       src2_shape = input2_in_mkl_format ? src2_mkl_shape.GetTfShape()
-                  : src2_tensor.shape();
+                                        : src2_tensor.shape();
 
       if (!src1_shape.IsSameSize(src2_shape)) {
         ctx->SetStatus(errors::InvalidArgument(
@@ -333,7 +333,7 @@ class MklAddNOp : public OpKernel {
 
       if (!input1_in_mkl_format && src1_dims_size == 0) {
         Tensor* dst_tensor = nullptr;
-        MklShape mkl_shape_dst;
+        MklDnnShape mkl_shape_dst;
         mkl_shape_dst.SetMklTensor(false);
         AllocateOutputSetMklShape(ctx, output_idx, &dst_tensor,
                                   src1_tensor.shape(), mkl_shape_dst);
@@ -347,7 +347,7 @@ class MklAddNOp : public OpKernel {
       if (!input1_in_mkl_format && !input2_in_mkl_format) {
         if (src1_tensor.shape().num_elements() == 0) {
           Tensor* dst_tensor = nullptr;
-          MklShape mkl_shape_dst;
+          MklDnnShape mkl_shape_dst;
           mkl_shape_dst.SetMklTensor(false);
           AllocateOutputSetMklShape(ctx, output_idx, &dst_tensor,
                                     src1_tensor.shape(), mkl_shape_dst);
@@ -444,11 +444,10 @@ class MklAddNOp : public OpKernel {
       // atleast one input is in MKL format, we choose output descriptor for
       // reorder.
       std::vector<primitive::at> inputs;
-      std::vector<primitive> net;
       // Check if actual input format of the tensor is different than common_pd
       // we told MKLDNN. In that case, we will need reorder.
-      src1.CheckReorderToOpMem(srcs_pd[0], &net);
-      src2.CheckReorderToOpMem(srcs_pd[1], &net);
+      src1.CheckReorderToOpMem(srcs_pd[0]);
+      src2.CheckReorderToOpMem(srcs_pd[1]);
       inputs.push_back(src1.GetOpMem());
       inputs.push_back(src2.GetOpMem());
 
@@ -481,6 +480,7 @@ class MklAddNOp : public OpKernel {
       dst.SetUsrMemDataHandle(dst_tensor);
 
       // Create Sum op, and submit net for execution.
+      std::vector<primitive> net;
       net.push_back(sum(sum_pd, inputs, dst.GetOpMem()));
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {

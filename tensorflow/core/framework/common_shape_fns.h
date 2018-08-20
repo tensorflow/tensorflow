@@ -265,9 +265,30 @@ Status ConcatShape(shape_inference::InferenceContext* c,
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
+// Shape function for binary operators that broadcast their inputs
+// and with output to output_index.
+// Note: out cannot be NULL.
+Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
+                                            ShapeHandle shape_x,
+                                            ShapeHandle shape_y,
+                                            ShapeHandle* out);
+
+// Shape function for binary operators that broadcast their inputs
+// and with output to output_index.
+inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
+                                             int output_index) {
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(
+      BroadcastBinaryOpOutputShapeFnHelper(c, c->input(0), c->input(1), &out));
+  c->set_output(output_index, out);
+  return Status::OK();
+}
+
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
-Status BroadcastBinaryOpShapeFn(InferenceContext* c);
+inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+  return BroadcastBinaryOpOutputShapeFn(c, 0);
+}
 
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);
@@ -282,6 +303,9 @@ Status ScatterNdUpdateShape(InferenceContext* c);
 
 // Shape function for ops with an explicit "shape" attribute.
 Status ExplicitShape(InferenceContext* c);
+
+// Shape function for multiple-output ops with an explicit "shapes" attribute.
+Status ExplicitShapes(InferenceContext* c);
 
 }  // namespace shape_inference
 

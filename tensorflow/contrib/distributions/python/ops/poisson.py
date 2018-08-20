@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Poisson",
@@ -35,9 +36,15 @@ __all__ = [
 
 
 _poisson_sample_note = """
-Note that the input value must be a non-negative floating point tensor with
-dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
-legal if it is non-negative and its components are equal to integer values.
+The Poisson distribution is technically only defined for non-negative integer
+values. When `validate_args=False`, non-integral inputs trigger an assertion.
+
+When `validate_args=False` calculations are otherwise unchanged despite
+integral or non-integral inputs.
+
+When `validate_args=False`, evaluating the pmf at non-integral values,
+corresponds to evaluations of an unnormalized distribution, that does not
+correspond to evaluations of the cdf.
 """
 
 
@@ -59,6 +66,14 @@ class Poisson(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                rate=None,
                log_rate=None,
@@ -87,8 +102,8 @@ class Poisson(distribution.Distribution):
       TypeError: if `rate` is not a float-type.
       TypeError: if `log_rate` is not a float-type.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[rate]) as name:
       if (rate is None) == (log_rate is None):
         raise ValueError("Must specify exactly one of `rate` and `log_rate`.")
       elif log_rate is None:
@@ -150,10 +165,6 @@ class Poisson(distribution.Distribution):
   def _cdf(self, x):
     if self.validate_args:
       x = distribution_util.embed_check_nonnegative_integer_form(x)
-    else:
-      # Whether or not x is integer-form, the following is well-defined.
-      # However, scipy takes the floor, so we do too.
-      x = math_ops.floor(x)
     return math_ops.igammac(1. + x, self.rate)
 
   def _log_normalization(self):
@@ -162,9 +173,6 @@ class Poisson(distribution.Distribution):
   def _log_unnormalized_prob(self, x):
     if self.validate_args:
       x = distribution_util.embed_check_nonnegative_integer_form(x)
-    else:
-      # For consistency with cdf, we take the floor.
-      x = math_ops.floor(x)
     return x * self.log_rate - math_ops.lgamma(1. + x)
 
   def _mean(self):

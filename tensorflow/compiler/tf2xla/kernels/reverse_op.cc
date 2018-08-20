@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -48,7 +49,7 @@ class ReverseOp : public XlaOpKernel {
       ctx->SetOutput(0, ctx->Input(0));
       return;
     }
-    // ComputationBuilder::Rev() requires concrete values for dimensions arg.
+    // XlaBuilder::Rev() requires concrete values for dimensions arg.
     xla::Literal lax;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {x_shape.dims()}, &lax));
     std::vector<bool> revdims(x_shape.dims());
@@ -62,7 +63,7 @@ class ReverseOp : public XlaOpKernel {
       }
     }
 
-    ctx->SetOutput(0, ctx->builder()->Rev(ctx->Input(0), dimensions));
+    ctx->SetOutput(0, xla::Rev(ctx->Input(0), dimensions));
   }
 };
 
@@ -90,17 +91,31 @@ class ReverseV2Op : public XlaOpKernel {
       ctx->SetOutput(0, ctx->Input(0));
       return;
     }
-    // ComputationBuilder::Rev() requires concrete values for dimensions arg.
+    // XlaBuilder::Rev() requires concrete values for dimensions arg.
     std::vector<int64> axes;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &axes));
 
+    // witnessed_axes is used to ensure that the same axis is not marked to be
+    // reversed multiple times.
+    gtl::InlinedVector<bool, 8> witnessed_axes(x_shape.dims(), false);
+
     for (int d = 0; d < axes.size(); ++d) {
-      OP_REQUIRES(ctx, (0 <= axes[d]) && (axes[d] < x_shape.dims()),
-                  errors::InvalidArgument(axes[d], " is out of range [0, ",
-                                          x_shape.dims(), ")."));
+      OP_REQUIRES(
+          ctx, (-x_shape.dims() <= axes[d]) && (axes[d] < x_shape.dims()),
+          errors::InvalidArgument(axes[d], " is out of range [-",
+                                  x_shape.dims(), ", ", x_shape.dims(), ")."));
+      // Axes can be negative and are shifted to the canonical index before
+      // being lowered to HLO.
+      if (axes[d] < 0) {
+        axes[d] += x_shape.dims();
+      }
+      OP_REQUIRES(ctx, !witnessed_axes[axes[d]],
+                  errors::InvalidArgument("canonicalized axis ", axes[d],
+                                          " was repeated."));
+      witnessed_axes[axes[d]] = true;
     }
 
-    ctx->SetOutput(0, ctx->builder()->Rev(ctx->Input(0), axes));
+    ctx->SetOutput(0, xla::Rev(ctx->Input(0), axes));
   }
 };
 

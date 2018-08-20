@@ -31,7 +31,6 @@ std::vector<tensorflow::Flag>* flag_objects;
 std::once_flag flags_init;
 
 void SetDebugOptionsDefaults(DebugOptions* flags) {
-  flags->set_xla_enable_fast_math(true);
   flags->set_xla_llvm_enable_alias_scope_metadata(true);
   flags->set_xla_llvm_enable_noalias_metadata(true);
   flags->set_xla_llvm_enable_invariant_load_metadata(true);
@@ -40,10 +39,24 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_cpu_multi_thread_eigen(true);
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   flags->set_xla_eliminate_hlo_implicit_broadcast(true);
-
+#ifdef INTEL_MKL
+  flags->set_xla_cpu_use_mkl_dnn(true);
+#endif  // INTEL_MKL
+  flags->set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
   flags->set_xla_gpu_use_cudnn_batchnorm(false);
+
+  // Run all GPU work on one stream by default.  Using multiple streams
+  // increases memory usage and we lack strong motivating benchmarks for tuning
+  // the heuristics needed to decide when to run on multiple streams.  See
+  // b/77879207.
+  flags->set_xla_gpu_disable_multi_streaming(true);
+
+  // TODO(jlebar): Disable fastmath once doing so is not a performance
+  // regression.
+  flags->set_xla_cpu_enable_fast_math(true);
+  flags->set_xla_gpu_enable_fast_math(true);
 }
 
 // Allocates flag_values and flag_objects; this function must not be called more
@@ -141,10 +154,16 @@ void AllocateFlags() {
           flag_values->mutable_xla_generate_hlo_text_to(),
           "Dump all HLO modules as text into the provided directory path."),
       tensorflow::Flag(
-          "xla_enable_fast_math",
-          bool_setter_for(&DebugOptions::set_xla_enable_fast_math),
-          flag_values->xla_enable_fast_math(),
-          "Enable unsafe fast-math optimizations in the compiler; "
+          "xla_cpu_enable_fast_math",
+          bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
+          flag_values->xla_cpu_enable_fast_math(),
+          "Enable unsafe fast-math optimizations in the CPU compiler; "
+          "this may produce faster code at the expense of some accuracy."),
+      tensorflow::Flag(
+          "xla_gpu_enable_fast_math",
+          bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
+          flag_values->xla_cpu_enable_fast_math(),
+          "Enable unsafe fast-math optimizations in the GPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
       tensorflow::Flag(
           "xla_llvm_enable_alias_scope_metadata",
@@ -221,6 +240,11 @@ void AllocateFlags() {
           flag_values->xla_gpu_disable_multi_streaming(),
           "If true, multi-streaming in the GPU backend is disabled."),
       tensorflow::Flag(
+          "xla_gpu_max_kernel_unroll_factor",
+          int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
+          flag_values->xla_gpu_max_kernel_unroll_factor(),
+          "Specify the maximum kernel unroll factor for the GPU backend."),
+      tensorflow::Flag(
           "xla_dump_optimized_hlo_proto_to",
           flag_values->mutable_xla_dump_optimized_hlo_proto_to(),
           "Dump Hlo after all hlo passes are executed as proto binary into "
@@ -288,6 +312,17 @@ void AllocateFlags() {
           flag_values->xla_gpu_use_cudnn_batchnorm(),
           "Allows the GPU backend to implement batchnorm HLOs using cudnn, "
           "rather than expanding them to a soup of HLOs."),
+      tensorflow::Flag("xla_cpu_use_mkl_dnn",
+                       bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
+                       flag_values->xla_cpu_use_mkl_dnn(),
+                       "Generate calls to MKL-DNN in the CPU backend."),
+      tensorflow::Flag(
+          "xla_gpu_crash_on_verification_failures",
+          bool_setter_for(
+              &DebugOptions::set_xla_gpu_crash_on_verification_failures),
+          flag_values->xla_gpu_crash_on_verification_failures(),
+          "Crashes the program on extra verification failures, e.g. cuDNN "
+          "cross checking failures"),
   });
   ParseFlagsFromEnv(*flag_objects);
 }

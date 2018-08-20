@@ -69,7 +69,7 @@ class UniqueOp : public OpKernel {
                      axis_tensor.dtype() == DT_INT64),
                     errors::InvalidArgument(
                         "axis tensor should be int32 or int64, but got ",
-                        axis_tensor.dtype()));
+                        DataTypeString(axis_tensor.dtype())));
         if (axis_tensor.dtype() == DT_INT32) {
           axis = internal::SubtleMustCopy(axis_tensor.scalar<int32>()());
         } else {
@@ -220,6 +220,16 @@ class UniqueOp : public OpKernel {
                               .TypeConstraint<int32>("out_idx"), \
                           UniqueOp<type, int32>)                 \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("out_idx"), \
+                          UniqueOp<type, int64>);                \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("out_idx"), \
+                          UniqueOp<type, int32>)                 \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \

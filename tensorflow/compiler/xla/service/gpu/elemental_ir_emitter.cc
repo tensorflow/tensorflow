@@ -29,12 +29,13 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/math_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -53,16 +54,22 @@ using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using tensorflow::strings::StrAppend;
 
+namespace {
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  return operand->opcode() == HloOpcode::kConstant &&
-         operand->literal().IsAllFloat(value);
+  if (operand->opcode() == HloOpcode::kConstant &&
+      operand->literal().IsAllFloat(value)) {
+    return true;
+  }
+  return operand->opcode() == HloOpcode::kBroadcast &&
+         IsFPLiteralWithValue(operand->operand(0), value);
 }
+}  // namespace
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
-    llvm::IRBuilder<>* ir_builder, NestedComputer compute_nested)
-    : ElementalIrEmitter(hlo_module_config, module, ir_builder),
+    llvm::IRBuilder<>* b, NestedComputer compute_nested)
+    : ElementalIrEmitter(hlo_module_config, module, b),
       hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)) {}
 
@@ -86,8 +93,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       cast_result_to_fp16 = true;
       for (int64 i = 0; i < operands.size(); ++i) {
         if (input_types[i] == F16) {
-          converted_operands[i] = ir_builder_->CreateFPCast(
-              converted_operands[i], ir_builder_->getFloatTy());
+          converted_operands[i] =
+              b_->CreateFPCast(converted_operands[i], b_->getFloatTy());
           converted_input_types[i] = F32;
         }
       }
@@ -106,7 +113,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
                                      converted_input_types, output_type)
                             .ValueOrDie();
   if (cast_result_to_fp16) {
-    result = ir_builder_->CreateFPCast(result, ir_builder_->getHalfTy());
+    result = b_->CreateFPCast(result, b_->getHalfTy());
   }
   return result;
 }
@@ -203,13 +210,15 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     return make_sqrt();
   }
 
-  if (hlo_module_config_.debug_options().xla_enable_fast_math() &&
-      IsFPLiteralWithValue(rhs, -.5)) {
+  if (IsFPLiteralWithValue(rhs, -.5)) {
     VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
     // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
     // rsqrt.approx instruction.
+    //
+    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
+    // we force-enable it?
     TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
-    return ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
+    return b_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
   }
 
   VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
@@ -227,6 +236,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
   return EmitLibdeviceMathCall("__nv_log", {value}, {prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_log1p", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) const {
   return EmitLibdeviceMathCall("__nv_sin", {value}, {prim_type}, prim_type);
@@ -242,6 +256,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
   return EmitLibdeviceMathCall("__nv_exp", {value}, {prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_expm1", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                                       llvm::Value* lhs,
                                                       llvm::Value* rhs) const {
@@ -255,17 +274,20 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
                                prim_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
-    const HloInstruction* op, llvm::Value* operand_value) const {
-  PrimitiveType input_type = op->operand(0)->shape().element_type();
-  PrimitiveType output_type = op->shape().element_type();
-  switch (op->opcode()) {
-    case HloOpcode::kTanh:
-      return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
-                                   output_type);
-    default:
-      return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
-  }
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  // Emit a fast approximation of tanh instead of calling __nv_tanh.
+  // __nv_tanh is particularly bad because it contains branches, thus
+  // preventing LLVM's load-store vectorizer from working its magic across a
+  // function which contains tanh calls.
+  //
+  // This routine isn't numerically precise, but it's good enough for ML.
+
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
+  llvm::Value* input = b_->CreateFPCast(value, type);
+  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
+  return b_->CreateFPCast(fast_tanh, value->getType());
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
@@ -286,32 +308,31 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
 
   // Declares the callee if it is not declared already.
   llvm::Function* callee = llvm::cast<llvm::Function>(
-      ir_builder_->GetInsertBlock()->getModule()->getOrInsertFunction(
+      b_->GetInsertBlock()->getModule()->getOrInsertFunction(
           llvm_ir::AsStringRef(callee_name), callee_type));
 
   for (auto attribute : attributes) {
     callee->addFnAttr(attribute);
   }
 
-  return ir_builder_->CreateCall(callee, llvm_ir::AsArrayRef(operands));
+  return b_->CreateCall(callee, llvm_ir::AsArrayRef(operands));
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() const {
-  llvm::Value* block_id = ir_builder_->CreateIntCast(
+  llvm::Value* block_id = b_->CreateIntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getIntNTy(128), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block = ir_builder_->CreateIntCast(
+                                   {}, {}, b_),
+      b_->getIntNTy(128), /*isSigned=*/true, "block.id");
+  llvm::Value* thread_id_in_block = b_->CreateIntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getIntNTy(128), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = ir_builder_->CreateIntCast(
+                                   {}, {}, b_),
+      b_->getIntNTy(128), /*isSigned=*/true, "thread.id");
+  llvm::Value* threads_per_block = b_->CreateIntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
-  return ir_builder_->CreateNSWAdd(
-      ir_builder_->CreateNSWMul(block_id, threads_per_block),
-      thread_id_in_block);
+                                   {}, {}, b_),
+      b_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
+  return b_->CreateNSWAdd(b_->CreateNSWMul(block_id, threads_per_block),
+                          thread_id_in_block);
 }
 
 llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
@@ -357,14 +378,20 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         PrimitiveType operand_element_type = operand->shape().element_type();
         llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
             llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
-            "reduce_window_accum_ptr", ir_builder_);
+            "reduce_window_accum_ptr", b_);
         {
           TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
-                              operand_to_generator.at(hlo->operand(1))({}));
-          ir_builder_->CreateStore(init_value, accum_ptr);
+                              operand_to_generator.at(hlo->operand(1))(
+                                  IrArray::Index(index.GetType())));
+          b_->CreateStore(init_value, accum_ptr);
         }
 
-        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
+        llvm::Type* index_type = index.GetType();
+        auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+          return index.GetConstantWithIndexType(c);
+        };
+
+        llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
         std::vector<int64> window_size;
         for (const auto& dim : window.dimensions()) {
           window_size.push_back(dim.size());
@@ -373,32 +400,32 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
             ShapeUtil::MakeShape(operand_element_type, window_size), "window");
         CHECK_EQ(window_index.size(), index.size());
 
-        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
+        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
 
-        IrArray::Index input_index(index.size());
-        llvm::Value* in_bounds = ir_builder_->getInt1(true);
+        IrArray::Index input_index(index_type, index.size());
+        llvm::Value* in_bounds = b_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
-          llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
-              index[i], ir_builder_->getInt64(window.dimensions(i).stride()));
-          input_index[i] = ir_builder_->CreateNSWSub(
-              ir_builder_->CreateNSWAdd(stridden_index, window_index[i]),
-              ir_builder_->getInt64(window.dimensions(i).padding_low()));
+          llvm::Value* stridden_index = b_->CreateNSWMul(
+              index[i], index_typed_const(window.dimensions(i).stride()));
+          input_index[i] = b_->CreateNSWSub(
+              b_->CreateNSWAdd(stridden_index, window_index[i]),
+              index_typed_const(window.dimensions(i).padding_low()));
 
           // We must check whether 0 ≤ input_index[i] < bound, as otherwise
           // we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
           // input_index[i] < bound, as a negative value wraps to a large
           // positive value.
-          in_bounds = ir_builder_->CreateAnd(
+          in_bounds = b_->CreateAnd(
               in_bounds,
-              ir_builder_->CreateICmpULT(
+              b_->CreateICmpULT(
                   input_index[i],
-                  ir_builder_->getInt64(operand->shape().dimensions(i))));
+                  index_typed_const(operand->shape().dimensions(i))));
         }
 
         llvm_ir::LlvmIfData if_data =
-            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
-        SetToFirstInsertPoint(if_data.true_block, ir_builder_);
+            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", b_);
+        SetToFirstInsertPoint(if_data.true_block, b_);
 
         // We are not in pad, so do the computation.
         TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
@@ -406,24 +433,28 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         TF_ASSIGN_OR_RETURN(
             llvm::Value * accum_value,
             compute_nested_(*hlo->to_apply(),
-                            {ir_builder_->CreateLoad(accum_ptr), input_value}));
-        ir_builder_->CreateStore(accum_value, accum_ptr);
+                            {b_->CreateLoad(accum_ptr), input_value}));
+        b_->CreateStore(accum_value, accum_ptr);
 
-        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), ir_builder_);
-        return ir_builder_->CreateLoad(accum_ptr);
+        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b_);
+        return b_->CreateLoad(accum_ptr);
       };
     case HloOpcode::kReduce:
+      // TODO(b/112040122): This should be supported.
+      CHECK_EQ(hlo->operand_count(), 2) << "Did not expect variadic reduce";
       return [=, &operand_to_generator](
                  const IrArray::Index& output_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
         llvm::Value* accum_ptr =
-            ir_builder()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
+            b()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
                 hlo->shape().element_type(), module_));
+        llvm::Type* index_type = output_index.GetType();
         TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
-                            operand_to_generator.at(hlo->operand(1))({}));
-        ir_builder()->CreateStore(init_value, accum_ptr);
+                            operand_to_generator.at(hlo->operand(1))(
+                                IrArray::Index(index_type)));
+        b()->CreateStore(init_value, accum_ptr);
 
-        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
         IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
             operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {
@@ -438,18 +469,17 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
           CHECK_EQ(output_index.size(), j);
         }
 
-        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder());
+        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
         TF_ASSIGN_OR_RETURN(
             llvm::Value * input_value,
             operand_to_generator.at(hlo->operand(0))(input_index));
         TF_ASSIGN_OR_RETURN(
             llvm::Value * accum_value,
-            compute_nested_(
-                *hlo->to_apply(),
-                {ir_builder()->CreateLoad(accum_ptr), input_value}));
-        ir_builder()->CreateStore(accum_value, accum_ptr);
-        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), ir_builder());
-        return ir_builder()->CreateLoad(accum_ptr);
+            compute_nested_(*hlo->to_apply(),
+                            {b()->CreateLoad(accum_ptr), input_value}));
+        b()->CreateStore(accum_value, accum_ptr);
+        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b());
+        return b()->CreateLoad(accum_ptr);
       };
     default:
       return ElementalIrEmitter::MakeElementGenerator(hlo,

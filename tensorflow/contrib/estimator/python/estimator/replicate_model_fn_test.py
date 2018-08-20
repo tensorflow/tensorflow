@@ -21,6 +21,7 @@ from __future__ import print_function
 import re
 import shutil
 import tempfile
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -57,26 +58,19 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import training
 
 
-# TODO(isaprykin):  Parametrize all the tests on
-#   replicate_model_fn._VariableDistributionMode when it's supported.
-class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
+class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase,
+                                   parameterized.TestCase):
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
 
-  def test_complete_flow_with_public_version(self):
-    return self._complete_flow_with_mode(mode=None)
-
-  def test_complete_flow_with_mode_local_ps_server(self):
-    return self._complete_flow_with_mode(
-        replicate_model_fn._VariableDistributionMode.
-        SHARED_LOCAL_PARAMETER_SERVER)
-
-  def test_complete_flow_with_mode_round_robin(self):
-    return self._complete_flow_with_mode(
-        replicate_model_fn._VariableDistributionMode.SHARED_ROUND_ROBIN)
-
-  def _complete_flow_with_mode(self, mode):
+  @parameterized.named_parameters(
+      ('PublicInterface', None),
+      ('ParameterServerMode', replicate_model_fn._VariableDistributionMode.
+       SHARED_LOCAL_PARAMETER_SERVER),
+      ('RoundRobinMode',
+       replicate_model_fn._VariableDistributionMode.SHARED_ROUND_ROBIN))
+  def test_complete_flow_with_mode(self, mode):
     n_classes = 3
     input_dimension = 2
     batch_size = 12
@@ -240,6 +234,13 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     labels = np.array([[1.0], [2.0]])
 
     with self.test_session() as session:
+      # Add another trainable variable that doesn't produce a gradient to
+      # verify that None gradients are supported.
+      _ = variable_scope.get_variable(
+          'another_variable',
+          initializer=constant_op.constant(1, dtype=dtypes.float64),
+          dtype=dtypes.float64)
+
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, losses.Reduction.MEAN, devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
@@ -451,6 +452,34 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       _ = replicate_model_fn.replicate_model_fn(self.model_fn,
                                                 losses.Reduction.NONE)
 
+  def test_places_on_gpu_with_upper_case_spelling(self):
+    features = np.array([[0.01], [0.002]])
+    labels = np.array([[0.01], [0.02]])
+
+    with self.test_session():
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, devices=['/GPU:0'])
+      _ = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
+
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:0', c.device)
+
+  def test_places_on_gpu_with_lower_case_spelling(self):
+    features = np.array([[0.01], [0.002]])
+    labels = np.array([[0.01], [0.02]])
+
+    with self.test_session():
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, devices=['/gpu:0'])
+      _ = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
+
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:0', c.device)
+
 
 class ReplicateAcrossASingleDeviceWithoutTowerOptimizer(
     test_util.TensorFlowTestCase):
@@ -509,59 +538,6 @@ class ReplicateAcrossASingleDeviceWithoutTowerOptimizer(
       with variable_scope.variable_scope('', reuse=True):
         c = variable_scope.get_variable('c', dtype=dtypes.float64)
         self.assertEqual(7.0, session.run(c))
-
-
-class UseTowerEstimatorWithoutReplication(test_util.TensorFlowTestCase):
-
-  def model_fn(self, mode, features, labels, params):
-    c = variable_scope.get_variable(
-        'c',
-        initializer=constant_op.constant(10, dtype=dtypes.float64),
-        dtype=dtypes.float64)
-
-    features = features['features']
-    predictions = math_ops.multiply(features, c)
-
-    loss = losses.absolute_difference(
-        labels=labels, predictions=predictions, reduction=losses.Reduction.SUM)
-    loss = math_ops.reduce_sum(loss)
-
-    metrics = {
-        'accuracy': metrics_lib.accuracy(labels, predictions),
-        'auc': metrics_lib.auc(labels, predictions)
-    }
-
-    optimizer = replicate_model_fn.TowerOptimizer(
-        gradient_descent.GradientDescentOptimizer(params['learning_rate']))
-
-    return model_fn_lib.EstimatorSpec(
-        mode=mode,
-        loss=loss,
-        eval_metric_ops=metrics,
-        predictions={'probabilities': predictions},
-        train_op=optimizer.minimize(loss))
-
-  @property
-  def params(self):
-    params = {}
-    params['learning_rate'] = 1.0
-    return params
-
-  def test_train_single_tower(self):
-    features = np.array([[1.0], [2.0]])
-    labels = np.array([[1.0], [2.0]])
-
-    train_input_fn = numpy_io.numpy_input_fn(
-        x={'features': features}, y=labels, batch_size=2, shuffle=False)
-
-    with self.test_session():
-      estimator = estimator_lib.Estimator(
-          model_fn=self.model_fn,
-          model_dir=tempfile.mkdtemp(),
-          params=self.params)
-      estimator.train(train_input_fn, steps=1)
-
-      self.assertEqual(7.0, estimator.get_variable_value('c'))
 
 
 class MakeSureSyncReplicasOptimizerWorks(test_util.TensorFlowTestCase):
@@ -1091,8 +1067,6 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       feature_shards, label_shards = replicate_model_fn._split_batch(
           features, labels, 2, device='/gpu:0')
 
-      print(feature_shards[0]['x'].eval())
-      print(feature_shards[1]['x'].eval())
       self.assertSparseValuesEqual(
           sparse_tensor.SparseTensorValue(
               indices=[[0, 0], [1, 0], [1, 1]],

@@ -114,14 +114,13 @@ struct ComputeShard<T,
     for (int64 i = start; i < limit; ++i) {
       uint8* out = output.data() + i;
       const int64 block = *reinterpret_cast<const int64*>(input.data() + 8 * i);
-      *out =
-          ((((block & (1LL << (7 * 8))) >> (7 * 8 - 7))) |
-           (((block & (1LL << (6 * 8))) >> (6 * 8 - 6))) |
-           (((block & (1LL << (5 * 8))) >> (5 * 8 - 5))) |
-           (((block & (1LL << (4 * 8))) >> (4 * 8 - 4))) |
-           (((block & (1LL << (3 * 8))) >> (3 * 8 - 3))) |
-           (((block & (1LL << (2 * 8))) >> (2 * 8 - 2))) |
-           (((block & (1LL << 8)) >> (1 * 8 - 1))) | (((block & (1LL)))));
+      *out = ((((block & (1LL << (7 * 8))) >> (7 * 8 - 7))) |
+              (((block & (1LL << (6 * 8))) >> (6 * 8 - 6))) |
+              (((block & (1LL << (5 * 8))) >> (5 * 8 - 5))) |
+              (((block & (1LL << (4 * 8))) >> (4 * 8 - 4))) |
+              (((block & (1LL << (3 * 8))) >> (3 * 8 - 3))) |
+              (((block & (1LL << (2 * 8))) >> (2 * 8 - 2))) |
+              (((block & (1LL << 8)) >> (1 * 8 - 1))) | (((block & (1LL)))));
     }
 #else
     for (int64 i = start; i < limit; ++i) {

@@ -25,43 +25,49 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 REGISTER_OP("FFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: Tcomplex")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     });
 
 REGISTER_OP("IFFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: Tcomplex")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     });
 
 REGISTER_OP("FFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: Tcomplex")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
     });
 
 REGISTER_OP("IFFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: Tcomplex")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
     });
 
 REGISTER_OP("FFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: Tcomplex")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
 REGISTER_OP("IFFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
+    .Input("input: Tcomplex")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
@@ -142,26 +148,32 @@ REGISTER_OP("IRFFT3D")
 REGISTER_OP("BatchFFT")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use FFT");
 REGISTER_OP("BatchIFFT")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use IFFT");
 REGISTER_OP("BatchFFT2D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use FFT2D");
 REGISTER_OP("BatchIFFT2D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use IFFT2D");
 REGISTER_OP("BatchFFT3D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use FFT3D");
 REGISTER_OP("BatchIFFT3D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use IFFT3D");
 
 }  // namespace tensorflow

@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -79,7 +80,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   def _ExtractInputShapes(inputs):
     """Extract the shapes of a set of input tensors."""
-    if not context.in_graph_mode():
+    if context.executing_eagerly():
       return array_ops.shape_n(inputs)
     sizes = []
     fully_known = True
@@ -105,7 +106,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   out_grads = []
   if isinstance(grad, ops.Tensor):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
       non_neg_concat_dim = (
@@ -115,6 +116,19 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
                                                         non_neg_concat_dim)
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
+      if constant_op.is_constant(concat_dim):
+        # If concat_dim is a constant defined in a different context,
+        # then we duplicate it in the current context to avoid passing it
+        # through an Enter node.
+        # This is a small optimization in general, but it is required when
+        # compiling with XLA, as XLA needs the concat input to be folded into a
+        # constant.
+        grad_context = control_flow_util.GetOutputContext(grad.op)
+        dim_context = control_flow_util.GetOutputContext(concat_dim.op)
+        if dim_context != grad_context:
+          value = tensor_util.constant_value(concat_dim)
+          concat_dim = constant_op.constant(value=value, dtype=concat_dim.dtype)
+
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
       non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
@@ -125,7 +139,6 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
       # cases when switching implementations at N=16, but it is possible that
       # there will be a small number of performance regressions.
-      # pylint: disable=protected-access
       if len(sizes) > 16:
         # extract the size of each input along the concat dimension
         sizes = array_ops.squeeze(
@@ -134,10 +147,9 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
                 [1, -1]))
         out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
       else:
-        offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
+        offset = gen_array_ops.concat_offset(non_neg_concat_dim, sizes)
         for (begin, size) in zip(offset, sizes):
           out_grads.append(array_ops.slice(grad, begin, size))
-      # pylint: enable=protected-access
   elif isinstance(grad, ops.IndexedSlices):
     # Using mod here for convenience since concat_dim is already verified
     # in concat implementation to be within the allowed [-rank, rank) range.
@@ -184,7 +196,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
             array_ops.where(
                 math_ops.logical_and(grad.indices >= start,
                                      grad.indices < end)),
-            squeeze_dims=[1])
+            axis=[1])
         new_indices = array_ops.gather(grad.indices, indices_to_select) - start
         new_values = array_ops.gather(grad.values, indices_to_select)
         out_grads.append(ops.IndexedSlices(new_values, new_indices, size))
@@ -243,10 +255,15 @@ def _SliceGrad(op, grad):
 @ops.RegisterGradient("StridedSlice")
 def _StridedSliceGrad(op, grad):
   """Gradient for StridedSlice op."""
-  x = array_ops.shape(op.inputs[0])
   begin = op.inputs[1]
   end = op.inputs[2]
   strides = op.inputs[3]
+  # StridedSliceGrad requires `x`, `begin`, `end` and `strides` to be of the
+  # same dtype so we build a shape of the same type as other args.
+  # Note that the choice of `begin` for specifying `out_type` is arbitrary.
+  # We could choose any of {begin|end|strides}.dtype since they are required to
+  # be the same.
+  x = array_ops.shape(op.inputs[0], out_type=begin.dtype)
 
   return array_ops.strided_slice_grad(
       x,
@@ -416,7 +433,7 @@ def _GatherV2Grad(op, grad):
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       params_tail_shape = params_shape.cpu()[1:]
     else:
       params_tail_shape = params_shape[1:]
@@ -551,7 +568,6 @@ ops.NotDifferentiable("Size")
 @ops.RegisterGradient("Tile")
 def _TileGrad(op, grad):
   """Sum reduces grad along the tiled dimensions."""
-  assert isinstance(grad, ops.Tensor)
   input_shape = array_ops.shape(op.inputs[0])
   # We interleave multiples and input_shape to get split_shape,
   # reshape grad to split_shape, and reduce along all even
@@ -564,9 +580,16 @@ def _TileGrad(op, grad):
   split_shape = array_ops.reshape(
       array_ops.transpose(array_ops.stack([op.inputs[1], input_shape])), [-1])
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
+  # Sum reduces grad along the first dimension for IndexedSlices
+  if isinstance(grad, ops.IndexedSlices):
+    grad = math_ops.unsorted_segment_sum(
+        grad.values,
+        math_ops.mod(grad.indices, input_shape[0]),
+        input_shape[0])
+    split_shape = array_ops.concat([[1], split_shape[1:]], axis=0)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     input_grad.set_shape(op.inputs[0].get_shape())
   return [input_grad, None]
 
@@ -613,9 +636,7 @@ def _ReverseSequenceGrad(op, grad):
 @ops.RegisterGradient("Reverse")
 def _ReverseGrad(op, grad):
   reverse_dims = op.inputs[1]
-  # pylint: disable=protected-access
-  return gen_array_ops._reverse(grad, reverse_dims), None
-  # pylint: enable=protected-access
+  return gen_array_ops.reverse(grad, reverse_dims), None
 
 
 @ops.RegisterGradient("ReverseV2")
@@ -686,17 +707,13 @@ ops.NotDifferentiable("OneHot")
 @ops.RegisterGradient("MirrorPad")
 def _MirrorPadGrad(op, grad):
   mode = op.get_attr("mode")
-  # pylint: disable=protected-access
-  return [gen_array_ops._mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
-  # pylint: enable=protected-access
+  return [gen_array_ops.mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
 
 
 @ops.RegisterGradient("MirrorPadGrad")
 def _MirrorPadGradGrad(op, grad):
   mode = op.get_attr("mode")
-  # pylint: disable=protected-access
-  return [gen_array_ops._mirror_pad(grad, op.inputs[1], mode=mode), None]
-  # pylint: enable=protected-access
+  return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
 
 
 @ops.RegisterGradient("QuantizeAndDequantize")
@@ -773,7 +790,7 @@ def _ExtractImagePatchesGrad(op, grad):
 
   sp_mat = sparse_tensor.SparseTensor(
       array_ops.constant(idx, dtype=ops.dtypes.int64),
-      array_ops.ones((len(idx),), dtype=ops.dtypes.float32), sp_shape)
+      array_ops.ones((len(idx),), dtype=grad.dtype), sp_shape)
 
   jac = sparse_ops.sparse_tensor_dense_matmul(sp_mat, grad_flat)
 

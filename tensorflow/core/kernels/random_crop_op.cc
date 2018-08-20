@@ -92,8 +92,8 @@ class RandomCropOp : public OpKernel {
 
     // TODO(shlens): Do this more efficiently with memcpy once padding is
     // available for smaller images.
-    typename TTypes<T, 3>::ConstTensor input_data = input.tensor<T, 3>();
-    typename TTypes<T, 3>::Tensor output_data = output->tensor<T, 3>();
+    typename TTypes<T, 3>::ConstTensor input_data(input.tensor<T, 3>());
+    typename TTypes<T, 3>::Tensor output_data(output->tensor<T, 3>());
 
     for (int y = 0; y < target_height; ++y) {
       for (int x = 0; x < target_width; ++x) {

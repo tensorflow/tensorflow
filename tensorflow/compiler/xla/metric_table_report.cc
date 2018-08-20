@@ -134,8 +134,7 @@ void MetricTableReport::AppendHeader() {
 void MetricTableReport::AppendCategoryTable() {
   const std::vector<Category> categories = MakeCategories(&entries_);
 
-  AppendLine("********** categories table **********");
-  AppendLine("The left hand side numbers are ", metric_name_, ".");
+  AppendLine("********** categories table for ", metric_name_, " **********");
   AppendLine();
 
   double metric_sum = UnaccountedMetric();
@@ -185,8 +184,8 @@ void MetricTableReport::AppendCategoryTable() {
 }
 
 void MetricTableReport::AppendEntryTable() {
-  AppendLine("********** ", entry_name_, " table **********");
-  AppendLine("The left hand side numbers are ", metric_name_, ".");
+  AppendLine("********** ", entry_name_, " table for ", metric_name_,
+             " **********");
   AppendLine();
 
   double metric_sum = UnaccountedMetric();

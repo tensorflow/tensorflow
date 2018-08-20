@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
-
-See the @{$python/contrib.distributions} guide.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -24,6 +22,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.autoregressive import *
+from tensorflow.contrib.distributions.python.ops.batch_reshape import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
@@ -31,6 +30,7 @@ from tensorflow.contrib.distributions.python.ops.conditional_distribution import
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular
+from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular_inverse
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.distribution_util import reduce_weighted_logsumexp
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
@@ -40,6 +40,7 @@ from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.half_normal import *
 from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
+from tensorflow.contrib.distributions.python.ops.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.mixture_same_family import *
@@ -57,6 +58,7 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.seed_stream import *
 from tensorflow.contrib.distributions.python.ops.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
@@ -95,10 +97,10 @@ _allowed_symbols = [
     'ReparameterizationType',
     'Distribution',
     'Autoregressive',
-    'Binomial',
+    'BatchReshape',
     'Bernoulli',
-    'BernoulliWithSigmoidProbs',
     'Beta',
+    'Binomial',
     'BetaWithSoftplusConcentration',
     'Categorical',
     'Chi2',
@@ -115,6 +117,7 @@ _allowed_symbols = [
     'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',
+    'Kumaraswamy',
     'Laplace',
     'LaplaceWithSoftplusScale',
     'Logistic',
@@ -123,6 +126,7 @@ _allowed_symbols = [
     'NormalWithSoftplusScale',
     'Poisson',
     'PoissonLogNormalQuadratureCompound',
+    'SeedStream',
     'SinhArcsinh',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',
@@ -151,6 +155,7 @@ _allowed_symbols = [
     'kl_divergence',
     'RegisterKL',
     'fill_triangular',
+    'fill_triangular_inverse',
     'matrix_diag_transform',
     'reduce_weighted_logsumexp',
     'softplus_inverse',

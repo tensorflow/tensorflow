@@ -38,7 +38,6 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -123,7 +122,6 @@ def isum(s, maximum_iterations=None):
   return r_s
 
 
-@test_util.with_c_api
 class ControlFlowTest(test.TestCase):
 
   def testRefIdentity(self):
@@ -144,7 +142,7 @@ class ControlFlowTest(test.TestCase):
 
       enter_v = control_flow_ops._Enter(v, "foo_1", is_constant=True)
       nine = constant_op.constant(9)
-      enter_nine = gen_control_flow_ops._enter(nine, "foo_1")
+      enter_nine = gen_control_flow_ops.enter(nine, "foo_1")
       op = state_ops.assign(enter_v, enter_nine)
       v2 = control_flow_ops.with_dependencies([op], enter_v)
       v3 = control_flow_ops.exit(v2)
@@ -164,9 +162,9 @@ class ControlFlowTest(test.TestCase):
   def testEnterMulExit(self):
     with self.test_session():
       data = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
-      enter_data = gen_control_flow_ops._enter(data, "foo_1", False)
+      enter_data = gen_control_flow_ops.enter(data, "foo_1", False)
       five = constant_op.constant(5)
-      enter_five = gen_control_flow_ops._enter(five, "foo_1", False)
+      enter_five = gen_control_flow_ops.enter(five, "foo_1", False)
       mul_op = math_ops.multiply(enter_data, enter_five)
       exit_op = control_flow_ops.exit(mul_op)
 
@@ -178,12 +176,12 @@ class ControlFlowTest(test.TestCase):
       v = variables.Variable([0.0, 0.0], dtype=dtypes.float32)
 
       # If is_constant=True, the shape information should be propagated.
-      enter_v_constant = gen_control_flow_ops._enter(
+      enter_v_constant = gen_control_flow_ops.enter(
           v, "frame1", is_constant=True)
       self.assertEqual(enter_v_constant.shape, [2])
 
       # Otherwise, the shape should be unknown.
-      enter_v_non_constant = gen_control_flow_ops._enter(
+      enter_v_non_constant = gen_control_flow_ops.enter(
           v, "frame2", is_constant=False)
       self.assertEqual(enter_v_non_constant.shape, None)
 
@@ -257,8 +255,8 @@ class ControlFlowTest(test.TestCase):
       false = ops.convert_to_tensor(False)
       n = constant_op.constant(10)
 
-      enter_false = gen_control_flow_ops._enter(false, "foo_1", False)
-      enter_n = gen_control_flow_ops._enter(n, "foo_1", False)
+      enter_false = gen_control_flow_ops.enter(false, "foo_1", False)
+      enter_n = gen_control_flow_ops.enter(n, "foo_1", False)
 
       merge_n = control_flow_ops.merge([enter_n, enter_n], name="merge_n")[0]
       switch_n = control_flow_ops.switch(merge_n, enter_false)
@@ -275,9 +273,9 @@ class ControlFlowTest(test.TestCase):
       one = constant_op.constant(1)
       n = constant_op.constant(10)
 
-      enter_i = gen_control_flow_ops._enter(zero, "foo", False)
-      enter_one = gen_control_flow_ops._enter(one, "foo", True)
-      enter_n = gen_control_flow_ops._enter(n, "foo", True)
+      enter_i = gen_control_flow_ops.enter(zero, "foo", False)
+      enter_one = gen_control_flow_ops.enter(one, "foo", True)
+      enter_n = gen_control_flow_ops.enter(n, "foo", True)
 
       with ops.device(test.gpu_device_name()):
         merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
@@ -301,9 +299,9 @@ class ControlFlowTest(test.TestCase):
       one = constant_op.constant(1)
       n = constant_op.constant(10)
 
-      enter_i = gen_control_flow_ops._enter(zero, "foo", False)
-      enter_one = gen_control_flow_ops._enter(one, "foo", True)
-      enter_n = gen_control_flow_ops._enter(n, "foo", True)
+      enter_i = gen_control_flow_ops.enter(zero, "foo", False)
+      enter_one = gen_control_flow_ops.enter(one, "foo", True)
+      enter_n = gen_control_flow_ops.enter(n, "foo", True)
 
       merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
 
@@ -324,8 +322,8 @@ class ControlFlowTest(test.TestCase):
   def testDifferentFrame(self):
     with self.test_session():
       data = array_ops.placeholder(dtypes.float32, shape=[])
-      enter_1 = gen_control_flow_ops._enter(data, "foo_1", False)
-      enter_2 = gen_control_flow_ops._enter(data, "foo_2", False)
+      enter_1 = gen_control_flow_ops.enter(data, "foo_1", False)
+      enter_2 = gen_control_flow_ops.enter(data, "foo_2", False)
       res = math_ops.add(enter_1, enter_2)
       with self.assertRaisesOpError("has inputs from different frames"):
         res.eval(feed_dict={data: 1.0})
@@ -552,7 +550,7 @@ class ControlFlowTest(test.TestCase):
 
   def testCondRef(self):
     with self.test_session():
-      x = gen_state_ops._variable(
+      x = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="x",
@@ -580,7 +578,7 @@ class ControlFlowTest(test.TestCase):
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
-      v = gen_state_ops._variable(
+      v = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="v",
@@ -591,10 +589,10 @@ class ControlFlowTest(test.TestCase):
       # Both v_f and v_t are uninitialized references. However, an actual use
       # of the reference in the 'true' branch in the 'tf.identity' op will
       # not 'fire' when v is uninitialized, so this is a valid construction.
-      # This test tests that _ref_identity allows uninitialized ref as input
+      # This test tests that ref_identity allows uninitialized ref as input
       # so that this construction is allowed.
-      v_f_op = gen_array_ops._ref_identity(v_f)
-      v_t_op = gen_array_ops._ref_identity(v_t)
+      v_f_op = gen_array_ops.ref_identity(v_f)
+      v_t_op = gen_array_ops.ref_identity(v_t)
       with ops.control_dependencies([v_f_op]):
         assign_v = state_ops.assign(v, [1.0])
       with ops.control_dependencies([v_t_op]):
@@ -633,7 +631,8 @@ class ControlFlowTest(test.TestCase):
       sess.run(r)
 
   def testCondGrad_1(self):
-    with self.test_session():
+    graph = ops.Graph()
+    with graph.as_default():
       x = constant_op.constant(10.0, name="x")
       pred = math_ops.less(1, 2)
       fn1 = lambda: array_ops.identity(x)
@@ -641,8 +640,15 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
-      result = grad.eval()
-    self.assertAllEqual(1.0, result)
+      with self.test_session():
+        self.assertAllEqual(1.0, grad.eval())
+    # The gradients computation creates a tensor with zeros by broadcasting a
+    # zeros constant to the required shape. Verify that the zero constant
+    # feeding into the fill is dominated by a Switch.
+    zero = graph.get_operation_by_name("gradients/zeros/Const")
+    self.assertEqual(len(zero.control_inputs), 1)
+    self.assertEqual(zero.control_inputs[0].type, "Identity")
+    self.assertEqual(zero.control_inputs[0].inputs[0].op.type, "Switch")
 
   def testCondGrad_2(self):
     with self.test_session():
@@ -656,6 +662,23 @@ class ControlFlowTest(test.TestCase):
       grad = gradients_impl.gradients(r, [x])[0]
       self.assertAllEqual(42.0, grad.eval(feed_dict={c: 1}))
       self.assertAllEqual(3.0, grad.eval(feed_dict={c: 3}))
+
+  def testCondGrad_3(self):
+    with self.test_session():
+      c = array_ops.placeholder(dtypes.int32, shape=[])
+      ox = constant_op.constant(10.0)
+      pred = math_ops.less(c, 2)
+
+      def fn1(x):
+        m = x * x
+        return gradients_impl.gradients(m, [ox])[0]
+
+      fn2 = lambda: math_ops.multiply(ox, 3.0)
+      y = math_ops.multiply(7.0, ox)
+      r = control_flow_ops.cond(pred, lambda: fn1(y), fn2)
+
+      self.assertAllEqual(980.0, r.eval(feed_dict={c: 1}))
+      self.assertAllEqual(30.0, r.eval(feed_dict={c: 3}))
 
   def testNestedCond_Simple(self):
     with self.test_session():
@@ -704,6 +727,36 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, r.eval())
 
+  def testWhileExternalControlDependencies(self):
+    with self.test_session():
+      v = variables.Variable(0.0)
+      v.initializer.run()
+      increment = v.assign_add(1.0)
+
+      def body_fn(i):
+        with ops.control_dependencies([increment]):
+          return i + 1
+
+      result = control_flow_ops.while_loop(cond=lambda i: i < 2,
+                                           body=body_fn, loop_vars=[1])
+      self.assertAllEqual(result.eval(), 2)
+      self.assertAllEqual(v.eval(), 1.0)
+
+  def testWhileExternalControlDependenciesNoInput(self):
+    with self.test_session():
+      v = variables.Variable(0.0)
+      v.initializer.run()
+      increment = v.assign_add(1.0)
+
+      def body_fn(unused_i):
+        with ops.control_dependencies([increment]):
+          return constant_op.constant(5, name="five")
+
+      result = control_flow_ops.while_loop(cond=lambda i: i < 5,
+                                           body=body_fn, loop_vars=[0])
+      result.eval()
+      self.assertAllEqual(v.eval(), 1.0)
+
   def testWhileWithRefs_1(self):
     with self.test_session() as sess:
       x = variables.Variable(0)._ref()  # pylint: disable=protected-access
@@ -714,7 +767,7 @@ class ControlFlowTest(test.TestCase):
 
       def b(i, x):
         self.assertEqual(x.dtype, dtypes.int32_ref)
-        return (i + 1, gen_array_ops._ref_identity(x))
+        return (i + 1, gen_array_ops.ref_identity(x))
 
       r = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=5)
 
@@ -1081,11 +1134,10 @@ class ControlFlowTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError,
-          r"The shape for while_1/Merge_1:0 is not an invariant for the loop. "
-          r"It enters the loop with shape \(2, 2\), but has shape \(4, 2\) "
-          r"after one iteration. Provide shape invariants using either the "
-          r"`shape_invariants` argument of tf.while_loop or set_shape\(\) on "
-          r"the loop variables."):
+          r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
+          r"shape \(4, 2\) after one iteration. To allow the shape to vary "
+          r"across iterations, use the `shape_invariants` argument of "
+          r"tf.while_loop to specify a less-specific shape."):
         r = control_flow_ops.while_loop(c, b, [i, m])
 
   def testWhileShapeInferenceSparseTensor(self):
@@ -1590,7 +1642,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileStack_1(self):
     with self.test_session():
-      s = gen_data_flow_ops._stack_v2(-1, dtypes.int32, stack_name="foo")
+      s = gen_data_flow_ops.stack_v2(-1, dtypes.int32, stack_name="foo")
       i = constant_op.constant(0)
 
       def c(i):
@@ -1599,7 +1651,7 @@ class ControlFlowTest(test.TestCase):
       def b(i):
         ni = math_ops.add(i, 1)
         ni = control_flow_ops.with_dependencies(
-            [gen_data_flow_ops._stack_push_v2(s, i)], ni)
+            [gen_data_flow_ops.stack_push_v2(s, i)], ni)
         return ni
 
       r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
@@ -1611,7 +1663,7 @@ class ControlFlowTest(test.TestCase):
 
       def b1(i, x):
         ni = math_ops.subtract(i, 1)
-        nx = x + gen_data_flow_ops._stack_pop_v2(s, dtypes.int32)
+        nx = x + gen_data_flow_ops.stack_pop_v2(s, dtypes.int32)
         return [ni, nx]
 
       _, rx = control_flow_ops.while_loop(
@@ -1794,6 +1846,23 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
+  def testGradInWhileWrtInitialLoopVal(self):
+    with self.test_session():
+      x = array_ops.placeholder(dtypes.float32, shape=(), name="x")
+      y = x + 1
+
+      def body(i, v):
+        z = v * 2
+        return i + 1, gradients_impl.gradients(z, x)[0]
+
+      with self.assertRaisesRegexp(
+          ValueError,
+          "Cannot compute gradient inside while loop with respect to op 'x'. "
+          "We do not support taking the gradient wrt or through the initial "
+          "value of a loop variable. Gradients can be computed through "
+          "loop invariants or wrt the input parameters to the loop body."):
+        control_flow_ops.while_loop(lambda i, x: i < 3, body, [0, y])
+
   def testWhileGradInWhile(self):
     with self.test_session():
       n = ops.convert_to_tensor(1.0, name="n")
@@ -1809,6 +1878,23 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(lambda n: n < 6.0, b1, [n],
                                       [tensor_shape.unknown_shape()])
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
+
+  def testCondGradInNestedWhiles(self):
+    def outer_body(i, x):
+      _, x = control_flow_ops.while_loop(
+          lambda j, x: j < 3, inner_body, [0, 0.0])
+      return i + 1, x
+
+    def inner_body(j, x):
+      y = control_flow_ops.cond(math_ops.less(x, 1), lambda: 2 * x, lambda: x)
+      return j + 1, gradients_impl.gradients(y, x)[0]
+
+    i, x = control_flow_ops.while_loop(lambda i, x: i < 3, outer_body, [0, 0.0])
+
+    with self.test_session() as sess:
+      i_val, x_val = sess.run([i, x])
+      self.assertEqual(i_val, 3)
+      self.assertAllClose(x_val, 1.0)
 
   def testWhile_NestedInput(self):
     with self.test_session() as sess:
@@ -2152,18 +2238,15 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileWithRefsWithGradients_1(self):
     with self.test_session() as sess:
-      x = variables.Variable(0)._ref()  # pylint: disable=protected-access
+      x = variables.Variable(0.)._ref()  # pylint: disable=protected-access
       i = constant_op.constant(0)
       c = lambda i, x: math_ops.less(i, 10)
 
-      self.assertEqual(x.dtype, dtypes.int32_ref)
+      self.assertEqual(x.dtype, dtypes.float32_ref)
 
-      # pylint: disable=protected-access
       def body(i, x):
-        self.assertEqual(x.dtype, dtypes.int32_ref)
-        return [i + 1, gen_array_ops._ref_identity(x)]
-
-      # pylint: enable=protected-access
+        self.assertEqual(x.dtype, dtypes.float32_ref)
+        return [i + 1, gen_array_ops.ref_identity(x)]
 
       r = control_flow_ops.while_loop(c, body, [i, x], parallel_iterations=5)
 
@@ -2173,7 +2256,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       self.assertEqual(r[0].dtype, dtypes.int32)
-      self.assertEqual(r[1].dtype, dtypes.int32_ref)
+      self.assertEqual(r[1].dtype, dtypes.float32_ref)
 
       value_i, value_x, value_x_grad = sess.run(r + grad)
 
@@ -2375,6 +2458,63 @@ class ControlFlowTest(test.TestCase):
       r = math_ops.add(r, rg)
       r = gradients_impl.gradients(r, y)[0]
       self.assertEqual(388.0, r.eval())
+
+  def testWhileGradientWithNontrainablePath1(self):
+    q = variables.Variable([7., 8.])
+
+    def cond(_, y):
+      del y
+      return False
+
+    def body(x, _):
+      return x, math_ops.cast(x, dtypes.float32) + math_ops.reduce_sum(q)
+
+    _, y = control_flow_ops.while_loop(cond, body, (math_ops.argmin(q), 0.))
+    dy_dq, = gradients_impl.gradients(y, q)
+    self.assertIsNotNone(dy_dq)
+    with self.test_session() as sess:
+      sess.run(q.initializer)
+      self.assertAllClose([0., 0.], sess.run(dy_dq))
+
+  def testWhileGradientWithNontrainablePath2(self):
+    q = variables.Variable([7., 8.])
+
+    def cond(_, y):
+      return math_ops.equal(y, 0.)
+
+    def body(x, _):
+      zero = constant_op.constant(0, dtype=dtypes.int64)
+      return zero, math_ops.cast(x, dtypes.float32) + math_ops.reduce_sum(q)
+
+    _, y = control_flow_ops.while_loop(cond, body, (math_ops.argmin(q), 0.))
+    dy_dq, = gradients_impl.gradients(y, q)
+    self.assertIsNotNone(dy_dq)
+    with self.test_session() as sess:
+      sess.run(q.initializer)
+      self.assertAllClose([1., 1.], sess.run(dy_dq))
+
+  def testIssue16504(self):
+    c = constant_op.constant(np.arange(100), dtype=dtypes.float32)
+    w = variables.Variable(
+        initial_value=np.ones(100), dtype=dtypes.float32) / 100
+    k = variables.Variable(0, dtype=dtypes.int32)
+    chg_w = constant_op.constant(np.inf, dtype=dtypes.float32)
+
+    def cond(k, _, chg_w):
+      return math_ops.logical_and(k < 10, chg_w > 1e-3)
+
+    def body(k, w, chg_w):
+      grad, = gradients_impl.gradients(-math_ops.reduce_sum(w * c), w)
+      w_n = w * math_ops.exp(-0.1 * grad)
+      w_n /= math_ops.reduce_sum(w_n)
+      chg_w = (
+          math_ops.reduce_sum(math_ops.abs(w_n - w)) / math_ops.reduce_sum(
+              math_ops.abs(w)))
+      return k + 1, w_n, chg_w
+
+    _, w, _ = control_flow_ops.while_loop(cond, body, [k, w, chg_w])
+    grad, = gradients_impl.gradients(w, c)
+    self.assertIsNotNone(grad)
 
   def testStopGradMultiFlows(self):
     with self.test_session():
@@ -2806,7 +2946,6 @@ class ControlFlowTest(test.TestCase):
           1)
 
 
-@test_util.with_c_api
 class ControlFlowContextCheckTest(test.TestCase):
 
   def _getWhileTensor(self):
@@ -2926,7 +3065,6 @@ class ControlFlowContextCheckTest(test.TestCase):
           math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
 
 
-@test_util.with_c_api
 class TupleTest(test.TestCase):
 
   def testTensors(self):
@@ -3012,7 +3150,6 @@ class TupleTest(test.TestCase):
       self.assertEquals(1, var.eval())
 
 
-@test_util.with_c_api
 class AssertTest(test.TestCase):
 
   def testGuardedAssertDoesNotCopyWhenTrue(self):
@@ -3052,7 +3189,6 @@ class AssertTest(test.TestCase):
       self.assertEqual([], guarded_memcpy_nodestat_names)
 
 
-@test_util.with_c_api
 class WhileOpBenchmark(test.Benchmark):
   """Evaluate the performance of while_loop op."""
 
@@ -3167,7 +3303,6 @@ class WhileOpBenchmark(test.Benchmark):
         name="unroll_same_device", iters=iters, wall_time=duration)
 
 
-@test_util.with_c_api
 class EagerTest(test.TestCase):
 
   def testCond(self):

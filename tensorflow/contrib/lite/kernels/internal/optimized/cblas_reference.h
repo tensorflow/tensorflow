@@ -49,9 +49,12 @@ void cblas_sgemm(const enum CBLAS_ORDER order,
   TFLITE_DCHECK(order == CblasRowMajor);
   TFLITE_DCHECK(trans_a == CblasNoTrans);
   TFLITE_DCHECK(trans_b == CblasTrans);
+  TFLITE_DCHECK(beta == 0.0f);
   for (int row = 0; row < m; ++row) {
     for (int col = 0; col < n; ++col) {
-      float value = beta * c[stride_c * row + col];
+      // If `beta` non-zero, multiple it with the original values in output.
+      // Otherwise, ignore the original value in output completely.
+      float value = 0.0f;
       for (int idx = 0; idx < k; ++idx) {
         value += alpha * a[stride_a * row + idx] * b[stride_b * col + idx];
       }

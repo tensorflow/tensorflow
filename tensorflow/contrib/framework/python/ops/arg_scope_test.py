@@ -38,6 +38,12 @@ def func3(args, a=None, b=1, c=2):
   """Some cool doc string."""
   return (args, a, b, c)
 
+@add_arg_scope
+def func4(x='x', y='y'):
+  if x:
+    pass
+  if y:
+    pass
 
 def _key_op(op):
   return getattr(op, '_key_op', str(op))
@@ -170,6 +176,30 @@ class ArgScopeTest(test.TestCase):
         self.assertTupleEqual(args, func1_args)
         self.assertDictEqual(kwargs, func1_kwargs)
 
+  def testNestedArgScopeObjectCreatedOutsideScopeOverridesArgScope(self):
+
+    def get_scope_object():
+      with arg_scope([func1], a=1, b=None, c=[1]) as sc:
+        return sc
+
+    scope_object = get_scope_object()
+    with arg_scope([func1], b=2, d=10):
+      with arg_scope(scope_object):
+        args, kwargs = func1(0)
+        self.assertTupleEqual(args, (0,))
+        self.assertDictEqual(kwargs, {'a': 1, 'b': None, 'c': [1]})
+
+  def testArgScopeObjectCreatedWithinScopeInheritsArgScope(self):
+    def get_scope_object():
+      with arg_scope([func1], a=1, b=None, c=[1]) as sc:
+        return sc
+
+    with arg_scope([func1], b=2, d=10):
+      with arg_scope(get_scope_object()):
+        args, kwargs = func1(0)
+        self.assertTupleEqual(args, (0,))
+        self.assertDictEqual(kwargs, {'a': 1, 'b': None, 'c': [1], 'd': 10})
+
   def testSharedArgScope(self):
     func1_args = (0,)
     func1_kwargs = {'a': 1, 'b': None, 'c': [1]}
@@ -206,6 +236,15 @@ class ArgScopeTest(test.TestCase):
           args, kwargs = func2(1)
           self.assertTupleEqual(args, func2_args)
           self.assertDictEqual(kwargs, func2_kwargs)
+
+  def testAddArgScopeRaceCondition(self):
+    func4_kwargs = ('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h')
+    for i in range(4):
+        # redefine the function with different args
+      @add_arg_scope
+      def func4(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8):
+        pass
+      self.assertTupleEqual(arg_scoped_arguments(func4), func4_kwargs)
 
   def testDocString(self):
     self.assertEqual(func3.__doc__, 'Some cool doc string.')

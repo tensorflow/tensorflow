@@ -46,7 +46,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
       TfLiteRegistration* registration, const TensorData& input,
       const TensorData& filter, const TensorData& output, int stride_width = 2,
       int stride_height = 2, enum Padding padding = Padding_VALID,
-      enum ActivationFunctionType activation = ActivationFunctionType_NONE) {
+      enum ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int dilation_width_factor = 1, int dilation_height_factor = 1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -63,16 +64,11 @@ class BaseConvolutionOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
-    if (input.type != TensorType_FLOAT32) {
-      // The following is required by quantized inference. It is the unittest's
-      // responsibility to make sure the output scale falls into the correct
-      // range.
-      CHECK_LT(GetScale(input_) * GetScale(filter_), GetScale(output_));
-    }
 
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
-                 CreateConv2DOptions(builder_, padding, stride_width,
-                                     stride_height, activation)
+                 CreateConv2DOptions(
+                     builder_, padding, stride_width, stride_height, activation,
+                     dilation_width_factor, dilation_height_factor)
                      .Union());
 
     resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
@@ -374,6 +370,65 @@ TEST_P(ConvolutionOpTest, HandCalculatedValidFloat32) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({312, 357}));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestFloatWithDilation) {
+  const int depth = 1;
+  const int image_width = 9;
+  const int image_height = 9;
+  const int image_batch_count = 1;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const int dilation_width_factor = 3;
+  const int dilation_height_factor = 3;
+  const Padding padding = Padding_VALID;
+  ConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_FLOAT32,
+       {image_batch_count, image_height, image_width, depth}},
+      {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  // The image matrix is:
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  // The filter matrix is:
+  // | 1 | 2 | 3 |
+  // | 4 | 5 | 6 |
+  // | 7 | 8 | 9 |
+  m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // No bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Since the dilation rate is 3 this will reduce the size of the output from
+  // 10x10 to 3x3 of all 5s. Specifically:
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
+}
+
 class QuantizedConvolutionOpModel : public BaseConvolutionOpModel {
  public:
   using BaseConvolutionOpModel::BaseConvolutionOpModel;
@@ -439,6 +494,44 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
                              }));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
+  // output_multiplier = 1.0118
+  QuantizedConvolutionOpModel quant_op(
+      GetRegistration(), {TensorType_UINT8, {2, 2, 4, 1}, -128.5, 128},
+      {TensorType_UINT8, {3, 2, 2, 1}, -128.5, 128},
+      {TensorType_UINT8, {}, -127, 128});
+  ConvolutionOpModel float_op(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_FLOAT32, {3, 2, 2, 1}}, {TensorType_FLOAT32, {}});
+  std::initializer_list<float> input = {
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  };
+  std::initializer_list<float> filter = {
+      1,  2,  3,  4,  // first 2x2 filter
+      -1, 1,  -1, 1,  // second 2x2 filter
+      -1, -1, 1,  1,  // third 2x2 filter
+  };
+  std::initializer_list<float> bias = {1, 2, 3};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
+}
+
 TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithAnisotropicStrides) {
   QuantizedConvolutionOpModel m(GetRegistration(),
                                 {TensorType_UINT8, {1, 3, 6, 1}, -63.5, 64},
@@ -464,6 +557,71 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithAnisotropicStrides) {
                                  157, 103,  //
                                  167, 93,   //
                              }));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestQuantizedWithDilation) {
+  const int depth = 1;
+  const int image_width = 9;
+  const int image_height = 9;
+  const int image_batch_count = 1;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const int dilation_width_factor = 3;
+  const int dilation_height_factor = 3;
+  const Padding padding = Padding_VALID;
+  QuantizedConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {image_batch_count, image_height, image_width, depth},
+       0,
+       255},
+      {TensorType_UINT8,
+       {depth, filter_size, filter_size, filter_count},
+       0,
+       255},
+      {TensorType_UINT8, {}, 0, 255}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  // The image matrix is:
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  // The filter matrix is:
+  // | 1 | 2 | 3 |
+  // | 4 | 5 | 6 |
+  // | 7 | 8 | 9 |
+  m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // No bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Since the dilation rate is 3 this will reduce the size of the output from
+  // 10x10 to 3x3 of all 5s. Specifically:
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
 INSTANTIATE_TEST_CASE_P(

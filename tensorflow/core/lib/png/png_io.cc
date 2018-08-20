@@ -26,7 +26,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/png/png_io.h"
-#include "tensorflow/core/platform/cpu_info.h"  // endian
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/png.h"
 
@@ -90,11 +90,8 @@ void WarningHandler(png_structp png_ptr, png_const_charp msg) {
 void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
   DecodeContext* const ctx = bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   if (static_cast<png_size_t>(ctx->data_left) < length) {
-    if (!ctx->error_condition) {
-      VLOG(1) << "PNG read decoding error";
-      ctx->error_condition = true;
-    }
     memset(data, 0, length);
+    png_error(png_ptr, "More bytes requested to read than available");
   } else {
     memcpy(data, ctx->data, length);
     ctx->data += length;
@@ -235,11 +232,19 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     CommonFreeDecode(context);
     return false;
   }
-  if (context->channels == 0) {  // Autodetect number of channels
-    context->channels = png_get_channels(context->png_ptr, context->info_ptr);
-  }
   const bool has_tRNS =
       (png_get_valid(context->png_ptr, context->info_ptr, PNG_INFO_tRNS)) != 0;
+  if (context->channels == 0) {  // Autodetect number of channels
+    if (context->color_type == PNG_COLOR_TYPE_PALETTE) {
+      if (has_tRNS) {
+        context->channels = 4;  // RGB + A(tRNS)
+      } else {
+        context->channels = 3;  // RGB
+      }
+    } else {
+      context->channels = png_get_channels(context->png_ptr, context->info_ptr);
+    }
+  }
   const bool has_alpha = (context->color_type & PNG_COLOR_MASK_ALPHA) != 0;
   if ((context->channels & 1) == 0) {  // We desire alpha
     if (has_alpha) {                   // There is alpha

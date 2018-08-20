@@ -128,7 +128,7 @@ class GraphDefBuilder {
     Options WithControlInputsImpl(gtl::ArraySlice<Node*> control_inputs);
     template <class T>
     Options WithAttrImpl(StringPiece name, T&& value) {
-      attrs_.emplace_back(name.ToString(), AttrValue());
+      attrs_.emplace_back(std::string(name), AttrValue());
       SetAttrValue(std::forward<T>(value), &attrs_.back().second);
       return *this;
     }
@@ -160,14 +160,6 @@ class GraphDefBuilder {
   // Once all the nodes have been added, call this to get whether it was
   // successful, and if so fill *graph_def.
   Status ToGraphDef(GraphDef* graph_def) const;
-
-  // Like ToGraphDef(), but converts to a Graph (using the default
-  // GraphConstructorOptions).
-  // TODO(josh11b): Make this faster; right now it converts
-  // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
-  // edges from the source and to the sink node, resolves back edges
-  // by name), and makes sure the resulting graph is valid.
-  Status ToGraph(Graph* graph) const;
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an

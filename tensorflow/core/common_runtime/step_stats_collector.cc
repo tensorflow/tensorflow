@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/graph/costmodel.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -36,10 +40,88 @@ struct AllocStats {
 };
 }  // namespace
 
-NodeExecStatsWrapper::NodeExecStatsWrapper()
-    : NodeExecStatsWrapper(new NodeExecStats) {}
+NodeExecStatsWrapper::NodeExecStatsWrapper(const string& node_name)
+    : NodeExecStatsWrapper(new NodeExecStats) {
+  stats_->set_node_name(node_name);
+}
 NodeExecStatsWrapper::NodeExecStatsWrapper(NodeExecStats* stats)
     : stats_(stats) {}
+
+void NodeExecStatsWrapper::SetOutput(int slot, const Tensor* v) {
+  DCHECK(v);
+  NodeOutput* no = stats_->add_output();
+  no->set_slot(slot);
+  v->FillDescription(no->mutable_tensor_description());
+}
+
+void NodeExecStatsWrapper::SetMemory(OpKernelContext* ctx) {
+  for (const auto& allocator_pair : ctx->wrapped_allocators()) {
+    AddAllocation(allocator_pair.first, allocator_pair.second);
+  }
+  auto* ms = stats_->mutable_memory_stats();
+  ms->set_temp_memory_size(ctx->temp_memory_allocated());
+  for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
+    ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  ms->set_persistent_memory_size(ctx->persistent_memory_allocated());
+}
+
+void NodeExecStatsWrapper::SetReferencedTensors(
+    const TensorReferenceVector& tensors) {
+  // be careful not to increment the reference count on any tensor
+  // while recording the information
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    AllocationDescription* description = stats_->add_referenced_tensor();
+    tensors.at(i).FillDescription(description);
+  }
+}
+
+// TODO(tucker): merge with the DetailText function in session.cc
+// in a common location.
+bool NodeExecStatsWrapper::SetTimelineLabel(const Node* node) {
+  bool is_transfer_node = false;
+  string memory;
+  for (auto& all : stats_->memory()) {
+    int64 tot = all.total_bytes();
+    if (tot >= 0.1 * 1048576.0) {
+      int64 peak = all.peak_bytes();
+      if (peak > 0) {
+        memory =
+            strings::StrCat(memory, "[", all.allocator_name(),
+                            strings::Printf(" %.1fMB %.1fMB] ", tot / 1048576.0,
+                                            peak / 1048576.0));
+      } else {
+        memory = strings::StrCat(memory, "[", all.allocator_name(),
+                                 strings::Printf(" %.1fMB] ", tot / 1048576.0));
+      }
+    }
+  }
+  const AttrSlice attrs = node->attrs();
+  string text;
+  if (IsSend(node)) {
+    string tensor_name;
+    TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
+    string recv_device;
+    TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
+    text = strings::StrCat(memory, node->name(), " = ", node->type_string(),
+                           "(", tensor_name, " @", recv_device);
+    is_transfer_node = true;
+  } else if (IsRecv(node)) {
+    string tensor_name;
+    TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
+    string send_device;
+    TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
+    text = strings::StrCat(memory, node->name(), " = ", node->type_string(),
+                           "(", tensor_name, " @", send_device);
+    is_transfer_node = true;
+  } else {
+    text =
+        strings::StrCat(memory, node->name(), " = ", node->type_string(), "(",
+                        str_util::Join(node->requested_inputs(), ", "), ")");
+  }
+  stats_->set_timeline_label(text);
+  return is_transfer_node;
+}
 
 void NodeExecStatsWrapper::AddAllocation(
     Allocator* allocator, TrackingAllocator* tracking_allocator) {
@@ -94,7 +176,7 @@ static int ExtractGpuWithStreamAll(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = capture.ToString();
+    string ordered_capture = std::string(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -123,7 +205,7 @@ static int ExtractGpuWithoutStream(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = capture.ToString();
+    string ordered_capture = std::string(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -170,7 +252,7 @@ void StepStatsCollector::BuildCostModel(
 
   for (auto& itr : per_device_stats) {
     const StringPiece device_name = itr.first;
-    const int gpu_id = ExtractGpuWithoutStream(device_name.ToString());
+    const int gpu_id = ExtractGpuWithoutStream(std::string(device_name));
     if (gpu_id >= 0) {
       // Reference the gpu hardware stats in addition to the regular stats
       // for this gpu device if they're available.
@@ -226,13 +308,14 @@ void StepStatsCollector::BuildCostModel(
       if (node) {
         for (int i = 0; i < stats.output_size(); ++i) {
           const auto& output = stats.output(i);
-          cm->RecordMaxMemorySize(node, i,
+          int output_slot = output.slot();
+          cm->RecordMaxMemorySize(node, output_slot,
                                   Bytes(output.tensor_description()
                                             .allocation_description()
                                             .allocated_bytes()),
-                                  stats.output(i).tensor_description().shape(),
-                                  node->output_types()[i]);
-          cm->RecordAllocationId(node, i,
+                                  output.tensor_description().shape(),
+                                  node->output_types()[output_slot]);
+          cm->RecordAllocationId(node, output_slot,
                                  output.tensor_description()
                                      .allocation_description()
                                      .allocation_id());

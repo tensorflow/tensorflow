@@ -310,6 +310,17 @@ class BiasAddTest(test.TestCase):
 
 class ConvolutionTest(test.TestCase):
 
+  def testInvalidShape(self):
+    with self.test_session():
+      images_2d = random_ops.random_uniform((5, 7, 9, 3), seed=1)
+      with self.assertRaisesRegexp(
+          ValueError, 'Convolution expects input with rank 5, got 4'):
+        layers_lib.convolution3d(images_2d, 32, 3)
+      images_3d = random_ops.random_uniform((5, 6, 7, 9, 3), seed=1)
+      with self.assertRaisesRegexp(
+          ValueError, 'Convolution expects input with rank 4, got 5'):
+        layers_lib.convolution2d(images_3d, 32, 3)
+
   def testInvalidDataFormat(self):
     height, width = 7, 9
     with self.test_session():
@@ -708,7 +719,7 @@ class Convolution2dTransposeTests(test.TestCase):
         _layers.convolution2d_transpose(images, 32, 3, data_format='CHWN')
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
+    # `NCHW` data format is only supported for `GPU` device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
@@ -1178,7 +1189,7 @@ class ConvolutionInPlaneTest(test.TestCase):
       result = sess.run(horz_gradients)
       expected = np.zeros((1, 10, 9, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testHorzConvWithBlankImageAndPlaceholder(self):
     image = array_ops.placeholder(dtypes.float32, shape=(None, None, None, 1))
@@ -1198,7 +1209,7 @@ class ConvolutionInPlaneTest(test.TestCase):
           })
       expected = np.zeros((1, 10, 9, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testHorzConvWithRandomImageMultiBatch(self):
     np.random.seed(1)
@@ -1301,6 +1312,29 @@ class ConvolutionInPlaneTest(test.TestCase):
 
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
+  def testConv1dShape(self):
+    width = 7
+    with self.test_session():
+      images = random_ops.random_uniform((5, width, 3), seed=1)
+      output = layers_lib.convolution1d(images, 32, 3)
+      self.assertEqual(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, width, 32])
+
+  def testConvInferSpatialDims(self):
+    depth, height, width = 7, 9, 11
+    with self.test_session():
+      images = np.random.uniform(size=(5, width, 4)).astype(np.float32)
+      output = layers_lib.convolution(images, 32, [3])
+      self.assertListEqual(output.get_shape().as_list(), [5, width, 32])
+      images = np.random.uniform(size=(5, height, width, 4)).astype(np.float32)
+      output = layers_lib.convolution(images, 32, [3, 3])
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
+      images = np.random.uniform(size=(5, depth, height, width,
+                                       4)).astype(np.float32)
+      output = layers_lib.convolution(images, 32, [3, 3, 3])
+      self.assertListEqual(output.get_shape().as_list(),
+                           [5, depth, height, width, 32])
+
 
 class DenseToSparseTest(test.TestCase):
 
@@ -1308,11 +1342,12 @@ class DenseToSparseTest(test.TestCase):
     expected_constant = np.reshape(np.arange(24, dtype=np.int64), (3, 4, 2))
     tensor = constant_op.constant(expected_constant)
     sparse = _layers.dense_to_sparse(tensor)
-    dense = sparse_ops.sparse_to_dense(
-        sparse.indices, sparse.dense_shape, sparse.values)
+    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape,
+                                       sparse.values)
     with self.test_session() as sess:
       constant = sess.run(dense)
       self.assertAllEqual(expected_constant, constant)
+
 
 class DropoutTest(test.TestCase):
 
@@ -1321,7 +1356,7 @@ class DropoutTest(test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = _layers.dropout(images)
-      self.assertEqual(output.op.name, 'Dropout/dropout/mul')
+      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul')
       output.get_shape().assert_is_compatible_with(
           ops.convert_to_tensor(images).get_shape())
 
@@ -2195,7 +2230,7 @@ class BatchNormTest(test.TestCase):
       # After initialization moving_mean == 0 and moving_variance == 1.
       self.assertAllClose(mean, [0] * 3)
       self.assertAllClose(variance, [1] * 3)
-      # Simulate assigment from saver restore.
+      # Simulate assignment from saver restore.
       init_assigns = [
           state_ops.assign(moving_mean, expected_mean),
           state_ops.assign(moving_variance, expected_var)
@@ -2949,6 +2984,28 @@ class GDNTest(test.TestCase):
     self.assertAllClose(y, x * np.sqrt(1 + .1 * (x**2)), rtol=0, atol=1e-6)
 
 
+class ImagesToSequenceTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(5, height, width, 2))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCHW or NHWC.'):
+      _layers.images_to_sequence(images, data_format='CHWN')
+
+  def testImagesToSequenceDims(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(2, height, width, 5)).astype(np.float32)
+    output = _layers.images_to_sequence(images)
+    self.assertListEqual(output.get_shape().as_list(), [11, 14, 5])
+
+  def testImagesToSequenceNCHW(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(2, 5, height, width)).astype(np.float32)
+    output = _layers.images_to_sequence(images, data_format='NCHW')
+    self.assertListEqual(output.get_shape().as_list(), [11, 14, 5])
+
+
 class MaxPool2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -3132,7 +3189,7 @@ class RepeatTests(test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
       output = _layers.repeat(images, 3, layers_lib.conv2d, 32, [3, 3])
-      self.assertEqual(output.op.name, 'Repeat/convolution_3/Relu')
+      self.assertEqual(output.op.name, 'Repeat/convolution2d_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
 
   def testRepeatWithScope(self):
@@ -3417,6 +3474,33 @@ class ScaleGradientTests(test.TestCase):
       np.testing.assert_array_equal([3 * 2], g_x.eval())
 
 
+class SequenceToImagesTest(test.TestCase):
+
+  def testImagesToSequenceDims(self):
+    num_batches = 14
+    num_time_steps = 11
+    num_channels = 5
+    desired_height = 7
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence, desired_height)
+    self.assertListEqual(output.get_shape().as_list(), [2, 7, 11, 5])
+
+  def testImagesToSequenceNCHW(self):
+    num_batches = 14
+    num_time_steps = 11
+    num_channels = 5
+    desired_height = 7
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence,
+                                        desired_height,
+                                        output_data_format='channels_first')
+    self.assertListEqual(output.get_shape().as_list(), [2, 5, 7, 11])
+
+
 class SoftmaxTests(test.TestCase):
 
   def setUp(self):
@@ -3699,7 +3783,7 @@ class StackTests(test.TestCase):
           layers_lib.convolution2d, [10, 20, 30],
           kernel_size=[3, 3],
           padding='SAME')
-      self.assertEqual(output.op.name, 'Stack/convolution_3/Relu')
+      self.assertEqual(output.op.name, 'Stack/convolution2d_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
 
   def testStackWithScope(self):
@@ -4083,6 +4167,32 @@ class LegacyFullyConnectedTest(test.TestCase):
                                    'rank of x must be at least 2 not: 1'):
         x = constant_op.constant([[]], shape=[0])
         _layers.legacy_fully_connected(x, 2, activation_fn=nn_ops.softmax)
+
+
+class MaxOutTest(test.TestCase):
+
+  def test_simple(self):
+    inputs = random_ops.random_uniform((64, 10, 36), seed=1)
+    graph = _layers.maxout(inputs, num_units=3)
+    self.assertEqual(graph.get_shape().as_list(), [64, 10, 3])
+
+  def test_fully_connected(self):
+    inputs = random_ops.random_uniform((64, 50), seed=1)
+    graph = _layers.fully_connected(inputs, 50)
+    graph = _layers.maxout(graph, num_units=10)
+    self.assertEqual(graph.get_shape().as_list(), [64, 10])
+
+  def test_nchw(self):
+    inputs = random_ops.random_uniform((10, 100, 100, 3), seed=1)
+    graph = _layers.conv2d(inputs, 10, 3, padding='SAME')
+    graph = _layers.maxout(graph, num_units=1)
+    self.assertEqual(graph.get_shape().as_list(), [10, 100, 100, 1])
+
+  def test_invalid_shape(self):
+    inputs = random_ops.random_uniform((10, 100, 100, 3), seed=1)
+    graph = _layers.conv2d(inputs, 3, 10)
+    with self.assertRaisesRegexp(ValueError, 'number of features'):
+      graph = _layers.maxout(graph, num_units=2)
 
 
 if __name__ == '__main__':

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
 #define TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -68,6 +69,10 @@ class TestRunner {
   // satisfied.
   virtual bool CheckResults() = 0;
 
+  // Read contents of tensor into csv format.
+  // The given 'id' is guaranteed to be one of the ids returned by GetOutputs().
+  virtual string ReadOutput(int id) = 0;
+
   // Set the base path for loading models.
   void SetModelBaseDir(const string& path) {
     model_base_dir_ = path;
@@ -85,6 +90,7 @@ class TestRunner {
 
   // Invalidate the test runner, preventing it from executing any further.
   void Invalidate(const string& error_message) {
+    std::cerr << error_message << std::endl;
     error_message_ = error_message;
   }
   bool IsValid() const { return error_message_.empty(); }

@@ -57,11 +57,11 @@ class GreedyScheduler {
   struct Sim {
     int degree_parallelism;
     int num_running;
-    std::vector<Node*> ready_nodes;
+    std::vector<const Node*> ready_nodes;
   };
 
   struct Event {
-    Node* node;
+    const Node* node;
     Microseconds time;
     bool is_completion;
 
@@ -79,7 +79,7 @@ class GreedyScheduler {
 
  private:
   // Returns the ready node with the highest priority for a sim.
-  Node* GetNodeWithHighestPriority(const std::vector<Node*>& nodes);
+  const Node* GetNodeWithHighestPriority(const std::vector<const Node*>& nodes);
 
   const DeviceSet* devices_;
   const CostModel* cost_model_;

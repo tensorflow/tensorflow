@@ -21,12 +21,13 @@ limitations under the License.
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#include "tensorflow/contrib/lite/toco/toco_port.h"
 #if defined(PLATFORM_GOOGLE)
 #include "strings/split.h"
+#include "strings/strip.h"
 #endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 
 namespace toco {
@@ -144,8 +145,10 @@ class Arg<toco::StringMapList> final {
       }
       string outer_member_copy = outer_member;
       absl::StripAsciiWhitespace(&outer_member);
-      if (!TryStripPrefixString(outer_member, "{", &outer_member)) return false;
-      if (!TryStripSuffixString(outer_member, "}", &outer_member)) return false;
+      if (!strings::TryStripPrefixString(outer_member, "{", &outer_member))
+        return false;
+      if (!strings::TryStripSuffixString(outer_member, "}", &outer_member))
+        return false;
       const std::vector<string> inner_fields_vector =
           absl::StrSplit(outer_member, ',');
 
@@ -190,6 +193,7 @@ struct ParsedModelFlags {
   Arg<string> output_array;
   Arg<string> output_arrays;
   Arg<string> input_shapes;
+  Arg<int> batch_size = Arg<int>(1);
   Arg<float> mean_value = Arg<float>(0.f);
   Arg<string> mean_values;
   Arg<float> std_value = Arg<float>(1.f);
@@ -200,6 +204,7 @@ struct ParsedModelFlags {
   Arg<toco::IntList> input_shape;
   Arg<toco::StringMapList> rnn_states;
   Arg<toco::StringMapList> model_checks;
+  Arg<bool> change_concat_input_ranges = Arg<bool>(true);
   // Debugging output options.
   // TODO(benoitjacob): these shouldn't be ModelFlags.
   Arg<string> graphviz_first_array;
@@ -209,27 +214,38 @@ struct ParsedModelFlags {
   Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
   Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
   Arg<string> arrays_extra_info_file;
+  Arg<string> model_flags_file;
 };
 
 // Flags that describe the operation you would like to do (what conversion
 // you want). See toco_cmdline_flags.cc for details.
 struct ParsedTocoFlags {
   Arg<string> input_file;
+  Arg<string> savedmodel_directory;
   Arg<string> output_file;
-  Arg<string> input_format;
-  Arg<string> output_format;
+  Arg<string> input_format = Arg<string>("TENSORFLOW_GRAPHDEF");
+  Arg<string> output_format = Arg<string>("TFLITE");
+  Arg<string> savedmodel_tagset;
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);
+  Arg<float> default_int16_ranges_min = Arg<float>(0.);
+  Arg<float> default_int16_ranges_max = Arg<float>(0.);
   Arg<string> inference_type;
   Arg<string> inference_input_type;
   Arg<bool> drop_fake_quant = Arg<bool>(false);
   Arg<bool> reorder_across_fake_quant = Arg<bool>(false);
   Arg<bool> allow_custom_ops = Arg<bool>(false);
+  Arg<bool> quantize_weights = Arg<bool>(false);
   // Deprecated flags
   Arg<string> input_type;
   Arg<string> input_types;
+  Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);
   Arg<bool> drop_control_dependency = Arg<bool>(false);
+  Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
+  Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
+  Arg<int64> dedupe_array_min_size_bytes = Arg<int64>(64);
+  Arg<bool> split_tflite_lstm_inputs = Arg<bool>(true);
 };
 
 }  // namespace toco

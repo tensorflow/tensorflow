@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include <algorithm>
 #include <deque>
 #include <unordered_map>
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -26,24 +27,26 @@ namespace grappler {
 
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
-Status TopologicalSort(GraphDef* graph) {
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::vector<int>* ready_nodes,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies) {
   SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(*graph));
+  TF_RETURN_IF_ERROR(graph_view.Initialize(graph, extra_dependencies));
 
-  std::vector<int> ready_nodes;
-  ready_nodes.reserve(graph_view.num_nodes());
+  ready_nodes->reserve(graph_view.num_nodes());
 
   int front = 0;
   int back = 0;
   std::vector<int> num_ready_inputs(graph_view.num_nodes(), 0);
   for (int i = 0; i < graph_view.num_nodes(); i++) {
     if (graph_view.inputs(i).empty()) {
-      ready_nodes.push_back(i);
+      ready_nodes->push_back(i);
       back++;
     }
-    if (IsMerge(graph->node(i))) {
+    if (IsMerge(graph.node(i))) {
       for (int input : graph_view.inputs(i)) {
-        if (IsNextIteration(graph->node(input))) {
+        if (IsNextIteration(graph.node(input))) {
           num_ready_inputs[i]++;
         }
       }
@@ -51,11 +54,11 @@ Status TopologicalSort(GraphDef* graph) {
   }
 
   while (front != back) {
-    int ready_node = ready_nodes[front];
+    int ready_node = (*ready_nodes)[front];
     for (int fanout : graph_view.outputs(ready_node)) {
       ++num_ready_inputs[fanout];
       if (num_ready_inputs[fanout] == graph_view.inputs(fanout).size()) {
-        ready_nodes.push_back(fanout);
+        ready_nodes->push_back(fanout);
         ++back;
       }
     }
@@ -66,7 +69,34 @@ Status TopologicalSort(GraphDef* graph) {
     return errors::InvalidArgument(
         "The graph couldn't be sorted in topological order.");
   }
+  return Status::OK();
+}
 
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies) {
+  std::vector<int> ready_nodes;
+  TF_RETURN_IF_ERROR(
+      ComputeTopologicalOrder(graph, &ready_nodes, extra_dependencies));
+  topo_order->reserve(graph.node_size());
+  for (int i = 0; i < ready_nodes.size(); ++i) {
+    (*topo_order)[&graph.node(ready_nodes[i])] = i;
+  }
+  return Status::OK();
+}
+
+Status ReversedTopologicalSort(GraphDef* graph) {
+  std::vector<int> ready_nodes;
+  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, &ready_nodes, nullptr));
+  std::reverse(ready_nodes.begin(), ready_nodes.end());
+  PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
+  return Status::OK();
+}
+
+Status TopologicalSort(GraphDef* graph) {
+  std::vector<int> ready_nodes;
+  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, &ready_nodes, nullptr));
   PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
   return Status::OK();
 }
