@@ -837,6 +837,13 @@ class _TrainingExecutor(object):
     if difference > 0:
       logging.info('Waiting %f secs before starting next eval run.', difference)
       time.sleep(difference)
+    elif (throttle_secs == 0 and
+          eval_result.status != _EvalStatus.EVALUATED):
+      # Prints a user-actionable warning to avoid unnecessary load on evaluator.
+      logging.warning(
+          'EvalSpec.throttle_secs is set as 0. This might overload the job '
+          'before finding (next) new checkpoint. Please consider to increase '
+          'it.')
 
     return (eval_result, should_early_stop)
 
