@@ -398,6 +398,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.lgamma,
+          np.array(0.5, dtype=dtype),
+          expected=np.array(np.log(np.pi) / 2, dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.lgamma,
           np.array(
               [[1, 2, 3], [4, 5, 6], [1 / 2, 3 / 2, 5 / 2],
                [-3 / 2, -7 / 2, -11 / 2]],
@@ -419,6 +424,19 @@ class UnaryOpsTest(xla_test.XLATestCase):
                   ],
               ],
               dtype=dtype))
+
+      # The actual result is complex. Take the real part.
+      self._assertOpOutputMatchesExpected(
+          math_ops.lgamma,
+          np.array([-1 / 2, -5 / 2, -9 / 2], dtype=dtype),
+          expected=np.array(
+              [
+                  np.log(np.pi) / 2 + np.log(2),
+                  np.log(np.pi) / 2 - np.log(15) + np.log(8),
+                  np.log(np.pi) / 2 - np.log(945) + np.log(32),
+              ],
+              dtype=dtype),
+          atol=1e-4)
 
       self._assertOpOutputMatchesExpected(
           math_ops.digamma,
