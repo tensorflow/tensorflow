@@ -1,8 +1,10 @@
 # NOTE: Disabled temporarily because it's too noisy on pushes.
 # Where component owners are known, add them here.
 
+# /tenosrflow/core/debug @caisq
 # /tensorflow/core/platform/windows/ @mrry
 # /tensorflow/java/ @asimshankar
+# /tensorflow/python/debug @caisq
 # /tensorflow/tensorboard/ @jart @dandelionmane
 # /tensorflow/tools/docs/ @markdaoust
 
