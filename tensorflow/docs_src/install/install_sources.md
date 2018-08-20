@@ -93,21 +93,24 @@ If bazel is not installed on your system, install it now by following
 To install TensorFlow, you must install the following packages:
 
 *   `numpy`, which is a numerical processing package that TensorFlow requires.
+*   `keras_applications`, which is the applications module of the Keras deep learning library.
 *   `dev`, which enables adding extensions to Python.
 *   `pip`, which enables you to install and manage certain Python packages.
 *   `wheel`, which enables you to manage Python compressed packages in the wheel
     (.whl) format.
 
-To install these packages for Python 2.7, issue the following command:
+To install these packages for Python 2.7, issue the following commands:
 
 <pre>
 $ <b>sudo apt-get install python-numpy python-dev python-pip python-wheel</b>
+$ <b>sudo pip install keras_applications</b>
 </pre>
 
-To install these packages for Python 3.n, issue the following command:
+To install these packages for Python 3.n, issue the following commands:
 
 <pre>
 $ <b>sudo apt-get install python3-numpy python3-dev python3-pip python3-wheel</b>
+$ <b>sudo pip3 install keras_applications</b>
 </pre>
 
 ### Optional: install TensorFlow for GPU prerequisites
