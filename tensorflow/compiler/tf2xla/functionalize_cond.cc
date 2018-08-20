@@ -463,7 +463,11 @@ Status Conditional::ExtractBodies(Graph* graph) {
             // Constants are treated specially to workaround the case of
             // non-dominated constant nodes.
             if (!IsConstant(src)) {
-              return errors::InvalidArgument(
+              // TODO(b/78882471): A node that feeds into two different
+              // CondState is not necessarily an error so log a warning for now
+              // but revisit to improve the testing to enable making this an
+              // error.
+              LOG(WARNING) << errors::InvalidArgument(
                   "Graph contains node ", src->name(), " that feeds into node ",
                   dst->name(),
                   " but these nodes are in different control contexts (",
