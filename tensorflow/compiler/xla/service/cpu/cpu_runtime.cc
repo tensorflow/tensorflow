@@ -51,6 +51,8 @@ extern const char* const kEigenConvF16SymbolName =
 extern const char* const kEigenConvF32SymbolName =
     "__xla_cpu_runtime_EigenConvF32";
 extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
+extern const char* const kEigenSingleThreadedFftSymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedFft";
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF16";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =
@@ -90,9 +92,10 @@ tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
 
 }  // namespace
 
-void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(xla::int32 buffer_length,
-                                                      const void* shape,
-                                                      xla::int32 shape_length) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
+__xla_cpu_runtime_AcquireInfeedBufferForDequeue(xla::int32 buffer_length,
+                                                const void* shape,
+                                                xla::int32 shape_length) {
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << "AcquireInfeedBufferForDequeue: "
               << ShapeString(shape, shape_length);
@@ -109,9 +112,11 @@ void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(xla::int32 buffer_length,
   return buffer->data();
 }
 
-void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
-    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
-    xla::int32 shape_length) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+__xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(xla::int32 buffer_length,
+                                                  void* buffer_ptr,
+                                                  const void* shape_ptr,
+                                                  xla::int32 shape_length) {
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << "ReleaseInfeedBufferAfterDeque: "
               << ShapeString(shape_ptr, shape_length);
@@ -123,8 +128,10 @@ void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
                                         std::move(shape));
 }
 
-void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-    xla::int32 buffer_length, const void* shape_ptr, xla::int32 shape_length) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
+__xla_cpu_runtime_AcquireOutfeedBufferForPopulation(xla::int32 buffer_length,
+                                                    const void* shape_ptr,
+                                                    xla::int32 shape_length) {
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << "AcquireOutfeedBufferForPopulation: "
               << ShapeString(shape_ptr, shape_length);
@@ -141,9 +148,11 @@ void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
   return buffer->data();
 }
 
-void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
-    xla::int32 shape_length) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(xla::int32 buffer_length,
+                                                      void* buffer_ptr,
+                                                      const void* shape_ptr,
+                                                      xla::int32 shape_length) {
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << "ReleaseOutfeedBufferAfterPopulation: "
               << ShapeString(shape_ptr, shape_length);

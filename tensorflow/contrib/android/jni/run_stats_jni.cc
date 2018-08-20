@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/contrib/android/jni/run_stats_jni.h"
 
 #include <jni.h>
+
 #include <sstream>
 
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -73,7 +74,8 @@ JNIEXPORT jstring RUN_STATS_METHOD(summary)(JNIEnv* env, jclass clazz,
   StatSummarizer* s = requireHandle(env, handle);
   if (s == nullptr) return nullptr;
   std::stringstream ret;
-  ret << s->GetStatsByMetric("Top 10 CPU", StatSummarizer::BY_TIME, 10)
+  ret << s->GetStatsByMetric("Top 10 CPU", tensorflow::StatsCalculator::BY_TIME,
+                             10)
       << s->GetStatsByNodeType() << s->ShortSummary();
   return env->NewStringUTF(ret.str().c_str());
 }

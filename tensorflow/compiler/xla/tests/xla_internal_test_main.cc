@@ -49,6 +49,7 @@ GTEST_API_ int main(int argc, char** argv) {
       }
       // Unfortunately Google's internal benchmark infrastructure has a
       // different API than Tensorflow's.
+      testing::InitGoogleTest(&argc, argv);
 #if defined(PLATFORM_GOOGLE)
       base::SetFlag(&FLAGS_benchmarks, pattern);
       RunSpecifiedBenchmarks();

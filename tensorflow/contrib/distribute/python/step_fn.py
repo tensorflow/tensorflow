@@ -34,15 +34,9 @@ class Step(object):
 
   def __call__(self):
     """Perform one step of this training algorithm."""
-    return self.step(self.inputs())
-
-  def inputs(self):
-    """For the generating the input to be passed to `step()`."""
     raise NotImplementedError("must be implemented in descendants")
 
-  def step(self, inputs):
-    """Perform the main computation of this training algorithm."""
-    raise NotImplementedError("must be implemented in descendants")
+  # TODO(priyag): Add an method to access initialization and finalize ops.
 
 
 class StandardInputStep(Step):
@@ -54,12 +48,9 @@ class StandardInputStep(Step):
   """
 
   def __init__(self, dataset_fn, distribution):
-    Step.__init__(self, distribution)
-    self._distributed_input = distribution.distribute_dataset(
-        dataset_fn).make_one_shot_iterator()
-
-  def inputs(self):
-    return self._distributed_input.get_next()
+    super(StandardInputStep, self).__init__(distribution)
+    self._distributed_input = distribution.distribute_dataset(dataset_fn)
+    self._iterator = self._distributed_input.make_one_shot_iterator()
 
 
 class StandardSingleLossStep(StandardInputStep):
@@ -69,8 +60,8 @@ class StandardSingleLossStep(StandardInputStep):
 
   ```python
   ...
-  step = step_fn.StandardSingleLossStep(dataset, loss_fn, optimizer)
-  step.initialize(distribution)
+  step = step_fn.StandardSingleLossStep(
+      dataset, loss_fn, optimizer, distribution)
 
   # Run a single training step on a given DistributionStrategy:
   step(distribution)
@@ -80,27 +71,43 @@ class StandardSingleLossStep(StandardInputStep):
   Args:
     dataset_fn: a function that returns a tf.data Dataset that produces the
       input for the model.
-    loss_fn: a function that returns loss.
+    loss_fn: a function that takes a context and inputs as arguments. It returns
+      the loss for those inputs. `context` is an instance of
+      `values.MultiStepContext` that will be passed when `loss_fn` is run.
+      `context` can be used to specify the outputs to be returned from
+      `loss_fn`, among other things.
     optimizer: an optimizer that implements an update rule.
     distribution: a `DistributionStrategy` object.
   """
 
-  def __init__(self, dataset_fn, loss_fn, optimizer, distribution):
-    StandardInputStep.__init__(self, dataset_fn, distribution)
+  def __init__(self, dataset_fn, loss_fn, optimizer, distribution,
+               iterations_per_step=1):
+    super(StandardSingleLossStep, self).__init__(dataset_fn, distribution)
     self._loss_fn = loss_fn
     self._optimizer = optimizer
     self._is_run_concurrently = False
+    self._iterations_per_step = iterations_per_step
 
-  def step(self, inputs):
+  def __call__(self):
     with self._distribution.scope():
-      gradients_fn = backprop.implicit_grad(self._loss_fn)
-      gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
+      def step_fn(ctx, *inputs):
+        """Function to run one iteration with one input."""
+        gradients_fn = backprop.implicit_grad(self._loss_fn)
+        gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
-      grads_and_vars = self.distribution.call_for_each_tower(
-          gradients_fn, inputs, run_concurrently=self._is_run_concurrently)
-      # If threads use layers, then we need to run the first step sequentially,
-      # so that layers.build() is not executed in parallel.  Otherwise, multiple
-      # sets of mirrored variables are going to be created.
-      self._is_run_concurrently = True
-      return self._optimizer._distributed_apply(  # pylint: disable=protected-access
-          self.distribution, grads_and_vars)
+        grads_and_vars = self.distribution.call_for_each_tower(
+            gradients_fn,
+            ctx, *inputs,
+            run_concurrently=self._is_run_concurrently)
+        # If threads use layers, then we need to run the first step
+        # sequentially, so that layers.build() is not executed in parallel.
+        # Otherwise, multiple sets of mirrored variables are going to be
+        # created.
+        self._is_run_concurrently = True
+        return self._optimizer._distributed_apply(  # pylint: disable=protected-access
+            self.distribution, grads_and_vars)
+
+      # TODO(priyag): Return the outputs, context, etc as well.
+      ctx = self.distribution.run_steps_on_dataset(
+          step_fn, self._iterator, self._iterations_per_step)
+      return ctx.run_op

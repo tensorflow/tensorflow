@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TEXT_LITERAL_WRITER_H_
 #define TENSORFLOW_COMPILER_XLA_TEXT_LITERAL_WRITER_H_
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -37,8 +37,8 @@ namespace xla {
 // This should be readable by xla::TextLiteralReader.
 class TextLiteralWriter {
  public:
-  static tensorflow::Status WriteToPath(const Literal& literal,
-                                        tensorflow::StringPiece path);
+  static Status WriteToPath(const Literal& literal,
+                            tensorflow::StringPiece path);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TextLiteralWriter);

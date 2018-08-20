@@ -108,7 +108,7 @@ fi
 # Parse command-line arguments.
 WHL_URL=${1}
 if [[ -z "${WHL_URL}" ]]; then
-  die "whl URL is not specified"
+  echo "WARNING: No wheel url passed. Will use latest tf-nightly cpu p2 wheel."
 fi
 
 # Create docker build context directory.
@@ -121,8 +121,13 @@ cp -r ${DIR}/* ${BUILD_DIR}/ || \
   die "Failed to copy files to ${BUILD_DIR}"
 
 # Download whl file into the build context directory.
-wget -P "${BUILD_DIR}" ${WHL_URL} || \
-  die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+if [[ -z "${WHL_URL}" ]]; then
+  pip2 download --no-deps tf-nightly
+  cp tf-nightly-*.whl "${BUILD_DIR}"/tensorflow-none-any.whl
+else
+  wget -P "${BUILD_DIR}" ${WHL_URL} || \
+    die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+fi
 
 # Build docker image for test.
 docker build ${NO_CACHE_FLAG} \

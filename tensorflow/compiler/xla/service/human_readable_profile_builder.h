@@ -32,7 +32,7 @@ class HumanReadableProfileBuilder {
   explicit HumanReadableProfileBuilder(tensorflow::StringPiece computation_name,
                                        int64 total_cycles,
                                        double clock_rate_ghz)
-      : computation_name_(computation_name.ToString()),
+      : computation_name_(std::string(computation_name)),
         total_cycles_(total_cycles),
         clock_rate_ghz_(clock_rate_ghz) {
     CHECK_GE(clock_rate_ghz, 1e-9);
@@ -41,15 +41,17 @@ class HumanReadableProfileBuilder {
   int64 total_cycles() const { return total_cycles_; }
 
   // Adds an operation to the profile.  If you don't know the number of
-  // floating-point ops or bytes touched by the op, pass -1 for that param.
+  // floating-point ops or bytes touched by the op, or if you don't know how
+  // fast it would run optimally, pass -1 for that param.
   void AddOp(tensorflow::StringPiece op_name,
              tensorflow::StringPiece short_name,
              tensorflow::StringPiece category, int64 cycles, int64 flop_count,
              int64 transcendental_count, int64 bytes_accessed,
              float optimal_seconds) {
-    op_infos_.push_back(
-        {op_name.ToString(), short_name.ToString(), category.ToString(), cycles,
-         flop_count, transcendental_count, bytes_accessed, optimal_seconds});
+    op_infos_.push_back({std::string(op_name), std::string(short_name),
+                         std::string(category), cycles, flop_count,
+                         transcendental_count, bytes_accessed,
+                         optimal_seconds});
   }
 
   // Gets the human-readable profile.
@@ -61,10 +63,10 @@ class HumanReadableProfileBuilder {
     string short_name;
     string category;
     int64 cycles;
-    int64 flop_count;
+    int64 flop_count;  // -1 if unknown
     int64 transcendental_count;
-    int64 bytes_accessed;
-    float optimal_seconds;
+    int64 bytes_accessed;   // -1 if unknown
+    float optimal_seconds;  // -1 if unknown
   };
 
   double CyclesToSeconds(int64 cycles) const {

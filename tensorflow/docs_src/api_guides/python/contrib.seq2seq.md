@@ -2,18 +2,18 @@
 [TOC]
 
 Module for constructing seq2seq models and dynamic decoding.  Builds on top of
-libraries in @{tf.contrib.rnn}.
+libraries in `tf.contrib.rnn`.
 
 This library is composed of two primary components:
 
-*   New attention wrappers for @{tf.contrib.rnn.RNNCell} objects.
+*   New attention wrappers for `tf.contrib.rnn.RNNCell` objects.
 *   A new object-oriented dynamic decoding framework.
 
 ## Attention
 
 Attention wrappers are `RNNCell` objects that wrap other `RNNCell` objects and
 implement attention.  The form of attention is determined by a subclass of
-@{tf.contrib.seq2seq.AttentionMechanism}.  These subclasses describe the form
+`tf.contrib.seq2seq.AttentionMechanism`.  These subclasses describe the form
 of attention (e.g. additive vs. multiplicative) to use when creating the
 wrapper.  An instance of an `AttentionMechanism` is constructed with a
 `memory` tensor, from which lookup keys and values tensors are created.
@@ -21,9 +21,10 @@ wrapper.  An instance of an `AttentionMechanism` is constructed with a
 ### Attention Mechanisms
 
 The two basic attention mechanisms are:
-*   @{tf.contrib.seq2seq.BahdanauAttention} (additive attention,
+
+*   `tf.contrib.seq2seq.BahdanauAttention` (additive attention,
     [ref.](https://arxiv.org/abs/1409.0473))
-*   @{tf.contrib.seq2seq.LuongAttention} (multiplicative attention,
+*   `tf.contrib.seq2seq.LuongAttention` (multiplicative attention,
     [ref.](https://arxiv.org/abs/1508.04025))
 
 The `memory` tensor passed the attention mechanism's constructor is expected to
@@ -40,7 +41,7 @@ depth.
 
 ### Attention Wrappers
 
-The basic attention wrapper is @{tf.contrib.seq2seq.AttentionWrapper}.
+The basic attention wrapper is `tf.contrib.seq2seq.AttentionWrapper`.
 This wrapper accepts an `RNNCell` instance, an instance of `AttentionMechanism`,
 and an attention depth parameter (`attention_size`); as well as several
 optional arguments that allow one to customize intermediate calculations.
@@ -118,17 +119,20 @@ outputs, _ = tf.contrib.seq2seq.dynamic_decode(
 ```
 
 ### Decoder base class and functions
-*   @{tf.contrib.seq2seq.Decoder}
-*   @{tf.contrib.seq2seq.dynamic_decode}
+
+*   `tf.contrib.seq2seq.Decoder`
+*   `tf.contrib.seq2seq.dynamic_decode`
 
 ### Basic Decoder
-*   @{tf.contrib.seq2seq.BasicDecoderOutput}
-*   @{tf.contrib.seq2seq.BasicDecoder}
+
+*   `tf.contrib.seq2seq.BasicDecoderOutput`
+*   `tf.contrib.seq2seq.BasicDecoder`
 
 ### Decoder Helpers
-*   @{tf.contrib.seq2seq.Helper}
-*   @{tf.contrib.seq2seq.CustomHelper}
-*   @{tf.contrib.seq2seq.GreedyEmbeddingHelper}
-*   @{tf.contrib.seq2seq.ScheduledEmbeddingTrainingHelper}
-*   @{tf.contrib.seq2seq.ScheduledOutputTrainingHelper}
-*   @{tf.contrib.seq2seq.TrainingHelper}
+
+*   `tf.contrib.seq2seq.Helper`
+*   `tf.contrib.seq2seq.CustomHelper`
+*   `tf.contrib.seq2seq.GreedyEmbeddingHelper`
+*   `tf.contrib.seq2seq.ScheduledEmbeddingTrainingHelper`
+*   `tf.contrib.seq2seq.ScheduledOutputTrainingHelper`
+*   `tf.contrib.seq2seq.TrainingHelper`

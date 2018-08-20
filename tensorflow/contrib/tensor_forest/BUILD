@@ -223,7 +223,6 @@ tf_kernel_library(
         ":model_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -319,7 +318,6 @@ tf_kernel_library(
         ":stats_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -517,6 +515,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
+        "//tensorflow/contrib/estimator:head",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",

@@ -79,7 +79,7 @@ class BufRendezvous {
                   const ProducerCallback& done);
 
   // Called to request access to a Tensor value corresponding to key.
-  // Consumer is provide with a Hook as soon as availble.
+  // Consumer is provide with a Hook as soon as available.
   void ConsumeBuf(const string& key, const ConsumerCallback& done);
 
   // Consumer must call this function when it's done reading the Hook provided

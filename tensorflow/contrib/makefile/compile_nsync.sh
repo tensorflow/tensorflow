@@ -256,6 +256,7 @@ for arch in $archs; do
                 esac
 
                 makefile='
+			AR := ${NDK_ROOT}/toolchains/'"$toolchain"'/prebuilt/'"$android_os_arch"'/bin/'"$bin_prefix"'-ar
                         CC=${CC_PREFIX} \
                            ${NDK_ROOT}/toolchains/'"$toolchain"'/prebuilt/'"$android_os_arch"'/bin/'"$bin_prefix"'-g++
                         PLATFORM_CPPFLAGS=--sysroot \
@@ -270,7 +271,7 @@ for arch in $archs; do
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
                         PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \
-                                   ../../platform/c++11/src/per_thread_waiter.cc \
+                                   ../../platform/posix/src/per_thread_waiter.c \
                                    ../../platform/c++11/src/yield.cc \
                                    ../../platform/c++11/src/time_rep_timespec.cc \
                                    ../../platform/c++11/src/nsync_panic.cc

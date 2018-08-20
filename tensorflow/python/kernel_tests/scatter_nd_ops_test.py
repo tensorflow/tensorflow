@@ -23,8 +23,11 @@ import functools
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
@@ -141,7 +144,9 @@ class StatefulScatterNdTest(test.TestCase):
         self.assertAllClose(new, ref_var.eval())
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64, np.complex64, np.complex128):
+    for vtype in (np.int32,
+                  np.float32, np.float64,
+                  np.complex64, np.complex128):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
@@ -218,7 +223,7 @@ class StatefulScatterNdTest(test.TestCase):
   #   self._VariableRankTests(_NumpyDiv, state_ops.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64):
+    for vtype in (np.int32, np.float32, np.float64):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
@@ -263,12 +268,12 @@ class StatefulScatterNdTest(test.TestCase):
         # Test some out of range errors.
         indices = np.array([[-1], [0], [5]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[0,0\] = \[-1\] does not index into \[6\]"):
+            r"indices\[0\] = \[-1\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
 
         indices = np.array([[2], [0], [6]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[2,0\] = \[6\] does not index into \[6\]"):
+            r"indices\[2\] = \[6\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
 
   def testRank3ValidShape(self):
@@ -363,6 +368,38 @@ class ScatterNdTest(test.TestCase):
   def scatter_nd(self, indices, updates, shape, input_=None):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBool(self):
+    indices = constant_op.constant(
+        [[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [False, True, False, True], dtype=dtypes.bool)
+    expected = np.array(
+        [False, False, False, True, False, False, False, True])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    result = self.evaluate(scatter)
+    self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by same value.
+    indices = constant_op.constant(
+        [[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [False, True, True, True], dtype=dtypes.bool)
+    expected = np.array([
+        False, False, False, True, False, False, False, True])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    result = self.evaluate(scatter)
+    self.assertAllEqual(expected, result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidShape(self):
+    # TODO(apassos) figure out how to unify these errors
+    with self.assertRaises(errors.InvalidArgumentError
+                           if context.executing_eagerly() else ValueError):
+      array_ops.scatter_nd(indices=[0],  # this should be indices=[[0]]
+                           updates=[0.0],
+                           shape=[1])
 
   def testString(self):
     indices = constant_op.constant([[4], [3], [1], [7]],

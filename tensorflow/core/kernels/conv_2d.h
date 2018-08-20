@@ -159,7 +159,7 @@ struct TransformFilter {
     Eigen::DSizes<IndexType, NDIMS> expanded_dims;
     expanded_dims[0] = in.dimension(NDIMS - 1);  // output filters
     expanded_dims[1] = in.dimension(NDIMS - 2);  // input filters
-    for (int i = 0; i < NDIMS; ++i) {            // spatial dimensions
+    for (int i = 0; i < NDIMS - 2; ++i) {        // spatial dimensions
       expanded_dims[i + 2] = in.dimension(i);
     }
 

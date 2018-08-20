@@ -25,7 +25,6 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -35,7 +34,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import training as train
 
 
-@test_util.with_c_api
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
@@ -78,7 +76,8 @@ class MemoryOptimizerSwapTest(test.TestCase):
         disable_model_pruning=True,
         meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE,
         constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
+        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL,
+        min_graph_nodes=-1)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
     self.assertEqual(len(graph.node), graph_size + 2)
@@ -96,7 +95,6 @@ class MemoryOptimizerSwapTest(test.TestCase):
         self.assertEqual('c', node.input[1])
 
 
-@test_util.with_c_api
 class MemoryOptimizerRecomputeTest(test.TestCase):
   """Tests the Python interface to recomputation rewrites.
 
@@ -136,6 +134,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS), original_metagraph)
     self.assertGreater(
@@ -161,6 +160,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS,
             # Checks that name scope "gradients/" also match sub-scope.
@@ -300,6 +300,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
              if 'Recomputed/' in node.name]))
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL),
         metagraph)
     self.assertEqual(

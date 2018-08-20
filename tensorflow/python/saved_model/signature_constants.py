@@ -94,3 +94,9 @@ tf_export("saved_model.signature_constants.REGRESS_OUTPUTS").export_constant(
     __name__, "REGRESS_OUTPUTS")
 
 ################################################################################
+# Train/Eval API constants.
+# Not exported while export_all_saved_models is in contrib.
+
+SUPERVISED_TRAIN_METHOD_NAME = "tensorflow/supervised/training"
+
+SUPERVISED_EVAL_METHOD_NAME = "tensorflow/supervised/eval"

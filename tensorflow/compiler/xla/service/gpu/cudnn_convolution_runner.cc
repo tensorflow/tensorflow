@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -94,15 +96,9 @@ Status RunCudnnConvolution(
   // tensorflow/python/ops/nn_ops.py).
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
-  if (std::is_same<T, float>::value) {
-    CHECK_EQ(F32, output_shape.element_type())
-        << ShapeUtil::HumanString(output_shape);
-  } else if (std::is_same<T, Eigen::half>::value) {
-    CHECK_EQ(F16, output_shape.element_type())
-        << ShapeUtil::HumanString(output_shape);
-  } else {
-    LOG(FATAL) << ShapeUtil::HumanString(output_shape);
-  }
+  CHECK_EQ(primitive_util::NativeToPrimitiveType<T>(),
+           output_shape.element_type())
+      << ShapeUtil::HumanString(output_shape);
 
   CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dnums.kernel_spatial_dimensions_size());
@@ -113,8 +109,17 @@ Status RunCudnnConvolution(
 
   // cuDNN's convolution APIs support the BDYX layout for activations/output and
   // the OIYX layout for weights.
+  DataLayout input_dl;
+  FilterLayout filter_dl;
+  DataLayout output_dl;
+
+  TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
+                      XlaConvLayoutsToStreamExecutorLayouts(
+                          dnums, input_shape.layout(), filter_shape.layout(),
+                          output_shape.layout()));
+
   BatchDescriptor input_descriptor(effective_num_dimensions);
-  input_descriptor.set_layout(DataLayout::kBatchDepthYX)
+  input_descriptor.set_layout(input_dl)
       .set_feature_map_count(
           input_shape.dimensions(dnums.input_feature_dimension()))
       .set_count(input_shape.dimensions(dnums.input_batch_dimension()));
@@ -126,7 +131,7 @@ Status RunCudnnConvolution(
   }
 
   FilterDescriptor filter_descriptor(effective_num_dimensions);
-  filter_descriptor.set_layout(FilterLayout::kOutputInputYX)
+  filter_descriptor.set_layout(filter_dl)
       .set_input_feature_map_count(
           filter_shape.dimensions(dnums.kernel_input_feature_dimension()))
       .set_output_feature_map_count(
@@ -149,7 +154,7 @@ Status RunCudnnConvolution(
   }
 
   BatchDescriptor output_descriptor(effective_num_dimensions);
-  output_descriptor.set_layout(DataLayout::kBatchDepthYX)
+  output_descriptor.set_layout(output_dl)
       .set_feature_map_count(
           output_shape.dimensions(dnums.output_feature_dimension()))
       .set_count(output_shape.dimensions(dnums.output_batch_dimension()));
@@ -235,21 +240,31 @@ Status RunCudnnConvolution(
     se::dnn::AlgorithmConfig algorithm, se::Stream* stream,
     se::dnn::ProfileResult* profile_result) {
   PrimitiveType output_primitive_type = output_shape.element_type();
-  CHECK(output_primitive_type == F32 || output_primitive_type == F16)
-      << ShapeUtil::HumanString(output_shape);
-  if (output_primitive_type == F32) {
-    return RunCudnnConvolution(
-        kind, input_shape, filter_shape, output_shape,
-        se::DeviceMemory<float>(input_buf), se::DeviceMemory<float>(filter_buf),
-        se::DeviceMemory<float>(output_buf), scratch_allocator, window, dnums,
-        algorithm, stream, profile_result);
+  switch (output_primitive_type) {
+    case F16:
+      return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
+                                 se::DeviceMemory<Eigen::half>(input_buf),
+                                 se::DeviceMemory<Eigen::half>(filter_buf),
+                                 se::DeviceMemory<Eigen::half>(output_buf),
+                                 scratch_allocator, window, dnums, algorithm,
+                                 stream, profile_result);
+    case F32:
+      return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
+                                 se::DeviceMemory<float>(input_buf),
+                                 se::DeviceMemory<float>(filter_buf),
+                                 se::DeviceMemory<float>(output_buf),
+                                 scratch_allocator, window, dnums, algorithm,
+                                 stream, profile_result);
+    case F64:
+      return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
+                                 se::DeviceMemory<double>(input_buf),
+                                 se::DeviceMemory<double>(filter_buf),
+                                 se::DeviceMemory<double>(output_buf),
+                                 scratch_allocator, window, dnums, algorithm,
+                                 stream, profile_result);
+    default:
+      LOG(FATAL) << ShapeUtil::HumanString(output_shape);
   }
-  return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                             se::DeviceMemory<Eigen::half>(input_buf),
-                             se::DeviceMemory<Eigen::half>(filter_buf),
-                             se::DeviceMemory<Eigen::half>(output_buf),
-                             scratch_allocator, window, dnums, algorithm,
-                             stream, profile_result);
 }
 
 }  // namespace gpu

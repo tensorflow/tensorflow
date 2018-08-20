@@ -52,7 +52,8 @@ struct CollGroupParams {
   DeviceType device_type;
   int32 num_tasks;  // number of distinct tasks in group
   string ToString() const;
-  CollGroupParams() : device_type(DEVICE_CPU) {}
+  CollGroupParams()
+      : group_key(0), group_size(0), device_type(DEVICE_CPU), num_tasks(0) {}
 };
 
 // The best implementation of a collective op depends on many factors
@@ -71,10 +72,11 @@ struct CollImplDetails {
 
 // Data common to all members of a collective instance.
 struct CollInstanceParams {
-  int32 instance_key;  // Identifies all participating graph nodes.
-  CollectiveType type;
-  DataType data_type;
-  TensorShape shape;
+  // Identifies all participating graph nodes.
+  int32 instance_key = -1;
+  CollectiveType type = UNDEFINED_COLLECTIVE;
+  DataType data_type = DT_FLOAT;
+  TensorShape shape = {0};
   // Fully qualified name of device for each member, in default rank order.
   std::vector<string> device_names;
   // Task name prefix of corresponding device name.
@@ -99,8 +101,8 @@ struct CollectiveParams {
   CollInstanceParams instance;
   CollTaskParams task;
 
-  string name;             // node name used only for log or error messages
-  int default_rank;        // index of this op within device_names
+  string name = "";        // node name used only for log or error messages
+  int default_rank = -1;   // index of this op within device_names
   bool is_source = false;  // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
@@ -223,6 +225,7 @@ class PeerAccessInterface {
                             const AllocatorAttributes& to_alloc_attr,
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
+                            int dev_to_dev_stream_index,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,

@@ -32,7 +32,8 @@ import shutil
 import tempfile
 import zipfile
 
-TF_NIGHTLY_REGEX = r"(.+)tf_nightly(|_gpu)-(\d\.\d\.\d.dev[\d]{0,8})-(.+)\.whl"
+TF_NIGHTLY_REGEX = (r"(.+)tf_nightly(|_gpu)-(\d\.[\d]{1,2}"
+                    "\.\d.dev[\d]{0,8})-(.+)\.whl")
 BINARY_STRING_TEMPLATE = "%s-%s-%s.whl"
 
 

@@ -92,7 +92,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
@@ -100,7 +100,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             int64 block_length, bool sloppy, int64 buffer_output_elements,
             int64 prefetch_input_elements, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           interleave_func_(func),
           captured_func_(std::move(captured_func)),
@@ -116,7 +116,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           {this, strings::StrCat(prefix, "::ParallelInterleave")}));
@@ -129,16 +129,18 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "ParallelInterleaveDatasetOp::Dataset";
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, interleave_func_.name()));
+      TF_RETURN_IF_ERROR(
+          b->AddFunction(ctx->flib_def(), interleave_func_.name()));
       Node* input_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       Node* cycle_length_node;
       TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
       Node* block_length_node;
@@ -236,7 +238,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             workers_(dataset()->num_threads()),
             worker_thread_states_(dataset()->num_threads()) {}
 
@@ -247,6 +248,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         for (auto& worker : workers_) {
           worker.cond_var.notify_all();
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       // It is implemented so that it matches the deterministic interleave
@@ -355,7 +360,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         mutex_lock ckpt_l(ckpt_mu_);
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_exhausted"), ""));
@@ -399,7 +404,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         mutex_lock ckpt_l(ckpt_mu_);
         if (!reader->Contains(full_name("input_exhausted"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -855,7 +860,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         string prefix = strings::StrCat("worker_thread_", index);
         if (worker_thread_states_[index].iterator != nullptr) {
           TF_RETURN_IF_ERROR(
-              SaveParent(writer, worker_thread_states_[index].iterator));
+              SaveInput(writer, worker_thread_states_[index].iterator));
         } else {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(prefix, "_iterator_exhausted")), ""));
@@ -906,7 +911,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           Status s = dataset::MakeIteratorFromInputElement(
               ctx, worker_thread_states_[index].input, index,
               dataset()->captured_func_.get(), prefix(), &iterator);
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, iterator));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
           worker_thread_states_[index].iterator.swap(iterator);
         }
         TF_RETURN_IF_ERROR(ReadStatusLocked(

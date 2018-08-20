@@ -64,6 +64,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -111,6 +112,12 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
+)
+
+py_library(
+    name = "component_api_helper",
+    srcs = ["component_api_helper.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_binary(

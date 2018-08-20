@@ -168,7 +168,7 @@ bool HexagonControlWrapper::SetupGraph() {
     new_output_node_info.set_output_count(0);
 
     const TensorId tid = ParseTensorName(graph_output.name());
-    const string node_name = tid.first.ToString();
+    const string node_name = std::string(tid.first);
     const int port = tid.second;
     // Register node input for the new output node
     const GraphTransferNodeInfo* node_info =

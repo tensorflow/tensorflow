@@ -320,7 +320,9 @@ class SegmentSumGPUOp : public AsyncOpKernel {
   REGISTER_CPU_KERNEL_SEGMENT("SegmentSum", Eigen::internal::SumReducer<type>, \
                               type, index_type, 0);                            \
   REGISTER_CPU_KERNEL_SEGMENT(                                                 \
-      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1)
+      "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type, 0); \
+  REGISTER_CPU_KERNEL_SEGMENT(                                                 \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1);
 
 #define REGISTER_REAL_CPU_KERNELS_ALL(type) \
   REGISTER_REAL_CPU_KERNELS(type, int32);   \

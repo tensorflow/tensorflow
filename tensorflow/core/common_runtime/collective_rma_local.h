@@ -34,13 +34,14 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
 
   virtual ~CollectiveRemoteAccessLocal() {}
 
-  void StartAbort(const Status& s);
+  void StartAbort(const Status& s) override;
 
   void RecvFromPeer(const string& peer_device, const string& peer_task,
                     bool peer_is_local, const string& key, Device* to_device,
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
+                    int dev_to_dev_stream_index,
                     const StatusCallback& done) override;
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -77,6 +78,7 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                           Device* dst_dev, const AllocatorAttributes& src_attr,
                           const AllocatorAttributes& dst_attr,
                           const Tensor* src, Tensor* dst,
+                          int dev_to_dev_stream_index,
                           const StatusCallback& done);
 
  protected:

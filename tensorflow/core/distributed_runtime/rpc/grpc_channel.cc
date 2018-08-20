@@ -19,7 +19,7 @@ limitations under the License.
 #include <map>
 #include <unordered_map>
 
-#include "grpc++/create_channel.h"
+#include "grpcpp/create_channel.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -42,12 +42,12 @@ string MakeAddress(const string& job, int task) {
   return strings::StrCat("/job:", job, "/replica:0/task:", task);
 }
 
+// Allows the host to be a raw IP (either v4 or v6).
 Status ValidateHostPortPair(const string& host_port) {
   uint32 port;
-  std::vector<string> parts = str_util::Split(host_port, ':');
-  // Must be host:port, port must be a number, host must not contain a '/'.
-  if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
-      parts[0].find("/") != string::npos) {
+  auto colon_index = host_port.find_last_of(':');
+  if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
+      host_port.substr(0, colon_index).find("/") != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }

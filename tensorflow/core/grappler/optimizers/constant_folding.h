@@ -78,26 +78,137 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
-  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
-  void ReplaceOperationWithSnapshot(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
+  void ReplaceOperationWithIdentity(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithSnapshot(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
   void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
-  Status ReplaceOperationWithConstant(double value, const AttrValue& dtype_attr,
+  Status ReplaceOperationWithConstant(double value,
+                                      const GraphProperties& properties,
                                       const TensorShapeProto& shape,
-                                      NodeDef* node, GraphDef* graph);
+                                      NodeDef* node, GraphDef* graph,
+                                      bool* success);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
-  bool IsSimplifiableReduction(const NodeDef& node) const;
+  bool IsSimplifiableReduction(const NodeDef& node,
+                               const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
-                       bool use_shape_info);
+  Status SimplifyGraph(bool use_shape_info, GraphDef* optimized_graph,
+                       GraphProperties* properties);
+  Status SimplifyNode(bool use_shape_info, NodeDef* node,
+                      GraphDef* optimized_graph, GraphProperties* properties);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
 
+  // Applies partial constant folding for Concat which is not commutative.
+  // Returns true if the transformation applied successfully.
+  bool PartialConcatConstFolding(GraphDef* optimized_graph,
+                                 GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant folding for associative operators AddN and
+  // AccumulateNV2. Returns true if the transformation applied successfully.
+  bool PartialAssocOpConstFolding(GraphDef* optimized_graph,
+                                  GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant propagation through IdentityN operator.
+  // Returns true if the transformation applied successfully.
+  bool PartialConstPropThroughIdentityN(NodeDef* node);
+
+  // Pushes down constants on '+' and '*' operators if applicable. Returns true
+  // the transformation applied successfully.
+  bool ConstantPushDown(NodeDef* node);
+
+  // Aggregate constants present around a conv operator. Returns true if the
+  // transformation was applied successfully.
+  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
+
+  // Strength reduces floating point division by a constant Div(x, const) to
+  // multiplication by the reciprocal Mul(x, Reciprocal(const)).
+  bool ReduceDivToReciprocalMul(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies arithmetic operations with ones or zeros. Returns the status,
+  // and updates the success input argument that denotes if any simplification
+  // was applied.
+  Status SimplifyArithmeticOperations(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph, NodeDef* node,
+                                      bool* success);
+
+  // Simplifies a Reshape operation to an Identity operation if applicable.
+  bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
+                       NodeDef* node);
+
+  // Simplifies a Reduction operation to an Identity operation if applicable.
+  bool SimplifyReduction(const GraphProperties& properties, NodeDef* node);
+
+  // Switch(x, x) will always feed false to its false branch and true to
+  // its true branch. By rewriting the graph a bit, we can propagate these
+  // constants down the two output branches, and just use control dependencies
+  // to trigger the selected one at runtime. For example,
+  //
+  //     +------+
+  // x-->|Switch|-->a  (in practice there may be multiple consumers of each
+  // x-->|      |-->b   output branch.)
+  //     +------+
+  //
+  // Is rewritten as
+  //
+  //     +------+
+  // x-->|Switch|-->Identity--^>Const(false)-->a
+  // x-->|      |-->Identity--^>Const(true)-->b
+  //     +------+
+  bool SimplifySwitch(GraphDef* optimized_graph, NodeDef* node);
+
+  // Moves constants past Enter node if applicable.
+  bool MoveConstantsPastEnter(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies Pack operation if applicable.
+  bool SimplifyPack(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a Squeeze operation to an Identity operation if applicable.
+  bool SimplifySqueeze(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a Pad operation to an Identity operation if applicable.
+  Status SimplifyPad(const GraphProperties& properties, bool use_shape_info,
+                     GraphDef* optimized_graph, NodeDef* node, bool* success);
+
+  // Simplifies a Tile operation to an Identity operation if applicable.
+  Status SimplifyTile(const GraphProperties& properties, bool use_shape_info,
+                      GraphDef* optimized_graph, NodeDef* node, bool* success);
+
+  // Simplifies a StridedSlice operation to an Identity operation if applicable.
+  Status SimplifyStridedSlice(const GraphProperties& properties,
+                              bool use_shape_info, GraphDef* optimized_graph,
+                              NodeDef* node, bool* success);
+
+  // Simplifies a Slice operation to an Identity operation if applicable.
+  Status SimplifySlice(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node, bool* success);
+
+  // Removes Reverse op over dimensions with size 1.
+  Status RemoveReverse(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node, bool* success);
+
+  // Removes RandomShuffle op if it is scalar or first dimension is of size 1.
+  bool RemoveRandomShuffle(const GraphProperties& properties,
+                           bool use_shape_info, GraphDef* optimized_graph,
+                           NodeDef* node);
+
+  // Removes Shuffle or Transpose op over dimensions of size 1.
+  Status RemoveShuffleOrTranspose(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node,
+                                  bool* success);
+
+  // Removes Split or SplitV node if possible.
+  bool RemoveSplitOrSplitV(const GraphProperties& properties,
+                           GraphDef* optimized_graph, NodeDef* node);
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
@@ -111,6 +222,7 @@ class ConstantFolding : public GraphOptimizer {
   std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
   bool graph_modified_;
+  bool graph_contains_assign_or_inplace_op_;
 };
 
 }  // end namespace grappler

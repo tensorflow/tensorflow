@@ -43,17 +43,17 @@ class TensorDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
-        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
+        : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         shapes_.emplace_back(t.shape().dim_sizes());
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::FromTensor")}));
@@ -64,10 +64,11 @@ class TensorDatasetOp : public DatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "TensorDatasetOp::Dataset"; }
+    string DebugString() const override { return "TensorDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> components;
       components.reserve(tensors_.size());

@@ -205,7 +205,7 @@ std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
       if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
-          result.push_back(token.ToString());
+          result.push_back(std::string(token));
         }
         token_start = i + 1;
       }

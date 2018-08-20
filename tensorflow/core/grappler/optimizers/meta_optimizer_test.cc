@@ -74,6 +74,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   TestOptimizer::SetOptimized(false);
   RewriterConfig rewriter_config;
   rewriter_config.add_optimizers("TestOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
 
   MetaOptimizer optimizer(nullptr, rewriter_config);
   GraphDef output;
@@ -89,6 +90,7 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
 
   RewriterConfig rewriter_config;
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+  rewriter_config.set_min_graph_nodes(-1);
 
   MetaOptimizer optimizer(nullptr, rewriter_config);
   GraphDef output;
@@ -104,6 +106,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_function_optimization(RewriterConfig::ON);
   rewriter_config.add_optimizers("function");
+  rewriter_config.set_min_graph_nodes(-1);
 
   MetaOptimizer optimizer(nullptr, rewriter_config);
 
@@ -163,30 +166,28 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
                                            output.library());
 
   // Specialized and optimized functions should be added to the graph.
-  EXPECT_EQ(6, optimized_flib.num_functions());
+  EXPECT_EQ(5, optimized_flib.num_functions());
 
   // MyQuadratic should be specialized once:
   //   0. 'quadratic' node in the main graph
   const string optimized_0 = "MyQuadratic_specialized_for_quadratic";
 
   // MySquare should be specialized and optimized for 3 instantiations:
-  //   1. 'square' node in the main graph
-  //   2. 'square' node in the MyQuadratic specialization
-  //   3. 'quadratic' node in the MyQuadratic specialization
+  //   1.  'square' node in the main graph
+  //   2.  'square' node in the MyQuadratic specialization
+  //   3*. 'quadratic' node in the MyQuadratic specialization
+  //        has identical instantiation context to #2
 
   const string optimized_1 = "MySquare_specialized_for_square";
   const string optimized_2 = "MySquare_specialized_for_square_1";
-  const string optimized_3 = "MySquare_specialized_for_quadratic";
 
   const FunctionDef* optimized_func_0 = optimized_flib.Find(optimized_0);
   const FunctionDef* optimized_func_1 = optimized_flib.Find(optimized_1);
   const FunctionDef* optimized_func_2 = optimized_flib.Find(optimized_2);
-  const FunctionDef* optimized_func_3 = optimized_flib.Find(optimized_3);
 
   ASSERT_NE(optimized_func_0, nullptr);
   ASSERT_NE(optimized_func_1, nullptr);
   ASSERT_NE(optimized_func_2, nullptr);
-  ASSERT_NE(optimized_func_3, nullptr);
 
   // Graph should call optimized function.
   int count = 0;
@@ -205,13 +206,14 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
     if (node.name() == "square" && count++) {
       EXPECT_EQ(optimized_2, node.op());
     } else if (node.name() == "quadratic" && count++) {
-      EXPECT_EQ(optimized_3, node.op());
+      // Share specialized function with the 'square' node.
+      EXPECT_EQ(optimized_2, node.op());
     }
   }
   EXPECT_EQ(2, count);
 
-  const std::vector<const FunctionDef*> optimized_funcs = {
-      optimized_func_1, optimized_func_1, optimized_func_3};
+  const std::vector<const FunctionDef*> optimized_funcs = {optimized_func_1,
+                                                           optimized_func_2};
 
   // MyMul should be inlined into all optimized versions of MySquare.
   for (const FunctionDef* optimized_func : optimized_funcs) {

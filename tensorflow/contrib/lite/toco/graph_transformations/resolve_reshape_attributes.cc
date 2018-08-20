@@ -28,7 +28,7 @@ namespace toco {
 bool ResolveReshapeAttributes::Run(Model* model, std::size_t op_index) {
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
-  if (reshape_op->type != OperatorType::kTensorFlowReshape) {
+  if (reshape_op->type != OperatorType::kReshape) {
     return false;
   }
 

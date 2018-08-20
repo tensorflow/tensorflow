@@ -15,53 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
 
-class HloExecutionProfileTest : public HloTestBase {
- protected:
-  static constexpr int64 kInstructionCyclesIndex = 0;
-  static constexpr int64 kInstructionNameIndex = 19;
-};
+using tensorflow::strings::StrCat;
+using ::testing::AllOf;
+using ::testing::ContainsRegex;
 
-// Splits `lines` into a sequence of lines delimited by newlines and then split
-// each of those lines into a sequence of words delimited by spaces.  Filter out
-// empty words.
-std::vector<std::vector<string>> SplitIntoLinesAndWords(
-    tensorflow::StringPiece lines) {
-  std::vector<std::vector<string>> result;
-  for (const string& line : tensorflow::str_util::Split(lines, '\n')) {
-    std::vector<string> words;
-    for (const string& word : tensorflow::str_util::Split(line, ' ')) {
-      if (!word.empty()) {
-        words.push_back(word);
-      }
-    }
-    result.push_back(std::move(words));
-  }
-
-  return result;
-}
+class HloExecutionProfileTest : public HloTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
-  std::unique_ptr<HloModule> hlo_module = CreateNewModule();
-
-  HloComputation::Builder builder(TestName());
+  auto hlo_module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    lhs = f32[30,30]{1,0} parameter(0)
+    rhs = f32[30,30]{1,0} parameter(1)
+    add = f32[30,30]{1,0} add(lhs, rhs)
+    ROOT dot = f32[30,30]{1,0} dot(lhs, add), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })")
+                        .ValueOrDie();
+  const HloInstruction* dot_instruction =
+      hlo_module->entry_computation()->root_instruction();
+  const HloInstruction* add_instruction = dot_instruction->operand(1);
   Shape shape = ShapeUtil::MakeShape(F32, {30, 30});
-  HloInstruction* param_lhs =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "lhs"));
-  HloInstruction* param_rhs =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "rhs"));
-  HloInstruction* add_instruction =
-      builder.AddInstruction(HloInstruction::CreateBinary(
-          shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  HloInstruction* dot_instruction =
-      builder.AddInstruction(HloInstruction::CreateBinary(
-          shape, HloOpcode::kDot, param_lhs, add_instruction));
-
-  hlo_module->AddEntryComputation(builder.Build());
 
   auto shape_size_function = [&](const Shape& shape) {
     const int64 pointer_size = 8;
@@ -84,20 +64,12 @@ TEST_F(HloExecutionProfileTest, Basic) {
   execution_profile.SetCyclesTakenBy(add_instruction, add_cycles);
   execution_profile.SetCyclesTakenBy(dot_instruction, dot_cycles);
 
-  string rendered_profile = execution_profile.ToString(
-      backend().default_stream_executor()->GetDeviceDescription());
-  std::vector<std::vector<string>> lines_and_words =
-      SplitIntoLinesAndWords(rendered_profile);
-  ASSERT_EQ(lines_and_words.size(), 8);
-
-  const std::vector<string>& line_2 = lines_and_words[2];
-  const std::vector<string>& line_3 = lines_and_words[3];
-
-  EXPECT_EQ(line_2[kInstructionCyclesIndex], std::to_string(dot_cycles));
-  EXPECT_EQ(line_2[kInstructionNameIndex], '%' + dot_instruction->name());
-
-  EXPECT_EQ(line_3[kInstructionCyclesIndex], std::to_string(add_cycles));
-  EXPECT_EQ(line_3[kInstructionNameIndex], '%' + add_instruction->name());
+  EXPECT_THAT(execution_profile.ToString(
+                  backend().default_stream_executor()->GetDeviceDescription()),
+              AllOf(ContainsRegex(StrCat(dot_cycles, R"(\b.*%)",
+                                         dot_instruction->name())),
+                    ContainsRegex(StrCat(add_cycles, R"(\b.*%)",
+                                         add_instruction->name()))));
 }
 }  // namespace
 }  // namespace xla

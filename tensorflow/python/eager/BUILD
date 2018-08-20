@@ -25,12 +25,15 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:safe_ptr",
-        "//util/python:python_headers",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -191,22 +194,6 @@ py_library(
     ],
 )
 
-cc_library(
-    name = "python_eager_op_gen",
-    srcs = ["python_eager_op_gen.cc"],
-    hdrs = ["python_eager_op_gen.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python:python_op_gen",
-    ],
-)
-
 py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],
@@ -262,6 +249,7 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -335,6 +323,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -404,4 +393,22 @@ py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
+)
+
+cuda_py_test(
+    name = "memory_test",
+    size = "medium",
+    srcs = ["memory_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+    tags = [
+        "optonly",  # The test is too slow in non-opt mode
+    ],
 )

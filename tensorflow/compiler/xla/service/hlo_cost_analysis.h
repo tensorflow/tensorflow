@@ -52,9 +52,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleElementwiseUnary(const HloInstruction* hlo) override;
   Status HandleElementwiseBinary(const HloInstruction* hlo) override;
   Status HandleConstant(const HloInstruction* constant) override;
+  Status HandleIota(const HloInstruction* iota) override;
   Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  Status HandleSelect(const HloInstruction* select) override;
+  Status HandleSelect(const HloInstruction* hlo) override;
+  Status HandleTupleSelect(const HloInstruction* hlo) override;
   Status HandleCompare(const HloInstruction* compare) override;
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
@@ -69,6 +71,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleConvolution(const HloInstruction* convolution) override;
   Status HandleFft(const HloInstruction* fft) override;
   Status HandleCrossReplicaSum(const HloInstruction* crs) override;
+  Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
   Status HandleHostCompute(const HloInstruction* host_compute) override;
@@ -97,10 +100,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleBroadcast(const HloInstruction* broadcast) override;
   Status HandlePad(const HloInstruction* pad) override;
   Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleAfterAll(const HloInstruction* token) override;
   Status HandleTranspose(const HloInstruction* transpose) override;
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;
   Status HandleGather(const HloInstruction* gather) override;
+  Status HandleScatter(const HloInstruction* scatter) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;
@@ -146,11 +151,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                   const Properties& per_second_rates);
 
   // Returns the properties computed from visiting the computation rooted at the
-  // given hlo. Uses shape_size_ to calculate shape sizes if shape_size is null,
-  // otherwise uses shape_size_.
-  StatusOr<Properties> ProcessSubcomputation(
-      HloComputation* computation,
-      const ShapeSizeFunction* shape_size = nullptr);
+  // given hlo.
+  StatusOr<Properties> ProcessSubcomputation(HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
@@ -166,6 +168,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // the key maps to in the properties of the given hlo.
   static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
                                  const HloToProperties& hlo_to_properties);
+
+  // Decorates shape_size_ by returning 0 immediately if the shape does not have
+  // a layout.
+  int64 GetShapeSize(const Shape& shape) const;
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

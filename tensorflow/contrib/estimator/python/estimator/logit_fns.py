@@ -41,10 +41,10 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import dnn as dnn_core
 from tensorflow.python.estimator.canned import linear as linear_core
 from tensorflow.python.framework import ops
+from tensorflow.python.util import function_utils
 
 # pylint: disable=protected-access
 dnn_logit_fn_builder = dnn_core._dnn_logit_fn_builder
@@ -72,7 +72,7 @@ def call_logit_fn(logit_fn, features, mode, params, config):
     ValueError: if logit_fn does not return a Tensor or a dictionary mapping
       strings to Tensors.
   """
-  logit_fn_args = util.fn_args(logit_fn)
+  logit_fn_args = function_utils.fn_args(logit_fn)
   kwargs = {}
   if 'mode' in logit_fn_args:
     kwargs['mode'] = mode

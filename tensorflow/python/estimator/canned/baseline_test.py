@@ -154,6 +154,8 @@ class BaselineRegressorEvaluationTest(test.TestCase):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 9.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -176,6 +178,8 @@ class BaselineRegressorEvaluationTest(test.TestCase):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 18.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -204,6 +208,8 @@ class BaselineRegressorEvaluationTest(test.TestCase):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 27.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -229,7 +235,9 @@ class BaselineRegressorEvaluationTest(test.TestCase):
 
     self.assertItemsEqual(
         (metric_keys.MetricKeys.LOSS, metric_keys.MetricKeys.LOSS_MEAN,
-         ops.GraphKeys.GLOBAL_STEP), eval_metrics.keys())
+         metric_keys.MetricKeys.PREDICTION_MEAN,
+         metric_keys.MetricKeys.LABEL_MEAN, ops.GraphKeys.GLOBAL_STEP),
+        eval_metrics.keys())
 
     # Logit is bias which is [46, 58]
     self.assertAlmostEqual(0, eval_metrics[metric_keys.MetricKeys.LOSS])

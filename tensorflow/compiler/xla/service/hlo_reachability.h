@@ -41,7 +41,8 @@ class HloReachabilityMap {
  public:
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
-  explicit HloReachabilityMap(const std::list<HloInstruction*>& instructions);
+  explicit HloReachabilityMap(
+      tensorflow::gtl::ArraySlice<const HloInstruction*> instructions);
 
   // Set the reachability set of 'instruction' to the union of the reachability
   // sets of 'inputs'. Upon return, IsReachable(x, instruction) where
@@ -54,6 +55,11 @@ class HloReachabilityMap {
   // instruction and does not transitively update any other part of the
   // adjacency matrix.
   bool SetReachabilityToUnion(
+      tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
+      const HloInstruction* instruction);
+
+  // As above, but faster because it does not check if the reachability changed.
+  void FastSetReachabilityToUnion(
       tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
       const HloInstruction* instruction);
 
@@ -132,6 +138,11 @@ class HloReachabilityMap {
   BitVector& GetBitVector(const HloInstruction* instruction) {
     return bit_vectors_[GetIndex(instruction)];
   }
+
+  // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
+  void SetReachabilityToUnionHelper(
+      tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
+      const HloInstruction* instruction, BitVector* bit_vector);
 
   // Return the index of the given instruction. The value is used to index into
   // the vector of BitVectors and the BitVectors themselves.

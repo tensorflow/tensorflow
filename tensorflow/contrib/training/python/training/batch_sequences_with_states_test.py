@@ -27,7 +27,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -506,19 +505,6 @@ class BatchSequencesWithStatesTest(test.TestCase):
         expected_seq4_batch2=expected_seq4_batch2)
 
 
-class BatchSequencesWithStatesTestWithCApi(BatchSequencesWithStatesTest):
-
-  def setUp(self):
-    self._prev_value = ops._USE_C_API
-    ops._USE_C_API = True
-    super(BatchSequencesWithStatesTestWithCApi, self).setUp()
-
-  def tearDown(self):
-    super(BatchSequencesWithStatesTestWithCApi, self).tearDown()
-    ops._USE_C_API = self._prev_value
-
-
-@test_util.with_c_api
 class PaddingTest(test.TestCase):
 
   def testPaddingInvalidLengths(self):

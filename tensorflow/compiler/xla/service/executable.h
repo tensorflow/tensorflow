@@ -27,9 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -90,8 +88,7 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
-      HloExecutionProfile* hlo_execution_profile,
-      se::StreamExecutor* executor) {
+      HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
 
@@ -132,29 +129,23 @@ class Executable {
 
   const HloModuleConfig& module_config() const { return hlo_module_->config(); }
 
-  // Returns the versioned computation handle of the computation computed by
-  // this executable.
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return hlo_module_->entry_computation_handle();
-  }
-
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
   const Shape& result_shape() const {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Dumping helpers.
-  void set_session_module(std::unique_ptr<xla::SessionModule> session_module) {
-    session_module_ = std::move(session_module);
-  }
-  bool dumping() const { return session_module_ != nullptr; }
-  SessionModule* session_module() const { return session_module_.get(); }
-  Status DumpSessionModule();
+  // Returns the size of the executable in bytes. Returns -1 by default if the
+  // method is not overridden to support this kind of query.
+  virtual int64 SizeInBytes();
 
-  // Dump session_module to directory_path/filename.
-  static Status DumpToDirectory(const string& directory_path, string filename,
-                                const SessionModule& session_module);
+  // Dumping helpers.
+  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
+    hlo_snapshot_ = std::move(hlo_snapshot);
+  }
+  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
+  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  Status DumpHloSnapshot();
 
   // Dump hlo snapshot to directory_path/filename.
   static Status DumpToDirectory(const string& directory_path, string filename,
@@ -171,8 +162,8 @@ class Executable {
   // around.
   const std::unique_ptr<const HloModule> hlo_module_;
 
-  // SessionModule this was compiled from. Null if not dumping executions.
-  std::unique_ptr<SessionModule> session_module_;
+  // HloSnapshot this was compiled from. Null if not dumping executions.
+  std::unique_ptr<HloSnapshot> hlo_snapshot_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

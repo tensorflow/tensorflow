@@ -148,13 +148,29 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // ScopedShapedBuffer.
   DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
-  // Releases all device memory owned by this ScopedShapedBuffer and returns the
-  // device memory pointers in the form of a ShapedBuffer. The returned
-  // ShapedBuffer takes over the memory from the ScopedShapedBuffer. The
-  // resulting ScopedShapedBuffer can only be destroyed.
-  ShapedBuffer release();
+  // Sets the device memory buffer at the given index.
+  //
+  // If the given buffer's device memory is non-null, its device_ordinal and
+  // allocator must match those in `this`.
+  void set_buffer(OwningDeviceMemory buffer, const ShapeIndex& index) {
+    if (!buffer.is_null()) {
+      CHECK_EQ(buffer.device_ordinal(), device_ordinal());
+      CHECK_EQ(buffer.allocator(), allocator_);
+      *buffers_.mutable_element(index) = buffer.Forget();
+    } else {
+      *buffers_.mutable_element(index) = se::DeviceMemoryBase();
+    }
+  }
+
+  // Like unique_ptr::release(), creates and returns a regular ShapedBuffer from
+  // this ScopedShapedBuffer, without freeing any of the associated memory.
+  //
+  // It's the caller's job to ensure that the memory contained therein is freed.
+  TF_MUST_USE_RESULT ShapedBuffer release();
 
  protected:
+  void Deallocate();
+
   DeviceMemoryAllocator* allocator_;
 };
 

@@ -39,7 +39,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                      const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) {
+                     FunctionLibraryRuntime::LocalHandle* handle) override {
     mutex_lock l(mu_);
     *handle = next_handle_;
     next_handle_++;
@@ -49,7 +49,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-           FunctionLibraryRuntime::DoneCallback done) {}
+           FunctionLibraryRuntime::DoneCallback done) override {}
 
  private:
   mutex mu_;
@@ -119,13 +119,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 
     EXPECT_GE(call_count, 1);  // Test runner is used.
 
-    // Release the handle and then try running the function.  It
-    // should still succeed.
+    // Release the handle and then try running the function. It shouldn't
+    // succeed.
     status = proc_flr_->ReleaseHandle(handle);
     if (!status.ok()) {
       return status;
     }
-
     Notification done2;
     proc_flr_->Run(opts, handle, args, &out,
                    [&status, &done2](const Status& s) {
@@ -133,7 +132,10 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                      done2.Notify();
                    });
     done2.WaitForNotification();
-    return status;
+    EXPECT_TRUE(errors::IsNotFound(status));
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
+
+    return Status::OK();
   }
 
   std::vector<Device*> devices_;

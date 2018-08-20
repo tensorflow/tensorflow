@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -148,7 +149,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return Status::OK();
   }
-  if (device_type == "GPU") {
+  if (device_type == "GPU" || device_type == "TPU") {
     auto* dev_info = flr->device()->tensorflow_gpu_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
@@ -182,8 +183,8 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
     FunctionLibraryRuntime::LocalHandle local_handle) {
   mutex_lock l(mu_);
   auto h = next_handle_;
-  FunctionData* fd = new FunctionData(device_name, local_handle);
-  function_data_[h] = std::unique_ptr<FunctionData>(fd);
+  function_data_[h] = MakeUnique<FunctionData>(
+      device_name, local_handle, function_key);
   table_[function_key] = h;
   next_handle_++;
   return h;
@@ -246,8 +247,8 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
         gtl::FindWithDefault(table_, function_key, kInvalidHandle);
     if (h == kInvalidHandle || function_data_.count(h) == 0) {
       h = next_handle_;
-      FunctionData* fd = new FunctionData(options.target, kInvalidHandle);
-      function_data_[h] = std::unique_ptr<FunctionData>(fd);
+      function_data_[h] = MakeUnique<FunctionData>(
+          options.target, kInvalidHandle, function_key);
       table_[function_key] = h;
       next_handle_++;
     }
@@ -259,6 +260,14 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "ProcessFLR Instantiate [success]: " << function_name
           << " on: " << options.target << " with handle: " << *handle
           << " (this: " << this << ")";
+  return Status::OK();
+}
+
+Status ProcessFunctionLibraryRuntime::RemoveHandle(
+    FunctionLibraryRuntime::Handle handle) {
+  mutex_lock l(mu_);
+  table_.erase(function_data_[handle]->function_key());
+  function_data_.erase(handle);
   return Status::OK();
 }
 

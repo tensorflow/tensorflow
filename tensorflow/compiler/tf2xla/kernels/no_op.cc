@@ -24,8 +24,7 @@ namespace tensorflow {
 REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
 
 // We register ControlTrigger as a no-op. This is correct since nodes seen
-// by the XLA compiler are never dead. This may need rethinking when we add
-// support for conditionals to XLA.
-REGISTER_XLA_OP(Name("ControlTrigger"), NoOp);
+// by the XLA compiler are never dead.
+REGISTER_XLA_OP(Name("ControlTrigger").CompilationOnly(), NoOp);
 
 }  // namespace tensorflow

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Autoregressive(distribution_lib.Distribution):
@@ -107,6 +108,14 @@ class Autoregressive(distribution_lib.Distribution):
        https://arxiv.org/abs/1606.05328
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                distribution_fn,
                sample0=None,
@@ -144,7 +153,7 @@ class Autoregressive(distribution_lib.Distribution):
         `distribution_fn(sample0).event_shape.num_elements()` are both `None`.
       ValueError: if `num_steps < 1`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       self._distribution_fn = distribution_fn
       self._sample0 = sample0

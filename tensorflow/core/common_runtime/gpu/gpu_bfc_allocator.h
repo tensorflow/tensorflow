@@ -50,8 +50,9 @@ class GPUBFCAllocator : public BFCAllocator {
 class GPUMemAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(se::StreamExecutor* stream_exec)
-      : stream_exec_(stream_exec) {
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
+                           bool use_unified_memory)
+      : stream_exec_(stream_exec), use_unified_memory_(use_unified_memory) {
     CHECK(stream_exec_ != nullptr);
   }
   ~GPUMemAllocator() override {}
@@ -59,20 +60,29 @@ class GPUMemAllocator : public SubAllocator {
   void* Alloc(size_t alignment, size_t num_bytes) override {
     void* ptr = nullptr;
     if (num_bytes > 0) {
-      ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+      if (use_unified_memory_) {
+        ptr = stream_exec_->UnifiedMemoryAllocate(num_bytes);
+      } else {
+        ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+      }
     }
     return ptr;
   }
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
-      se::DeviceMemoryBase gpu_ptr(ptr);
-      stream_exec_->Deallocate(&gpu_ptr);
+      if (use_unified_memory_) {
+        stream_exec_->UnifiedMemoryDeallocate(ptr);
+      } else {
+        se::DeviceMemoryBase gpu_ptr(ptr);
+        stream_exec_->Deallocate(&gpu_ptr);
+      }
     }
   }
 
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
+  const bool use_unified_memory_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
 };

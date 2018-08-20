@@ -132,7 +132,7 @@ class GcsThrottle {
    * UpdateState updates the available_tokens_ and last_updated_secs_ variables.
    *
    * UpdateState should be called in order to mark the passage of time, and
-   * therefore add tokens to the availble_tokens_ pool.
+   * therefore add tokens to the available_tokens_ pool.
    */
   void UpdateState() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

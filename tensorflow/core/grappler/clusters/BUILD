@@ -20,6 +20,9 @@ tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    cuda_deps = [
+        "@local_config_cuda//cuda:cudnn_header",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/eigen3",
@@ -74,6 +77,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
+        ":utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

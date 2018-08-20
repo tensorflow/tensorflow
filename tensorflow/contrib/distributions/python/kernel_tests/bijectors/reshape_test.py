@@ -22,15 +22,12 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.reshape import Reshape
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class _ReshapeBijectorTest(object):
   """Base class for testing the reshape transformation.
 
@@ -265,7 +262,6 @@ class _ReshapeBijectorTest(object):
     raise NotImplementedError("Subclass failed to implement `build_shapes`.")
 
 
-@test_util.with_c_api
 class ReshapeBijectorTestStatic(test.TestCase, _ReshapeBijectorTest):
 
   def build_shapes(self, shape_in, shape_out):
@@ -305,21 +301,13 @@ class ReshapeBijectorTestStatic(test.TestCase, _ReshapeBijectorTest):
           bijector, x, y, event_ndims=2, rtol=1e-6, atol=0)
 
   def testInvalidDimensionsOpError(self):
-    if ops._USE_C_API:
-      error_message = "Invalid value in tensor used for shape: -2"
-    else:
-      error_message = "elements must be either positive integers or `-1`."
-    self._testInvalidDimensionsOpError(error_message)
+    self._testInvalidDimensionsOpError(
+        "Invalid value in tensor used for shape: -2")
 
   def testInputOutputMismatchOpError(self):
-    if ops._USE_C_API:
-      error_message = "Cannot reshape a tensor with"
-    else:
-      error_message = "Input to reshape is a tensor with"
-    self._testInputOutputMismatchOpError(error_message)
+    self._testInputOutputMismatchOpError("Cannot reshape a tensor with")
 
 
-@test_util.with_c_api
 class ReshapeBijectorTestDynamic(test.TestCase, _ReshapeBijectorTest):
 
   def build_shapes(self, shape_in, shape_out):
@@ -341,7 +329,6 @@ class ReshapeBijectorTestDynamic(test.TestCase, _ReshapeBijectorTest):
     self._testInputOutputMismatchOpError("Input to reshape is a tensor with")
 
 
-@test_util.with_c_api
 class ReshapeBijectorTestDynamicNdims(test.TestCase, _ReshapeBijectorTest):
 
   def build_shapes(self, shape_in, shape_out):

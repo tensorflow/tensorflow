@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+// Backend configs for XLA:GPU.
+//
+// These are metadata that the GPU backend attaches to HloInstrucitons and later
+// uses during e.g. codegen.
+//
+// Remember that proto3 doesn't give clients a way to tell the difference
+// between a field not being present and a field having the default value.
+// Choose your defaults carefully.
+//
+// No guarantee is made about the stability of these protos.
+//
+// See HloInstruction::backend_config() for more info.
+
+// Backend config for a convolution that runs through cudnn.
+message CudnnConvBackendConfig {
+  // Opaque algorithm number of cudnn algorithm chosen for this conv.
+  int64 algorithm = 1;
+
+  // Whether we may use tensor cores when running this conv.  Even if this is
+  // true, cudnn may choose not to use tensor cores, e.g. because the GPU or
+  // selected algorithm doesn't support it.
+  bool tensor_ops_enabled = 2;
+}

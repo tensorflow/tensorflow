@@ -102,7 +102,7 @@ class BoundingBox(ItemHandler):
   """An ItemHandler that concatenates a set of parsed Tensors to Bounding Boxes.
   """
 
-  def __init__(self, keys=None, prefix=None):
+  def __init__(self, keys=None, prefix=''):
     """Initialize the bounding box handler.
 
     Args:

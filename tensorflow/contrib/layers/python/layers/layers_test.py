@@ -1189,7 +1189,7 @@ class ConvolutionInPlaneTest(test.TestCase):
       result = sess.run(horz_gradients)
       expected = np.zeros((1, 10, 9, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testHorzConvWithBlankImageAndPlaceholder(self):
     image = array_ops.placeholder(dtypes.float32, shape=(None, None, None, 1))
@@ -1209,7 +1209,7 @@ class ConvolutionInPlaneTest(test.TestCase):
           })
       expected = np.zeros((1, 10, 9, 1))
 
-      self.assertAllEqual(result, expected)
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
   def testHorzConvWithRandomImageMultiBatch(self):
     np.random.seed(1)
@@ -1312,6 +1312,29 @@ class ConvolutionInPlaneTest(test.TestCase):
 
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
+  def testConv1dShape(self):
+    width = 7
+    with self.test_session():
+      images = random_ops.random_uniform((5, width, 3), seed=1)
+      output = layers_lib.convolution1d(images, 32, 3)
+      self.assertEqual(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, width, 32])
+
+  def testConvInferSpatialDims(self):
+    depth, height, width = 7, 9, 11
+    with self.test_session():
+      images = np.random.uniform(size=(5, width, 4)).astype(np.float32)
+      output = layers_lib.convolution(images, 32, [3])
+      self.assertListEqual(output.get_shape().as_list(), [5, width, 32])
+      images = np.random.uniform(size=(5, height, width, 4)).astype(np.float32)
+      output = layers_lib.convolution(images, 32, [3, 3])
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
+      images = np.random.uniform(size=(5, depth, height, width,
+                                       4)).astype(np.float32)
+      output = layers_lib.convolution(images, 32, [3, 3, 3])
+      self.assertListEqual(output.get_shape().as_list(),
+                           [5, depth, height, width, 32])
+
 
 class DenseToSparseTest(test.TestCase):
 
@@ -1333,7 +1356,7 @@ class DropoutTest(test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = _layers.dropout(images)
-      self.assertEqual(output.op.name, 'Dropout/dropout/mul')
+      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul')
       output.get_shape().assert_is_compatible_with(
           ops.convert_to_tensor(images).get_shape())
 

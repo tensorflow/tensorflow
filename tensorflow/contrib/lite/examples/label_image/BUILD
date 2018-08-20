@@ -53,19 +53,19 @@ cc_library(
     ],
 )
 
-# TODO(ahentz): Test disabled as it has a memory leek from read_bmp
-# cc_test(
-#     name = "label_image_test",
-#     srcs = [
-#         "get_top_n.h",
-#         "get_top_n_impl.h",
-#         "label_image_test.cc",
-#     ],
-#     data = [
-#         "testdata/grace_hopper.bmp",
-#     ],
-#     deps = [
-#         ":bitmap_helpers",
-#         "//testing/base/public:gunit",
-#     ],
-# )
+cc_test(
+    name = "label_image_test",
+    srcs = [
+        "get_top_n.h",
+        "get_top_n_impl.h",
+        "label_image_test.cc",
+    ],
+    data = [
+        "testdata/grace_hopper.bmp",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":bitmap_helpers",
+        "@com_google_googletest//:gtest",
+    ],
+)

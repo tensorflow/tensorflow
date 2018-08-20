@@ -252,7 +252,7 @@ class TransformedDistribution(distribution_lib.Distribution):
       name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     name = name or (("" if bijector is None else bijector.name) +
                     distribution.name)
     with ops.name_scope(name, values=[event_shape, batch_shape]) as name:
@@ -416,7 +416,7 @@ class TransformedDistribution(distribution_lib.Distribution):
     # For caching to work, it is imperative that the bijector is the first to
     # modify the input.
     x = self.bijector.inverse(y)
-    event_ndims = self._maybe_get_event_ndims_statically()
+    event_ndims = self._maybe_get_static_event_ndims()
 
     ildj = self.bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims)
     if self.bijector._is_injective:  # pylint: disable=protected-access
@@ -435,13 +435,15 @@ class TransformedDistribution(distribution_lib.Distribution):
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
     log_prob += math_ops.cast(ildj, log_prob.dtype)
     if self._is_maybe_event_override and isinstance(event_ndims, int):
-      log_prob.set_shape(array_ops.broadcast_static_shape(
-          x.get_shape().with_rank_at_least(1)[:-event_ndims], self.batch_shape))
+      log_prob.set_shape(
+          array_ops.broadcast_static_shape(
+              y.get_shape().with_rank_at_least(1)[:-event_ndims],
+              self.batch_shape))
     return log_prob
 
   def _prob(self, y):
     x = self.bijector.inverse(y)
-    event_ndims = self._maybe_get_event_ndims_statically()
+    event_ndims = self._maybe_get_static_event_ndims()
     ildj = self.bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims)
     if self.bijector._is_injective:  # pylint: disable=protected-access
       return self._finish_prob_for_one_fiber(y, x, ildj, event_ndims)
@@ -459,8 +461,10 @@ class TransformedDistribution(distribution_lib.Distribution):
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
     prob *= math_ops.exp(math_ops.cast(ildj, prob.dtype))
     if self._is_maybe_event_override and isinstance(event_ndims, int):
-      prob.set_shape(array_ops.broadcast_static_shape(
-          y.get_shape().with_rank_at_least(1)[:-event_ndims], self.batch_shape))
+      prob.set_shape(
+          array_ops.broadcast_static_shape(
+              y.get_shape().with_rank_at_least(1)[:-event_ndims],
+              self.batch_shape))
     return prob
 
   def _log_cdf(self, y):
@@ -618,15 +622,14 @@ class TransformedDistribution(distribution_lib.Distribution):
     return array_ops.transpose(
         x, _concat_vectors(math_ops.range(n, ndims), math_ops.range(0, n)))
 
-  def _maybe_get_event_ndims_statically(self):
+  def _maybe_get_static_event_ndims(self):
     if self.event_shape.ndims is not None:
       return self.event_shape.ndims
 
     event_ndims = array_ops.size(self.event_shape_tensor())
+    event_ndims_ = distribution_util.maybe_get_static_value(event_ndims)
 
-    static_event_ndims = tensor_util.constant_value(event_ndims)
-
-    if static_event_ndims is not None:
-      return static_event_ndims
+    if event_ndims_ is not None:
+      return event_ndims_
 
     return event_ndims
