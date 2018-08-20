@@ -47,6 +47,9 @@ def _get_toco_converter(flags):
 
   Returns:
     TocoConverter object.
+
+  Raises:
+    ValueError: Invalid flags.
   """
   # Parse input and output arrays.
   input_arrays = _parse_array(flags.input_arrays)
@@ -77,6 +80,9 @@ def _get_toco_converter(flags):
   elif flags.keras_model_file:
     converter_fn = lite.TocoConverter.from_keras_model_file
     converter_kwargs["model_file"] = flags.keras_model_file
+  else:
+    raise ValueError("--graph_def_file, --saved_model_dir, or "
+                     "--keras_model_file must be specified.")
 
   return converter_fn(**converter_kwargs)
 
