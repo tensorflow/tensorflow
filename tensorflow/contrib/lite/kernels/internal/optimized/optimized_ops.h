@@ -2327,8 +2327,8 @@ void GlobalBatchNormalization(const float* input_data,
   }
 }
 
-inline void Relu(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+inline void Relu(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
 
   const auto input = MapAsVector(input_data, input_shape);
@@ -4544,8 +4544,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+                     const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -4690,8 +4690,8 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
-                     int16* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+                     const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -4750,8 +4750,14 @@ inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+// Legacy version.
+inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
+                     int16* output_data, const RuntimeShape& output_shape) {
+  Logistic(input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -5014,12 +5020,19 @@ inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
+inline void Floor(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Floor");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::floor(input_map.array());
+}
+
+// Legacy Dims<4> version.
 inline void Floor(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Floor");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  output_map.array() = Eigen::floor(input_map.array());
+  Floor(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 #ifdef USE_NEON
