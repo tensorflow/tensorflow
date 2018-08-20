@@ -2076,6 +2076,44 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
   }
 }
 
+template <typename Scalar>
+void Pack(int dim, const Scalar* const* input_data,
+          const Dims<4>* const* input_dims, const int32* input_zeropoint,
+          const float* input_scale, int inputs_count, Scalar* output_data,
+          const Dims<4>& output_dims, const int32 output_zeropoint,
+          const float output_scale) {
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  int outer_size = 1;
+  for (int i = dim + 1; i < 4; i++) {
+    outer_size *= output_dims.sizes[i];
+  }
+  Scalar* output_ptr = output_data;
+  const int copy_size = FlatSize(**input_dims) / outer_size;
+  const float inverse_output_scale = 1.f / output_scale;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < inputs_count; ++i) {
+      if (input_zeropoint[i] == output_zeropoint &&
+          input_scale[i] == output_scale) {
+        memcpy(output_ptr, input_data[i] + k * copy_size,
+               copy_size * sizeof(Scalar));
+      } else {
+        assert(false);
+        const float scale = input_scale[i] * inverse_output_scale;
+        const float bias = -input_zeropoint[i] * scale;
+        auto input_ptr = input_data[i];
+        for (int j = 0; j < copy_size; ++j) {
+          const int32_t value =
+              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              output_zeropoint;
+          output_ptr[j] =
+              static_cast<uint8_t>(std::max(std::min(255, value), 0));
+        }
+      }
+      output_ptr += copy_size;
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void DepthConcatenation(const Scalar* const* input_data,
                         const Dims<4>* const* input_dims, int inputs_count,
