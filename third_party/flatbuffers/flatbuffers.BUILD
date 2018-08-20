@@ -19,10 +19,7 @@ config_setting(
 
 FLATBUFFERS_COPTS = select({
     ":windows": [],
-    "//conditions:default": [
-        "-Wno-implicit-fallthrough",
-        "-fexceptions",
-    ],
+    "//conditions:default": ["-Wno-implicit-fallthrough", "-fexceptions"],
 })
 
 # Public flatc library to compile flatbuffer files at runtime.
