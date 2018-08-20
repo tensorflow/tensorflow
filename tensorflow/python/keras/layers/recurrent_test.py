@@ -678,6 +678,23 @@ class RNNTest(test.TestCase):
           np.zeros((batch, input_size)))
       self.assertEqual(model.output_shape, (None, input_size))
 
+  def test_get_initial_state(self):
+    cell = keras.layers.SimpleRNNCell(5)
+    with self.assertRaisesRegexp(ValueError,
+                                 'batch_size and dtype cannot be None'):
+      cell.get_initial_state(None, None, None)
+
+    inputs = keras.Input((None, 2, 10))
+    initial_state = cell.get_initial_state(inputs, None, None)
+    self.assertEqual(initial_state.shape.as_list(), [None, 5])
+    self.assertEqual(initial_state.dtype, inputs.dtype)
+
+    batch = array_ops.shape(inputs)[0]
+    dtype = inputs.dtype
+    initial_state = cell.get_initial_state(None, batch, dtype)
+    self.assertEqual(initial_state.shape.as_list(), [None, 5])
+    self.assertEqual(initial_state.dtype, inputs.dtype)
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
