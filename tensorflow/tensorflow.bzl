@@ -17,8 +17,9 @@ load(
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_default_copts",
     "if_cuda",
+    "if_cuda_is_configured",
+    "cuda_default_copts",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -315,7 +316,6 @@ def _rpath_linkopts(name):
             "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
         ],
         clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:windows_msvc"): [],
         "//conditions:default": [
             "-Wl,%s" % (_make_search_paths("\\\$$ORIGIN", levels_to_root),),
         ],
@@ -825,7 +825,7 @@ def tf_gpu_cc_test(
             "@local_config_cuda//cuda:using_clang": 1,
             "//conditions:default": 0,
         }),
-        tags = tags + tf_cuda_tests_tags(),
+        tags = tags + tf_gpu_tests_tags(),
         data = data,
         size = size,
         extra_copts = extra_copts,
@@ -854,11 +854,15 @@ def tf_gpu_only_cc_test(
         srcs = srcs + tf_binary_additional_srcs(),
         size = size,
         args = args,
-        copts = _cuda_copts() + tf_copts(),
+        copts = _cuda_copts() + _rocm_copts() + tf_copts(),
         data = data + tf_binary_dynamic_kernel_dsos(kernels),
-        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda([
-            clean_dep("//tensorflow/core:cuda"),
-            clean_dep("//tensorflow/core:gpu_lib"),
+        deps = deps + tf_binary_dynamic_kernel_deps(kernels)
+          + if_cuda_is_configured([
+              clean_dep("//tensorflow/core:cuda"),
+              clean_dep("//tensorflow/core:gpu_lib")])
+          + if_rocm_is_configured([
+              clean_dep("//tensorflow/core:rocm"),
+              clean_dep("//tensorflow/core:gpu_lib")
         ]),
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
         linkstatic = linkstatic or select({
@@ -868,7 +872,7 @@ def tf_gpu_only_cc_test(
             clean_dep("//tensorflow:darwin"): 1,
             "//conditions:default": 0,
         }),
-        tags = tags + tf_cuda_tests_tags(),
+        tags = tags + tf_gpu_tests_tags(),
     )
 
 register_extension_info(
@@ -958,7 +962,7 @@ def tf_gpu_cc_tests(
         args = None,
         linkopts = []):
     for src in srcs:
-        tf_cuda_cc_test(
+        tf_gpu_cc_test(
             name = src_to_test_name(src),
             srcs = [src],
             deps = deps,
@@ -1036,7 +1040,7 @@ def tf_gpu_kernel_library(srcs,
                           deps=[],
                           hdrs=[],
                           **kwargs):
-    copts = copts + tf_copts() + _cuda_copts(opts=gpu_copts) + _rocm_copts(opts=gpu_copts)
+    copts = copts + tf_copts() + _cuda_copts() + _rocm_copts(opts=gpu_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
     native.cc_library(
@@ -1157,7 +1161,7 @@ def tf_kernel_library(
             [prefix + "*.h"],
             exclude = [prefix + "*test*", prefix + "*.cu.h", prefix + "*impl.h"],
         )
-        textual_hdrs = native.glob(
+      textual_hdrs = native.glob(
             [prefix + "*impl.h"],
             exclude = [prefix + "*test*", prefix + "*.cu.h"],
         )
@@ -1175,24 +1179,17 @@ def tf_kernel_library(
         "req_dep=@local_config_cuda//cuda:cuda_headers",
     ]
     tf_gpu_library(
-        name=name,
-        srcs=srcs,
-        hdrs=hdrs,
+        name = name,
+        srcs = srcs,
+        hdrs = hdrs,
         textual_hdrs = textual_hdrs,
-        copts=copts,
-        gpu_deps=gpu_deps,
-        linkstatic=1,  # Needed since alwayslink is broken in bazel b/27630669
-        alwayslink=alwayslink,
-        deps=deps,
-        **kwargs)
- 
-    # TODO(gunan): CUDA dependency not clear here. Fix it.
-    tf_cc_shared_object(
-        name="libtfkernel_%s.so" % name,
-        srcs=srcs + hdrs,
-        copts=copts,
-        deps=deps,
-        tags=["manual", "notap"])
+        copts = copts,
+        gpu_deps = gpu_deps,
+        linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
+        alwayslink = alwayslink,
+        deps = deps,
+        **kwargs
+    )
 
     # TODO(gunan): CUDA dependency not clear here. Fix it.
     tf_cc_shared_object(
@@ -1207,6 +1204,7 @@ register_extension_info(
     extension_name = "tf_kernel_library",
     label_regex_for_dep = "{extension_name}(_gpu)?",
 )
+
 
 def tf_mkl_kernel_library(
         name,
@@ -1504,7 +1502,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
                 "-lm",
             ],
             clean_dep("//tensorflow:windows"): [],
-            clean_dep("//tensorflow:windows_msvc"): [],
             clean_dep("//tensorflow:darwin"): [],
         }),)
 
@@ -1847,7 +1844,7 @@ def gpu_py_tests(
         prefix = "",
         xla_enabled = False,
         grpc_enabled = False):
-    test_tags = tags + tf_cuda_tests_tags()
+    test_tags = tags + tf_gpu_tests_tags()
     py_tests(
         name = name,
         size = size,

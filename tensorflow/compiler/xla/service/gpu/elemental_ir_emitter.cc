@@ -292,7 +292,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
   return b_->CreateFPCast(fast_tanh, value->getType());
 }
-
+/*
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
     const string& callee_name,
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
@@ -320,7 +320,7 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
 
   return b_->CreateCall(callee, llvm_ir::AsArrayRef(operands));
 }
-
+*/
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() const {
   llvm::Value* block_id = b_->CreateIntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::amdgcn_workgroup_id_x,
