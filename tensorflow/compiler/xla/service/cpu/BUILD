@@ -893,6 +893,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm//:core",
         "@llvm//:support",
     ],
