@@ -794,7 +794,8 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
             gpu_options, tf_gpu_id, 1);
         break;
       }
-      VLOG(2) << "TF GPU with id " << tf_gpu_id_value << " do not exist " << s;
+      LOG(ERROR) << "TF GPU with id " << tf_gpu_id_value << " does not exist "
+                 << s;
     }
     return std::make_pair(cuda_device_id, dev_allocator);
   }
