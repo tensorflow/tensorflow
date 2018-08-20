@@ -762,9 +762,13 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     if not is_dataset:
       raise TypeError('`input_fn` must return a `Dataset` for the PER_HOST_V2 '
                       'input pipeline configuration.')
+
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
-      # TODO(b/XXX): Add predict support for PER_HOST_V2
-      raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True,
+          num_invocations_per_step=ctx.num_of_replicas_per_host)
 
     hooks.append(inputs.dataset_initializer_hook())
     tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
@@ -774,6 +778,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     control_deps = []
     per_host_sharded_inputs = []
     num_replicas_per_host = ctx.num_of_replicas_per_host
+    cached_signals = None
     with ops.device(device):
       if not inputs.is_dataset:
         raise TypeError('`input_fn` must return a `Dataset` for this mode.')
@@ -781,12 +786,20 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         # Use control dependencies to ensure a deterministic ordering.
         with ops.control_dependencies(control_deps):
           features, labels = inputs.features_and_labels()  # Calls get_next()
+          signals = inputs.signals()
+
+          # All the replicas share the replica 0's stopping singal.
+          # This avoids inconsistent state among different model replcias.
+          if cached_signals:
+            signals['stopping'] = cached_signals['stopping']
+          else:
+            cached_signals = signals
 
         inputs_structure_recorder.validate_and_record_structure(
             features, labels)
         flattened_inputs = (
             inputs_structure_recorder.flatten_features_and_labels(
-                features, labels))
+                features, labels, signals))
         control_deps.extend(flattened_inputs)
         per_host_sharded_inputs.append(flattened_inputs)
 
@@ -807,7 +820,13 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
             tpu_ordinal_function=tpu_ordinal_function_impl)
       captured_infeed_queue.capture(infeed_queue)
 
-    return per_host_enqueue_ops
+    if signals is None:
+      return per_host_enqueue_ops
+    else:
+      return {
+          'ops': per_host_enqueue_ops,
+          'signals': signals,
+      }
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
@@ -3043,16 +3062,48 @@ class _Inputs(object):
 class _InputsWithStoppingSignals(_Inputs):
   """Inputs with `_StopSignals` inserted into the dataset."""
 
-  def __init__(self, dataset, batch_size, add_padding=False):
+  def __init__(self,
+               dataset,
+               batch_size,
+               add_padding=False,
+               num_invocations_per_step=1):
 
     assert dataset is not None
-
     user_provided_dataset = dataset.map(
         _InputsWithStoppingSignals.insert_stopping_signal(
             stop=False, batch_size=batch_size, add_padding=add_padding))
-    final_batch_dataset = dataset.take(1).map(
-        _InputsWithStoppingSignals.insert_stopping_signal(
-            stop=True, batch_size=batch_size, add_padding=add_padding))
+    if num_invocations_per_step == 1:
+      final_batch_dataset = dataset.take(1).map(
+          _InputsWithStoppingSignals.insert_stopping_signal(
+              stop=True, batch_size=batch_size, add_padding=add_padding))
+    else:
+      # We append (2 * num_invocations_per_step - 1) batches for exhausting the
+      # user_provided_dataset and stop properly.
+      # For example, if num_invocations_per_step is 2, we append 3 additional
+      # padding batches: b1, b2, b3.
+      # If user_provided_dataset contains two batches: a1, a2
+      # Step 1: [a1, a2]
+      # Step 2: [b1, b2] -> STOP
+      # If user_provided_dataset contains three batches: a1, a2, a3.
+      # The training loops:
+      # Step 1: [a1, a2]
+      # Step 2: [a3, b1]
+      # Step 3: [b2, b3] -> STOP.
+      final_batch_dataset = dataset.take(1).map(
+          _InputsWithStoppingSignals.insert_stopping_signal(
+              stop=True, batch_size=batch_size, add_padding=add_padding))
+      final_batch_dataset = final_batch_dataset.repeat(
+          2 * num_invocations_per_step - 1)
+
+      def _set_mask(data_dict):
+        signals = data_dict['signals']
+        signals['padding_mask'] = array_ops.ones_like(signals['padding_mask'])
+        data_dict['signals'] = signals
+        return data_dict
+
+      # Mask out the extra batch.
+      final_batch_dataset = final_batch_dataset.map(_set_mask)
+
     dataset = user_provided_dataset.concatenate(final_batch_dataset).prefetch(2)
 
     super(_InputsWithStoppingSignals, self).__init__(dataset=dataset)
