@@ -97,7 +97,6 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       MakeUnique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
 }
 
-/* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
   return MakeUnique<HloModule>(name, GetModuleConfigForTest());
 }
@@ -117,7 +116,6 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
   return status_or;
 }
 
-/*static*/
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
