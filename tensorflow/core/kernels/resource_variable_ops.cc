@@ -105,11 +105,11 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
 
 #if GOOGLE_CUDA
-#define REGISTER_READ_GPU_KERNELS(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("ReadVariableOp")               \
-                              .Device(DEVICE_GPU)              \
-                              .HostMemory("resource")          \
-                              .TypeConstraint<type>("dtype"),  \
+#define REGISTER_READ_GPU_KERNELS(type)                       \
+  REGISTER_KERNEL_BUILDER(Name("ReadVariableOp")              \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("resource")         \
+                              .TypeConstraint<type>("dtype"), \
                           ReadVariableOp)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_READ_GPU_KERNELS);
@@ -439,18 +439,20 @@ TF_CALL_int64(REGISTER_GPU_KERNELS);
 // Special GPU kernels for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires the int32 value to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
-                            .HostMemory("resource")
-                            .HostMemory("value"),
-                        AssignUpdateVariableOp<Eigen::ThreadPoolDevice, int32, ADD>);
-REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
-                            .HostMemory("resource")
-                            .HostMemory("value"),
-                        AssignUpdateVariableOp<Eigen::ThreadPoolDevice, int32, SUB>);
+REGISTER_KERNEL_BUILDER(
+    Name("AssignAddVariableOp")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<int32>("dtype")
+        .HostMemory("resource")
+        .HostMemory("value"),
+    AssignUpdateVariableOp<Eigen::ThreadPoolDevice, int32, ADD>);
+REGISTER_KERNEL_BUILDER(
+    Name("AssignSubVariableOp")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<int32>("dtype")
+        .HostMemory("resource")
+        .HostMemory("value"),
+    AssignUpdateVariableOp<Eigen::ThreadPoolDevice, int32, SUB>);
 
 #endif  // GOOGLE_CUDA
 
