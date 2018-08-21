@@ -125,6 +125,9 @@ class HloModuleGroupMetadata {
   // Returns the Channel instance for the given channel id.
   const Channel& GetChannel(int64 channel_id) const;
 
+  // Returns if the given channel id exists in metadata.
+  bool HasChannel(int64 channel_id) const;
+
   // Returns the all-reduce instructions with the same all_reduce_id.
   const std::vector<HloInstruction*>& GetAllReduceGroup(
       int64 all_reduce_id) const;
