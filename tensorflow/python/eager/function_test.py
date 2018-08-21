@@ -18,6 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+from multiprocessing.pool import ThreadPool
+import sys
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import iterator_ops
@@ -32,6 +35,7 @@ from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
@@ -49,6 +53,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 @test_util.with_c_shapes
@@ -139,6 +144,61 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def testExecutingStatelessDefunConcurrently(self):
+
+    @function.defun
+    def stateless(x):
+      return math_ops.multiply(2.0, x)
+
+    pool = ThreadPool()
+    inputs = [constant_op.constant(1.0 * x) for x in range(100)]
+    outputs = [float(out) for out in pool.map(stateless, inputs)]
+    expected = [float(2.0 * x) for x in inputs]
+    self.assertSequenceEqual(outputs, expected)
+
+  def testExecutingManyStatelessDefunsConcurrently(self):
+
+    @function.defun
+    def stateless(x):
+      del x
+      return math_ops.multiply(2.0, 2.0)
+
+    pool = ThreadPool()
+    # `pool.map` below instantiates 100 functions, one for each object.
+    outputs = [
+        float(out)
+        for out in pool.map(stateless, [object() for _ in range(100)])
+    ]
+    expected = [4.0] * 100
+    self.assertSequenceEqual(outputs, expected)
+
+  def testExecutingStatefulDefunConcurrently(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def stateful(x):
+      v.assign(x)
+
+    pool = ThreadPool()
+    inputs = [constant_op.constant(0.0)] * 100
+    pool.map(stateful, inputs)
+    self.assertEqual(float(v.read_value()), 0.0)
+
+  def testExecutingManyStatefulDefunsConcurrently(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def stateful(x):
+      del x
+      return v.assign(0.0)
+
+    pool = ThreadPool()
+    # `pool.map` below instantiates 100 functions, one for each object.
+    pool.map(stateful, [object() for _ in range(100)])
+    self.assertEqual(float(v.read_value()), 0.0)
+
   def disabled_testRandomSeed(self):
 
     @function.defun
@@ -226,6 +286,37 @@ class FunctionTest(test.TestCase):
       y = f(x)
     self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testGraphLoopGradient(self):
+
+    @function.defun
+    def f(x):
+      return control_flow_ops.while_loop(lambda _, i: i < 2,
+                                         lambda x, i: (2*x, i + 1),
+                                         [x, 0])[0]
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      t.watch(x)
+      y = f(x)
+    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
+
+  def testDefunNumpyArraysConvertedToTensors(self):
+
+    def f(x):
+      return x
+
+    x = random_ops.random_uniform([2, 2]).numpy()
+    defined = function.defun(f)
+    defined(x)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    x = random_ops.random_uniform([2, 2]).numpy()
+    defined(x)
+    # A NumPy array with different values but the same shape and dtype
+    # shouldn't trigger another function definition.
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
 
@@ -306,6 +397,18 @@ class FunctionTest(test.TestCase):
       compiled = function.defun(f)
       compiled()
 
+  @test_util.run_in_graph_and_eager_modes
+  def testDefunForcesResourceVariables(self):
+
+    def variable_creator():
+      return variables.Variable(0.0).read_value()
+
+    defined = function.defun(variable_creator)
+    defined()  # Create the variable.
+    self.assertEqual(len(defined.variables), 1)
+    self.assertIsInstance(
+        defined.variables[0], resource_variable_ops.ResourceVariable)
+
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
 
@@ -342,6 +445,22 @@ class FunctionTest(test.TestCase):
       call = function.defun(o.call)
       op = call()
       self.assertAllEqual(sess.run(op), 2.0)
+
+  def testSymbolicGradientVariableZerosLike(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      @function.defun
+      def f(x, v):
+        v.read_value()
+        return x * x
+
+      x = constant_op.constant(1.0)
+      l = f(x, v)
+      _, dv = gradients_impl.gradients(l, [x, v])
+      with self.test_session():
+        v.initializer.run()
+        self.assertAllEqual(dv.eval(), 0.0)
 
   def testGraphModeManyFunctions(self):
     with context.graph_mode(), self.test_session():
@@ -841,9 +960,12 @@ class FunctionTest(test.TestCase):
     y = model(x)
     self.assertAllEqual([[[[4.0]]]], y.numpy())
 
+  # Note: The ConfigProto below unfortunately only configures graph
+  # construction. Eager's configuration is controlled in `__main__`.
   @test_util.run_in_graph_and_eager_modes(
-      config=config_pb2.ConfigProto(device_count={'CPU': 3}))
+      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
   def testDeviceAnnotationsRespected(self):
+
     @function.defun
     def multi_device_fn():
       with ops.device('/cpu:0'):
@@ -855,12 +977,28 @@ class FunctionTest(test.TestCase):
       with ops.device('/cpu:2'):
         s3 = iterator_ops.Iterator.from_structure(
             (dtypes.float32,)).string_handle()
-      return s1, s2, s3
+      with ops.device(''):
+        # TODO(akshayka): This is unfortunate and brittle. It prevents
+        # `Iterator.from_structure` from assigning the iterator op to 'cpu:0'.
+        #  Remove this hack once we have a way of obtaining metadata about
+        #  function execution.
+        s4 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3, s4
 
-    outputs = multi_device_fn()
-    self.assertTrue(compat.as_bytes('CPU:0') in self.evaluate(outputs[0]))
-    self.assertTrue(compat.as_bytes('CPU:1') in self.evaluate(outputs[1]))
-    self.assertTrue(compat.as_bytes('CPU:2') in self.evaluate(outputs[2]))
+    with ops.device('/cpu:3'):
+      outputs = self.evaluate(multi_device_fn())
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
+
+    with ops.device('/cpu:0'):
+      outputs = self.evaluate(multi_device_fn())
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
   def testVariablesAreTracked(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -878,6 +1016,237 @@ class FunctionTest(test.TestCase):
     x = constant_op.constant([1.0, 2.0])
     _ = defined(x)  # ensure the variables list remains the same
     self.assertAllEqual(defined.variables, [v])
+
+  def testPythonFunctionWithDefaultArgs(self):
+
+    def func(foo, bar=1, baz=2):
+      del foo
+      del bar
+      del baz
+      return
+
+    defined = function.defun(func)
+    defined(0, baz=20)
+    # `True` corresponds to the fact that we're executing eagerly
+    self.assertIn((0, 1, 20, True), defined._arguments_to_functions)
+
+    defined(1)  # bar=1, baz=2
+    self.assertIn((1, 1, 2, True), defined._arguments_to_functions)
+
+    # This matches the previous call.
+    defined(foo=1)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    defined(1, 2, 3)
+    self.assertIn((1, 2, 3, True), defined._arguments_to_functions)
+
+    # This matches the previous call.
+    defined(1, bar=2, baz=3)
+    self.assertEqual(len(defined._arguments_to_functions), 3)
+
+    # This matches the previous call.
+    defined(1, baz=3, bar=2)
+    self.assertEqual(len(defined._arguments_to_functions), 3)
+
+  def testFunctoolsPartialUnwrappedCorrectly(self):
+
+    def full_function(a, b, c=3):
+      return a, b, c
+
+    partial = functools.partial(full_function, 1, c=3)
+    a, b, c = partial(2)
+
+    defined = function.defun(partial)
+    func_a, func_b, func_c = defined(2)
+    self.assertEqual(func_a.numpy(), a)
+    self.assertEqual(func_b.numpy(), b)
+    self.assertEqual(func_c.numpy(), c)
+
+  def testInputSignatureWithCompatibleInputs(self):
+
+    def foo(a):
+      self.assertEqual(a.shape, (2,))
+      return a
+
+    signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
+    defined = function.defun(foo, input_signature=signature)
+    a = array_ops.ones([2])
+    out = defined(a)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertAllEqual(out, a)
+
+    def bar(a):
+      self.assertEqual(a._shape_tuple(), (2, None))
+      return a
+
+    signature = [tensor_spec.TensorSpec((2, None), dtypes.float32)]
+    defined = function.defun(bar, input_signature=signature)
+    a = array_ops.ones([2, 1])
+    out = defined(a)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertAllEqual(out, a)
+
+    # Changing the second dimension shouldn't create a new function.
+    b = array_ops.ones([2, 3])
+    out = defined(b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    self.assertAllEqual(out, b)
+
+  def testNestedInputSignatures(self):
+
+    def foo(a, b):
+      self.assertEqual(a[0]._shape_tuple(), (2, None))
+      self.assertEqual(a[1]._shape_tuple(), (2, None))
+      self.assertEqual(b._shape_tuple(), (1,))
+      return [a, b]
+
+    signature = [[tensor_spec.TensorSpec((2, None), dtypes.float32)] * 2,
+                 tensor_spec.TensorSpec((1,), dtypes.float32)]
+    defined = function.defun(foo, input_signature=signature)
+    a = array_ops.ones([2, 1])
+    b = array_ops.ones([1])
+    out = defined([a, a], b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    nest.assert_same_structure(out, [[a, a], b])
+    self.assertAllEqual(out[0][0], a)
+    self.assertAllEqual(out[0][1], a)
+    self.assertAllEqual(out[1], b)
+
+    # Changing the unspecified dimensions shouldn't create a new function.
+    a = array_ops.ones([2, 3])
+    b = array_ops.ones([2, 5])
+    c = array_ops.ones([1])
+    out = defined([a, b], c)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+    nest.assert_same_structure(out, [[a, b], c])
+    self.assertAllEqual(out[0][0], a)
+    self.assertAllEqual(out[0][1], b)
+    self.assertAllEqual(out[1], c)
+
+    def bar(a):
+      self.assertEqual(a['a']._shape_tuple(), (2, None))
+      self.assertEqual(a['b']._shape_tuple(), (2, None))
+      self.assertEqual(a['c']._shape_tuple(), (1,))
+      return a
+
+    signature = [{
+        'a': tensor_spec.TensorSpec((2, None), dtypes.float32),
+        'b': tensor_spec.TensorSpec((2, None), dtypes.float32),
+        'c': tensor_spec.TensorSpec((1,), dtypes.float32)
+    }]
+    a = array_ops.ones([2, 3])
+    b = array_ops.ones([1])
+    inputs = {'a': a, 'b': a, 'c': b}
+    defined = function.defun(bar, input_signature=signature)
+    out = defined(inputs)
+    nest.assert_same_structure(out, inputs)
+    self.assertAllEqual(out['a'], inputs['a'])
+    self.assertAllEqual(out['b'], inputs['b'])
+    self.assertAllEqual(out['c'], inputs['c'])
+
+  def testInputSignatureMustBeSequenceOfTensorSpecs(self):
+
+    def foo(a, b):
+      del a
+      del b
+
+    # Signatures must consist exclusively of `TensorSpec` objects.
+    signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
+    with self.assertRaisesRegexp(TypeError, 'Invalid input_signature.*'):
+      function.defun(foo, input_signature=signature)(1, 2)
+
+    # Signatures must be either lists or tuples on their outermost levels.
+    signature = {'t1': tensor_spec.TensorSpec([], dtypes.float32)}
+    with self.assertRaisesRegexp(TypeError, 'input_signature must be either a '
+                                 'tuple or a list.*'):
+      function.defun(foo, input_signature=signature)(1, 2)
+
+  def testInputsIncompatibleWithSignatureRaisesError(self):
+
+    def foo(a):
+      return a
+
+    signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
+    defined = function.defun(foo, input_signature=signature)
+
+    # Invalid shapes.
+    with self.assertRaisesRegexp(ValueError, 'Python inputs incompatible.*'):
+      defined(array_ops.ones([3]))
+
+    with self.assertRaisesRegexp(ValueError, 'Python inputs incompatible.*'):
+      defined(array_ops.ones([2, 1]))
+
+    # Wrong number of arguments.
+    with self.assertRaisesRegexp(ValueError,
+                                 'Structure of Python function inputs.*'):
+      defined(array_ops.ones([2]), array_ops.ones([2]))
+    with self.assertRaisesRegexp(ValueError,
+                                 'Structure of Python function inputs.*'):
+      defined()
+
+  def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
+
+    def foo(a, training=True):
+      if training:
+        return a
+      else:
+        return -1.0 * a
+
+    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    defined = function.defun(foo, input_signature=signature)
+    a = constant_op.constant(1.0)
+    with self.assertRaisesRegexp(
+        ValueError, 'When input_signature is provided, '
+        'all inputs to the Python function must be Tensors.'):
+      defined(a, training=True)
+
+  def testInputSignatureWithKeywordPositionalArgs(self):
+
+    @function.defun(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.int64)
+    ])
+    def foo(flt, integer):
+      return flt, integer
+
+    flt = constant_op.constant(1.0)
+    integer = constant_op.constant(2, dtypes.int64)
+
+    out1, out2 = foo(flt, integer)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+    out1, out2 = foo(flt=flt, integer=integer)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+    out1, out2 = foo(integer=integer, flt=flt)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+    out1, out2 = foo(flt, integer=integer)
+    self.assertEqual(len(foo._arguments_to_functions), 1)
+    self.assertEqual(out1.numpy(), 1.0)
+    self.assertEqual(out2.numpy(), 2)
+
+  def testInputSignatureWithKeywordArgsFails(self):
+
+    def foo(a, **kwargs):
+      del a
+      del kwargs
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Cannot define a TensorFlow function from a Python '
+        'function with keyword arguments when input_signature.*'):
+      function.defun(
+          foo,
+          input_signature=[
+              tensor_spec.TensorSpec([], dtypes.float32),
+              tensor_spec.TensorSpec([], dtypes.int64)
+          ])
 
   def testTensorKeywordArguments(self):
 
@@ -946,7 +1315,9 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
 
-  def testDecoratingInstanceMethod(self):
+  def testDefuningInstanceMethod(self):
+
+    integer = constant_op.constant(2, dtypes.int64)
 
     class Foo(object):
 
@@ -954,13 +1325,27 @@ class FunctionTest(test.TestCase):
         return tensor
 
       @function.defun
-      def two(self, tensor):
-        return self.one(tensor)
+      def two(self, tensor, other=integer):
+        return self.one(tensor), other
 
     foo = Foo()
     t = constant_op.constant(1.0)
-    out = foo.two(t)
-    self.assertEqual(float(out), 1.0)
+    one, two = foo.two(t)
+    self.assertEqual(one.numpy(), 1.0)
+    self.assertEqual(two.numpy(), 2)
+
+  def testDefuningInstanceMethodWithDefaultArgument(self):
+
+    integer = constant_op.constant(2, dtypes.int64)
+
+    class Foo(object):
+
+      @function.defun
+      def func(self, other=integer):
+        return other
+
+    foo = Foo()
+    self.assertEqual(foo.func().numpy(), int(integer))
 
   def testPythonCallWithSideEffects(self):
     state = []
@@ -1180,6 +1565,18 @@ class AutomaticControlDependenciesTest(test.TestCase):
     value = train()
     self.assertEqual(value.numpy(), -1.0)
 
+  def testReturningNonTensorRaisesError(self):
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
+    optimizer.apply_gradients = function.defun(optimizer.apply_gradients)
+    v = resource_variable_ops.ResourceVariable(1.0)
+    grad = backprop.implicit_grad(lambda v: v**2)(v)
+
+    with self.assertRaisesRegexp(TypeError,
+                                 '.*must return zero or more Tensors.*'):
+      # TODO(akshayka): We might want to allow defun-ing Python functions
+      # that return operations (and just execute the op instead of running it).
+      optimizer.apply_gradients(grad)
+
   # TODO(b/111663004): This should work when the outer context is graph
   # building.
   def testOptimizerNonSlotVarsInDefunNoError(self):
@@ -1212,8 +1609,176 @@ class AutomaticControlDependenciesTest(test.TestCase):
     train()
     self.assertEqual(v.numpy(), -1.0)
 
+  def testFunctionModifiesInputList(self):
+    # Tests on `list` methods that do in place modification, except `list.sort`
+    # since it cannot even be "defunned" in the first place
+
+    def get_list():
+      return [constant_op.constant(0.), constant_op.constant(1.)]
+
+    expected_msg = (
+        'Function to be traced should not modify structure of input '
+        'arguments. Check if your function has list and dictionary '
+        'operations that alter input arguments, '
+        'such as `list.pop`, `list.append`')
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def append(l):
+        l.append(constant_op.constant(0.))
+
+      append(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def extend(l):
+        l.extend([constant_op.constant(0.)])
+
+      extend(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def insert(l):
+        l.insert(0, constant_op.constant(0.))
+
+      insert(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def pop(l):
+        l.pop()
+
+      pop(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def reverse(l):
+        l.reverse()
+
+      reverse(get_list())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def remove(l):
+        l.remove(l[0])
+
+      remove(get_list())
+
+    # `list.clear` is a method that is in Py3 but not Py2
+    if sys.version.startswith('3'):
+
+      with self.assertRaisesRegexp(ValueError, expected_msg):
+
+        @function.defun
+        def clear(l):
+          l.clear()
+
+        clear(get_list())
+
+    # One last test for keyword arguments
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def kwdappend(**kwargs):
+        l = kwargs['l']
+        l.append(constant_op.constant(0.))
+
+      kwdappend(l=get_list())
+
+  def testFunctionModifiesInputDict(self):
+
+    def get_dict():
+      return {'t1': constant_op.constant(0.), 't2': constant_op.constant(1.)}
+
+    expected_msg = (
+        'Function to be traced should not modify structure of input '
+        'arguments. Check if your function has list and dictionary '
+        'operations that alter input arguments, '
+        'such as `list.pop`, `list.append`')
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def clear(m):
+        m.clear()
+
+      clear(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def pop(m):
+        m.pop('t1')
+
+      pop(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def popitem(m):
+        m.popitem()
+
+      popitem(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def update(m):
+        m.update({'t1': constant_op.constant(3.)})
+
+      update(get_dict())
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def setdefault(m):
+        m.setdefault('t3', constant_op.constant(3.))
+
+      setdefault(get_dict())
+
+  def testFunctionModifiesInputNest(self):
+    # Test on functions that modify structure of nested input arguments
+    expected_msg = (
+        'Function to be traced should not modify structure of input '
+        'arguments. Check if your function has list and dictionary '
+        'operations that alter input arguments, '
+        'such as `list.pop`, `list.append`')
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      @function.defun
+      def modify(n):
+        n[0]['t1'].append(constant_op.constant(1.))
+
+      nested_input = [{
+          't1': [constant_op.constant(0.),
+                 constant_op.constant(1.)],
+      },
+                      constant_op.constant(2.)]
+
+      modify(nested_input)
+
+    with self.assertRaisesRegexp(ValueError, expected_msg):
+
+      # The flat list doesn't change whereas the true structure changes
+      @function.defun
+      def modify_same_flat(n):
+        n[0].append(n[1].pop(0))
+
+      nested_input = [[constant_op.constant(0.)],
+                      [constant_op.constant(1.),
+                       constant_op.constant(2.)]]
+
+      modify_same_flat(nested_input)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={'CPU': 3}))
+      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
   test.main()

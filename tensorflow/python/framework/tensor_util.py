@@ -942,7 +942,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
   Check whether an object is a tensor. This check is equivalent to calling
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])` and also checks
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
   if all the component variables of a MirroredVariable or a TowerLocalVariable
   are tensors.
 

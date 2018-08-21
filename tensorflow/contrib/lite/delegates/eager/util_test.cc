@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/string.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {

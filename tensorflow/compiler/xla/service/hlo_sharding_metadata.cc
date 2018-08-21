@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -121,9 +122,9 @@ std::unique_ptr<HloSharding> CloneShardingForDomain(
     const HloSharding& sharding) {
   auto single_sharding = sharding.ExtractSingleSharding();
   if (!single_sharding) {
-    return MakeUnique<HloSharding>(sharding);
+    return absl::make_unique<HloSharding>(sharding);
   }
-  return MakeUnique<HloSharding>(*single_sharding);
+  return absl::make_unique<HloSharding>(*single_sharding);
 }
 
 Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
@@ -158,7 +159,6 @@ ShapeTree<HloSharding> GetTupleSharding(HloInstruction* tuple) {
 const HloSharding* GetOperandSharding(const HloInstruction* operand,
                                       const DomainMetadata::Domain& domain,
                                       const HloSharding& sharding) {
-  DCHECK_EQ(domain.reach_set.count(const_cast<HloInstruction*>(operand)), 1);
   // Here the user of operand is within the domain instruction set, and since it
   // is user of operand, we need to look into the enter_domains set. If this is
   // not a kDomain within the user domains set, then return the operand
@@ -203,10 +203,17 @@ StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
       for (int64 i = 0; i < instruction->operand_count(); ++i) {
         const HloSharding* operand_sharding =
             GetOperandSharding(instruction->operand(i), domain, sharding);
-        if (operand_sharding != nullptr &&
-            shape_tree.element({i}) != *operand_sharding) {
-          *shape_tree.mutable_element({i}) = *operand_sharding;
-          ++tuple_assigned;
+        if (operand_sharding != nullptr) {
+          HloSharding operand_subsharding = HloSharding::Replicate();
+          if (operand_sharding == &sharding) {
+            operand_subsharding =
+                sharding.GetSubSharding(instruction->shape(), {i});
+            operand_sharding = &operand_subsharding;
+          }
+          if (shape_tree.element({i}) != *operand_sharding) {
+            *shape_tree.mutable_element({i}) = *operand_sharding;
+            ++tuple_assigned;
+          }
         }
       }
       if (tuple_assigned > 0) {
@@ -312,9 +319,9 @@ std::unique_ptr<HloInstruction> CreateDomain(HloInstruction* instruction,
                   : "None");
 
   std::unique_ptr<DomainMetadata> operand_side_metadata =
-      MakeUnique<ShardingMetadata>(std::move(real_operand_sharding));
+      absl::make_unique<ShardingMetadata>(std::move(real_operand_sharding));
   std::unique_ptr<DomainMetadata> user_side_metadata =
-      MakeUnique<ShardingMetadata>(std::move(real_instruction_sharding));
+      absl::make_unique<ShardingMetadata>(std::move(real_instruction_sharding));
   return HloInstruction::CreateDomain(operand->shape(), operand,
                                       std::move(operand_side_metadata),
                                       std::move(user_side_metadata));
@@ -351,9 +358,9 @@ StatusOr<std::unique_ptr<HloSharding>> ExtractOriginalCommonSharding(
 std::unique_ptr<DomainMetadata> ShardingMetadata::Clone() const {
   std::unique_ptr<HloSharding> sharding;
   if (sharding_ != nullptr) {
-    sharding = MakeUnique<HloSharding>(*sharding_);
+    sharding = absl::make_unique<HloSharding>(*sharding_);
   }
-  return MakeUnique<ShardingMetadata>(std::move(sharding));
+  return absl::make_unique<ShardingMetadata>(std::move(sharding));
 }
 
 bool ShardingMetadata::Matches(const DomainMetadata& other) const {

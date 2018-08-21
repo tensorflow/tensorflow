@@ -46,7 +46,8 @@ typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 typedef enum {
   kTfLiteEigenContext = 0,     // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
-  kTfLiteMaxExternalContexts = 2
+  kTfLiteEdgeTpuContext = 2,   // Placeholder for Edge TPU support.
+  kTfLiteMaxExternalContexts = 3
 } TfLiteExternalContextType;
 
 // An external context is a collection of information unrelated to the TF Lite
@@ -149,6 +150,11 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
     }                                      \
   } while (0)
 
+// Single-precision complex data type compatible with the C99 definition.
+typedef struct {
+  float re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex64;
+
 // Types supported by tensor
 typedef enum {
   kTfLiteNoType = 0,
@@ -180,7 +186,7 @@ typedef union {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
-  _Complex float* c64;
+  TfLiteComplex64* c64;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -445,13 +451,15 @@ typedef struct _TfLiteDelegate {
 
   // Copy the data from delegate buffer handle to raw memory.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyFromBufferHandle)(TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyFromBufferHandle)(TfLiteContext* context,
+                                       TfLiteDelegate* delegate,
                                        TfLiteBufferHandle buffer_handle,
                                        void* data, size_t size);
 
   // Copy the data from raw memory to delegate buffer handle.
   // This can be null if the delegate doesn't use its own buffer.
-  TfLiteStatus (*CopyToBufferHandle)(TfLiteDelegate* delegate,
+  TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
+                                     TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
                                      void* data, size_t size);
 
@@ -459,7 +467,7 @@ typedef struct _TfLiteDelegate {
   // this doesn't release the underlying resource (e.g. textures). The
   // resources are either owned by application layer or the delegate.
   // This can be null if the delegate doesn't use its own buffer.
-  void (*FreeBufferHandle)(TfLiteDelegate* delegate,
+  void (*FreeBufferHandle)(TfLiteContext* context, TfLiteDelegate* delegate,
                            TfLiteBufferHandle* handle);
 } TfLiteDelegate;
 

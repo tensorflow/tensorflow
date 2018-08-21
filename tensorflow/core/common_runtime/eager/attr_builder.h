@@ -131,7 +131,6 @@ class AttrBuilder {
     }
   }
 
-  AttrVec<StringPiece> string_attrs_;
   AttrVec<int> int_attrs_;
   AttrVec<float> float_attrs_;
   AttrVec<bool> bool_attrs_;
@@ -142,8 +141,6 @@ class AttrBuilder {
   bool node_def_finalized_;
 };  // namespace tensorflow
 
-template <>
-AttrBuilder& AttrBuilder::Set(StringPiece attr_name, StringPiece&& value);
 template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name, int&& value);
 template <>

@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -70,7 +70,7 @@ class TileOp : public XlaOpKernel {
     bool one_dimension_is_broadcasted_without_multiple = true;
     for (int i = 0; i < input_dims; ++i) {
       int multiple = literal.Get<int>({i});
-      OP_REQUIRES(ctx, multiple,
+      OP_REQUIRES(ctx, multiple >= 0,
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", multiple));
       int64 new_dim = input_shape.dim_size(i) * multiple;

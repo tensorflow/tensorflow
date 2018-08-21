@@ -26,9 +26,9 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -137,7 +137,7 @@ PointsToSet::BufferSet* LayoutConstraints::GetBufferSet(
   }
   auto& buffer_set =
       buffer_sets_cache_
-          .emplace(instruction, MakeUnique<PointsToSet::BufferSet>())
+          .emplace(instruction, absl::make_unique<PointsToSet::BufferSet>())
           .first->second;
   const auto& points_to_set = points_to_analysis_.GetPointsToSet(instruction);
   points_to_set.ForEachElement(
@@ -874,8 +874,8 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
     // HostCompute module.
     // Otherwise it is preferable to leave the new instruction without device,
     // and let the automatic device placer to choose the best location.
-    if (!sharding.HasUniqueDevice() ||
-        HloSharding::IsReservedDevice(sharding.UniqueDevice().ValueOrDie())) {
+    auto device = sharding.UniqueDevice();
+    if (!device || HloSharding::IsReservedDevice(*device)) {
       copy->set_sharding(sharding);
     }
   }
@@ -1008,7 +1008,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     //
     // TODO(jingyue): Other operations, such as kSlice and kConcat, can benefit
     // from assigning the same layout to input and output.
-    return MakeUnique<Layout>(output_layout);
+    return absl::make_unique<Layout>(output_layout);
   }
 
   if (instruction->opcode() == HloOpcode::kReshape) {
@@ -1031,13 +1031,13 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     *operand_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
     if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
-      return MakeUnique<Layout>(operand_shape.layout());
+      return absl::make_unique<Layout>(operand_shape.layout());
     }
     if (ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(output_shape)) {
       *operand_shape.mutable_layout() = output_layout;
       if (ShapeUtil::ReshapeIsBitcast(operand_shape,
                                       output_shape_with_layout)) {
-        return MakeUnique<Layout>(output_layout);
+        return absl::make_unique<Layout>(output_layout);
       }
     }
     auto aligned_operand_shape =
@@ -1046,7 +1046,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       auto operand_layout = aligned_operand_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(operand_layout, operand_shape));
-      return MakeUnique<Layout>(operand_layout);
+      return absl::make_unique<Layout>(operand_layout);
     }
   }
 
@@ -1062,7 +1062,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
-    return MakeUnique<Layout>(operand_layout);
+    return absl::make_unique<Layout>(operand_layout);
   }
 
   return nullptr;
@@ -1080,7 +1080,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       !ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape())) {
     // Assign users the same layout as the operand.
-    return MakeUnique<Layout>(operand_layout);
+    return absl::make_unique<Layout>(operand_layout);
   }
 
   if (user->opcode() == HloOpcode::kReshape) {
@@ -1103,13 +1103,13 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     *output_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(output_shape);
     if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
-      return MakeUnique<Layout>(output_shape.layout());
+      return absl::make_unique<Layout>(output_shape.layout());
     }
     if (ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape)) {
       *output_shape.mutable_layout() = operand_layout;
       if (ShapeUtil::ReshapeIsBitcast(output_shape,
                                       operand_shape_with_layout)) {
-        return MakeUnique<Layout>(operand_layout);
+        return absl::make_unique<Layout>(operand_layout);
       }
     }
     auto aligned_user_shape =
@@ -1118,7 +1118,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       auto user_layout = aligned_user_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
-      return MakeUnique<Layout>(user_layout);
+      return absl::make_unique<Layout>(user_layout);
     }
   }
 
@@ -1134,7 +1134,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     }
     Layout user_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
-    return MakeUnique<Layout>(user_layout);
+    return absl::make_unique<Layout>(user_layout);
   }
 
   return nullptr;
@@ -1228,7 +1228,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   const PointsToSet& points_to_set =
       constraints->points_to_analysis().GetPointsToSet(instruction);
   return points_to_set.ForEachElementWithStatus(
-      [this, &shape_layout, constraints](
+      [&shape_layout, constraints](
           const ShapeIndex& index,
           const PointsToSet::BufferList& buffers) -> Status {
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {
@@ -1563,7 +1563,7 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
   // and the computation result. The latter two are specified in
   // computation_layout, so we only need to keep the existing layouts for
   // infeeds.  Clearing the layouts here avoids hiding potential bugs in the
-  // layout assignment pass that may accidently use the existing layout.
+  // layout assignment pass that may accidentally use the existing layout.
   for (HloInstruction* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kBitcast) {
       // bitcasts are inherently layout sensitive and so a bitcast instruction

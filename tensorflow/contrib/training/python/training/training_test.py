@@ -36,6 +36,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
@@ -421,7 +422,7 @@ class TrainTest(test.TestCase):
       train_op = self.create_train_op()
 
       model_variables = variables_lib2.global_variables()
-      model_path = saver_lib.latest_checkpoint(logdir1)
+      model_path = checkpoint_management.latest_checkpoint(logdir1)
 
       assign_fn = variables_lib.assign_from_checkpoint_fn(
           model_path, model_variables)

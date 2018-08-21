@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -543,8 +542,7 @@ class BufferAssigner {
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
   Status AssignBuffersForComputation(
-      const HloComputation* computation, const DebugOptions& debug_options,
-      bool is_thread_local,
+      const HloComputation* computation, bool is_thread_local,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,

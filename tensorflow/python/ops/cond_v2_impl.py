@@ -58,25 +58,34 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
 
   with ops.name_scope(name) as scope:
     # Identify if there is a caller device, & get the innermost if possible.
-    device_stack = ops.get_default_graph()._device_function_stack
-    caller_device = device_stack[-1] if device_stack else None
+    # pylint: disable=protected-access
+    device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
+    caller_device = device_funcs[-1] if device_funcs else None
 
     caller_colocation_stack = ops.get_default_graph()._colocation_stack
     caller_container = ops.get_default_graph()._container
     caller_collection_ref = ops.get_default_graph()._collections
 
-    func_name_prefix = scope.replace("/", "_")
+    with ops.name_scope(None):
+      # Find the outer most graph for uniquing function names.
+      # TODO(jpienaar): Make this work in eager mode.
+      graph = ops.get_default_graph()
+      while isinstance(graph, _function._FuncGraph):
+        graph = graph._outer_graph
 
+      true_name = graph.unique_name(("%strue" % scope).replace("/", "_"))
+      false_name = graph.unique_name(("%sfalse" % scope).replace("/", "_"))
+    # pylint: enable=protected-access
     true_graph = _function.func_graph_from_py_func(
         true_fn, [], [],
-        name="%strue" % func_name_prefix,
+        name=true_name,
         device=caller_device,
         colocation_stack=caller_colocation_stack,
         collections_ref=caller_collection_ref,
         container=caller_container)
     false_graph = _function.func_graph_from_py_func(
         false_fn, [], [],
-        name="%sfalse" % func_name_prefix,
+        name=false_name,
         device=caller_device,
         colocation_stack=caller_colocation_stack,
         collections_ref=caller_collection_ref,
@@ -106,7 +115,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     false_graph.outputs.extend(extra_false_outputs)
 
     # Create the If op.
-    tensors = gen_functional_ops._if(
+    tensors = gen_functional_ops._if(  # pylint: disable=protected-access
         pred, cond_inputs, [t.dtype for t in true_graph.outputs],
         _create_new_tf_function(true_graph),
         _create_new_tf_function(false_graph),
@@ -125,10 +134,12 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
     if_op = tensors[0].op
     if not control_flow_util.IsInXLAContext(if_op):
+      # pylint: disable=protected-access
       if_op._set_attr("_lower_using_switch_merge",
                       attr_value_pb2.AttrValue(b=True))
+      # pylint: enable=protected-access
 
-    return tensors[:num_cond_outputs]
+    return tuple(tensors[:num_cond_outputs])
 
 
 @ops.RegisterGradient("If")

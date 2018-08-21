@@ -25,10 +25,10 @@ the appropriate repository for the project. Major repositories include:
   
 ### Security
 
-Before using TensorFlow, please take a look at our security model, list of
-recent security announcements, and ways you can report security issues to the
-TensorFlow team at the
-[Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md) page on GitHub.
+Before using TensorFlow, please take a look at our [security model](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md#tensorflow-models-are-programs),
+[list of recent security advisories and announcements](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md),
+and [ways you can report security issues](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md#reporting-vulnerabilities)
+to the TensorFlow team at the [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md) page on GitHub.
 
 ## Stay Informed
 
@@ -40,7 +40,7 @@ We recommend that you join this list if you depend on TensorFlow in any way.
 
 ### Development Roadmap
 
-The @{$roadmap$Roadmap} summarizes plans for upcoming additions to TensorFlow.
+The [Roadmap](../community/roadmap.md) summarizes plans for upcoming additions to TensorFlow.
 
 ### Social Media
 
@@ -54,7 +54,7 @@ with content from the TensorFlow team and the best articles from the community.
 
 ### YouTube
 
-Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learing
+Our [YouTube Channel](http://youtube.com/tensorflow/) focuses on machine learning
 and AI with TensorFlow. On it we have a number of new shows, including:
 
 - TensorFlow Meets: meet with community contributors to learn and share what they're doing
@@ -70,12 +70,12 @@ the [TensorFlow discuss mailing
 list](https://groups.google.com/a/tensorflow.org/d/forum/discuss).
 
 A number of other mailing lists exist, focused on different project areas, which
-can be found at @{$lists$TensorFlow Mailing Lists}.
+can be found at [TensorFlow Mailing Lists](../community/lists.md).
 
 ### User Groups
 
 To meet with like-minded people local to you, check out the many
-@{$groups$TensorFlow user groups} around the world.
+[TensorFlow user groups](../community/groups.md) around the world.
 
 
 ## Contributing To TensorFlow

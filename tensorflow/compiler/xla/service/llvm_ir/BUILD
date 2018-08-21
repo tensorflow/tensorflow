@@ -88,6 +88,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm//:core",
     ],
 )
@@ -221,6 +222,15 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
+    ],
+)
+
+cc_library(
+    name = "buffer_assignment_util",
+    srcs = ["buffer_assignment_util.cc"],
+    hdrs = ["buffer_assignment_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:buffer_assignment",
     ],
 )
 

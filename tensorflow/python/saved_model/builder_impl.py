@@ -32,6 +32,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
@@ -112,12 +113,8 @@ class SavedModelBuilder(object):
       tf_logging.info("No assets to write.")
       return
 
-    assets_destination_dir = os.path.join(
-        compat.as_bytes(self._export_dir),
-        compat.as_bytes(constants.ASSETS_DIRECTORY))
-
-    if not file_io.file_exists(assets_destination_dir):
-      file_io.recursive_create_dir(assets_destination_dir)
+    assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
+        self._export_dir)
 
     # Copy each asset from source path to destination path.
     for asset_basename, asset_source_filepath in asset_filename_map.items():
@@ -409,16 +406,8 @@ class SavedModelBuilder(object):
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)
 
-    # Create the variables sub-directory, if it does not exist.
-    variables_dir = os.path.join(
-        compat.as_text(self._export_dir),
-        compat.as_text(constants.VARIABLES_DIRECTORY))
-    if not file_io.file_exists(variables_dir):
-      file_io.recursive_create_dir(variables_dir)
-
-    variables_path = os.path.join(
-        compat.as_text(variables_dir),
-        compat.as_text(constants.VARIABLES_FILENAME))
+    saved_model_utils.get_or_create_variables_dir(self._export_dir)
+    variables_path = saved_model_utils.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 

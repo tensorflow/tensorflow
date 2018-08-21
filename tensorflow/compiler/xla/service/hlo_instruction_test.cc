@@ -1355,7 +1355,7 @@ TEST_F(HloInstructionTest, Stringification) {
 
 TEST_F(HloInstructionTest, StringifyGather_0) {
   Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
-  Shape gather_indices_tensor_shape =
+  Shape start_indices_tensor_shape =
       ShapeUtil::MakeShape(S64, {10, 9, 8, 7, 5});
   Shape gather_result_shape =
       ShapeUtil::MakeShape(F32, {10, 9, 8, 7, 30, 29, 28, 27, 26});
@@ -1363,19 +1363,18 @@ TEST_F(HloInstructionTest, StringifyGather_0) {
   HloComputation::Builder builder("Gather");
   HloInstruction* input = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
-  HloInstruction* gather_indices =
+  HloInstruction* start_indices =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, gather_indices_tensor_shape, "gather_indices"));
+          1, start_indices_tensor_shape, "start_indices"));
 
-  HloInstruction* gather_instruction =
-      builder.AddInstruction(HloInstruction::CreateGather(
-          gather_result_shape, input, gather_indices,
-          HloGatherInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
-              /*index_vector_dim=*/4),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+  HloInstruction* gather_instruction = builder.AddInstruction(
+      HloInstruction::CreateGather(gather_result_shape, input, start_indices,
+                                   HloGatherInstruction::MakeGatherDimNumbers(
+                                       /*offset_dims=*/{4, 5, 6, 7, 8},
+                                       /*collapsed_slice_dims=*/{},
+                                       /*start_index_map=*/{0, 1, 2, 3, 4},
+                                       /*index_vector_dim=*/4),
+                                   /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -1383,15 +1382,15 @@ TEST_F(HloInstructionTest, StringifyGather_0) {
   EXPECT_EQ(gather_instruction->ToString(),
             "%gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} "
             "gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
-            "s64[10,9,8,7,5]{4,3,2,1,0} %gather_indices), "
-            "output_window_dims={4,5,6,7,8}, elided_window_dims={}, "
-            "gather_dims_to_operand_dims={0,1,2,3,4}, "
-            "index_vector_dim=4, window_bounds={30,29,28,27,26}");
+            "s64[10,9,8,7,5]{4,3,2,1,0} %start_indices), "
+            "offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, "
+            "start_index_map={0,1,2,3,4}, "
+            "index_vector_dim=4, slice_sizes={30,29,28,27,26}");
 }
 
 TEST_F(HloInstructionTest, StringifyGather_1) {
   Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
-  Shape gather_indices_tensor_shape =
+  Shape start_indices_tensor_shape =
       ShapeUtil::MakeShape(S64, {10, 9, 5, 7, 6});
   Shape gather_result_shape =
       ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26});
@@ -1399,19 +1398,18 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
   HloComputation::Builder builder("Gather");
   HloInstruction* input = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
-  HloInstruction* gather_indices =
+  HloInstruction* start_indices =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, gather_indices_tensor_shape, "gather_indices"));
+          1, start_indices_tensor_shape, "start_indices"));
 
-  HloInstruction* gather_instruction =
-      builder.AddInstruction(HloInstruction::CreateGather(
-          gather_result_shape, input, gather_indices,
-          HloGatherInstruction::MakeGatherDimNumbers(
-              /*output_window_dims=*/{4, 5, 6, 7, 8},
-              /*elided_window_dims=*/{},
-              /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
-              /*index_vector_dim=*/2),
-          /*window_bounds=*/{30, 29, 28, 27, 26}));
+  HloInstruction* gather_instruction = builder.AddInstruction(
+      HloInstruction::CreateGather(gather_result_shape, input, start_indices,
+                                   HloGatherInstruction::MakeGatherDimNumbers(
+                                       /*offset_dims=*/{4, 5, 6, 7, 8},
+                                       /*collapsed_slice_dims=*/{},
+                                       /*start_index_map=*/{0, 1, 2, 3, 4},
+                                       /*index_vector_dim=*/2),
+                                   /*slice_sizes=*/{30, 29, 28, 27, 26}));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -1419,10 +1417,59 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
   EXPECT_EQ(gather_instruction->ToString(),
             "%gather = f32[10,9,7,6,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} "
             "gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
-            "s64[10,9,5,7,6]{4,3,2,1,0} %gather_indices), "
-            "output_window_dims={4,5,6,7,8}, elided_window_dims={}, "
-            "gather_dims_to_operand_dims={0,1,2,3,4}, "
-            "index_vector_dim=2, window_bounds={30,29,28,27,26}");
+            "s64[10,9,5,7,6]{4,3,2,1,0} %start_indices), "
+            "offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, "
+            "start_index_map={0,1,2,3,4}, "
+            "index_vector_dim=2, slice_sizes={30,29,28,27,26}");
+}
+
+TEST_F(HloInstructionTest, StringifyScatter) {
+  Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
+  Shape scatter_indices_tensor_shape =
+      ShapeUtil::MakeShape(S64, {10, 9, 5, 7, 6});
+  Shape scatter_updates_shape =
+      ShapeUtil::MakeShape(F32, {10, 9, 7, 6, 30, 29, 28, 27, 26});
+
+  HloComputation::Builder builder("Scatter");
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_tensor_shape, "input_tensor"));
+  HloInstruction* scatter_indices =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, scatter_indices_tensor_shape, "scatter_indices"));
+  HloInstruction* scatter_updates =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, scatter_updates_shape, "scatter_updates"));
+
+  HloComputation::Builder update_builder("Scatter.update");
+  update_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1"));
+  update_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "p2"));
+
+  auto module = CreateNewModule();
+  auto* update_computation =
+      module->AddEmbeddedComputation(update_builder.Build());
+
+  HloInstruction* scatter_instruction =
+      builder.AddInstruction(HloInstruction::CreateScatter(
+          input_tensor_shape, input, scatter_indices, scatter_updates,
+          update_computation,
+          HloScatterInstruction::MakeScatterDimNumbers(
+              /*update_window_dims=*/{4, 5, 6, 7, 8},
+              /*inserted_window_dims=*/{},
+              /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
+              /*index_vector_dim=*/2)));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      scatter_instruction->ToString(),
+      "%scatter = f32[50,49,48,47,46]{4,3,2,1,0} "
+      "scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, "
+      "s64[10,9,5,7,6]{4,3,2,1,0} %scatter_indices, "
+      "f32[10,9,7,6,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %scatter_updates), "
+      "update_window_dims={4,5,6,7,8}, inserted_window_dims={}, "
+      "scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=2, "
+      "to_apply=%Scatter.update");
 }
 
 TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {

@@ -168,6 +168,7 @@ If bazel is not installed on your system, install it now by following
 To build TensorFlow, you must install the following packages:
 
 *   six
+*   mock
 *   numpy, which is a numerical processing package that TensorFlow requires.
 *   wheel, which enables you to manage Python compressed packages in the wheel
     (.whl) format.
@@ -179,13 +180,16 @@ If you follow these instructions, you will not need to disable SIP.
 
 After installing pip, invoke the following commands:
 
-<pre> $ <b>sudo pip install six numpy wheel</b> </pre>
+<pre> $ <b>sudo pip install six numpy wheel mock h5py</b>
+ $ <b>sudo pip install keras_applications==1.0.4 --no-deps</b>
+ $ <b>sudo pip install keras_preprocessing==1.0.2 --no-deps</b>
+</pre>
 
 Note: These are just the minimum requirements to _build_ tensorflow. Installing
 the pip package will download additional packages required to _run_ it. If you
 plan on executing tasks directly with `bazel` , without the pip installation,
 you may need to install additional python packages. For example, you should `pip
-install mock enum34` before running TensorFlow's tests with bazel.
+install enum34` before running TensorFlow's tests with bazel.
 
 <a name="ConfigureInstallation"></a>
 
@@ -360,6 +364,8 @@ continue to work against your built package.
 If RAM is an issue on your system, you may limit RAM usage by specifying
 <code>--local_resources 2048,.5,1.0</code> while invoking `bazel`.
 
+### Run the build_pip_package script
+
 The <code>bazel build</code> command builds a script named `build_pip_package`.
 Running this script as follows will build a `.whl` file within the
 `/tmp/tensorflow_pkg` directory:
@@ -374,10 +380,10 @@ Invoke `pip install` to install that pip package. The filename of the `.whl`
 file depends on your platform. For example, the following command will install
 the pip package
 
-for TensorFlow 1.9.0 on Linux:
+for TensorFlow 1.10.0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.9.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.10.0-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -483,6 +489,8 @@ the error message, ask a new question on Stack Overflow and specify the
 **Linux**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.10.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.15.0</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.10.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.15.0</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.9.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.11.0</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow_gpu-1.9.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.11.0</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.8.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.10.0</td><td>N/A</td><td>N/A</td></tr>
@@ -508,6 +516,7 @@ the error message, ask a new question on Stack Overflow and specify the
 **Mac**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.10.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.15.0</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.9.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.11.0</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.8.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.10.1</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.7.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.10.1</td><td>N/A</td><td>N/A</td></tr>
@@ -525,6 +534,8 @@ the error message, ask a new question on Stack Overflow and specify the
 **Windows**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.10.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.10.0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.9.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow_gpu-1.9.0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.8.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>

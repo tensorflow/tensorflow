@@ -558,7 +558,7 @@ m.result()  # => 5.5
 
 #### Summaries and TensorBoard
 
-@{$summaries_and_tensorboard$TensorBoard} is a visualization tool for
+[TensorBoard](../guide/summaries_and_tensorboard.md) is a visualization tool for
 understanding, debugging and optimizing the model training process. It uses
 summary events that are written while executing the program.
 
@@ -568,9 +568,8 @@ inserted during model construction. For example, to record summaries once every
 100 global steps:
 
 ```py
+global_step = tf.train.get_or_create_global_step()
 writer = tf.contrib.summary.create_file_writer(logdir)
-global_step=tf.train.get_or_create_global_step()  # return global step var
-
 writer.set_as_default()
 
 for _ in range(iterations):
@@ -727,7 +726,13 @@ def measure(x, steps):
   start = time.time()
   for i in range(steps):
     x = tf.matmul(x, x)
-    _ = x.numpy()  # Make sure to execute op and not just enqueue it
+  # tf.matmul can return before completing the matrix multiplication
+  # (e.g., can return after enqueing the operation on a CUDA stream).
+  # The x.numpy() call below will ensure that all enqueued operations
+  # have completed (and will also copy the result to host memory,
+  # so we're including a little more than just the matmul operation
+  # time).
+  _ = x.numpy()
   end = time.time()
   return end - start
 
@@ -751,8 +756,8 @@ Output (exact numbers depend on hardware):
 
 ```
 Time to multiply a (1000, 1000) matrix by itself 200 times:
-CPU: 4.614904403686523 secs
-GPU: 0.5581181049346924 secs
+CPU: 1.46628093719 secs
+GPU: 0.0593810081482 secs
 ```
 
 A `tf.Tensor` object can be copied to a different device to execute its

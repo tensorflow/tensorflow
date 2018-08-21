@@ -234,7 +234,7 @@ class BeamSearchDecoder(decoder.Decoder):
     `AttentionWrapper`, then you must ensure that:
 
     - The encoder output has been tiled to `beam_width` via
-      @{tf.contrib.seq2seq.tile_batch} (NOT `tf.tile`).
+      `tf.contrib.seq2seq.tile_batch` (NOT `tf.tile`).
     - The `batch_size` argument passed to the `zero_state` method of this
       wrapper is equal to `true_batch_size * beam_width`.
     - The initial state created with `zero_state` above contains a

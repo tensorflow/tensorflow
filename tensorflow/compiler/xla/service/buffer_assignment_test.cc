@@ -21,8 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
@@ -87,7 +87,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -98,7 +98,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
       HloModule* module, int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -109,7 +109,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -127,7 +127,8 @@ class BufferAssignmentTest : public HloTestBase {
                                            instruction_sequence.end());
     return BufferAssigner::Run(
                module,
-               xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
+               absl::make_unique<SequentialHloOrdering>(module,
+                                                        module_sequence),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -1769,7 +1770,8 @@ class WhileBufferAssignmentTest : public HloTestBase {
     auto sequence =
         ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
+               module,
+               absl::make_unique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -1923,6 +1925,74 @@ ENTRY %test_module {
   EXPECT_NE(slice_param, slice_while1);
 }
 
+TEST_F(WhileBufferAssignmentTest, ColocatedBufferWithConstant) {
+  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+
+  const char* module_str = R"(
+HloModule test_module
+
+%cond.v0 {
+  %param = s32[] parameter(0)
+  ROOT %constant = pred[] constant(true)
+}
+
+%cond.v1 {
+  %param.0 = s32[] parameter(0)
+  ROOT %constant.0 = pred[] constant(true)
+}
+
+%body.v0 {
+  ROOT %param.1 = s32[] parameter(0)
+}
+
+%body.v1 {
+  %param.2 = s32[] parameter(0)
+  ROOT add = s32[] add(%param.2, %param.2)
+}
+
+ENTRY %test_module {
+  %constant.42 = s32[] constant(42)
+  %while.0 = s32[] while(%constant.42), condition=%cond.v0, body=%body.v0
+  %mul = s32[] multiply(%while.0, %while.0)
+  %while.1 = s32[] while(%mul), condition=%cond.v1, body=%body.v1
+  ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(module_str));
+
+  // Run CopyInsertion and check if the graph constructed above doesn't need
+  // any copies inserted for BufferAssignment to run.
+  int64 instruction_count = module->instruction_count();
+  CopyInsertion copy_insertion;
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  ASSERT_EQ(instruction_count, module->instruction_count());
+
+  // Get the instructions in the module.
+  const HloInstruction* bcast = module->entry_computation()->root_instruction();
+  const HloInstruction* constant =
+      module->entry_computation()->GetInstructionWithName("constant.42");
+  ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
+  const HloInstruction* while1 = bcast->operand(0);
+  ASSERT_EQ(while1->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while0 = while1->operand(0)->operand(0);
+  ASSERT_EQ(while0->opcode(), HloOpcode::kWhile);
+
+  // Run buffer assignment.
+  auto assignment = RunBufferAssignment(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_constant,
+                          assignment->GetUniqueSlice(constant, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                          assignment->GetUniqueSlice(while0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                          assignment->GetUniqueSlice(while1, {}));
+
+  // The constant slice is part of the while0's colocation set (init value), but
+  // not merged into the while1's colocation set.
+  EXPECT_EQ(slice_constant, slice_while0);
+  EXPECT_NE(slice_constant, slice_while1);
+}
+
 // Tests that the colocated buffers for while instructions are properly assigned
 // during buffer assignment such that the result tuple elements are not assigned
 // to the same buffer.
@@ -2015,7 +2085,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       auto assignment,
       BufferAssigner::Run(
           module.get(),
-          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          absl::make_unique<SequentialHloOrdering>(module.get(), sequence),
           backend().compiler()->BufferSizeBytesFunction(),
           [](LogicalBuffer::Color) { return 1; },
           /*allow_input_output_aliasing=*/false,
@@ -2272,7 +2342,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto assignment =
       BufferAssigner::Run(
           module.get(),
-          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          absl::make_unique<SequentialHloOrdering>(module.get(), sequence),
           ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
           /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true)

@@ -16,12 +16,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -83,8 +85,8 @@ Status ParseOneProfileOutputLine(
     tensorflow::gtl::ArraySlice<tensorflow::StringPiece> opcodes_to_ignore =
         {}) {
   string separator = "[^:]*:: +";
-  string match_percentage = "\\d+\\.\\d\\d%";
-  string match_cycles = "(\\d+) cycles +\\( *(" + match_percentage + ")\\)";
+  string match_percentage = R"(\d+\.\d*% +\d+Σ)";
+  string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
   string match_usecs = "([0-9.]+) usec";
   string match_flops = "([^ ]*)";
   string match_trops = "([^ ]*)";
@@ -115,7 +117,7 @@ Status ParseOneProfileOutputLine(
         ", Regexp: ", regexp_pattern);
   }
 
-  if (!c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
+  if (!absl::c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
     InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
   }
 
@@ -133,7 +135,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   DeviceMemoryAllocator* allocator = backend->memory_allocator();
   auto* transfer_manager = backend->transfer_manager();
   TF_ASSERT_OK_AND_ASSIGN(
-      Backend::StreamPtr stream_ptr,
+      StreamPool::Ptr stream_ptr,
       backend->BorrowStream(backend->default_device_ordinal()));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -224,7 +226,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                           MaybeFind(parsed_profile_lines, "tanh"));
 
   EXPECT_GT(total_profile.cycles, 0);
-  EXPECT_EQ(total_profile.cycles_percentage, "100.00%");
+  EXPECT_EQ(total_profile.cycles_percentage, "100.% 100Σ");
 
   EXPECT_TRUE(HasFlops(total_profile));
   EXPECT_TRUE(HasTrops(total_profile));
@@ -293,7 +295,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
       tensorflow::str_util::Split(profile_output, '\n');
 
   auto while_body_profile_start =
-      c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
+      absl::c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
         return tensorflow::str_util::StartsWith(s,
                                                 "Execution profile for body");
       });
@@ -332,7 +334,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
 
   EXPECT_GT(total_while_body_profile.cycles, 0);
   EXPECT_EQ(total_while_body_profile.opcode, "[total]");
-  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.00%");
+  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.% 100Σ");
 
   EXPECT_GT(total_while_body_profile.cycles, multiply_profile.cycles);
   EXPECT_NE(multiply_profile.cycles_percentage, "0.00%");

@@ -22,6 +22,7 @@ from __future__ import print_function
 from collections import deque
 from collections import Iterable
 from collections import OrderedDict
+import copy
 import csv
 import json
 import math
@@ -31,12 +32,16 @@ import time
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.training_utils import standardize_input_data
+from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
@@ -48,6 +53,110 @@ try:
   import requests
 except ImportError:
   requests = None
+
+
+def configure_callbacks(callbacks,
+                        model,
+                        do_validation=False,
+                        val_inputs=None,
+                        val_targets=None,
+                        val_sample_weights=None,
+                        batch_size=None,
+                        epochs=None,
+                        steps_per_epoch=None,
+                        samples=None,
+                        validation_steps=None,
+                        verbose=1,
+                        count_mode='steps'):
+  """Configures callbacks for use in various training loops.
+
+  Arguments:
+      callbacks: List of Callbacks.
+      model: Model being trained.
+      do_validation: Whether or not validation loop will be run.
+      val_inputs: Inputs to Model for validation loop. Can be any
+        data format Keras accepts.
+      val_targets: Targets for Model for validation loop. Can be any
+        data format Keras accepts.
+      val_sample_weights: Sample weights for Model for validation loop.
+        Can be any data format Keras accepts.
+      batch_size: Number of samples per batch.
+      epochs: Number of epoch to train.
+      steps_per_epoch: Number of batches to run per training epoch.
+      samples: Number of training samples.
+      validation_steps: Number of batches to run per validation epoch.
+      verbose: int, 0 or 1. Keras logging verbosity to pass to ProgbarLogger.
+      count_mode: One of 'steps' or 'samples'. Per-batch or per-sample count.
+
+  Returns:
+      Instance of CallbackList used to control all Callbacks.
+  """
+
+  # Add additional callbacks
+  model.history = History()
+  stateful_metric_names = None
+  if hasattr(model, 'stateful_metric_names'):
+    stateful_metric_names = model.stateful_metric_names
+  callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
+              ] + (callbacks or []) + [model.history]
+  if verbose:
+    callbacks.append(
+        ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names))
+  callback_list = CallbackList(callbacks)
+
+  # Set callback model
+  callback_model = model._get_callback_model()  # pylint: disable=protected-access
+  if do_validation and val_inputs and not context.executing_eagerly():
+    # Need to create the test_function before start of the first epoch
+    # because TensorBoard callback on_epoch_begin adds summary to the
+    # list of fetches of the test_function
+    callback_model._make_test_function()  # pylint: disable=protected-access
+  callback_list.set_model(callback_model)
+
+  # Set callback parameters
+  callback_metrics = []
+  # When we have deferred build scenario with iterator input, we will compile
+  # when we standardize first batch of data.
+  if model._is_compiled:  # pylint: disable=protected-access
+    callback_metrics = copy.copy(model.metrics_names)
+    if do_validation:
+      callback_metrics += ['val_' + n for n in model.metrics_names]
+  if validation_steps is None and isinstance(val_inputs, Sequence):
+    validation_steps = len(val_inputs)
+  callback_params = {
+      'batch_size': batch_size,
+      'epochs': epochs,
+      'steps': steps_per_epoch,
+      'samples': samples,
+      'verbose': verbose,
+      'do_validation': do_validation,
+      'metrics': callback_metrics,
+      'validation_steps': validation_steps
+  }
+  callback_list.set_params(callback_params)
+
+  # Pass validation data to callbacks
+  if not val_inputs:
+    val_data = []
+  elif _is_generator_like(val_inputs):
+    val_data = val_inputs
+  else:
+    val_data = val_inputs + val_targets
+    if val_sample_weights:
+      val_data += val_sample_weights
+    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      val_data += [0.]
+  for cbk in callbacks:
+    cbk.validation_data = val_data
+
+  callback_list.model.stop_training = False
+  return callback_list
+
+
+def _is_generator_like(data):
+  """Checks if data is a generator, Sequence, or Iterator."""
+  return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.EagerIterator)))
 
 
 class CallbackList(object):
@@ -63,15 +172,19 @@ class CallbackList(object):
     callbacks = callbacks or []
     self.callbacks = [c for c in callbacks]
     self.queue_length = queue_length
+    self.params = {}
+    self.model = None
 
   def append(self, callback):
     self.callbacks.append(callback)
 
   def set_params(self, params):
+    self.params = params
     for callback in self.callbacks:
       callback.set_params(params)
 
   def set_model(self, model):
+    self.model = model
     for callback in self.callbacks:
       callback.set_model(model)
 
@@ -716,6 +829,15 @@ class TensorBoard(Callback):
           `embeddings_layer_names`. Numpy array (if the model has a single
           input) or list of Numpy arrays (if the model has multiple inputs).
           Learn [more about embeddings](https://www.tensorflow.org/programmers_guide/embedding)
+
+  Raises:
+      ValueError: If histogram_freq is set and no validation data is provided.
+
+  @compatibility(eager)
+  Using `Tensorboard` callback will work while eager execution is enabled,
+  however outputting histogram summaries of weights and gradients is not
+  supported, and thus `histogram_freq` will be ignored.
+  @end_compatibility
   """
 
   # pylint: enable=line-too-long
@@ -734,6 +856,11 @@ class TensorBoard(Callback):
     super(TensorBoard, self).__init__()
     self.log_dir = log_dir
     self.histogram_freq = histogram_freq
+    if self.histogram_freq and context.executing_eagerly():
+      logging.warning(
+          UserWarning('Weight and gradient histograms not supported for eager'
+                      'execution, setting `histogram_freq` to `0`.'))
+      self.histogram_freq = 0
     self.merged = None
     self.write_graph = write_graph
     self.write_grads = write_grads
@@ -741,18 +868,22 @@ class TensorBoard(Callback):
     self.batch_size = batch_size
     self._current_batch = 0
     self._total_batches_seen = 0
-    # abstracted writer class to be able to stub for testing
-    self._writer_class = tf_summary.FileWriter
     self.embeddings_freq = embeddings_freq
     self.embeddings_layer_names = embeddings_layer_names
     self.embeddings_metadata = embeddings_metadata
     self.embeddings_data = embeddings_data
 
-  def set_model(self, model):
-    """Sets Keras model and creates summary ops."""
+  def _init_writer(self):
+    """Sets file writer."""
+    if context.executing_eagerly():
+      self.writer = summary_ops_v2.create_file_writer(self.log_dir)
+    elif self.write_graph:
+      self.writer = tf_summary.FileWriter(self.log_dir, K.get_session().graph)
+    else:
+      self.writer = tf_summary.FileWriter(self.log_dir)
 
-    self.model = model
-    self.sess = K.get_session()
+  def _make_histogram_ops(self, model):
+    """Defines histogram ops when histogram_freq > 0."""
     # only make histogram summary op if it hasn't already been made
     if self.histogram_freq and self.merged is None:
       for layer in self.model.layers:
@@ -793,8 +924,10 @@ class TensorBoard(Callback):
             def is_indexed_slices(grad):
               return type(grad).__name__ == 'IndexedSlices'
 
-            grads = [grad.values if is_indexed_slices(grad) else grad
-                     for grad in grads]
+            grads = [
+                grad.values if is_indexed_slices(grad) else grad
+                for grad in grads
+            ]
             tf_summary.histogram('{}_grad'.format(mapped_weight_name), grads)
 
         if hasattr(layer, 'output'):
@@ -803,12 +936,16 @@ class TensorBoard(Callback):
               tf_summary.histogram('{}_out_{}'.format(layer.name, i), output)
           else:
             tf_summary.histogram('{}_out'.format(layer.name), layer.output)
-    self.merged = tf_summary.merge_all()
 
-    if self.write_graph:
-      self.writer = self._writer_class(self.log_dir, self.sess.graph)
-    else:
-      self.writer = self._writer_class(self.log_dir)
+  def set_model(self, model):
+    """Sets Keras model and creates summary ops."""
+
+    self.model = model
+    self._init_writer()
+    # histogram summaries only enabled in graph mode
+    if not context.executing_eagerly():
+      self._make_histogram_ops(model)
+      self.merged = tf_summary.merge_all()
 
     # If both embedding_freq and embeddings_data are available, we will
     # visualize embeddings.
@@ -894,19 +1031,26 @@ class TensorBoard(Callback):
 
     """
     logs = logs or {}
-    for name, value in logs.items():
-      summary = tf_summary.Summary()
-      summary_value = summary.value.add()
-      summary_value.simple_value = value.item()
-      summary_value.tag = name
-      self.writer.add_summary(summary, step)
+    if context.executing_eagerly():
+      # use v2 summary ops
+      with self.writer.as_default(), summary_ops_v2.always_record_summaries():
+        for name, value in logs.items():
+          summary_ops_v2.scalar(name, value.item(), step=step)
+    else:
+      # use FileWriter from v1 summary
+      for name, value in logs.items():
+        summary = tf_summary.Summary()
+        summary_value = summary.value.add()
+        summary_value.simple_value = value.item()
+        summary_value.tag = name
+        self.writer.add_summary(summary, step)
     self.writer.flush()
 
   def on_train_begin(self, logs=None):
     """Checks if histogram summaries can be run."""
-
+    # will never be set when in eager
     if self.histogram_freq:
-      if 'validation_steps' in self.params:
+      if self.params.get('validation_steps', None) is not None:
         self._validation_batches = self.params['validation_steps']
       elif self.validation_data:
         self._validation_batches = math.ceil(

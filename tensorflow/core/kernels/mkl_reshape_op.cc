@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 using mkldnn::stream;
 #else
@@ -42,7 +41,7 @@ class MklReshapeOp : public OpKernel {
  public:
   explicit MklReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
   void Compute(OpKernelContext* context) override {
     const Tensor& input = MklGetInput(context, 0);
     const Tensor& sizes = MklGetInput(context, 1);
@@ -152,8 +151,12 @@ class MklReshapeOp : public OpKernel {
     // If Tensorflow's data format and the underlying format maintained by
     // MKLDNN are equivalent (both are NHWC or both are NCHW), then we can
     // safely return true.
+    // @todo: Future do not force skip reorder for all blocked format. Use
+    // blocking_desc_is_equal() for checking all the stride arrays in
+    // mkl-dnn/blob/master/src/common/type_helpers.hpp
     auto input_mkl_md = mkl_shape_input.GetMklLayout();
-    if (mkl_shape_input.GetTfDataFormat() == input_mkl_md.data.format) {
+    if (mkl_shape_input.GetTfDataFormat() == input_mkl_md.data.format &&
+        mkl_shape_input.GetTfDataFormat() != memory::format::blocked) {
       ret = true;
     }
 
@@ -313,7 +316,7 @@ class MklReshapeOp : public OpKernel {
     }
   }
 
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 
  private:
   const int kInputSlotIdx = 0;

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================
 */
 
+#ifndef TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_
+#define TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_
+
 // This header declares the class CudaSolver, which contains wrappers of linear
 // algebra solvers in the cuBlas and cuSolverDN libraries for use in TensorFlow
 // kernels.
@@ -433,3 +436,5 @@ inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_

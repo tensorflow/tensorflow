@@ -106,7 +106,7 @@ curl -L "https://storage.googleapis.com/download.tensorflow.org/models/inception
 
 Next, we need to compile the C++ binary that includes the code to load and run the graph.
 If you've followed
-@{$install_sources$the instructions to download the source installation of TensorFlow}
+[the instructions to download the source installation of TensorFlow](../../install/install_sources.md)
 for your platform, you should be able to build the example by
 running this command from your shell terminal:
 
@@ -253,7 +253,7 @@ definition with the `ToGraphDef()` function.
   TF_RETURN_IF_ERROR(session->Run({}, {output_name}, {}, out_tensors));
   return Status::OK();
 ```
-Then we create a @{tf.Session}
+Then we create a `tf.Session`
 object, which is the interface to actually running the graph, and run it,
 specifying which node we want to get the output from, and where to put the
 output data.
@@ -448,7 +448,7 @@ and Michael Nielsen's book has a
 covering them.
 
 To find out more about implementing convolutional neural networks, you can jump
-to the TensorFlow @{$deep_cnn$deep convolutional networks tutorial},
+to the TensorFlow [deep convolutional networks tutorial](../../tutorials/images/deep_cnn.md),
 or start a bit more gently with our [Estimator MNIST tutorial](../estimators/cnn.md).
 Finally, if you want to get up to speed on research in this area, you can
 read the recent work of all the papers referenced in this tutorial.

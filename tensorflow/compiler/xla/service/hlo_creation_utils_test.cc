@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -28,7 +28,7 @@ using tensorflow::gtl::ArraySlice;
 
 class HloCreationUtilsTest : public HloTestBase {
  protected:
-  static std::unique_ptr<HloModule> CreateModuleWithProgramShape(
+  std::unique_ptr<HloModule> CreateModuleWithProgramShape(
       PrimitiveType primitive_type, ArraySlice<int64> input_shape_dims,
       ArraySlice<int64> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation) {

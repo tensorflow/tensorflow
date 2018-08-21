@@ -2,17 +2,28 @@ licenses(["notice"])  # 3-Clause BSD
 
 config_setting(
     name = "using_mkl",
-    values = {
-        "define": "using_mkl=true",
+    define_values = {
+        "using_mkl": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "using_mkl_ml_only",
+    define_values = {
+        "using_mkl": "true",
+        "using_mkl_ml_only": "true",
     },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "using_mkl_lnx_x64",
+    define_values = {
+        "using_mkl": "true",
+    },
     values = {
         "cpu": "k8",
-        "define": "using_mkl=true",
     },
     visibility = ["//visibility:public"],
 )
