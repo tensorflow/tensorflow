@@ -47,7 +47,7 @@ using random::PhiloxRandom;
 
 template <typename T>
 struct TruncatedNormalFunctor<CPUDevice, T> {
-  static const int kMaxIterations = 100;
+  static const int kMaxIterations = 1000;
 
   void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
@@ -124,6 +124,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                                (normMin * (normMin - sqrtFactor)) / T(4)) /
             (normMin + sqrtFactor);
         const T diff = normMax - normMin;
+
         if (diff < cutoff) {
           // Sample from a uniform distribution on [normMin, normMax].
 
@@ -143,15 +144,20 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
 
             const auto u = dist(&gen_copy);
             for (int i = 0; i < size; i++) {
-              if (u[i] <= Eigen::numext::exp(g[i]) ||
-                  numIterations + 1 >= kMaxIterations) {
+              auto accept = u[i] <= Eigen::numext::exp(g[i]);
+              if (accept || numIterations + 1 >= kMaxIterations) {
                 // Accept the sample z.
                 // If we run out of iterations, just use the current uniform
-                // sample. Emperically, the probability of accepting each sample
-                // is at least 50% for typical inputs, so we will always accept
-                // by 100 iterations.
-                // This introduces a slight inaccuracy when at least one bound
-                // is large, minval is negative and maxval is positive.
+                // sample, but emit a warning.
+                // TODO(jjhunt) For small entropies (relative to the bounds),
+                // this sampler is poor and may take many iterations since
+                // the proposal distribution is the uniform distribution
+                // U(lower_bound, upper_bound).
+                if (!accept) {
+                  LOG(WARNING) << "TruncatedNormal uniform rejection sampler "
+                               << "exceeded max iterations. Sample may contain "
+                               << "outliers.";
+                }
                 output(sample) = z[i] * stddev + mean;
                 sample++;
                 if (sample >= limit_sample) {
@@ -181,13 +187,15 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
               const T g = Eigen::numext::exp(-x * x / T(2.0));
               const T u = rand[i];
               i++;
-              if ((u <= g && z < normMax) ||
-                  numIterations + 1 >= kMaxIterations) {
+              auto accept = (u <= g && z < normMax);
+              if (accept || numIterations + 1 >= kMaxIterations) {
+                if (!accept) {
+                  LOG(WARNING) << "TruncatedNormal exponential distribution "
+                               << "rejection sampler exceeds max iterations. "
+                               << "Sample may contain outliers.";
+                }
                 output(sample) = z * stddev + mean;
                 sample++;
-                if (sample >= limit_sample) {
-                  break;
-                }
                 numIterations = 0;
               } else {
                 numIterations++;
