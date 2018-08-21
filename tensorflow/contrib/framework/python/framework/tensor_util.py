@@ -130,8 +130,8 @@ def remove_squeezable_dimensions(predictions, labels, name=None):
     return predictions, labels
 
 
-def _shape_tensor_equal(expected_shape, actual_shape):
-  """Returns whether actual_shape is equal to expected_shape.
+def _shape_tensor_compatible(expected_shape, actual_shape):
+  """Returns whether actual_shape is compatible with expected_shape.
 
   Note that -1 in `expected_shape` is recognized as unknown dimension.
 
@@ -182,7 +182,7 @@ def _is_shape(expected_shape, actual_tensor, actual_shape=None):
     is_rank = _is_rank(array_ops.size(expected_shape), actual_tensor)
     if actual_shape is None:
       actual_shape = array_ops.shape(actual_tensor, name='actual')
-    shape_equal = _shape_tensor_equal(expected_shape, actual_shape)
+    shape_equal = _shape_tensor_compatible(expected_shape, actual_shape)
     return math_ops.logical_and(is_rank, shape_equal, name=scope)
 
 
