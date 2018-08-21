@@ -20,10 +20,10 @@ load(
     "//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
     "def_file_filter_configure",
 )
-load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 
 def initialize_third_party():
-    flatbuffers()
+    # Fill in later
+    pass
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -403,11 +403,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "nsync",
         urls = [
-            "https://mirror.bazel.build/github.com/google/nsync/archive/1.20.0.tar.gz",
-            "https://github.com/google/nsync/archive/1.20.0.tar.gz",
+            "https://mirror.bazel.build/github.com/google/nsync/archive/1.20.1.tar.gz",
+            "https://github.com/google/nsync/archive/1.20.1.tar.gz",
         ],
-        sha256 = "0c1b03962b2f8450f21e74a5a46116bf2d6009a807c57eb4207e974a8c4bb7dd",
-        strip_prefix = "nsync-1.20.0",
+        sha256 = "692f9b30e219f71a6371b98edd39cef3cbda35ac3abc4cd99ce19db430a5591a",
+        strip_prefix = "nsync-1.20.1",
+        system_build_file = clean_dep("//third_party/systemlibs:nsync.BUILD"),
     )
 
     tf_http_archive(
@@ -529,11 +530,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "boringssl",
         urls = [
-            "https://mirror.bazel.build/github.com/google/boringssl/archive/45c4a87ae97eb95a8fc2906c035d6a8d0e02e1b8.tar.gz",
-            "https://github.com/google/boringssl/archive/45c4a87ae97eb95a8fc2906c035d6a8d0e02e1b8.tar.gz",
+            "https://mirror.bazel.build/github.com/google/boringssl/archive/7f634429a04abc48e2eb041c81c5235816c96514.tar.gz",
+            "https://github.com/google/boringssl/archive/7f634429a04abc48e2eb041c81c5235816c96514.tar.gz",
         ],
-        sha256 = "972e8d8a9d1daf9892fff7155312b1af46b4754446575a7b285e62f917424c78",
-        strip_prefix = "boringssl-45c4a87ae97eb95a8fc2906c035d6a8d0e02e1b8",
+        sha256 = "1188e29000013ed6517168600fc35a010d58c5d321846d6a6dfee74e4c788b45",
+        strip_prefix = "boringssl-7f634429a04abc48e2eb041c81c5235816c96514",
     )
 
     tf_http_archive(
@@ -584,11 +585,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "kafka",
         urls = [
-            "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.4.tar.gz",
-            "https://github.com/edenhill/librdkafka/archive/v0.11.4.tar.gz",
+            "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
+            "https://github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
         ],
-        sha256 = "9d8f1eb7b0e29e9ab1168347c939cb7ae5dff00a39cef99e7ef033fd8f92737c",
-        strip_prefix = "librdkafka-0.11.4",
+        sha256 = "cc6ebbcd0a826eec1b8ce1f625ffe71b53ef3290f8192b6cae38412a958f4fd3",
+        strip_prefix = "librdkafka-0.11.5",
         build_file = clean_dep("//third_party:kafka/BUILD"),
         patch_file = clean_dep("//third_party/kafka:config.patch"),
     )
@@ -739,6 +740,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
             "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/0f77d9d182265259b135dad949230ecbf1a2633d.tar.gz",
         ],
         build_file = clean_dep("//third_party:arm_neon_2_x86_sse.BUILD"),
+    )
+
+    tf_http_archive(
+        name = "flatbuffers",
+        strip_prefix = "flatbuffers-1.9.0",
+        sha256 = "5ca5491e4260cacae30f1a5786d109230db3f3a6e5a0eb45d0d0608293d247e3",
+        urls = [
+            "https://mirror.bazel.build/github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
+            "https://github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
+        ],
+        build_file = clean_dep("//third_party/flatbuffers:flatbuffers.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:flatbuffers.BUILD"),
     )
 
     native.new_http_archive(

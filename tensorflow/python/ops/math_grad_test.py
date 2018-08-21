@@ -231,11 +231,12 @@ class FloorModGradientTest(test.TestCase):
       self.assertLess(error, 1e-4)
 
 
-class UnsafeDivGradientTest(test.TestCase):
+class DivNoNanGradientTest(test.TestCase):
 
   def testBasicGradient(self):
-    inputs = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
-    outputs = math_ops.unsafe_div(inputs, 1 + math_ops.abs(inputs))
+    inputs = constant_op.constant(np.arange(-3, 3),
+                                  dtype=dtypes.float32)
+    outputs = math_ops.div_no_nan(inputs, 1 + math_ops.abs(inputs))
     with self.test_session():
       error = gradient_checker.compute_gradient_error(
           inputs,
@@ -244,9 +245,11 @@ class UnsafeDivGradientTest(test.TestCase):
       self.assertLess(error, 1e-4)
 
   def testGradientWithDenominatorIsZero(self):
-    x = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
-    y = array_ops.zeros_like(x, dtype=dtypes.float32)
-    outputs = math_ops.unsafe_div(x, y)
+    x = constant_op.constant(np.arange(-3, 3),
+                             dtype=dtypes.float32)
+    y = array_ops.zeros_like(x,
+                             dtype=dtypes.float32)
+    outputs = math_ops.div_no_nan(x, y)
     with self.test_session():
       dx, dy = gradients.gradients(outputs, [x, y])
       self.assertAllClose(dx.eval(), np.zeros(x.shape.as_list()))

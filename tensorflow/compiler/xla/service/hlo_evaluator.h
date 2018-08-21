@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -226,7 +226,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
           ShapeUtil::HumanString(operand->shape()).c_str());
     }
 
-    auto result = MakeUnique<Literal>(shape);
+    auto result = absl::make_unique<Literal>(shape);
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           return unary_op(operand_literal.Get<NativeT>(multi_index));

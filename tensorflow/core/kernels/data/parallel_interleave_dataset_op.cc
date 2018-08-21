@@ -279,7 +279,12 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             if (!current_worker->outputs.empty()) {
               // We have an element!
               next_index_ = index;
-              if (i == 0) {
+              const bool element_acquired_sloppily =
+                  dataset()->sloppy_ && i > 1;
+              if (!element_acquired_sloppily) {
+                // If the element was acquired in the regular (non-sloppy)
+                // order, then advance the current block and cycle pointers to
+                // the next element in the regular order.
                 block_count_++;
                 if (block_count_ == dataset()->block_length_) {
                   next_index_ = (index + 1) % interleave_indices_.size();

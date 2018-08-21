@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -546,7 +546,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
 
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(
     int rows, int cols, float offset) {
-  auto array = MakeUnique<Array2D<float>>(rows, cols);
+  auto array = absl::make_unique<Array2D<float>>(rows, cols);
   for (int64 row = 0; row < rows; ++row) {
     for (int64 col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f) + offset;
@@ -561,7 +561,7 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
                                                             int cols_padded) {
   CHECK_GE(rows_padded, rows);
   CHECK_GE(cols_padded, cols);
-  auto array = MakeUnique<Array2D<float>>(rows_padded, cols_padded, 0.0);
+  auto array = absl::make_unique<Array2D<float>>(rows_padded, cols_padded, 0.0);
   for (int64 row = 0; row < rows; ++row) {
     for (int64 col = 0; col < cols; ++col) {
       (*array)(row, col) = col + (row * 1000.0f);

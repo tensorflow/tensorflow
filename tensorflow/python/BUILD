@@ -138,6 +138,7 @@ py_library(
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/tools:component_api_helper",
         "//third_party/py/numpy",
     ],
 )
@@ -2779,11 +2780,13 @@ py_library(
     srcs = ["ops/state_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":framework_ops",
+        ":math_ops_gen",
         ":resource_variable_ops_gen",
         ":state_ops_gen",
         ":tensor_shape",
-        "//tensorflow/python/eager:context",
+        ":util",
     ],
 )
 

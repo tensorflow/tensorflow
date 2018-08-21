@@ -53,7 +53,7 @@ def validate_destinations(destinations):
   if not isinstance(
       destinations,
       (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
-       six.string_types, list)):
+       value_lib.AggregatingVariable, six.string_types, list)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, a device string, a list of device "
                      "strings or None")
@@ -78,7 +78,8 @@ def _validate_value_destination_pairs(value_destination_pairs):
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
-  elif isinstance(destinations, resource_variable_ops.ResourceVariable):
+  elif isinstance(destinations, (resource_variable_ops.ResourceVariable,
+                                 value_lib.AggregatingVariable)):
     return [destinations.device]
   elif isinstance(destinations, six.string_types):
     return [device_util.resolve(destinations)]
@@ -756,7 +757,7 @@ class CollectiveAllReduce(CrossTowerOps):
     )
     super(CollectiveAllReduce, self).__init__()
 
-  # TODO(yuefengz, tucker): is index slices supported by collective ops?
+  # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
   def _reduce(self, aggregation, per_device_value, destinations):
     all_reduced = self._batch_all_reduce(aggregation, [per_device_value])[0]
     if destinations is None or _devices_match(per_device_value, destinations):
@@ -768,8 +769,10 @@ class CollectiveAllReduce(CrossTowerOps):
         if d in all_reduced._index:
           index[d] = all_reduced._index[d]
         else:
-          with ops.device(d):
+          with ops.control_dependencies(list(
+              all_reduced._index.values())), ops.device(d):
             index[d] = array_ops.identity(list(all_reduced._index.values())[0])
+
       return value_lib.Mirrored(index)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):

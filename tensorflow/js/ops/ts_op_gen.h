@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PTR_UTIL_H_
-#define TENSORFLOW_COMPILER_XLA_PTR_UTIL_H_
+#ifndef TENSORFLOW_JS_OPS_TS_OP_GEN_H_
+#define TENSORFLOW_JS_OPS_TS_OP_GEN_H_
 
-// As this was moved to tensorflow/core/util, provide indirections here to
-// maintain current functionality of the library.
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/platform/types.h"
 
-#include <stddef.h>
+namespace tensorflow {
 
-#include <memory>
-#include <type_traits>
-#include <utility>
+// Generated code is written to the file ts_filename:
+void WriteTSOps(const OpList& ops, const ApiDefMap& api_def_map,
+                const string& ts_filename);
 
-#include "tensorflow/core/util/ptr_util.h"
+}  // namespace tensorflow
 
-namespace xla {
-using tensorflow::MakeUnique;
-using tensorflow::WrapUnique;
-}  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_PTR_UTIL_H_
+#endif  // TENSORFLOW_JS_OPS_TS_OP_GEN_H_

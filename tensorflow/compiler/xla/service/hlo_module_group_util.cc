@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -332,7 +332,7 @@ HloModuleGroupUtil::ComputeReachability(
     TF_RETURN_IF_ERROR(
         VisitTopologicalOrder(&visit_states, visit_function, root));
   }
-  auto reachability = MakeUnique<HloReachabilityMap>(post_order);
+  auto reachability = absl::make_unique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
     reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }

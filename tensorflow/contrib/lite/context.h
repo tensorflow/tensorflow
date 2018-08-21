@@ -29,9 +29,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 #define TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 
-#if defined(_MSC_VER)
-#include <complex.h>
-#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -153,6 +150,11 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
     }                                      \
   } while (0)
 
+// Single-precision complex data type compatible with the C99 definition.
+typedef struct {
+  float re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex64;
+
 // Types supported by tensor
 typedef enum {
   kTfLiteNoType = 0,
@@ -184,11 +186,7 @@ typedef union {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
-#if defined(_MSC_VER)
-  _Fcomplex* c64;
-#else
-  _Complex float* c64;
-#endif
+  TfLiteComplex64* c64;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
@@ -84,10 +85,10 @@ StatusOr<bool> BatchDotSimplification::Run(HloModule* module) {
   bool changed = false;
   std::vector<HloInstruction*> dot_instrs;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    c_copy_if(computation->instructions(), std::back_inserter(dot_instrs),
-              [](HloInstruction* instr) {
-                return instr->opcode() == HloOpcode::kDot;
-              });
+    absl::c_copy_if(computation->instructions(), std::back_inserter(dot_instrs),
+                    [](HloInstruction* instr) {
+                      return instr->opcode() == HloOpcode::kDot;
+                    });
   }
   for (HloInstruction* dot_instr : dot_instrs) {
     TF_ASSIGN_OR_RETURN(bool elided_batch_dim_from_one,

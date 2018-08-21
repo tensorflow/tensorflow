@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -355,15 +356,15 @@ TEST_F(LiteralUtilTest, TokenEquality) {
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
-  auto colmajor =
-      MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
+  auto colmajor = absl::make_unique<Literal>(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
   colmajor->Set<float>({0, 0}, 1.0);
   colmajor->Set<float>({0, 1}, 2.0);
   colmajor->Set<float>({1, 0}, 3.0);
   colmajor->Set<float>({1, 1}, 4.0);
 
-  auto rowmajor =
-      MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
+  auto rowmajor = absl::make_unique<Literal>(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
   rowmajor->Set<float>({0, 0}, 1.0);
   rowmajor->Set<float>({0, 1}, 2.0);
   rowmajor->Set<float>({1, 0}, 3.0);
@@ -1089,7 +1090,7 @@ TEST_F(LiteralUtilTest, Populate) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = MakeUnique<Literal>(shape);
+    auto literal = absl::make_unique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
@@ -1131,7 +1132,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = MakeUnique<Literal>(shape);
+    auto literal = absl::make_unique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.

@@ -169,6 +169,7 @@ enum BuiltinOperator : byte {
   ONE_HOT = 85,
   LOGICAL_AND = 86,
   LOGICAL_NOT = 87,
+  UNPACK = 88,
 }
 
 // Options for the builtin operators.
@@ -236,6 +237,7 @@ union BuiltinOptions {
   OneHotOptions,
   LogicalAndOptions,
   LogicalNotOptions,
+  UnpackOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -563,6 +565,11 @@ table LogicalAndOptions {
 }
 
 table LogicalNotOptions {
+}
+
+table UnpackOptions {
+  num:int;
+  axis:int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

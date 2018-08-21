@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -469,8 +471,8 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(
@@ -622,8 +624,8 @@ XlaOp XlaBuilder::ConcatInDim(tensorflow::gtl::ArraySlice<XlaOp> operands,
 
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferConcatOpShape(operand_shape_ptrs, dimension));
@@ -749,8 +751,8 @@ XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(elements));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferVariadicOpShape(
                             HloOpcode::kTuple, operand_shape_ptrs));
@@ -1540,8 +1542,8 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
-    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(
@@ -1945,8 +1947,8 @@ XlaOp XlaBuilder::AllToAll(const XlaOp& operand, int64 split_dimension,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(auto slice_shapes, this->GetOperandShapes(slices));
     std::vector<const Shape*> slice_shape_ptrs;
-    c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
-                [](const Shape& shape) { return &shape; });
+    absl::c_transform(slice_shapes, std::back_inserter(slice_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
@@ -2296,7 +2298,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
 std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
     const string& computation_name) {
-  auto sub_builder = MakeUnique<XlaBuilder>(computation_name);
+  auto sub_builder = absl::make_unique<XlaBuilder>(computation_name);
   sub_builder->parent_builder_ = this;
   sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
   return sub_builder;

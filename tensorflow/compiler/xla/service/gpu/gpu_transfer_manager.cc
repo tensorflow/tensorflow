@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -160,9 +161,10 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
         if (ShapeUtil::IsTuple(shape)) {
           return;
         }
-        *buffer = MakeUnique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+        *buffer = absl::make_unique<gpu::OutfeedBuffer>(
+            GetByteSizeRequirement(shape));
         (*buffer)->set_destination(
-            MakeUnique<MutableBorrowingLiteral>(literal, index));
+            absl::make_unique<MutableBorrowingLiteral>(literal, index));
       });
 
   // Give the tree of buffers to the outfeed mananger. The device will fill it
@@ -179,7 +181,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
-  return xla::MakeUnique<xla::gpu::GpuTransferManager>(
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
       /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
           .getPointerSize(0 /* default address space */));

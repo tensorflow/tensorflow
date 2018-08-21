@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -2494,13 +2495,13 @@ static Status ValidateGatherDimensionNumbers(
     const Shape& input_shape,
     tensorflow::gtl::ArraySlice<int64> start_indices_shape,
     const GatherDimensionNumbers& dim_numbers) {
-  if (!c_is_sorted(dim_numbers.offset_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.offset_dims())) {
     return InvalidArgument(
         "Output window dimensions in gather op must be ascending; got: %s.",
         Join(dim_numbers.offset_dims(), ", ").c_str());
   }
 
-  if (c_adjacent_find(dim_numbers.offset_dims()) !=
+  if (absl::c_adjacent_find(dim_numbers.offset_dims()) !=
       dim_numbers.offset_dims().end()) {
     return InvalidArgument(
         "Output window dimensions in gather op must not repeat; got: %s.",
@@ -2546,9 +2547,10 @@ static Status ValidateGatherDimensionNumbers(
       dim_numbers.start_index_map().begin(),
       dim_numbers.start_index_map().end());
 
-  c_sort(sorted_start_index_map);
+  absl::c_sort(sorted_start_index_map);
 
-  if (c_adjacent_find(sorted_start_index_map) != sorted_start_index_map.end()) {
+  if (absl::c_adjacent_find(sorted_start_index_map) !=
+      sorted_start_index_map.end()) {
     return InvalidArgument(
         "Repeated dimensions are not allowed in start_index_map; "
         "got: %s.",
@@ -2564,13 +2566,13 @@ static Status ValidateGatherDimensionNumbers(
     }
   }
 
-  if (!c_is_sorted(dim_numbers.collapsed_slice_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.collapsed_slice_dims())) {
     return InvalidArgument(
         "collapsed_slice_dims in gather op must be sorted; got: %s",
         Join(dim_numbers.collapsed_slice_dims(), ", ").c_str());
   }
 
-  if (c_adjacent_find(dim_numbers.collapsed_slice_dims()) !=
+  if (absl::c_adjacent_find(dim_numbers.collapsed_slice_dims()) !=
       dim_numbers.collapsed_slice_dims().end()) {
     return InvalidArgument(
         "Repeated dimensions not allowed in collapsed_slice_dims in gather op; "
@@ -2613,8 +2615,8 @@ static Status ValidateGatherDimensionNumbers(
 
   std::vector<int64> expanded_start_indices_shape;
   expanded_start_indices_shape.reserve(start_indices_shape.dimensions_size());
-  c_copy(start_indices_shape.dimensions(),
-         std::back_inserter(expanded_start_indices_shape));
+  absl::c_copy(start_indices_shape.dimensions(),
+               std::back_inserter(expanded_start_indices_shape));
   if (expanded_start_indices_shape.size() ==
       gather_dim_numbers.index_vector_dim()) {
     expanded_start_indices_shape.push_back(1);
@@ -2670,10 +2672,11 @@ static Status ValidateGatherDimensionNumbers(
   output_dim_bounds.reserve(result_rank);
   for (int64 i = 0; i < result_rank; i++) {
     int64 current_bound;
-    bool is_window_index = c_binary_search(gather_dim_numbers.offset_dims(), i);
+    bool is_window_index =
+        absl::c_binary_search(gather_dim_numbers.offset_dims(), i);
     if (is_window_index) {
-      while (c_binary_search(gather_dim_numbers.collapsed_slice_dims(),
-                             offset_dims_seen)) {
+      while (absl::c_binary_search(gather_dim_numbers.collapsed_slice_dims(),
+                                   offset_dims_seen)) {
         offset_dims_seen++;
       }
       current_bound = slice_sizes[offset_dims_seen++];
@@ -2697,12 +2700,12 @@ Status ValidateScatterDimensionNumbers(
     tensorflow::gtl::ArraySlice<int64> scatter_indices_shape,
     const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
   // Validate update_window_dims in ScatterDimensionNumbers.
-  if (!c_is_sorted(dim_numbers.update_window_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.update_window_dims())) {
     return InvalidArgument(
         "update_window_dims in scatter op must be sorted; got: %s.",
         Join(dim_numbers.update_window_dims(), ", ").c_str());
   }
-  if (c_adjacent_find(dim_numbers.update_window_dims()) !=
+  if (absl::c_adjacent_find(dim_numbers.update_window_dims()) !=
       dim_numbers.update_window_dims().end()) {
     return InvalidArgument(
         "update_window_dims in scatter op must not repeat; got: %s.",
@@ -2719,12 +2722,12 @@ Status ValidateScatterDimensionNumbers(
   }
 
   // Validate inserted_window_dims in ScatterDimensionNumbers.
-  if (!c_is_sorted(dim_numbers.inserted_window_dims())) {
+  if (!absl::c_is_sorted(dim_numbers.inserted_window_dims())) {
     return InvalidArgument(
         "inserted_window_dims in scatter op must be sorted; got: %s.",
         Join(dim_numbers.inserted_window_dims(), ", ").c_str());
   }
-  if (c_adjacent_find(dim_numbers.inserted_window_dims()) !=
+  if (absl::c_adjacent_find(dim_numbers.inserted_window_dims()) !=
       dim_numbers.inserted_window_dims().end()) {
     return InvalidArgument(
         "inserted_window_dims in scatter op must not repeat; got: %s.",
@@ -2764,8 +2767,8 @@ Status ValidateScatterDimensionNumbers(
   std::vector<int64> sorted_scatter_dims_to_operand_dims(
       dim_numbers.scatter_dims_to_operand_dims().begin(),
       dim_numbers.scatter_dims_to_operand_dims().end());
-  c_sort(sorted_scatter_dims_to_operand_dims);
-  if (c_adjacent_find(sorted_scatter_dims_to_operand_dims) !=
+  absl::c_sort(sorted_scatter_dims_to_operand_dims);
+  if (absl::c_adjacent_find(sorted_scatter_dims_to_operand_dims) !=
       sorted_scatter_dims_to_operand_dims.end()) {
     return InvalidArgument(
         "Repeated dimensions not allowed in scatter_dims_to_operand_dims; "
@@ -2857,7 +2860,7 @@ Status ValidateScatterDimensionNumbers(
   int64 scatter_dims_seen = 0;
   for (int64 i = 0; i < ShapeUtil::Rank(updates_shape); ++i) {
     bool is_update_window_dim =
-        c_binary_search(scatter_dim_numbers.update_window_dims(), i);
+        absl::c_binary_search(scatter_dim_numbers.update_window_dims(), i);
     if (is_update_window_dim) {
       continue;
     }

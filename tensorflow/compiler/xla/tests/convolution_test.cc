@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -71,16 +71,16 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     const int kKernelSizeY = 2;
     const int kOutputActivationSizeZ = 256;
     const int kMiniBatchSize = 4;
-    auto alhs =
-        MakeUnique<Array4D<T>>(kMiniBatchSize, kInputActivationSizeZ,
-                               kInputActivationSizeY, kInputActivationSizeX);
+    auto alhs = absl::make_unique<Array4D<T>>(
+        kMiniBatchSize, kInputActivationSizeZ, kInputActivationSizeY,
+        kInputActivationSizeX);
     alhs->FillWithMultiples(static_cast<T>(1.0f));
     ASSERT_EQ(3, alhs->width());
     ASSERT_EQ(3, alhs->height());
 
-    auto arhs =
-        MakeUnique<Array4D<T>>(kOutputActivationSizeZ, kInputActivationSizeZ,
-                               kKernelSizeY, kKernelSizeX);
+    auto arhs = absl::make_unique<Array4D<T>>(kOutputActivationSizeZ,
+                                              kInputActivationSizeZ,
+                                              kKernelSizeY, kKernelSizeX);
     Array2D<T> rhs_raster({
         {1.0f, 0.0f},  // row 0
         {0.0f, 0.0f},  // row 1

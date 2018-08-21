@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -53,8 +53,8 @@ ExecutionHandle ExecutionTracker::Register(Backend* backend,
   tensorflow::mutex_lock lock(execution_mutex_);
   int64 handle = next_handle_++;
   auto inserted = handle_to_execution_.emplace(
-      handle,
-      MakeUnique<AsyncExecution>(backend, std::move(streams), profile, result));
+      handle, absl::make_unique<AsyncExecution>(backend, std::move(streams),
+                                                profile, result));
   CHECK(inserted.second);
 
   ExecutionHandle execution_handle;

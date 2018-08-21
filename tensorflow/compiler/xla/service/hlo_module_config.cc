@@ -18,7 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/strings/str_util.h"

@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -357,7 +358,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
-  auto arg_literal = MakeUnique<Literal>(shape);
+  auto arg_literal = absl::make_unique<Literal>(shape);
   arg_literal->PopulateWithValue(1.0f);
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
@@ -368,7 +369,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
       ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
-  auto expected = MakeUnique<Literal>(result_shape);
+  auto expected = absl::make_unique<Literal>(result_shape);
   expected->PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }

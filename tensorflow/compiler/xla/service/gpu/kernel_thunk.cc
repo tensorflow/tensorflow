@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -95,7 +95,7 @@ Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   VLOG(3) << "Launching " << kernel->name();
   // Launch the kernel with potentially multiple blocks and threads.
   static constexpr int kKernelArgsLimit = 1024;
-  auto kernel_args = MakeUnique<se::KernelArgsArray<kKernelArgsLimit>>();
+  auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
   for (const BufferAllocation* arg : args_) {
     const auto& buf = buffer_allocations.GetDeviceAddress(arg->index());
     kernel_args->add_device_memory_argument(buf);

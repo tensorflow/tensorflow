@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -230,7 +231,7 @@ static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
   for (int64 i = 0; i < slice_sizes.size(); i++) {
-    if (!c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+    if (!absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       accumulator_state_shape_dims.push_back(slice_sizes[i]);
     }
   }
@@ -251,7 +252,7 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
   int64 batch_idx_counter = 0;
   int64 offset_idx_counter = output_rank - offset_dims.size();
   for (int64 i = 0; i < output_rank; i++) {
-    bool is_offset_dim = c_binary_search(offset_dims, i);
+    bool is_offset_dim = absl::c_binary_search(offset_dims, i);
     if (is_offset_dim) {
       permutation.push_back(offset_idx_counter++);
     } else {
@@ -373,8 +374,8 @@ StatusOr<bool> GatherExpander::Run(HloModule* module) {
 
   std::vector<HloInstruction*> gather_instrs;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    c_copy_if(computation->instructions(), std::back_inserter(gather_instrs),
-              is_nontrivial_gather);
+    absl::c_copy_if(computation->instructions(),
+                    std::back_inserter(gather_instrs), is_nontrivial_gather);
   }
 
   for (HloInstruction* inst : gather_instrs) {

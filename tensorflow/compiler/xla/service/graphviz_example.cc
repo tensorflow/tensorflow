@@ -22,9 +22,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -84,7 +84,7 @@ HloComputation* CallForwardingComputation(HloComputation* computation,
 // the module.
 std::unique_ptr<HloModule> MakeBigGraph() {
   HloModuleConfig config;
-  auto module = MakeUnique<HloModule>("BigGraph", config);
+  auto module = absl::make_unique<HloModule>("BigGraph", config);
 
   auto builder = HloComputation::Builder("TestBigGraphvizGraph");
 

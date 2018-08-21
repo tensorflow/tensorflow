@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -497,7 +498,7 @@ HloInstruction* InstructionFusion::FuseIntoMultiOutput(
 
 bool InstructionFusion::MultiOutputFusionCreatesCycle(
     HloInstruction* producer, HloInstruction* consumer) {
-  return c_any_of(
+  return absl::c_any_of(
       consumer->operands(), [&](const HloInstruction* consumer_operand) {
         // The fusion algorithm traverses the HLO graph in reverse post order.
         // Thus `cosumers` is visited before its operands (including

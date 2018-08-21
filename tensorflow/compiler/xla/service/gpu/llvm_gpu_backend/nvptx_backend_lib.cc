@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -205,7 +205,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     default:
       codegen_opt_level = CodeGenOpt::None;
   }
-  return WrapUnique(target->createTargetMachine(
+  return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
       Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
       codegen_opt_level));

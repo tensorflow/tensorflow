@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
@@ -80,7 +81,7 @@ class OpNameMetadata : public DomainMetadata {
   explicit OpNameMetadata(string opname) : opname_(std::move(opname)) {}
 
   std::unique_ptr<DomainMetadata> Clone() const override {
-    return MakeUnique<OpNameMetadata>(opname_);
+    return absl::make_unique<OpNameMetadata>(opname_);
   }
 
   tensorflow::StringPiece Kind() const override { return KindName(); }
@@ -110,9 +111,9 @@ std::unique_ptr<HloInstruction> OpNameDomainCreator(HloInstruction* instruction,
     return nullptr;
   }
   std::unique_ptr<DomainMetadata> operand_side_metadata =
-      MakeUnique<OpNameMetadata>(operand->metadata().op_name());
+      absl::make_unique<OpNameMetadata>(operand->metadata().op_name());
   std::unique_ptr<DomainMetadata> user_side_metadata =
-      MakeUnique<OpNameMetadata>(instruction->metadata().op_name());
+      absl::make_unique<OpNameMetadata>(instruction->metadata().op_name());
   return HloInstruction::CreateDomain(operand->shape(), operand,
                                       std::move(operand_side_metadata),
                                       std::move(user_side_metadata));
@@ -474,8 +475,8 @@ ENTRY entry {
 TEST_F(HloDomainTest, DumpParseNullSharding) {
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {});
-  auto sharding_md_0 = MakeUnique<ShardingMetadata>(nullptr);
-  auto sharding_md_1 = MakeUnique<ShardingMetadata>(nullptr);
+  auto sharding_md_0 = absl::make_unique<ShardingMetadata>(nullptr);
+  auto sharding_md_1 = absl::make_unique<ShardingMetadata>(nullptr);
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
   HloInstruction* domain = builder.AddInstruction(HloInstruction::CreateDomain(
