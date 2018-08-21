@@ -98,3 +98,10 @@ bb0:
   %4 = store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1> // expected-error {{cannot name an operation with no results}}
   return
 }
+
+// -----
+
+mlfunc @mlfunc_constant() {
+  %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
+  return
+}

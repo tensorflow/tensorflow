@@ -65,6 +65,9 @@ public:
   /// message and a boolean that indicates whether this is an error or warning.
   void registerDiagnosticHandler(const DiagnosticHandlerTy &handler);
 
+  /// Return the current diagnostic handler, or null if none is present.
+  DiagnosticHandlerTy getDiagnosticHandler() const;
+
   /// This emits an diagnostic using the registered issue handle if present, or
   /// with the default behavior if not.  The MLIR compiler should not generally
   /// interact with this, it should use methods on Operation instead.

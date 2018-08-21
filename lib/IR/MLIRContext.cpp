@@ -285,6 +285,11 @@ void MLIRContext::registerDiagnosticHandler(
   getImpl().diagnosticHandler = handler;
 }
 
+/// Return the current diagnostic handler, or null if none is present.
+auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
+  return getImpl().diagnosticHandler;
+}
+
 /// This emits a diagnostic using the registered issue handle if present, or
 /// with the default behavior if not.  The MLIR compiler should not generally
 /// interact with this, it should use methods on Operation instead.
@@ -608,8 +613,16 @@ ArrayAttr *ArrayAttr::get(ArrayRef<Attribute *> value, MLIRContext *context) {
   // Copy the elements into the bump pointer.
   value = impl.copyInto(value);
 
+  // Check to see if any of the elements have a function attr.
+  bool hasFunctionAttr = false;
+  for (auto *elt : value)
+    if (elt->isOrContainsFunction()) {
+      hasFunctionAttr = true;
+      break;
+    }
+
   // Initialize the memory using placement new.
-  new (result) ArrayAttr(value);
+  new (result) ArrayAttr(value, hasFunctionAttr);
 
   // Cache and return it.
   return *existing.first = result;

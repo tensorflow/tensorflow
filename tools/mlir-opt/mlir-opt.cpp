@@ -169,11 +169,11 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
   for (auto &subbuffer : sourceBuffers) {
     SourceMgr sourceMgr;
     // Tell sourceMgr about this buffer, which is what the parser will pick up.
-    auto bufferId = sourceMgr.AddNewSourceBuffer(
-        MemoryBuffer::getMemBufferCopy(subbuffer), SMLoc());
+    sourceMgr.AddNewSourceBuffer(MemoryBuffer::getMemBufferCopy(subbuffer),
+                                 SMLoc());
 
     // Extract the expected errors.
-    llvm::Regex expected("expected-error(@[+-][0-9]+)? *{{(.*)}}");
+    llvm::Regex expected("expected-error *(@[+-][0-9]+)? *{{(.*)}}");
     SmallVector<ExpectedError, 2> expectedErrors;
     SmallVector<StringRef, 100> lines;
     subbuffer.split(lines, '\n');
@@ -221,30 +221,6 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
     // Parse the input file.
     MLIRContext context;
     initializeMLIRContext(&context);
-
-    // TODO: refactor into initializeMLIRContext so the normal parser pass
-    // gets to use this.
-    context.registerDiagnosticHandler([&](Attribute *location,
-                                          StringRef message,
-                                          MLIRContext::DiagnosticKind kind) {
-      auto offset = cast<IntegerAttr>(location)->getValue();
-      auto ptr = sourceMgr.getMemoryBuffer(bufferId)->getBufferStart() + offset;
-      SourceMgr::DiagKind diagKind;
-      switch (kind) {
-      case MLIRContext::DiagnosticKind::Error:
-        diagKind = SourceMgr::DK_Error;
-        break;
-      case MLIRContext::DiagnosticKind::Warning:
-        diagKind = SourceMgr::DK_Warning;
-        break;
-      case MLIRContext::DiagnosticKind::Note:
-        diagKind = SourceMgr::DK_Note;
-        break;
-      }
-      checker(
-          sourceMgr.GetMessage(SMLoc::getFromPointer(ptr), diagKind, message));
-    });
-
     std::unique_ptr<Module> module(
         parseSourceFile(sourceMgr, &context, checker));
 

@@ -31,6 +31,7 @@ template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
+class Function;
 class SSAValue;
 class Type;
 
@@ -68,6 +69,14 @@ class Operation {
 public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
+
+  /// Return the function this operation is defined in.  This has a verbose
+  /// name to avoid name lookup ambiguities.
+  Function *getOperationFunction();
+
+  const Function *getOperationFunction() const {
+    return const_cast<Operation *>(this)->getOperationFunction();
+  }
 
   /// The name of an operation is the key identifier for it.
   Identifier getName() const { return nameAndIsInstruction.getPointer(); }

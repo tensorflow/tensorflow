@@ -17,7 +17,9 @@
 
 #include "mlir/IR/Operation.h"
 #include "AttributeListStorage.h"
+#include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
@@ -42,22 +44,26 @@ MLIRContext *Operation::getContext() const {
   return cast<OperationStmt>(this)->getContext();
 }
 
+/// Return the function this operation is defined in.
+Function *Operation::getOperationFunction() {
+  if (auto *inst = dyn_cast<OperationInst>(this))
+    return inst->getFunction();
+  return cast<OperationStmt>(this)->findFunction();
+}
+
 /// Return the number of operands this operation has.
 unsigned Operation::getNumOperands() const {
-  if (auto *inst = dyn_cast<OperationInst>(this)) {
+  if (auto *inst = dyn_cast<OperationInst>(this))
     return inst->getNumOperands();
-  } else {
-    return cast<OperationStmt>(this)->getNumOperands();
-  }
+
+  return cast<OperationStmt>(this)->getNumOperands();
 }
 
 SSAValue *Operation::getOperand(unsigned idx) {
-  if (auto *inst = dyn_cast<OperationInst>(this)) {
+  if (auto *inst = dyn_cast<OperationInst>(this))
     return inst->getOperand(idx);
-  } else {
-    auto *stmt = cast<OperationStmt>(this);
-    return stmt->getOperand(idx);
-  }
+
+  return cast<OperationStmt>(this)->getOperand(idx);
 }
 
 void Operation::setOperand(unsigned idx, SSAValue *value) {
@@ -71,22 +77,18 @@ void Operation::setOperand(unsigned idx, SSAValue *value) {
 
 /// Return the number of results this operation has.
 unsigned Operation::getNumResults() const {
-  if (auto *inst = dyn_cast<OperationInst>(this)) {
+  if (auto *inst = dyn_cast<OperationInst>(this))
     return inst->getNumResults();
-  } else {
-    auto *stmt = cast<OperationStmt>(this);
-    return stmt->getNumResults();
-  }
+
+  return cast<OperationStmt>(this)->getNumResults();
 }
 
 /// Return the indicated result.
 SSAValue *Operation::getResult(unsigned idx) {
-  if (auto *inst = dyn_cast<OperationInst>(this)) {
+  if (auto *inst = dyn_cast<OperationInst>(this))
     return inst->getResult(idx);
-  } else {
-    auto *stmt = cast<OperationStmt>(this);
-    return stmt->getResult(idx);
-  }
+
+  return cast<OperationStmt>(this)->getResult(idx);
 }
 
 ArrayRef<NamedAttribute> Operation::getAttrs() const {

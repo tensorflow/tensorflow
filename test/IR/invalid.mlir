@@ -104,13 +104,13 @@ mlfunc @bar() // expected-error {{expected '{' before statement list}}
 // -----
 
 mlfunc @empty() {
-// expected-error@-1 {{ML function must end with return statement}}
+  //expected-error@-3 {{ML function must end with return statement}}
 }
 
 // -----
 
 mlfunc @no_return() {
-// expected-error@-1 {{ML function must end with return statement}}
+  // expected-error@-3 {{ML function must end with return statement}}
   "foo"() : () -> ()
 }
 
@@ -275,14 +275,14 @@ mlfunc @malformed_type(%a : intt) { // expected-error {{expected type}}
 
 // -----
 
-cfgfunc @resulterror() -> i32 {  // expected-error {{return has 0 operands, but enclosing function returns 1}}
+cfgfunc @resulterror() -> i32 {
 bb42:
-  return
+  return    // expected-error@-4{{return has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
 
-mlfunc @mlfunc_resulterror() -> i32 {  // expected-error {{return has 0 operands, but enclosing function returns 1}}
+mlfunc @mlfunc_resulterror() -> i32 {  // expected-error@-2 {{return has 0 operands, but enclosing function returns 1}}
   return
 }
 
@@ -297,14 +297,14 @@ bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
 
 // -----
 
-cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of cfgfunc must have 2 arguments to match function signature}}
+cfgfunc @bbargMismatch(i32, f32) { // expected-error @-2 {{first block of cfgfunc must have 2 arguments to match function signature}}
 bb42(%0: f32):
   return
 }
 
 // -----
 
-cfgfunc @br_mismatch() {  // expected-error {{branch has 2 operands, but target block has 1}}
+cfgfunc @br_mismatch() {  // expected-error @-2 {{branch has 2 operands, but target block has 1}}
 bb0:
   %0 = "foo"() : () -> (i1, i17)
   br bb1(%0#1, %0#0 : i17, i1)
@@ -370,7 +370,7 @@ mlfunc @duplicate_induction_var() {
 
 // -----
 
-mlfunc @duplicate_induction_var() {  // expected-error {{}}
+mlfunc @dominance_failure() {
   for %i = 1 to 10 {
   }
   "xxx"(%i) : (affineint)->()   // expected-error {{operand #0 does not dominate this use}}
@@ -380,7 +380,7 @@ mlfunc @duplicate_induction_var() {  // expected-error {{}}
 // -----
 
 mlfunc @return_type_mismatch() -> i32 {
-  // expected-error@-1 {{type of return operand 0 doesn't match function result type}}
+  // expected-error@-3 {{type of return operand 0 doesn't match function result type}}
   %0 = "foo"() : ()->f32
   return %0 : f32
 }

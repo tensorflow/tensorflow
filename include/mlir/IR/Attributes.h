@@ -27,6 +27,8 @@ class Function;
 class MLIRContext;
 class Type;
 
+/// Attributes are known-constant values of operations and functions.
+///
 /// Instances of the Attribute class are immutable, uniqued, immortal, and owned
 /// by MLIRContext.  As such, they are passed around by raw non-const pointer.
 class Attribute {
@@ -47,17 +49,24 @@ public:
     return kind;
   }
 
+  /// Return true if this field is, or contains, a function attribute.
+  bool isOrContainsFunction() const { return isOrContainsFunctionCache; }
+
   /// Print the attribute.
   void print(raw_ostream &os) const;
   void dump() const;
 
 protected:
-  explicit Attribute(Kind kind) : kind(kind) {}
+  explicit Attribute(Kind kind, bool isOrContainsFunction)
+      : kind(kind), isOrContainsFunctionCache(isOrContainsFunction) {}
   ~Attribute() {}
 
 private:
   /// Classification of the subclass, used for type checking.
   Kind kind : 8;
+
+  /// This field is true if this is, or contains, a function attribute.
+  bool isOrContainsFunctionCache : 1;
 
   Attribute(const Attribute&) = delete;
   void operator=(const Attribute&) = delete;
@@ -81,7 +90,8 @@ public:
     return attr->getKind() == Kind::Bool;
   }
 private:
-  BoolAttr(bool value) : Attribute(Kind::Bool), value(value) {}
+  BoolAttr(bool value)
+      : Attribute(Kind::Bool, /*isOrContainsFunction=*/false), value(value) {}
   ~BoolAttr() = delete;
   bool value;
 };
@@ -99,7 +109,9 @@ public:
     return attr->getKind() == Kind::Integer;
   }
 private:
-  IntegerAttr(int64_t value) : Attribute(Kind::Integer), value(value) {}
+  IntegerAttr(int64_t value)
+      : Attribute(Kind::Integer, /*isOrContainsFunction=*/false), value(value) {
+  }
   ~IntegerAttr() = delete;
   int64_t value;
 };
@@ -117,7 +129,8 @@ public:
     return attr->getKind() == Kind::Float;
   }
 private:
-  FloatAttr(double value) : Attribute(Kind::Float), value(value) {}
+  FloatAttr(double value)
+      : Attribute(Kind::Float, /*isOrContainsFunction=*/false), value(value) {}
   ~FloatAttr() = delete;
   double value;
 };
@@ -135,11 +148,14 @@ public:
     return attr->getKind() == Kind::String;
   }
 private:
-  StringAttr(StringRef value) : Attribute(Kind::String), value(value) {}
+  StringAttr(StringRef value)
+      : Attribute(Kind::String, /*isOrContainsFunction=*/false), value(value) {}
   ~StringAttr() = delete;
   StringRef value;
 };
 
+/// Array attributes are lists of other attributes.  They are not necessarily
+/// type homogenous given that attributes don't, in general, carry types.
 class ArrayAttr : public Attribute {
 public:
   static ArrayAttr *get(ArrayRef<Attribute*> value, MLIRContext *context);
@@ -153,7 +169,8 @@ public:
     return attr->getKind() == Kind::Array;
   }
 private:
-  ArrayAttr(ArrayRef<Attribute*> value) : Attribute(Kind::Array), value(value){}
+  ArrayAttr(ArrayRef<Attribute *> value, bool isOrContainsFunction)
+      : Attribute(Kind::Array, isOrContainsFunction), value(value) {}
   ~ArrayAttr() = delete;
   ArrayRef<Attribute*> value;
 };
@@ -171,7 +188,9 @@ public:
     return attr->getKind() == Kind::AffineMap;
   }
 private:
-  AffineMapAttr(AffineMap *value) : Attribute(Kind::AffineMap), value(value) {}
+  AffineMapAttr(AffineMap *value)
+      : Attribute(Kind::AffineMap, /*isOrContainsFunction=*/false),
+        value(value) {}
   ~AffineMapAttr() = delete;
   AffineMap *value;
 };
@@ -188,7 +207,8 @@ public:
   }
 
 private:
-  TypeAttr(Type *value) : Attribute(Kind::Type), value(value) {}
+  TypeAttr(Type *value)
+      : Attribute(Kind::Type, /*isOrContainsFunction=*/false), value(value) {}
   ~TypeAttr() = delete;
   Type *value;
 };
@@ -216,7 +236,9 @@ public:
   static void dropFunctionReference(Function *value);
 
 private:
-  FunctionAttr(Function *value) : Attribute(Kind::Function), value(value) {}
+  FunctionAttr(Function *value)
+      : Attribute(Kind::Function, /*isOrContainsFunction=*/true), value(value) {
+  }
   ~FunctionAttr() = delete;
   Function *value;
 };
