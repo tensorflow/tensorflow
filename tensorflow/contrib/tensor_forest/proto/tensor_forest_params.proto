@@ -8,8 +8,8 @@ import "tensorflow/contrib/decision_trees/proto/generic_tree_model.proto";
 // stored in the decision_trees.Leaf protos.
 enum LeafModelType {
   MODEL_DENSE_CLASSIFICATION = 0;
-  //MODEL_SPARSE_CLASSIFICATION = 1;
-  //MODEL_REGRESSION = 2;
+  MODEL_SPARSE_CLASSIFICATION = 1;
+  MODEL_REGRESSION = 2;
   MODEL_SPARSE_OR_DENSE_CLASSIFICATION = 3;
 }
 
@@ -18,11 +18,11 @@ enum LeafModelType {
 // a SplitCandidate::LeafStat proto.
 enum StatsModelType {
   STATS_DENSE_GINI = 0;
-  // STATS_SPARSE_GINI = 1;
+  STATS_SPARSE_GINI = 1;
   STATS_LEAST_SQUARES_REGRESSION = 2;
   // STATS_SPARSE_THEN_DENSE_GINI is deprecated and no longer supported.
-  // STATS_SPARSE_THEN_DENSE_GINI = 3;
-  // STATS_FIXED_SIZE_SPARSE_GINI = 4;
+  STATS_SPARSE_THEN_DENSE_GINI = 3;
+  STATS_FIXED_SIZE_SPARSE_GINI = 4;
 }
 
 // Allows selection of operations on the collection of split candidates.

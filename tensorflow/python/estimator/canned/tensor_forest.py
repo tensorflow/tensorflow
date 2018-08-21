@@ -32,6 +32,7 @@ from tensorflow.python.ops import tensor_forest_ops
 
 
 _ForestHParams = collections.namedtuple('TreeHParams', [
+    'num_output',
     'n_trees', 'max_nodes', 'num_splits_to_consider',
     'split_after_samples', 'is_regression',
 ])
@@ -88,6 +89,7 @@ def _bt_model_fn(features, labels, mode, head, feature_columns, forest_hparams, 
   extra_predictions = {
       TREE_PATHS_PREDICTION_KEY: tree_paths
   }
+
   if not forest_hparams.is_classification:
       extra_predictions[VARIANCE_PREDICTION_KEY] = regression_variance,
 
@@ -202,17 +204,17 @@ class RandomDecisionTreeGraphs(object):
         params=self.serialized_params_proto)
 
     with ops.control_dependencies([update_model]):
-      return tensor_forest_ops.grow_tree_v4(
+      return tensor_forest_ops.grow_tree(
           self.variables.tree,
           self.variables.stats,
           finished_nodes,
           params=self.serialized_params_proto)
 
   def inference_graph(self, input_data):
-    return tensor_forest_ops.tree_predictions(
+    return tensor_forest_ops.predict(
         self.variables.tree,
         input_data,
-        params=self.serialized_params_proto)
+        params=self.param)
 
   def size(self):
     return tensor_forest_ops.tree_size(self.variables.tree)
@@ -313,7 +315,12 @@ Raises:
         loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
 
   forest_hparams = _ForestHParams(
-      n_trees, max_nodes, num_splits_to_consider, split_after_samples, is_classification=True)
+      n_classes,
+      n_trees,
+      max_nodes,
+      num_splits_to_consider,
+      split_after_samples,
+      is_regression=False)
 
   assert all(map(lambda fc: isinstance(fc, feature_column_lib.DenseColumn),
                  feature_columns)), 'Only Dense Column supported'

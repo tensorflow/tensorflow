@@ -41,8 +41,7 @@ class CreateTreeVariableOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("leaf_model_type", &leaf_model_type_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("num_output", &num_output_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_output", &num_output_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -144,8 +143,9 @@ void TraverseTree(const DecisionTreeResource* tree_resource,
                   const std::function<void(int32, int32)>& set_leaf_id,
                   std::vector<TreePath>* tree_paths) {
   for (int i = start; i < end; ++i) {
-    const int32 id =
-        tree_resource->TraverseTree(data, i, nullptr, (tree_paths == nullptr) ? nullptr : &(*tree_paths)[i]);
+    const int32 id = tree_resource->TraverseTree(
+        data, i, nullptr,
+        (tree_paths == nullptr) ? nullptr : &(*tree_paths)[i]);
     set_leaf_id(i, id);
   }
 }
@@ -157,9 +157,9 @@ class TreePredictionsOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("leaf_model_type", &leaf_model_type_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("num_output", &num_output_));
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(leaf_model_type_, num_output_);
+    OP_REQUIRES_OK(context, context->GetAttr("num_output", &num_output_));
+    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(
+        leaf_model_type_, num_output_);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -171,7 +171,8 @@ class TreePredictionsOp : public OpKernel {
     mutex_lock l(*decision_tree_resource->get_mutex());
     core::ScopedUnref unref_me(decision_tree_resource);
 
-    std::unique_ptr<DenseTensorType> data_set = new DenseTensorType(input_data.tensor<float, 2>());
+    std::unique_ptr<DenseTensorType> data_set =
+        new DenseTensorType(input_data.tensor<float, 2>());
     const int num_data = data_set->dimensions()[0];
 
     Tensor* output_predictions = nullptr;
@@ -228,7 +229,8 @@ class TreePredictionsOp : public OpKernel {
       sum += count;
     }
 
-    if (leaf_model_type_ != LeafModelType.CLASSIFICATION && sum > 0 && sum != 1) {
+    if (leaf_model_type_ != LeafModelType.CLASSIFICATION && sum > 0 &&
+        sum != 1) {
       for (int j = 0; j < num_output_; ++j) {
         (*out)(i, j) /= sum;
       }
@@ -244,8 +246,8 @@ class TreePredictionsOp : public OpKernel {
 // Outputs leaf ids for the given examples.
 class TraverseTreeV4Op : public OpKernel {
  public:
-  explicit TraverseTreeV4Op(OpKernelConstruction* context) : OpKernel(context) {
-  }
+  explicit TraverseTreeV4Op(OpKernelConstruction* context)
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(1);
@@ -256,7 +258,8 @@ class TraverseTreeV4Op : public OpKernel {
     mutex_lock l(*decision_tree_resource->get_mutex());
     core::ScopedUnref unref_me(decision_tree_resource);
 
-    std::unique_ptr<DenseTensorType> data_set = new DenseTensorType(input_data.tensor<float, 2>());
+    std::unique_ptr<DenseTensorType> data_set =
+        new DenseTensorType(input_data.tensor<float, 2>());
     const int num_data = data_set->dimensions()[0];
 
     Tensor* output_predictions = nullptr;
@@ -292,9 +295,9 @@ class UpdateModelV4Op : public OpKernel {
   explicit UpdateModelV4Op(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("leaf_model_type", &leaf_model_type_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("num_output", &num_output_));
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(leaf_model_type_, num_output_);
+    OP_REQUIRES_OK(context, context->GetAttr("num_output", &num_output_));
+    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(
+        leaf_model_type_, num_output_);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -314,7 +317,6 @@ class UpdateModelV4Op : public OpKernel {
             : static_cast<int>(input_labels.shape().dim_size(1));
     const int32 num_targets =
         param_proto_.is_regression() ? (std::max(1, label_dim)) : 1;
-
 
     // TODO(gilberth): Make this thread safe and multi-thread.
     UpdateModel(leaf_ids, target, 0, num_data, decision_tree_resource);
