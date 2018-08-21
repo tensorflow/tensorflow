@@ -412,6 +412,54 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <KernelType kernel_type>
+TfLiteStatus EvalMin(TfLiteContext* context, TfLiteNode* node) {
+  OpContext op_context(context, node);
+  int64_t num_axis = NumElements(op_context.axis);
+  TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  // Resize the output tensor if the output tensor is dynamic.
+  if (IsDynamicTensor(op_context.output)) {
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempAxis(context, &op_context, resolved_axis));
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+  }
+
+#define TF_LITE_MIN(kernel_type, data_type)                         \
+  kernel_type::ReduceMin<>(                                         \
+      GetTensorData<data_type>(op_context.input),                   \
+      op_context.input->dims->data, op_context.input->dims->size,   \
+      GetTensorData<data_type>(op_context.output),                  \
+      op_context.output->dims->data, op_context.output->dims->size, \
+      GetTensorData<int>(op_context.axis), num_axis,                \
+      op_context.params->keep_dims, GetTensorData<int>(temp_index), \
+      GetTensorData<int>(resolved_axis))
+
+  if (kernel_type == kReference) {
+    switch (op_context.input->type) {
+      case kTfLiteFloat32:
+        TF_LITE_ENSURE(context, TF_LITE_MIN(reference_ops, float));
+        break;
+      case kTfLiteInt32:
+        TF_LITE_ENSURE(context, TF_LITE_MIN(reference_ops, int));
+        break;
+      case kTfLiteInt64:
+        TF_LITE_ENSURE(context, TF_LITE_MIN(reference_ops, int64_t));
+        break;
+      case kTfLiteUInt8:
+        TF_LITE_ENSURE_EQ(context, op_context.input->params.scale,
+                          op_context.output->params.scale);
+        TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point,
+                          op_context.output->params.zero_point);
+        TF_LITE_ENSURE(context, TF_LITE_MIN(reference_ops, uint8_t));
+        break;
+      default:
+        return kTfLiteError;
+    }
+  }
+#undef TF_LITE_MIN
+  return kTfLiteOk;
+}
 }  // namespace reduce
 
 TfLiteRegistration* Register_MEAN_REF() {
@@ -442,6 +490,13 @@ TfLiteRegistration* Register_REDUCE_MAX_REF() {
   return &r;
 }
 
+TfLiteRegistration* Register_REDUCE_MIN_REF() {
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareSimple,
+                                 reduce::EvalMin<reduce::kReference>};
+  return &r;
+}
+
 // TODO(kanlig): add optimized implementation of Mean.
 TfLiteRegistration* Register_MEAN() { return Register_MEAN_REF(); }
 TfLiteRegistration* Register_SUM() { return Register_SUM_REF(); }
@@ -449,6 +504,7 @@ TfLiteRegistration* Register_REDUCE_PROD() {
   return Register_REDUCE_PROD_REF();
 }
 TfLiteRegistration* Register_REDUCE_MAX() { return Register_REDUCE_MAX_REF(); }
+TfLiteRegistration* Register_REDUCE_MIN() { return Register_REDUCE_MIN_REF(); }
 
 }  // namespace builtin
 }  // namespace ops

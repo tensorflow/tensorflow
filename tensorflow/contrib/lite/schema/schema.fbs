@@ -170,6 +170,7 @@ enum BuiltinOperator : byte {
   LOGICAL_AND = 86,
   LOGICAL_NOT = 87,
   UNPACK = 88,
+  REDUCE_MIN = 89,
 }
 
 // Options for the builtin operators.
