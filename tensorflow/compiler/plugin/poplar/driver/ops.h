@@ -14,7 +14,7 @@
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#include <popconv/Convolution.hpp>
+#include <poplin/Convolution.hpp>
 #include <poplar/Program.hpp>
 #include <popops/Expr.hpp>
 
@@ -52,7 +52,7 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
 
 std::string GetDebugName(const HloInstruction*);
 
-StatusOr<popconv::ConvParams> GetConvolutionParameters(
+StatusOr<poplin::ConvParams> GetConvolutionParameters(
     const HloInstruction* operand_op, const HloInstruction* conv_op);
 
 StatusOr<poplar::Tensor> ShuffleConvolutionInputToTensorflow(
@@ -61,11 +61,11 @@ StatusOr<poplar::Tensor> ShuffleConvolutionInputToTensorflow(
 StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToTensorflow(
     const HloInstruction* inst, const poplar::Tensor& tensor);
 
-poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
+poplar::Tensor RemoveGroupsDimensionFromWeights(const poplin::ConvParams& p,
                                                 const poplar::Tensor& t,
                                                 bool flipped);
 
-poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
+poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped);
 

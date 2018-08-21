@@ -72,7 +72,7 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
         tb = tb.write(2, ta.read(2) + in2)
         tb = tb.write(3, ta.read(3) + in2)
         tb = tb.write(4, ta.read(4) + in2)
-        out = tb.gather(range(4))
+        out = tb.gather(list(range(4)))
 
         v = session.run(out, feed_dict={in1: [[1,1],[2,2],[3,3],[4,4],[5,5]],
                                         in2: [1,1]})

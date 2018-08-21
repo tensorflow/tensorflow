@@ -73,7 +73,7 @@ limitations under the License.
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
 
-#include <popconv/codelets.hpp>
+#include <poplin/codelets.hpp>
 #include <popnn/codelets.hpp>
 #include <popops/codelets.hpp>
 #include <poprand/codelets.hpp>
@@ -382,7 +382,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   poplar::Graph graph(dev);
   graph.addCodelets(GetPathToGraphProgFile());
-  popconv::addCodelets(graph);
+  poplin::addCodelets(graph);
   popnn::addCodelets(graph);
   popops::addCodelets(graph);
   poprand::addCodelets(graph);
@@ -484,6 +484,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     progs.push_back(visitor.sequence);
     progs.push_back(visitor.host_to_device);
     progs.push_back(visitor.device_to_host);
+
+    char* vertex_filename = getenv("TF_DUMP_VERTEX_GRAPH");
+    if (vertex_filename) {
+      std::ofstream stream(vertex_filename);
+      graph.outputVertexGraph(stream, progs);
+    }
 
     if (visitor.all_outputs_are_parameters) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";

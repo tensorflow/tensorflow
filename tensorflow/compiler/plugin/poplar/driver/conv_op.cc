@@ -16,7 +16,7 @@
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
-#include <popconv/Convolution.hpp>
+#include <poplin/Convolution.hpp>
 #include <popops/Reduce.hpp>
 
 #include <poplar/Engine.hpp>
@@ -25,7 +25,7 @@
 namespace xla {
 namespace poplarplugin {
 
-StatusOr<popconv::ConvParams> GetConvolutionParameters(
+StatusOr<poplin::ConvParams> GetConvolutionParameters(
     const HloInstruction* operands_inst,
     const HloInstruction* parameters_inst) {
   const Shape& input = operands_inst->operand(0)->shape();
@@ -105,9 +105,9 @@ StatusOr<popconv::ConvParams> GetConvolutionParameters(
     zeros.push_back(0);
   }
 
-  popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, n_g, t_l, t_u, d_i,
-                             p_l, p_u, falses, zeros, zeros, d_w, zeros, zeros,
-                             falses, zeros, zeros, w_s, zeros, zeros);
+  poplin::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, n_g, t_l, t_u, d_i,
+                            p_l, p_u, falses, zeros, zeros, d_w, zeros, zeros,
+                            falses, zeros, zeros, w_s, zeros, zeros);
 
   return params;
 }
@@ -225,8 +225,8 @@ StatusOr<poplar::Tensor> ShuffleConvolutionOutputToTensorflow(
   return tensor.dimShuffle(shuffle);
 }
 
-// This function operates on the popconv format weights (GOI...)
-poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
+// This function operates on the poplibs format weights (GOI...)
+poplar::Tensor RemoveGroupsDimensionFromWeights(const poplin::ConvParams& p,
                                                 const poplar::Tensor& t,
                                                 bool flipped) {
   poplar::Tensor out = t;
@@ -243,8 +243,8 @@ poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
   }
 }
 
-// This function operates on the popconv format weights (GOI...)
-poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
+// This function operates on the poplibs format weights (GOI...)
+poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped) {
   poplar::Tensor out = t;
@@ -290,7 +290,7 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
   poplar::OptionFlags opts;
   opts.set("pass", GetConvolutionPass(conv, res.annotations));
 
-  popconv::ConvParams params;
+  poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
   poplar::program::Sequence prog;
@@ -303,8 +303,8 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
   auto out =
-      popconv::convolution(graph, in, kernel, params, false, prog,
-                           GetDebugName(inst), opts, &res.convolution_cache);
+      poplin::convolution(graph, in, kernel, params, false, prog,
+                          GetDebugName(inst), opts, &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -330,7 +330,7 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   poplar::OptionFlags opts;
   opts.set("pass", GetConvolutionPass(inst, res.annotations));
 
-  popconv::ConvParams params;
+  poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
   poplar::program::Sequence prog;
@@ -343,8 +343,8 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   kernel = AddGroupsDimensionToWeights(params, kernel, true);
 
   poplar::Tensor out =
-      popconv::convolution(graph, in, kernel, params, true, prog,
-                           GetDebugName(conv), opts, &res.convolution_cache);
+      poplin::convolution(graph, in, kernel, params, true, prog,
+                          GetDebugName(conv), opts, &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -370,7 +370,7 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   poplar::OptionFlags opts;
   opts.set("pass", GetConvolutionPass(inst, res.annotations));
 
-  popconv::ConvParams params;
+  poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
   poplar::program::Sequence prog;
@@ -389,8 +389,8 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
   poplar::Tensor out =
-      popconv::convolution(graph, in, kernel, params, false, prog,
-                           GetDebugName(conv), opts, &res.convolution_cache);
+      poplin::convolution(graph, in, kernel, params, false, prog,
+                          GetDebugName(conv), opts, &res.convolution_cache);
 
   // Move 'G' parts of the B back to I
   out = out.reshapePartial(1, 2, {n_g, out.dim(1) / n_g});
@@ -421,7 +421,7 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
                       ShuffleConvolutionOutputToPoplar(conv_op, in));
 
   poplar::program::Sequence prog;
-  popconv::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
+  poplin::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
 
   TF_CHECK_OK(
       AddOutputTensor(graph, res, prog, tensor_map, inst, 0, in).status());

@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
-#include <popconv/Convolution.hpp>
+#include <poplin/Convolution.hpp>
 #include <poplin/MatMul.hpp>
 #include <poprand/RandomGen.hpp>
 
@@ -38,9 +38,9 @@ struct CompilerResources {
 
   CompilerAnnotations annotations;
 
-  popconv::PlanningCache convolution_cache;
+  poplin::PlanningCache convolution_cache;
 
-  poplin::PlanningCache dot_cache;
+  poplin::matmul::PlanningCache dot_cache;
 
   poprand::Random random;
 
