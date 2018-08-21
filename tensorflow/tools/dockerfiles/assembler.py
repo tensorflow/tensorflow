@@ -34,8 +34,8 @@ flags.DEFINE_string(
 
 flags.DEFINE_string(
     'output_dir',
-    '.', ('Path to an output directory for Dockerfiles. '
-          'Will be created if it doesn\'t exist.'),
+    'dockerfiles', ('Path to an output directory for Dockerfiles. '
+                    'Will be created if it doesn\'t exist.'),
     short_name='o')
 
 flags.DEFINE_string(
@@ -130,8 +130,9 @@ images:
 class TfDockerValidator(cerberus.Validator):
   """Custom Cerberus validator for TF dockerfile spec.
 
-  Note that each custom validator's docstring must end with a segment describing
-  its own validation schema.
+  Note: Each _validate_foo function's docstring must end with a segment
+  describing its own validation schema, e.g. "The rule's arguments are...". If
+  you add a new validator, you can copy/paste that section.
   """
 
   def _validate_ispartial(self, ispartial, field, value):
@@ -275,12 +276,16 @@ def construct_contents(partial_specs, image_spec):
         default = ''
       partial_contents = re.sub(r'ARG {}.*'.format(arg), 'ARG {}{}'.format(
           arg, default), partial_contents)
+
+    # Store updated partial contents
     processed_partial_strings.append(partial_contents)
+
+  # Join everything together
   return '\n'.join(processed_partial_strings)
 
 
-# Create a directory and its parents, even if it already exists
 def mkdir_p(path):
+  """Create a directory and its parents, even if it already exists."""
   try:
     os.makedirs(path)
   except OSError as e:
@@ -486,7 +491,7 @@ def construct_dockerfiles(tf_spec):
 
 def main(argv):
   if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
+    raise app.UsageError('Unexpected command line args found: {}'.format(argv))
 
   with open(FLAGS.spec_file, 'r') as spec_file:
     tf_spec = yaml.load(spec_file)
