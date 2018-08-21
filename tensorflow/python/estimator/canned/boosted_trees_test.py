@@ -161,12 +161,6 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0], [0], [0], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
 
-    with self.assertRaisesRegexp(ValueError, 'empty'):
-      est.experimental_feature_importances(normalize=False)
-
-    with self.assertRaisesRegexp(ValueError, 'empty'):
-      est.experimental_feature_importances(normalize=True)
-
   def testTrainAndEvaluateBinaryClassifier(self):
     input_fn = _make_train_input_fn(is_classification=True)
 
@@ -556,7 +550,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
     self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
 
-  def testExperimentalFeatureImportancesWithTraining(self):
+  def testExperimentalFeatureImportancesWithTrainedEnsemble(self):
     input_fn = _make_train_input_fn(is_classification=True)
 
     est = boosted_trees.BoostedTreesClassifier(
@@ -579,6 +573,31 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.55579074, 0.44420926, 0.0], importances)
+
+  def testFeatureImportancesOnEmtpyEnsemble(self):
+    input_fn = _make_train_input_fn(is_classification=True)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    class BailOutWithoutTraining(session_run_hook.SessionRunHook):
+
+      def before_run(self, run_context):
+        raise StopIteration('to bail out.')
+
+    # The step-0 checkpoint will have only an empty ensemble.
+    est.train(input_fn,
+              steps=100,  # must stop at 0 anyway.
+              hooks=[BailOutWithoutTraining()])
+
+    with self.assertRaisesRegexp(ValueError, 'empty serialized string'):
+      est.experimental_feature_importances(normalize=False)
+
+    with self.assertRaisesRegexp(ValueError, 'empty serialized string'):
+      est.experimental_feature_importances(normalize=True)
 
   def _create_fake_checkpoint_with_tree_ensemble_proto(self, est, tree_ensemble_text):
     with ops.Graph().as_default():
@@ -823,7 +842,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.0, 0.0, 0.0], importances)
 
-    with self.assertRaisesRegexp(AssertionError, 'empty or root node'):
+    with self.assertRaisesRegexp(AssertionError, 'empty or contains'):
       est.experimental_feature_importances(normalize=True)
 
   def testExperimentalCalculateFeatureImportancesWithMoreTrees(self):
@@ -921,7 +940,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
 
-  def testExperimentalFeatureImportancesWithIndicatorColumn(self):
+  def TestFeatureImportancesNamesForCategoricalColumn(self):
     categorical = feature_column.categorical_column_with_vocabulary_list(
         key='categorical', vocabulary_list=('bad', 'good', 'ok'))
     feature_indicator = feature_column.indicator_column(categorical)

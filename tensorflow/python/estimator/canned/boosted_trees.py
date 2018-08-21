@@ -203,7 +203,7 @@ def _generate_feature_name_mapping(sorted_feature_columns):
     sorted_feature_columns: a list/set of tf.feature_column sorted by name.
 
   Returns:
-    feature_name_mapping: a list of feature name.
+    feature_name_mapping: a list of feature names indexed by the feature ids.
   """
   names = []
   for column in sorted_feature_columns:
@@ -962,17 +962,19 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
   The higher the value, the more important the feature.
 
   Args:
-    tree_ensemble: TreeEnsemble.
+    tree_ensemble: a trained tree ensemble, instance of proto
+      boosted_trees.TreeEnsemble.
     num_features: The total number of feature ids.
     normalize: If True, normalize the feature importances.
 
   Returns:
     sorted_feature_idx: A list of feature_id which is sorted
       by its feature importance.
-    feature_importances: A list of corresponding feature importance.
+    feature_importances: A list of corresponding feature importances.
 
   Raises:
-    AssertionError: Trees are all empty or root node only when normalizing.
+    AssertionError: If normalize = True and normalization is not possible
+      (e.g. ensemble is empty or trees contain only a root node).
   """
   tree_importances = [_compute_feature_importances_per_tree(tree, num_features)
                       for tree in tree_ensemble.trees]
@@ -982,7 +984,7 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
                                axis=0) / np.sum(tree_weights)
   if normalize:
     normalizer = np.sum(feature_importances)
-    assert normalizer > 0, 'Trees are all empty or root node only.'
+    assert normalizer > 0, 'Trees are all empty or contains only a root node.'
     feature_importances /= normalizer
 
   sorted_feature_idx = np.argsort(feature_importances)[::-1]
@@ -990,15 +992,17 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
 
 
 class _BoostedTrees(estimator.Estimator):
+  """Base class for boosted trees estimators."""
 
   def __init__(self, model_fn, model_dir, config, feature_columns):
     super(_BoostedTrees, self).__init__(
         model_fn=model_fn, model_dir=model_dir, config=config)
 
     self._sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
+    self._num_features = _calculate_num_features(self._sorted_feature_columns)
 
   def experimental_feature_importances(self, normalize=False):
-    """Compute the feature importances.
+    """Computes gain-based feature importances.
 
     The higher the value, the more important the corresponding feature.
 
@@ -1021,11 +1025,10 @@ class _BoostedTrees(estimator.Estimator):
     ensemble_proto = boosted_trees_pb2.TreeEnsemble()
     ensemble_proto.ParseFromString(serialized)
 
-    num_features = _calculate_num_features(self._sorted_feature_columns)
     names_for_feature_id = np.array(
         _generate_feature_name_mapping(self._sorted_feature_columns))
     sorted_feature_id, importances = _compute_feature_importances(
-        ensemble_proto, num_features, normalize)
+        ensemble_proto, self._num_features, normalize)
     return names_for_feature_id[sorted_feature_id], importances
 
 
