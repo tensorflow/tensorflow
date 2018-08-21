@@ -23,7 +23,6 @@ import os.path
 
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -585,7 +584,6 @@ class FileIoTest(test.TestCase):
     self.assertEqual(crc2, crc3)
 
   def testMatchingFilesPermission(self):
-    # Test case for GitHub issue 19274.
     # Create top level directory test_dir.
     dir_path = os.path.join(self._base_dir, "test_dir")
     file_io.create_dir(dir_path)
@@ -602,10 +600,11 @@ class FileIoTest(test.TestCase):
     file_io.FileIO(file_path, mode="w").write("testing")
     # Change noread to noread access.
     os.chmod(noread_path, 0)
-    expected_match = [compat.as_bytes(dir_path)]
-    with self.test_session() as sess:
-      self.assertItemsEqual(
-          gen_io_ops.matching_files(dir_path).eval(), expected_match)
+    expected_match = [
+        compat.as_bytes(os.path.join(any_path, name)) for name in files]
+    self.assertItemsEqual(
+        file_io.get_matching_files(os.path.join(dir_path, "*", "file*.txt")),
+        expected_match)
     # Change noread back so that it could be cleaned during tearDown.
     os.chmod(noread_path, 0o777)
 
