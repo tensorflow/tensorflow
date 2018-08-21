@@ -146,8 +146,11 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1, d2)[s0] -> (d0 + d1 + d2 + 1, d2 + d1, (d0 * s0) * 8)
 #map45 = (i, j, k) [N] -> (1 + i + 3 + j - 3 + k, k + 5 + j - 5, 2*i*4*N)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (0, d0 * 2, 0, d0, d0 * 4)
-#map46 = (i, j, k) -> (i*0, i * 128 floordiv 64, j * 0 floordiv 64, i * 64 ceildiv 64, i * 512 ceildiv 128)
+// CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (0, d1, d0 * 2, 0)
+#map46 = (i, j, k) -> (i*0, 1*j, i * 128 floordiv 64, j * 0 floordiv 64)
+
+// CHECK: #map{{[0-9]+}} = (d0, d1, d2) -> (d0, d0 * 4, 0, 0)
+#map47 = (i, j, k) -> (i * 64 ceildiv 64, i * 512 ceildiv 128, 4 * j mod 4, 4*j*4 mod 8)
 
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
@@ -302,3 +305,6 @@ extfunc @f45(memref<100x100x100xi8, #map45>)
 
 // CHECK: extfunc @f46(memref<100x100x100xi8, #map{{[0-9]+}}>)
 extfunc @f46(memref<100x100x100xi8, #map46>)
+
+// CHECK: extfunc @f47(memref<100x100x100xi8, #map{{[0-9]+}}>)
+extfunc @f47(memref<100x100x100xi8, #map47>)

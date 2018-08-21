@@ -205,20 +205,33 @@ AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
   }
 
   return nullptr;
-  // TODO(someone): implement more simplification along the lines described in
-  // simplifyMod TODO. For eg: 128*N ceildiv 128 is N.
 }
 
 AffineExpr *AffineBinaryOpExpr::simplifyMod(AffineExpr *lhs, AffineExpr *rhs,
                                             MLIRContext *context) {
-  if (auto *l = dyn_cast<AffineConstantExpr>(lhs))
-    if (auto *r = dyn_cast<AffineConstantExpr>(rhs))
-      return AffineConstantExpr::get(l->getValue() % r->getValue(), context);
+  auto *lhsConst = dyn_cast<AffineConstantExpr>(lhs);
+  auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
+
+  if (lhsConst && rhsConst)
+    return AffineConstantExpr::get(lhsConst->getValue() % rhsConst->getValue(),
+                                   context);
+
+  // Fold modulo of a multiply with a constant that is a multiple of the
+  // modulo factor to zero. Eg: (i * 128) mod 64 = 0.
+  if (rhsConst) {
+    auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
+    if (lBin && lBin->getKind() == Kind::Mul) {
+      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+        // rhsConst is known to be positive if a constant.
+        if (lrhs->getValue() % rhsConst->getValue() == 0)
+          return AffineConstantExpr::get(0, context);
+      }
+    }
+  }
 
   return nullptr;
-  // TODO(someone): implement more simplification; for eg: 2*x mod 2 is 0; (2*x
-  // + 1) mod 2 is 1. In general, this can be simplified by using the GCD test
-  // iteratively if the RHS of the mod is a small number, or in general using
-  // quantifier elimination (add two new variables q and r, and eliminate all
-  // variables from the linear system other than r.
+  // TODO(bondhugula): In general, this can be simplified more by using the GCD
+  // test, or in general using quantifier elimination (add two new variables q
+  // and r, and eliminate all variables from the linear system other than r. All
+  // of this can be done through mlir/Analysis/'s FlatAffineConstraints.
 }

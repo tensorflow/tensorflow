@@ -238,6 +238,8 @@ public:
   }
 
 private:
+  // TODO(shpeisman): please name the ForStmt's bounds encapsulating
+  // an affinemap and its operands as AffineBound.
   AffineConstantExpr *lowerBound;
   AffineConstantExpr *upperBound;
   AffineConstantExpr *step;
@@ -292,6 +294,8 @@ public:
 private:
   IfClause *thenClause;
   IfClause *elseClause;
+  // TODO(shpeisman): please name the ifStmt's conditional encapsulating
+  // IntegerSet + its operands as AffineCondition.
   // The integer set capturing the conditional guard.
   IntegerSet *condition;
   // TODO: arguments to integer set
