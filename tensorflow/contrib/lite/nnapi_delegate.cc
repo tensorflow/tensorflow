@@ -636,6 +636,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_NOT_EQUAL:
       case tflite::BuiltinOperator_SUM:
       case tflite::BuiltinOperator_REDUCE_MAX:
+      case tflite::BuiltinOperator_REDUCE_MIN:
       case tflite::BuiltinOperator_REDUCE_PROD:
       case tflite::BuiltinOperator_SQRT:
       case tflite::BuiltinOperator_RSQRT:

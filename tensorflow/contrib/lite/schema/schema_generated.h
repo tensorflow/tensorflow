@@ -377,11 +377,12 @@ enum BuiltinOperator {
   BuiltinOperator_LOGICAL_AND = 86,
   BuiltinOperator_LOGICAL_NOT = 87,
   BuiltinOperator_UNPACK = 88,
+  BuiltinOperator_REDUCE_MIN = 89,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_UNPACK
+  BuiltinOperator_MAX = BuiltinOperator_REDUCE_MIN
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[88] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[89] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -470,7 +471,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[88] {
     BuiltinOperator_ONE_HOT,
     BuiltinOperator_LOGICAL_AND,
     BuiltinOperator_LOGICAL_NOT,
-    BuiltinOperator_UNPACK
+    BuiltinOperator_UNPACK,
+    BuiltinOperator_REDUCE_MIN
   };
   return values;
 }
@@ -566,6 +568,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "LOGICAL_AND",
     "LOGICAL_NOT",
     "UNPACK",
+    "REDUCE_MIN",
     nullptr
   };
   return names;

@@ -926,6 +926,11 @@ def make_reduce_max_tests(zip_path):
   return make_reduce_tests(tf.reduce_max)(zip_path)
 
 
+def make_reduce_min_tests(zip_path):
+  """Make a set of tests to do min."""
+  return make_reduce_tests(tf.reduce_min)(zip_path)
+
+
 def make_exp_tests(zip_path):
   """Make a set of tests to do exp."""
 

@@ -2118,7 +2118,7 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                           tensorflow_graph, "Prod");
   } else if (src_op.type == OperatorType::kReduceMin) {
     ConvertReduceOperator(model,
-                          static_cast<const TensorFlowMaxOperator&>(src_op),
+                          static_cast<const TensorFlowMinOperator&>(src_op),
                           tensorflow_graph, "Min");
   } else if (src_op.type == OperatorType::kReduceMax) {
     ConvertReduceOperator(model,
