@@ -627,7 +627,7 @@ Status BufferAssignment::ComputeSummaryStats() {
     stats_.total_allocation_bytes += allocation.size();
   }
 
-  // Only compute total fragmentation if all computations are sequential.
+  // Only compute total fragmentation if all computations have schedules.
   SequentialHloOrdering::HloModuleSequence module_sequence;
   for (const auto& computation : module_->computations()) {
     const std::vector<const HloInstruction*>* sequence =
