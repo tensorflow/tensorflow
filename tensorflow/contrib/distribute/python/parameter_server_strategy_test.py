@@ -101,7 +101,9 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
 
         # The device scope is ignored for variables but not for normal ops.
         with ops.device('/job:worker/task:0'):
-          x = variable_scope.get_variable('x', initializer=10.0)
+          x = variable_scope.get_variable(
+              'x', initializer=10.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
           x_add = x.assign_add(c)
           e = a + c
         # The variable x is on the task 1 since the device_function has been
@@ -113,18 +115,26 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
 
         # The colocate_vars_with can override the distribution's device.
         with d.colocate_vars_with(x):
-          y = variable_scope.get_variable('y', initializer=20.0)
-        y_add = y.assign_add(x_add)
+          y = variable_scope.get_variable(
+              'y', initializer=20.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
+        # We add an identity here to avoid complaints about summing
+        # non-distributed values.
+        y_add = y.assign_add(array_ops.identity(x_add))
         self.assertEqual(y.device, '/job:ps/task:1')
         self.assertEqual(y_add.device, y.device)
         self.assertEqual(y.device, x.device)
 
-        z = variable_scope.get_variable('z', initializer=10.0)
+        z = variable_scope.get_variable(
+            'z', initializer=10.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
         self.assertEqual(z.device, '/job:ps/task:0')
         self.assertNotEqual(z.device, x.device)
 
         with ops.control_dependencies([y_add]):
-          z_add = z.assign_add(y)
+          # We add an identity here to avoid complaints about summing
+          # non-distributed values.
+          z_add = z.assign_add(array_ops.identity(y))
         with ops.control_dependencies([z_add]):
           f = z + c
         self.assertEqual(f.device, worker_device + '/' + last_part_device)
@@ -202,7 +212,9 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
 
         # The device scope is ignored for variables but not for normal ops.
         with ops.device('/device:GPU:2'):
-          x = variable_scope.get_variable('x', initializer=10.0)
+          x = variable_scope.get_variable(
+              'x', initializer=10.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
           x_add = x.assign_add(c)
           e = a + c
         self.assertEqual(
@@ -212,19 +224,27 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
 
         # The colocate_vars_with can override the distribution's device.
         with d.colocate_vars_with(x):
-          y = variable_scope.get_variable('y', initializer=20.0)
-        y_add = y.assign_add(x_add)
+          y = variable_scope.get_variable(
+              'y', initializer=20.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
+        # We add an identity here to avoid complaints about summing
+        # non-distributed values.
+        y_add = y.assign_add(array_ops.identity(x_add))
         self.assertEqual(
             device_util.canonicalize(y.device), tower_variable_device)
         self.assertEqual(y_add.device, y.device)
         self.assertEqual(y.device, x.device)
 
-        z = variable_scope.get_variable('z', initializer=10.0)
+        z = variable_scope.get_variable(
+            'z', initializer=10.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
         self.assertEqual(
             device_util.canonicalize(z.device), tower_variable_device)
 
         with ops.control_dependencies([y_add]):
-          z_add = z.assign_add(y)
+          # We add an identity here to avoid complaints about summing
+          # non-distributed values.
+          z_add = z.assign_add(array_ops.identity(y))
         with ops.control_dependencies([z_add]):
           f = z + c
         self.assertEqual(f.device, tower_compute_device)
@@ -286,11 +306,18 @@ class ParameterServerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
          d.scope():
 
       def model_fn():
-        x = variable_scope.get_variable('x', initializer=10.0)
-        y = variable_scope.get_variable('y', initializer=20.0)
+        x = variable_scope.get_variable(
+            'x', initializer=10.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
+        y = variable_scope.get_variable(
+            'y', initializer=20.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
 
-        x_add = x.assign_add(1.0, use_locking=True)
-        y_add = y.assign_add(1.0, use_locking=True)
+        # We explicitly make a constant tensor here to avoid complaints about
+        # summing non-distributed values.
+        one = constant_op.constant(1.0)
+        x_add = x.assign_add(one, use_locking=True)
+        y_add = y.assign_add(one, use_locking=True)
 
         train_op = control_flow_ops.group([x_add, y_add])
         return x, y, train_op
