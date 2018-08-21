@@ -125,6 +125,43 @@ cc_library(
 )
 
 cc_library(
+    name = "map_vectorization",
+    srcs = ["map_vectorization.cc"],
+    hdrs = [
+        "map_vectorization.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "map_vectorization_test",
+    srcs = ["map_vectorization_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":map_vectorization",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/kernels:cast_op",  # Must be linked for the testlib functions to work.
+    ],
+)
+
+cc_library(
     name = "map_and_batch_fusion",
     srcs = ["map_and_batch_fusion.cc"],
     hdrs = [
@@ -311,6 +348,7 @@ cc_library(
         ":map_and_batch_fusion",
         ":map_and_filter_fusion",
         ":map_fusion",
+        ":map_vectorization",
         ":noop_elimination",
         ":shuffle_and_repeat_fusion",
     ],
