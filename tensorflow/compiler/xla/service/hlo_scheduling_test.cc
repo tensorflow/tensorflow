@@ -244,9 +244,9 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
                     *entry_computation, sequence.at(entry_computation),
                     *points_to_analysis, size_fn)
                     .ValueOrDie());
-  // HeapSimulator accounts for subcomputations. The max mem doesn't change
-  // because the while body isn't live during the peak.
-  EXPECT_EQ(80, HeapSimulator::MinimumMemoryForComputation(
+  // HeapSimulator accounts for subcomputations. The output buffer is aliased,
+  // so we don't double count.
+  EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, sequence.at(entry_computation),
                     *points_to_analysis, size_fn, &memory_by_computation)
                     .ValueOrDie());
@@ -350,7 +350,6 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
 TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   auto module = CreateNewModule();
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
-  const Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 4});
 
   // param != 0
   // Needs 17 bytes
@@ -408,8 +407,9 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
                     *entry_computation, sequence.at(entry_computation),
                     *points_to_analysis, size_fn)
                     .ValueOrDie());
-  // HeapSimulator accounts for subcomputations
-  EXPECT_EQ(33, HeapSimulator::MinimumMemoryForComputation(
+  // HeapSimulator accounts for subcomputations. Cond is the largest one.
+  // The output buffer of the while is aliased.
+  EXPECT_EQ(17, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, sequence.at(entry_computation),
                     *points_to_analysis, size_fn, &memory_by_computation)
                     .ValueOrDie());
