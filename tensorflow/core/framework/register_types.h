@@ -161,9 +161,12 @@ limitations under the License.
   TF_CALL_int64(m) TF_CALL_int32(m) TF_CALL_uint16(m) TF_CALL_int16(m) \
       TF_CALL_uint8(m) TF_CALL_int8(m)
 
+#define TF_CALL_FLOAT_TYPES(m) \
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
+
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   TF_CALL_INTEGRAL_TYPES(m)          \
-  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
+  TF_CALL_FLOAT_TYPES(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_BFLOAT16(m) \
   TF_CALL_INTEGRAL_TYPES(m) TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
