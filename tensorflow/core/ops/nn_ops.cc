@@ -1009,6 +1009,7 @@ REGISTER_OP("SeluGrad")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
+// TODO(b/111515541): change T to {half, bfloat16, float, double}
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
@@ -1022,6 +1023,7 @@ REGISTER_OP("SoftplusGrad")
     .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
+// TODO(b/111515541): change T to {half, bfloat16, float, double}
 REGISTER_OP("Softsign")
     .Input("features: T")
     .Output("activations: T")
