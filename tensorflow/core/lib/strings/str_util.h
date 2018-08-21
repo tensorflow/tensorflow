@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
-#define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
 
 #include <functional>
 #include <string>
@@ -231,4 +231,4 @@ size_t Strnlen(const char* str, const size_t string_max_len);
 }  // namespace str_util
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_

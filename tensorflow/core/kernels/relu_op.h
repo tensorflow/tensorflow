@@ -15,8 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#ifndef TENSORFLOW_KERNELS_RELU_OP_H_
-#define TENSORFLOW_KERNELS_RELU_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RELU_OP_H_
+#define TENSORFLOW_CORE_KERNELS_RELU_OP_H_
 
 #define EIGEN_USE_THREADS
 
@@ -219,4 +219,4 @@ void SeluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
 
 #undef EIGEN_USE_THREADS
 
-#endif  // TENSORFLOW_KERNELS_RELU_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RELU_OP_H_

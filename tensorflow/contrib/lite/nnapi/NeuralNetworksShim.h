@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef NN_API_SHIM_H0
-#define NN_API_SHIM_H0
+#ifndef TENSORFLOW_CONTRIB_LITE_NNAPI_NEURALNETWORKSSHIM_H_
+#define TENSORFLOW_CONTRIB_LITE_NNAPI_NEURALNETWORKSSHIM_H_
 
 #include <dlfcn.h>
 #include <stdint.h>
@@ -970,4 +970,4 @@ inline void ANeuralNetworksEvent_free(ANeuralNetworksEvent* event) {
 
 /**/
 
-#endif  // NN_API_SHIM_H0
+#endif  // TENSORFLOW_CONTRIB_LITE_NNAPI_NEURALNETWORKSSHIM_H_

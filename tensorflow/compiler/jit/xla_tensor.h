@@ -128,4 +128,4 @@ class XlaTensor {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_
