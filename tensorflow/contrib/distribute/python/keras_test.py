@@ -367,8 +367,8 @@ class TestWithDistributionStrategy(test.TestCase):
       # Test with sample weight.
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
-          NotImplementedError, 'sample_weight is currently not supported when '
-                               'using DistributionStrategy.'):
+          NotImplementedError, '`sample_weight` is currently not supported '
+                               'when using DistributionStrategy.'):
         model.fit(
             dataset,
             epochs=1,

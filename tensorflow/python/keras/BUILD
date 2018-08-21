@@ -688,7 +688,7 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
