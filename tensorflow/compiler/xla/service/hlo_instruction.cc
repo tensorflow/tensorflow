@@ -363,11 +363,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                 proto.convolution_dimension_numbers());
       }
       break;
-    case HloOpcode::kHostCompute:
-      instruction =
-          CreateHostCompute(proto.shape(), all_operands(), proto.channel_name(),
-                            proto.cost_estimate_ns());
-      break;
     case HloOpcode::kPad:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Pad instruction should have 2 operands but sees "
@@ -1036,7 +1031,6 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
-    case HloOpcode::kHostCompute:
       return true;
     case HloOpcode::kCrossReplicaSum:
       return all_reduce_id().has_value();
@@ -1075,13 +1069,6 @@ bool HloInstruction::HasSideEffect() const {
     tensorflow::StringPiece custom_call_target) {
   return absl::make_unique<HloCustomCallInstruction>(shape, operands,
                                                      custom_call_target);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateHostCompute(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns) {
-  return absl::make_unique<HloHostComputeInstruction>(
-      shape, operands, channel_name, cost_estimate_ns);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
@@ -1171,7 +1158,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCustomCall:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
@@ -1637,7 +1623,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCustomCall:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
@@ -2348,8 +2333,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleInfeed(this);
     case HloOpcode::kOutfeed:
       return visitor->HandleOutfeed(this);
-    case HloOpcode::kHostCompute:
-      return visitor->HandleHostCompute(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
     case HloOpcode::kWhile:
@@ -3221,10 +3204,6 @@ void HloInstruction::set_scatter(HloComputation* computation) {
 
 const string& HloInstruction::custom_call_target() const {
   return Cast<HloCustomCallInstruction>(this)->custom_call_target();
-}
-
-const string& HloInstruction::channel_name() const {
-  return Cast<HloHostComputeInstruction>(this)->channel_name();
 }
 
 const PaddingConfig& HloInstruction::padding_config() const {

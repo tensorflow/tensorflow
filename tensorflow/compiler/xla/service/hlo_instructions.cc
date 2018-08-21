@@ -1856,41 +1856,6 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   return std::move(cloned);
 }
 
-HloHostComputeInstruction::HloHostComputeInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns)
-    : HloInstruction(HloOpcode::kHostCompute, shape),
-      channel_name_(channel_name.begin(), channel_name.end()),
-      cost_estimate_ns_(cost_estimate_ns) {
-  for (auto operand : operands) {
-    AppendOperand(operand);
-  }
-}
-
-HloInstructionProto HloHostComputeInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_channel_name(channel_name_);
-  proto.set_cost_estimate_ns(cost_estimate_ns_);
-  return proto;
-}
-
-bool HloHostComputeInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  // Not yet supported.
-  return false;
-}
-
-std::unique_ptr<HloInstruction>
-HloHostComputeInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-    HloCloneContext* context) const {
-  return absl::make_unique<HloHostComputeInstruction>(
-      shape, new_operands, channel_name_, cost_estimate_ns_);
-}
-
 HloPadInstruction::HloPadInstruction(const Shape& shape,
                                      HloInstruction* operand,
                                      HloInstruction* padding_value,

@@ -183,10 +183,6 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
   return CheckShape(outfeed, ShapeUtil::MakeTokenShape());
 }
 
-Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
-  return Status::OK();
-}
-
 bool ShapeVerifier::HasCompatibleElementTypes(const Shape& shape_0,
                                               const Shape& shape_1,
                                               const Shape& result_shape) {

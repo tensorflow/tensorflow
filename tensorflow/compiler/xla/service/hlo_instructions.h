@@ -1118,33 +1118,6 @@ class HloCustomCallInstruction : public HloInstruction {
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
 };
 
-class HloHostComputeInstruction : public HloInstruction {
- public:
-  explicit HloHostComputeInstruction(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      tensorflow::StringPiece channel_name, const int64 cost_estimate_ns);
-  // Returns the channel name associated with the instruction. The name is
-  // used to identify host Send/Recv operations.
-  const string& channel_name() const { return channel_name_; }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
-
- private:
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
-  // Implementation for non-common logic of CloneWithNewOperands.
-  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-      HloCloneContext* context) const override;
-  // Name to use for host send/recv channels.
-  string channel_name_;
-  // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_ = 0;
-};
-
 class HloPadInstruction : public HloInstruction {
  public:
   explicit HloPadInstruction(const Shape& shape, HloInstruction* operand,
