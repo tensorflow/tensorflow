@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
 namespace xla {
@@ -32,7 +31,7 @@ PoplarTransferManager::PoplarTransferManager()
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreatePoplarTransferManager() {
-  return xla::MakeUnique<xla::poplarplugin::PoplarTransferManager>();
+  return absl::make_unique<xla::poplarplugin::PoplarTransferManager>();
 }
 
 static bool InitModule() {

@@ -215,10 +215,11 @@ StatusOr<bool> WhileLoopConditionSimplify::Run(HloModule* module) {
   bool changed = false;
   std::vector<HloInstruction*> while_insts;
   for (auto* comp : module->computations()) {
-    c_copy_if(comp->instructions(), std::back_inserter(while_insts),
-              [](const HloInstruction* instr) {
-                return instr->opcode() == HloOpcode::kWhile;
-              });
+    for (auto* instr : comp->instructions()) {
+      if (instr->opcode() == HloOpcode::kWhile) {
+        while_insts.push_back(instr);
+      }
+    }
   }
   for (HloInstruction* while_inst : while_insts) {
     // Try to simplify the loop condition if it has 2 conditionals which both

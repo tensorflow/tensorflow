@@ -36,7 +36,7 @@ class GraphCompileIoMapTest : public HloTestBase {
 
   static std::unique_ptr<HloModule> CreateNewModuleWithConfig(
       const HloModuleConfig& config, const string& name = TestName()) {
-    return MakeUnique<HloModule>(name, config);
+    return absl::make_unique<HloModule>(name, config);
   }
 };
 

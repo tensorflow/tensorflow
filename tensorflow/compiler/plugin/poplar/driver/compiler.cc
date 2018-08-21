@@ -353,7 +353,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::unique_ptr<HloProfilePrinterData> profile_printer;
   if (module->config().hlo_profiling_enabled()) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
-    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
     profile_printer =
         CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
@@ -595,7 +595,7 @@ std::mutex PoplarCompiler::static_mu_;
 }  // namespace xla
 
 static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
-  return xla::MakeUnique<xla::ComputationPlacer>();
+  return absl::make_unique<xla::ComputationPlacer>();
 }
 
 static bool RegisterComputationPlacer() {
@@ -609,7 +609,7 @@ bool placer_registration = RegisterComputationPlacer();
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       xla::poplarplugin::kPoplarPlatformId,
-      []() { return xla::MakeUnique<xla::poplarplugin::PoplarCompiler>(); });
+      []() { return absl::make_unique<xla::poplarplugin::PoplarCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();
