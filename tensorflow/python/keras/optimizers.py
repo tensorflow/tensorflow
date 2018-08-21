@@ -699,7 +699,7 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
       self.iterations = K.variable(0, dtype='int64', name='iterations')
 
   def apply_gradients(self, grads):
-    self.optimizer.apply_gradients(grads)
+    self.optimizer.apply_gradients(grads, global_step=self.iterations)
 
   def get_grads(self, loss, params):
     return self.optimizer.compute_gradients(loss, params)
