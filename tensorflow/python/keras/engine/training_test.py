@@ -35,6 +35,8 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
@@ -385,6 +387,18 @@ class TrainingTest(test.TestCase):
       model.fit(test_inputs, test_outputs,
                 epochs=1, batch_size=2, validation_split=0.5)
       model.evaluate(test_inputs, test_outputs, batch_size=2)
+
+  def test_compile_with_sparse_placeholders(self):
+    with self.test_session():
+      input_layer = keras.layers.Input(shape=(10,), sparse=True)
+      weights = variable_scope.get_variable(name='weights', shape=(10, 1))
+      weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
+      output_layer = keras.layers.Lambda(weights_mult)(input_layer)
+      model = keras.Model([input_layer], output_layer)
+      model.compile(
+          loss='binary_crossentropy',
+          optimizer=keras.optimizers.Adam(lr=0.0001),
+          metrics=['accuracy'])
 
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
