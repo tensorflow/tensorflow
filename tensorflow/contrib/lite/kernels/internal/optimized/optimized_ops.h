@@ -5611,12 +5611,14 @@ inline void PadImpl(const tflite::PadParams& op_params,
   // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
   // we can pad them to 4 dims (yes, we are "padding the padding").
   std::vector<int> left_padding_copy(4, 0);
+  const int left_padding_extend = 4 - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i] = op_params.left_padding[i];
+    left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
   }
   std::vector<int> right_padding_copy(4, 0);
+  const int right_padding_extend = 4 - op_params.right_padding_count;
   for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i] = op_params.right_padding[i];
+    right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
@@ -5635,7 +5637,6 @@ inline void PadImpl(const tflite::PadParams& op_params,
   const int right_d_padding = right_padding_copy[3];
 
   const int input_depth = ext_input_shape.Dims(3);
-  // const T pad_value = ExtractFloatOrInt<T>(op_params.pad_value);
   const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
@@ -5745,7 +5746,6 @@ inline void PadV2(const T* input_data, const Dims<4>& input_dims,
     op_params.left_padding[i] = left_paddings[3 - i];
     op_params.right_padding[i] = right_paddings[3 - i];
   }
-  // SetFloatOrInt(pad_value, &op_params.pad_value);
   const T pad_value_copy = pad_value;
 
   Pad(op_params, DimsToShape(input_dims), input_data, &pad_value_copy,
