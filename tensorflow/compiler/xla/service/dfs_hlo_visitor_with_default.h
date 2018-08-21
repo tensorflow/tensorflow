@@ -106,9 +106,6 @@ class DfsHloVisitorWithDefaultBase
   Status HandleOutfeed(HloInstructionPtr outfeed) override {
     return DefaultAction(outfeed);
   }
-  Status HandleHostCompute(HloInstructionPtr host_compute) override {
-    return DefaultAction(host_compute);
-  }
   Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
   }

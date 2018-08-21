@@ -586,16 +586,6 @@ class XlaBuilder {
                    tensorflow::gtl::ArraySlice<XlaOp> operands,
                    const Shape& shape);
 
-  // Enqueues a pseudo-op to represent host-side computation data-dependencies.
-  // During code generation, host send and receive operations will be generated
-  // to transfer |operands| to the host and a single result of |shape| back to
-  // the device.  Host send/recv operations are emitted using |channel_name|.
-  // Dataflow dependencies and the |cost_estimate_ns| field may be used in HLO
-  // instruction scheduling.
-  XlaOp HostCompute(tensorflow::gtl::ArraySlice<XlaOp> operands,
-                    const string& channel_name, int64 cost_estimate_ns,
-                    const Shape& shape);
-
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
   // of the operands is a scalar, or an explicit broadcast dimension is given
@@ -1201,10 +1191,6 @@ class XlaBuilder {
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                           tensorflow::gtl::ArraySlice<XlaOp> operands,
                           const Shape& shape);
-  friend XlaOp HostCompute(XlaBuilder* builder,
-                           tensorflow::gtl::ArraySlice<XlaOp> operands,
-                           const string& channel_name, int64 cost_estimate_ns,
-                           const Shape& shape);
   friend XlaOp Complex(const XlaOp& real, const XlaOp& imag,
                        tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   friend XlaOp Conj(const XlaOp& operand);
@@ -1736,17 +1722,6 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  tensorflow::gtl::ArraySlice<XlaOp> operands,
                  const Shape& shape);
-
-// Enqueues a pseudo-op to represent host-side computation data-dependencies.
-// During code generation, host send and receive operations will be generated
-// to transfer |operands| to the host and a single result of |shape| back to
-// the device.  Host send/recv operations are emitted using |channel_name|.
-// Dataflow dependencies and the |cost_estimate_ns| field may be used in HLO
-// instruction scheduling.
-XlaOp HostCompute(XlaBuilder* builder,
-                  tensorflow::gtl::ArraySlice<XlaOp> operands,
-                  const string& channel_name, int64 cost_estimate_ns,
-                  const Shape& shape);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one

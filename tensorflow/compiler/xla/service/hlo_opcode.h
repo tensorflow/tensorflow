@@ -85,7 +85,6 @@ namespace xla {
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
-  V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
   V(kIota, "iota")                                           \
