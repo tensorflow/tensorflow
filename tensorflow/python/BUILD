@@ -143,6 +143,7 @@ py_library(
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:component_api_helper",
+        "//tensorflow/python/tools/api/generator:create_python_api",
         "//third_party/py/numpy",
     ],
 )
