@@ -200,7 +200,11 @@ filegroup(
             "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + tf_additional_license_deps(),
+    ) + if_not_windows([
+        "@ngraph//:LICENSE",
+        "@ngraph_tf//:LICENSE",
+        "@nlohmann_json_lib//:LICENSE",
+    ]) + tf_additional_license_deps(),
 )
 
 sh_binary(

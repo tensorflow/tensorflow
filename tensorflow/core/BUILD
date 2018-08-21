@@ -2350,6 +2350,7 @@ tf_generate_proto_text_sources(
     srcs = COMMON_PROTO_SRCS,
     protodeps = ERROR_CODES_PROTO_SRCS,
     srcs_relative_dir = "tensorflow/core/",
+    visibility = ["//visibility:public"],
     deps = [
         ":error_codes_proto_text",
         ":lib_internal",
@@ -2462,6 +2463,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "core_cpu_headers_lib",
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_lib",
     ],
@@ -2585,6 +2587,7 @@ tf_cuda_library(
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
