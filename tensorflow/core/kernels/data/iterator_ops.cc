@@ -104,9 +104,8 @@ class IteratorResource : public ResourceBase {
                  bool* end_of_sequence) {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
     if (captured_iterator) {
-      if (lib_ != nullptr) {
-        ctx->set_lib(lib_);
-      }
+      CHECK_NOTNULL(lib_);
+      ctx->set_lib(lib_);
       return captured_iterator->GetNext(ctx, out_tensors, end_of_sequence);
     } else {
       return errors::FailedPrecondition(
@@ -162,8 +161,10 @@ class IteratorResource : public ResourceBase {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
     std::unique_ptr<IteratorBase> iterator;
+    IteratorContext iter_ctx(ctx);
+    iter_ctx.set_lib(lib);
     TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(IteratorContext(ctx), "Iterator", &iterator));
+        dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
     TF_RETURN_IF_ERROR(set_iterator(std::move(iterator)));
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
@@ -197,6 +198,8 @@ class IteratorResource : public ResourceBase {
     tf_shared_lock l(mu_);
     return lib_def_;
   }
+
+  FunctionLibraryRuntime* function_library_runtime() { return lib_; }
 
   // Transfers ownership of iterator to this. This method is thread-safe.
   Status set_iterator(std::unique_ptr<IteratorBase> iterator) {
@@ -612,8 +615,10 @@ void MakeIteratorOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref unref(iterator_resource);
 
   std::unique_ptr<IteratorBase> iterator;
+  IteratorContext iter_ctx(ctx);
+  iter_ctx.set_lib(iterator_resource->function_library_runtime());
   OP_REQUIRES_OK(
-      ctx, dataset->MakeIterator(IteratorContext(ctx), "Iterator", &iterator));
+      ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
   OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
 }
 
@@ -837,8 +842,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
     std::unique_ptr<IteratorBase> iter;
+    IteratorContext iter_ctx(ctx);
+    iter_ctx.set_lib(lib);
     TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(IteratorContext(ctx), "Iterator", &iter));
+        dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iter));
     TF_RETURN_IF_ERROR((*iterator)->set_iterator(std::move(iter)));
 
     (*iterator)->Ref();

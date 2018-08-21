@@ -142,8 +142,15 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->optimized_input_->MakeIterator(ctx, prefix(),
-                                                         &input_impl_);
+        IteratorContext::Params params;
+        params.env = ctx->env();
+        params.runner = *(ctx->runner());
+        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        params.lib = ctx->lib();
+        params.function_library = dataset()->flib_def_;
+        params.allocator_getter = ctx->allocator_getter();
+        return dataset()->optimized_input_->MakeIterator(
+            IteratorContext(params), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

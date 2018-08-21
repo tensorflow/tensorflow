@@ -555,6 +555,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       next_handle_++;
     }
   }
+
+  if (options.create_kernels_eagerly) {
+    Item* item;
+    TF_RETURN_IF_ERROR(GetOrCreateItem(*handle, &item));
+  }
+
   return Status::OK();
 }
 

@@ -1,4 +1,3 @@
-
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -156,7 +155,9 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             args_list_(params.dataset->cycle_length_) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
