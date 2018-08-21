@@ -53,8 +53,7 @@ checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
 
 enum Passes {
   ConvertToCFG,
-  UnrollInnermostLoops,
-  UnrollShortLoops,
+  LoopUnroll,
   TFRaiseControlFlow,
 };
 
@@ -62,10 +61,7 @@ static cl::list<Passes> passList(
     "", cl::desc("Compiler passes to run"),
     cl::values(clEnumValN(ConvertToCFG, "convert-to-cfg",
                           "Convert all ML functions in the module to CFG ones"),
-               clEnumValN(UnrollInnermostLoops, "unroll-innermost-loops",
-                          "Unroll innermost loops"),
-               clEnumValN(UnrollShortLoops, "unroll-short-loops",
-                          "Unroll loops of trip count <= 2"),
+               clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
                clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
                           "Dynamic TensorFlow Switch/Match nodes to a CFG")));
 
@@ -112,11 +108,8 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
     case ConvertToCFG:
       pass = createConvertToCFGPass();
       break;
-    case UnrollInnermostLoops:
-      pass = createLoopUnrollPass();
-      break;
-    case UnrollShortLoops:
-      pass = createLoopUnrollPass(2);
+    case LoopUnroll:
+      pass = createLoopUnrollPass(-1, -1);
       break;
     case TFRaiseControlFlow:
       pass = createRaiseTFControlFlowPass();

@@ -305,6 +305,22 @@ OperationState ConstantAffineIntOp::build(Builder *builder, int64_t value) {
 }
 
 //===----------------------------------------------------------------------===//
+// AffineApplyOp
+//===----------------------------------------------------------------------===//
+
+OperationState AffineApplyOp::build(Builder *builder, AffineMap *map,
+                                    ArrayRef<SSAValue *> operands) {
+  SmallVector<Type *, 4> resultTypes(map->getNumResults(),
+                                     builder->getAffineIntType());
+
+  OperationState result(
+      builder->getIdentifier("affine_apply"), operands, resultTypes,
+      {{builder->getIdentifier("map"), builder->getAffineMapAttr(map)}});
+
+  return result;
+}
+
+//===----------------------------------------------------------------------===//
 // DeallocOp
 //===----------------------------------------------------------------------===//
 

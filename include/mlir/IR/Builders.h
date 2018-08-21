@@ -252,7 +252,8 @@ public:
     this->insertPoint = insertPoint;
   }
 
-  /// Set the insertion point to the specified operation.
+  /// Set the insertion point to the specified operation, which will cause
+  /// subsequent insertions to go right before it.
   void setInsertionPoint(Statement *stmt) {
     setInsertionPoint(stmt->getBlock(), StmtBlock::iterator(stmt));
   }
@@ -298,8 +299,7 @@ public:
 
   // Creates for statement. When step is not specified, it is set to 1.
   ForStmt *createFor(AffineConstantExpr *lowerBound,
-                     AffineConstantExpr *upperBound,
-                     AffineConstantExpr *step = nullptr);
+                     AffineConstantExpr *upperBound, int64_t step = 1);
 
   IfStmt *createIf(IntegerSet *condition) {
     auto *stmt = new IfStmt(condition);

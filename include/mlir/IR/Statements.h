@@ -199,7 +199,7 @@ public:
   // TODO: lower and upper bounds should be affine maps with
   // dimension and symbol use lists.
   explicit ForStmt(AffineConstantExpr *lowerBound,
-                   AffineConstantExpr *upperBound, AffineConstantExpr *step,
+                   AffineConstantExpr *upperBound, int64_t step,
                    MLIRContext *context);
 
   ~ForStmt() {
@@ -216,7 +216,11 @@ public:
 
   AffineConstantExpr *getLowerBound() const { return lowerBound; }
   AffineConstantExpr *getUpperBound() const { return upperBound; }
-  AffineConstantExpr *getStep() const { return step; }
+  int64_t getStep() const { return step; }
+
+  void setLowerBound(AffineConstantExpr *lb) { lowerBound = lb; }
+  void setUpperBound(AffineConstantExpr *ub) { upperBound = ub; }
+  void setStep(unsigned s) { step = s; }
 
   using Statement::dump;
   using Statement::print;
@@ -242,7 +246,7 @@ private:
   // an affinemap and its operands as AffineBound.
   AffineConstantExpr *lowerBound;
   AffineConstantExpr *upperBound;
-  AffineConstantExpr *step;
+  int64_t step;
 };
 
 /// An if clause represents statements contained within a then or an else clause

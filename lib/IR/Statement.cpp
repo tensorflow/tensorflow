@@ -198,7 +198,7 @@ MLIRContext *OperationStmt::getContext() const {
 //===----------------------------------------------------------------------===//
 
 ForStmt::ForStmt(AffineConstantExpr *lowerBound, AffineConstantExpr *upperBound,
-                 AffineConstantExpr *step, MLIRContext *context)
+                 int64_t step, MLIRContext *context)
     : Statement(Kind::For),
       MLValue(MLValueKind::ForStmt, Type::getAffineInt(context)),
       StmtBlock(StmtBlockKind::For), lowerBound(lowerBound),

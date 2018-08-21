@@ -103,8 +103,8 @@ ArrayAttr *Builder::getArrayAttr(ArrayRef<Attribute *> value) {
   return ArrayAttr::get(value, context);
 }
 
-AffineMapAttr *Builder::getAffineMapAttr(AffineMap *value) {
-  return AffineMapAttr::get(value, context);
+AffineMapAttr *Builder::getAffineMapAttr(AffineMap *map) {
+  return AffineMapAttr::get(map, context);
 }
 
 TypeAttr *Builder::getTypeAttr(Type *type) {
@@ -207,9 +207,7 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
 
 ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
                                   AffineConstantExpr *upperBound,
-                                  AffineConstantExpr *step) {
-  if (!step)
-    step = getConstantExpr(1);
+                                  int64_t step) {
   auto *stmt = new ForStmt(lowerBound, upperBound, step, context);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;

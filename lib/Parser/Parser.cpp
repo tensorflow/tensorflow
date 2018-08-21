@@ -2164,7 +2164,7 @@ ParseResult MLFunctionParser::parseFunctionBody() {
 ParseResult MLFunctionParser::parseForStmt() {
   consumeToken(Token::kw_for);
 
-  // Parse induction variable
+  // Parse induction variable.
   if (getToken().isNot(Token::percent_identifier))
     return emitError("expected SSA identifier for the loop variable");
 
@@ -2175,7 +2175,7 @@ ParseResult MLFunctionParser::parseForStmt() {
   if (parseToken(Token::equal, "expected '='"))
     return ParseFailure;
 
-  // Parse loop bounds
+  // Parse loop bounds.
   AffineConstantExpr *lowerBound = parseIntConstant();
   if (!lowerBound)
     return ParseFailure;
@@ -2187,12 +2187,13 @@ ParseResult MLFunctionParser::parseForStmt() {
   if (!upperBound)
     return ParseFailure;
 
-  // Parse step
-  AffineConstantExpr *step = nullptr;
+  // Parse step.
+  int64_t step = 1;
   if (consumeIf(Token::kw_step)) {
-    step = parseIntConstant();
-    if (!step)
+    AffineConstantExpr *stepExpr = parseIntConstant();
+    if (!stepExpr)
       return ParseFailure;
+    step = stepExpr->getValue();
   }
 
   // Create for statement.

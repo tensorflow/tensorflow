@@ -47,6 +47,7 @@ typedef std::pair<Identifier, Attribute*> NamedAttribute;
 struct OperationState {
   Identifier name;
   SmallVector<SSAValue *, 4> operands;
+  /// Types of the results of this operation.
   SmallVector<Type *, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
 

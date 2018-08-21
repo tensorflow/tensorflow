@@ -77,6 +77,10 @@ private:
 class AffineApplyOp : public OpBase<AffineApplyOp, OpTrait::VariadicOperands,
                                     OpTrait::VariadicResults> {
 public:
+  /// Builds an affine apply op with the specified map and operands.
+  static OperationState build(Builder *builder, AffineMap *map,
+                              ArrayRef<SSAValue *> operands);
+
   // Returns the affine map to be applied by this operation.
   AffineMap *getAffineMap() const {
     return getAttrOfType<AffineMapAttr>("map")->getValue();
@@ -163,6 +167,7 @@ protected:
 ///
 class ConstantFloatOp : public ConstantOp {
 public:
+  /// Builds a constant float op producing a float of the specified type.
   static OperationState build(Builder *builder, double value, FloatType *type);
 
   double getValue() const {

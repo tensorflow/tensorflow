@@ -1316,8 +1316,8 @@ void MLFunctionPrinter::print(const ForStmt *stmt) {
   printOperand(stmt);
   os << " = " << *stmt->getLowerBound();
   os << " to " << *stmt->getUpperBound();
-  if (stmt->getStep()->getValue() != 1)
-    os << " step " << *stmt->getStep();
+  if (stmt->getStep() != 1)
+    os << " step " << stmt->getStep();
 
   os << " {\n";
   print(static_cast<const StmtBlock *>(stmt));

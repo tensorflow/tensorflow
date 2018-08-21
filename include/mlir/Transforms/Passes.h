@@ -28,9 +28,9 @@ namespace mlir {
 class MLFunctionPass;
 class ModulePass;
 
-/// Loop unrolling passes.
-MLFunctionPass *createLoopUnrollPass();
-MLFunctionPass *createLoopUnrollPass(unsigned);
+// Loop unrolling passes.
+/// Creates a loop unrolling pass.
+MLFunctionPass *createLoopUnrollPass(int unrollFactor, int unrollFull);
 
 /// Replaces all ML functions in the module with equivalent CFG functions.
 /// Function references are appropriately patched to refer to the newly

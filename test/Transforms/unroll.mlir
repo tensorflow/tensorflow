@@ -1,5 +1,7 @@
-// RUN: %S/../../mlir-opt %s -o - -unroll-innermost-loops | FileCheck %s
-// RUN: %S/../../mlir-opt %s -o - -unroll-short-loops | FileCheck %s --check-prefix SHORT
+// RUN: mlir-opt %s -o - -loop-unroll -unroll-full | FileCheck %s
+// RUN: mlir-opt %s -o - -loop-unroll -unroll-full -unroll-full-threshold=2 | FileCheck %s --check-prefix SHORT
+// RUN: mlir-opt %s -o - -loop-unroll -unroll-factor=4 | FileCheck %s --check-prefix UNROLL-BY-4
+// RUN: mlir-opt %s -o - -loop-unroll -unroll-factor=3 | FileCheck %s --check-prefix UNROLL-BY-3
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 
@@ -278,4 +280,88 @@ mlfunc @loop_nest_seq_long() -> i32 {
   }
   %ret = load %C[%zero_idx, %zero_idx] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
   return %ret : i32
+}
+
+// UNROLL-BY-4-LABEL: mlfunc @unroll_unit_stride_no_cleanup() {
+mlfunc @unroll_unit_stride_no_cleanup() {
+  // UNROLL-BY-4: for %i0 = 1 to 100 {
+  for %i = 1 to 100 {
+    // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 1 to 8 step 4 {
+    // UNROLL-BY-4-NEXT: %0 = "addi32"([[L1]], [[L1]]) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %1 = "addi32"(%0, %0) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: %2 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %3 = "addi32"(%2, %2) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: %5 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %6 = "addi32"(%5, %5) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: %8 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %9 = "addi32"(%8, %8) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %10 = "addi32"(%9, %9) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: }
+    for %j = 1 to 8 {
+      %x = "addi32"(%j, %j) : (affineint, affineint) -> i32
+      %y = "addi32"(%x, %x) : (i32, i32) -> i32
+    }
+    // empty loop
+    // UNROLL-BY-4: for %i2 = 1 to 8 {
+    for %k = 1 to 8 {
+    }
+  }
+  return
+}
+
+// UNROLL-BY-4-LABEL: mlfunc @unroll_unit_stride_cleanup() {
+mlfunc @unroll_unit_stride_cleanup() {
+  // UNROLL-BY-4: for %i0 = 1 to 100 {
+  for %i = 1 to 100 {
+    // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 1 to 8 step 4 {
+    // UNROLL-BY-4-NEXT: %0 = "addi32"([[L1]], [[L1]]) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %1 = "addi32"(%0, %0) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: %2 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %3 = "addi32"(%2, %2) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: %5 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %6 = "addi32"(%5, %5) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: %8 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %9 = "addi32"(%8, %8) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %10 = "addi32"(%9, %9) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: }
+    // UNROLL-BY-4-NEXT: for [[L2:%i[0-9]+]] = 9 to 10 {
+    // UNROLL-BY-4-NEXT: %11 = "addi32"([[L2]], [[L2]]) : (affineint, affineint) -> i32
+    // UNROLL-BY-4-NEXT: %12 = "addi32"(%11, %11) : (i32, i32) -> i32
+    // UNROLL-BY-4-NEXT: }
+    for %j = 1 to 10 {
+      %x = "addi32"(%j, %j) : (affineint, affineint) -> i32
+      %y = "addi32"(%x, %x) : (i32, i32) -> i32
+    }
+  }
+  return
+}
+
+// UNROLL-BY-3-LABEL: mlfunc @unroll_non_unit_stride_cleanup() {
+mlfunc @unroll_non_unit_stride_cleanup() {
+  // UNROLL-BY-3: for %i0 = 1 to 100 {
+  for %i = 1 to 100 {
+    // UNROLL-BY-3: for [[L1:%i[0-9]+]] = 2 to 12 step 15 {
+    // UNROLL-BY-3-NEXT: %0 = "addi32"([[L1]], [[L1]]) : (affineint, affineint) -> i32
+    // UNROLL-BY-3-NEXT: %1 = "addi32"(%0, %0) : (i32, i32) -> i32
+    // UNROLL-BY-3-NEXT: %2 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-3-NEXT: %3 = "addi32"(%2, %2) : (affineint, affineint) -> i32
+    // UNROLL-BY-3-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
+    // UNROLL-BY-3-NEXT: %5 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-3-NEXT: %6 = "addi32"(%5, %5) : (affineint, affineint) -> i32
+    // UNROLL-BY-3-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
+    // UNROLL-BY-3-NEXT: }
+    // UNROLL-BY-3-NEXT: for [[L2:%i[0-9]+]] = 17 to 20 step 5 {
+    // UNROLL-BY-3-NEXT: %8 = "addi32"([[L2]], [[L2]]) : (affineint, affineint) -> i32
+    // UNROLL-BY-3-NEXT: %9 = "addi32"(%8, %8) : (i32, i32) -> i32
+    // UNROLL-BY-3-NEXT: }
+    for %j = 2 to 20 step 5 {
+      %x = "addi32"(%j, %j) : (affineint, affineint) -> i32
+      %y = "addi32"(%x, %x) : (i32, i32) -> i32
+    }
+  }
+  return
 }
