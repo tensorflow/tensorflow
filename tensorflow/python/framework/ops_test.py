@@ -1614,6 +1614,33 @@ class CollectionTest(test_util.TensorFlowTestCase):
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
 
+  def test_defun(self):
+    with context.eager_mode():
+
+      @eager_function.defun
+      def defun():
+        ops.add_to_collection("int", 1)
+        ops.add_to_collection("tensor", constant_op.constant(2))
+
+        @eager_function.defun
+        def inner_defun():
+          self.assertEqual(ops.get_collection("int"), [1])
+          three = ops.get_collection("tensor")[0] + ops.get_collection("int")[0]
+          ops.add_to_collection("int", 2)
+          self.assertEqual(ops.get_collection("int"), [1, 2])
+          ops.add_to_collection("foo", "bar")
+          self.assertEqual(ops.get_collection("foo"), ["bar"])
+          return three
+
+        self.assertEqual(ops.get_collection("int"), [1])
+        three = inner_defun()
+        self.assertEqual(ops.get_collection("int"), [1, 2])
+        self.assertEqual(ops.get_collection("foo"), ["bar"])
+        return three
+
+      three = defun()
+      self.assertEqual(three.numpy(), 3)
+
 
 ops.NotDifferentiable("FloatOutput")
 
