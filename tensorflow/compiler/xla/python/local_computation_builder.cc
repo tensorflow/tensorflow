@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -576,6 +575,16 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
   return builder_.IsConstant(operand.op());
 }
 
+LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
+  return xla::Sort(operand.op(), tensorflow::gtl::nullopt, dimension);
+}
+
+LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
+                                            const LocalOp& values,
+                                            int64 dimension) {
+  return xla::Sort(keys.op(), values.op(), dimension);
+}
+
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
     const LocalOp& operand) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
@@ -625,6 +634,7 @@ _FORWARD_BINOP(ShiftRightArithmetic)
 _FORWARD_BINOP(ShiftRightLogical)
 _FORWARD_BINOP(Atan2)
 _FORWARD_BINOP(Pow)
+_FORWARD_BINOP(Complex)
 _FORWARD_UNOP(Not)
 _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
@@ -640,7 +650,6 @@ _FORWARD_UNOP(Sin)
 _FORWARD_UNOP(Tanh)
 _FORWARD_UNOP(IsFinite)
 _FORWARD_UNOP(Neg)
-_FORWARD_UNOP(Sort)
 _FORWARD_UNOP(Sqrt)
 _FORWARD_UNOP(Rsqrt)
 _FORWARD_UNOP(Square)
@@ -659,6 +668,9 @@ _FORWARD_UNOP(Asinh)
 _FORWARD_UNOP(Atanh)
 _FORWARD_UNOP(Cosh)
 _FORWARD_UNOP(Sinh)
+_FORWARD_UNOP(Real)
+_FORWARD_UNOP(Imag)
+_FORWARD_UNOP(Conj)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP

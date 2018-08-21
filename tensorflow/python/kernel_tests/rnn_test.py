@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 import timeit
 
@@ -26,6 +27,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -46,6 +48,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -275,6 +278,64 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
+  def testBasicLSTMCellInterchangeWithLSTMCell(self):
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      basic_cell = rnn_cell_impl.BasicLSTMCell(1)
+      basic_cell(array_ops.ones([1, 1]),
+                 state=basic_cell.zero_state(batch_size=1,
+                                             dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in basic_cell.variables])
+      self.evaluate(basic_cell._bias.assign([10.] * 4))
+      save = saver.Saver()
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = save.save(sess, prefix)
+
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      lstm_cell = rnn_cell_impl.LSTMCell(1, name="basic_lstm_cell")
+      lstm_cell(array_ops.ones([1, 1]),
+                state=lstm_cell.zero_state(batch_size=1,
+                                           dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in lstm_cell.variables])
+      save = saver.Saver()
+      save.restore(sess, save_path)
+      self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
+
+  def testRNNCellSerialization(self):
+    for cell in [
+        rnn_cell_impl.LSTMCell(32, use_peepholes=True, cell_clip=True),
+        rnn_cell_impl.BasicLSTMCell(32, dtype=dtypes.float32),
+        rnn_cell_impl.BasicRNNCell(32, activation="relu", dtype=dtypes.float32),
+        rnn_cell_impl.GRUCell(
+            32, kernel_initializer="ones", dtype=dtypes.float32)
+    ]:
+      with self.test_session():
+        x = keras.Input((None, 5))
+        layer = keras.layers.RNN(cell)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.compile(optimizer="rmsprop", loss="mse")
+
+        # Test basic case serialization.
+        x_np = np.random.random((6, 5, 5))
+        y_np = model.predict(x_np)
+        weights = model.get_weights()
+        config = layer.get_config()
+        # The custom_objects is important here since rnn_cell_impl is
+        # not visible as a Keras layer, and also has a name conflict with
+        # keras.LSTMCell and GRUCell.
+        layer = keras.layers.RNN.from_config(
+            config,
+            custom_objects={
+                "BasicRNNCell": rnn_cell_impl.BasicRNNCell,
+                "GRUCell": rnn_cell_impl.GRUCell,
+                "LSTMCell": rnn_cell_impl.LSTMCell,
+                "BasicLSTMCell": rnn_cell_impl.BasicLSTMCell
+            })
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.set_weights(weights)
+        y_np_2 = model.predict(x_np)
+        self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
 ######### Benchmarking RNN code
 

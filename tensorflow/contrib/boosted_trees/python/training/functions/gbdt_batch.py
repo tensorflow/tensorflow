@@ -51,6 +51,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import device_setter
 
+
 # Key names for prediction dict.
 ENSEMBLE_STAMP = "ensemble_stamp"
 PREDICTIONS = "predictions"
@@ -217,6 +218,21 @@ def extract_features(features, feature_columns, use_core_columns):
   sparse_int_shapes = []
   for key in sorted(features.keys()):
     tensor = features[key]
+    # TODO(nponomareva): consider iterating over feature columns instead.
+    if isinstance(tensor, tuple):
+      # Weighted categorical feature.
+      categorical_tensor = tensor[0]
+      weight_tensor = tensor[1]
+
+      shape = categorical_tensor.dense_shape
+      indices = array_ops.concat([
+          array_ops.slice(categorical_tensor.indices, [0, 0], [-1, 1]),
+          array_ops.expand_dims(
+              math_ops.to_int64(categorical_tensor.values), -1)
+      ], 1)
+      tensor = sparse_tensor.SparseTensor(
+          indices=indices, values=weight_tensor.values, dense_shape=shape)
+
     if isinstance(tensor, sparse_tensor.SparseTensor):
       if tensor.values.dtype == dtypes.float32:
         sparse_float_names.append(key)
@@ -353,6 +369,9 @@ class GradientBoostedDecisionTreeModel(object):
       self._gradient_shape = tensor_shape.scalar()
       self._hessian_shape = tensor_shape.scalar()
     else:
+      if center_bias:
+        raise ValueError("Center bias should be False for multiclass.")
+
       self._gradient_shape = tensor_shape.TensorShape([logits_dimension])
       if (learner_config.multi_class_strategy ==
           learner_pb2.LearnerConfig.FULL_HESSIAN):
@@ -380,6 +399,8 @@ class GradientBoostedDecisionTreeModel(object):
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
+    self._max_tree_depth = variables.Variable(
+        initial_value=self._learner_config.constraints.max_tree_depth)
     self._attempted_trees = variables.Variable(
         initial_value=array_ops.zeros([], dtypes.int64),
         trainable=False,
@@ -666,6 +687,8 @@ class GradientBoostedDecisionTreeModel(object):
         self._learner_config.constraints.min_node_weight, dtypes.float32)
     loss_uses_sum_reduction = self._loss_reduction == losses.Reduction.SUM
     loss_uses_sum_reduction = constant_op.constant(loss_uses_sum_reduction)
+    weak_learner_type = constant_op.constant(
+        self._learner_config.weak_learner_type)
     epsilon = 0.01
     num_quantiles = 100
     strategy_tensor = constant_op.constant(strategy)
@@ -690,6 +713,7 @@ class GradientBoostedDecisionTreeModel(object):
                 multiclass_strategy=strategy_tensor,
                 init_stamp_token=init_stamp_token,
                 loss_uses_sum_reduction=loss_uses_sum_reduction,
+                weak_learner_type=weak_learner_type,
             ))
         fc_name_idx += 1
 
@@ -893,7 +917,7 @@ class GradientBoostedDecisionTreeModel(object):
 
       reset_ops = []
       for handler in handlers:
-        reset_ops.append(handler.make_splits(stamp_token, next_stamp_token, 0))
+        reset_ops.append(handler.reset(stamp_token, next_stamp_token))
       if self._center_bias:
         reset_ops.append(
             bias_stats_accumulator.flush(stamp_token, next_stamp_token))
@@ -1051,7 +1075,8 @@ class GradientBoostedDecisionTreeModel(object):
             splits=split_info_list,
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
-            center_bias=self._center_bias)
+            center_bias=self._center_bias,
+            max_tree_depth=self._max_tree_depth)
 
       def _grow_ensemble_not_ready_fn():
         # Don't grow the ensemble, just update the stamp.
@@ -1065,7 +1090,8 @@ class GradientBoostedDecisionTreeModel(object):
             splits=[],
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
-            center_bias=self._center_bias)
+            center_bias=self._center_bias,
+            max_tree_depth=self._max_tree_depth)
 
       def _grow_ensemble_fn():
         # Conditionally grow an ensemble depending on whether the splits
@@ -1104,6 +1130,9 @@ class GradientBoostedDecisionTreeModel(object):
 
   def get_number_of_trees_tensor(self):
     return self._finalized_trees, self._attempted_trees
+
+  def get_max_tree_depth(self):
+    return self._max_tree_depth
 
   def train(self, loss, predictions_dict, labels):
     """Updates the accumalator stats and grows the ensemble.

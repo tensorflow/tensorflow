@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
@@ -601,7 +602,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
 
   if (tracer) {
     TF_RETURN_IF_ERROR(tracer->Stop());
-    TF_RETURN_IF_ERROR(tracer->Collect(args.stats_collector));
+    TF_RETURN_IF_ERROR(tracer->Collect(run_state.collector.get()));
   }
 
   {
@@ -617,8 +618,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
         &session_state_));
   }
 
-  if (args.stats_collector) {
-    args.stats_collector->Finalize();
+  if (run_state.collector) {
+    run_state.collector->Finalize();
   }
 
   // Build and return the cost model as instructed.
@@ -633,7 +634,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
 
     mutex_lock l(executor_lock_);
-    args.stats_collector->BuildCostModel(&cost_model_manager_, device_to_graph);
+    run_state.collector->BuildCostModel(&cost_model_manager_, device_to_graph);
 
     // annotate stats onto cost graph.
     CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
@@ -1223,10 +1224,9 @@ Status DirectSession::CreateExecutors(
     item->graph = partition_graph.get();
     item->executor = nullptr;
     item->device = device;
-    Executor* executor;
-    TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, std::move(partition_graph), &executor));
-    item->executor.reset(executor);
+    auto executor_type = options_.config.experimental().executor_type();
+    TF_RETURN_IF_ERROR(NewExecutor(
+        executor_type, params, std::move(partition_graph), &item->executor));
   }
 
   // Cache the mapping from input/output names to graph elements to

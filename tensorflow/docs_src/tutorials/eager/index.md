@@ -10,4 +10,3 @@ auto&nbsp;differentiation. Start with these notebooks, then read the
 3. <span>[Custom training: basics](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb){:.external}</span>
 4. <span>[Custom layers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb){:.external}</span>
 5. [Custom training: walkthrough](/tutorials/eager/custom_training_walkthrough)
-6. <span>[Advanced example: Neural machine translation with attention](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb){:.external}</span>

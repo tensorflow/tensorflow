@@ -190,6 +190,8 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveConstantSlice)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStridedSlice)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFill)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantGather)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantSelect)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantTile)
 DECLARE_GRAPH_TRANSFORMATION(ResolveMultiplyByZero)
 DECLARE_GRAPH_TRANSFORMATION(Dequantize)
 DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
@@ -262,8 +264,12 @@ class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
   bool allow_nudging_weights() const { return allow_nudging_weights_; }
   void set_allow_nudging_weights(bool val) { allow_nudging_weights_ = val; }
 
+  bool has_default_ranges_flag() const { return has_default_ranges_flag_; }
+  void set_has_default_ranges_flag(bool val) { has_default_ranges_flag_ = val; }
+
  private:
   bool allow_nudging_weights_ = false;
+  bool has_default_ranges_flag_ = false;
 };
 
 #undef DECLARE_GRAPH_TRANSFORMATION

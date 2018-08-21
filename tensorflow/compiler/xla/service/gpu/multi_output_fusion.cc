@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -113,17 +114,25 @@ bool IsInputFusibleReduction(HloInstruction* instr) {
 // of input parameters differ. In such situtations it is beneficial not to fuse.
 // We consider input params with maximum rank only. Params with smaller ranks
 // will be broadcasted and have not been observed to cause data locality issues.
-// TODO(b/110927656): Improve reduce emitters to remove this limitation.
+// TODO(b/111977086): Improve reduce emitters to remove this limitation.
 bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
+  std::vector<HloInstruction*> params;
+  if (instr->opcode() == HloOpcode::kFusion) {
+    params = instr->fused_parameters();
+  } else {
+    for (HloInstruction* operand : instr->operands()) {
+      params.push_back(operand);
+    }
+  }
   int64 max_rank = 0;
   const Layout* max_rank_layout;
-  for (HloInstruction* param : instr->fused_parameters()) {
+  for (HloInstruction* param : params) {
     if (ShapeUtil::Rank(param->shape()) > max_rank) {
       max_rank = ShapeUtil::Rank(param->shape());
       max_rank_layout = &param->shape().layout();
     }
   }
-  return c_all_of(instr->fused_parameters(), [&](HloInstruction* param) {
+  return absl::c_all_of(params, [&](HloInstruction* param) {
     return (ShapeUtil::Rank(param->shape()) < max_rank) ||
            (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
   });
@@ -221,7 +230,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       const bool is_loop_fusion =
           producer->opcode() == HloOpcode::kFusion &&
           producer->fusion_kind() == HloInstruction::FusionKind::kLoop;
-      if (!is_loop_fusion) {
+      if (!producer->IsElementwise() && !is_loop_fusion) {
         VLOG(3) << producer->name() << " is not a loop fusion.";
         continue;
       }
@@ -240,7 +249,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       }
       // Do not fuse a producer if the other operands of the fusion are
       // reachable from the producer, this would create a cycle.
-      if (c_any_of(consumer_operands, [&](HloInstruction* operand) {
+      if (absl::c_any_of(consumer_operands, [&](HloInstruction* operand) {
             return producer != operand &&
                    reachability()->IsReachable(producer, operand);
           })) {
@@ -260,7 +269,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   for (auto& fusion_pair : potential_fusion_list) {
     HloInstruction* producer = fusion_pair.first;
     HloInstruction* consumer = fusion_pair.second;
-    if (!c_any_of(consumer->operands(), [&](HloInstruction* operand) {
+    if (!absl::c_any_of(consumer->operands(), [&](HloInstruction* operand) {
           return producer != operand &&
                  reachability()->IsReachable(producer, operand);
         })) {

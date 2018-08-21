@@ -41,7 +41,8 @@ from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
 from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import tensor_name as _tensor_name
-from tensorflow.contrib.lite.python.convert import toco_convert
+from tensorflow.contrib.lite.python.convert import toco_convert  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.convert import toco_convert_impl as _toco_convert_impl
 from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.contrib.lite.python.convert_saved_model import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -53,8 +54,8 @@ from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as _tf_graph_util
+from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 
@@ -110,6 +111,7 @@ class TocoConverter(object):
 
   Example usage:
 
+    ```python
     # Converting a GraphDef from session.
     converter = lite.TocoConverter.from_session(sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
@@ -124,6 +126,11 @@ class TocoConverter(object):
     # Converting a SavedModel.
     converter = lite.TocoConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
+
+    # Converting a tf.keras model.
+    converter = lite.TocoConverter.from_keras_model_file(keras_model)
+    tflite_model = converter.convert()
+    ```
   """
 
   def __init__(self, graph_def, input_tensors, output_tensors):
@@ -194,42 +201,41 @@ class TocoConverter(object):
         The graph is not frozen.
         input_arrays or output_arrays contains an invalid tensor name.
     """
-    with _session.Session() as sess:
-      sess.run(_global_variables_initializer())
-
-      # Read GraphDef from file.
-      graph_def = _graph_pb2.GraphDef()
-      with open(graph_def_file, "rb") as f:
-        file_content = f.read()
-      try:
-        graph_def.ParseFromString(file_content)
-      except (_text_format.ParseError, DecodeError):
+    with _ops.Graph().as_default():
+      with _session.Session() as sess:
+        # Read GraphDef from file.
+        graph_def = _graph_pb2.GraphDef()
+        with open(graph_def_file, "rb") as f:
+          file_content = f.read()
         try:
-          print("Ignore 'tcmalloc: large alloc' warnings.")
-
-          if not isinstance(file_content, str):
-            if PY3:
-              file_content = file_content.decode('utf-8')
-            else:
-              file_content = file_content.encode('utf-8')
-          _text_format.Merge(file_content, graph_def)
+          graph_def.ParseFromString(file_content)
         except (_text_format.ParseError, DecodeError):
-          raise ValueError(
-              "Unable to parse input file '{}'.".format(graph_def_file))
-      sess.graph.as_default()
-      _import_graph_def(graph_def, name="")
+          try:
+            print("Ignore 'tcmalloc: large alloc' warnings.")
 
-      # Get input and output tensors.
-      input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
-      output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
-      _set_tensor_shapes(input_tensors, input_shapes)
+            if not isinstance(file_content, str):
+              if PY3:
+                file_content = file_content.decode("utf-8")
+              else:
+                file_content = file_content.encode("utf-8")
+            _text_format.Merge(file_content, graph_def)
+          except (_text_format.ParseError, DecodeError):
+            raise ValueError(
+                "Unable to parse input file '{}'.".format(graph_def_file))
+        _import_graph_def(graph_def, name="")
 
-      # Check if graph is frozen.
-      if not _is_frozen_graph(sess):
-        raise ValueError("Please freeze the graph using freeze_graph.py.")
+        # Get input and output tensors.
+        input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
+        output_tensors = _get_tensors_from_tensor_names(sess.graph,
+                                                        output_arrays)
+        _set_tensor_shapes(input_tensors, input_shapes)
 
-      # Create TocoConverter class.
-      return cls(sess.graph_def, input_tensors, output_tensors)
+        # Check if graph is frozen.
+        if not _is_frozen_graph(sess):
+          raise ValueError("Please freeze the graph using freeze_graph.py.")
+
+        # Create TocoConverter class.
+        return cls(sess.graph_def, input_tensors, output_tensors)
 
   @classmethod
   def from_saved_model(cls,
@@ -355,7 +361,7 @@ class TocoConverter(object):
       quantized_stats = None
 
     # Converts model.
-    result = toco_convert(
+    result = _toco_convert_impl(
         input_data=self._graph_def,
         input_tensors=self._input_tensors,
         output_tensors=self._output_tensors,
@@ -427,7 +433,6 @@ def _freeze_graph(sess, output_tensors):
     Frozen GraphDef.
   """
   if not _is_frozen_graph(sess):
-    sess.run(_global_variables_initializer())
     output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
     return _tf_graph_util.convert_variables_to_constants(
         sess, sess.graph_def, output_arrays)

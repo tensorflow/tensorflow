@@ -17,13 +17,13 @@ This doc is aimed at users who:
 
 ## TPUEstimator
 
-@{tf.estimator.Estimator$Estimators} are TensorFlow's model-level abstraction.
+`tf.estimator.Estimator` are TensorFlow's model-level abstraction.
 Standard `Estimators` can drive models on CPU and GPUs. You must use
-@{tf.contrib.tpu.TPUEstimator} to drive a model on TPUs.
+`tf.contrib.tpu.TPUEstimator` to drive a model on TPUs.
 
 Refer to TensorFlow's Getting Started section for an introduction to the basics
-of using a @{$premade_estimators$pre-made `Estimator`}, and
-@{$custom_estimators$custom `Estimator`s}.
+of using a [pre-made `Estimator`](../guide/premade_estimators.md), and
+[custom `Estimator`s](../guide/custom_estimators.md).
 
 The `TPUEstimator` class differs somewhat from the `Estimator` class.
 
@@ -44,10 +44,10 @@ my_estimator = tf.estimator.Estimator(
   model_fn=my_model_fn)
 ```
 
-The changes required to use a @{tf.contrib.tpu.TPUEstimator} on your local
+The changes required to use a `tf.contrib.tpu.TPUEstimator` on your local
 machine are relatively minor. The constructor requires two additional arguments.
 You should set the `use_tpu` argument to `False`, and pass a
-@{tf.contrib.tpu.RunConfig} as the `config` argument, as shown below:
+`tf.contrib.tpu.RunConfig` as the `config` argument, as shown below:
 
 ``` python
 my_tpu_estimator = tf.contrib.tpu.TPUEstimator(
@@ -117,7 +117,7 @@ my_tpu_run_config = tf.contrib.tpu.RunConfig(
 )
 ```
 
-Then you must pass the @{tf.contrib.tpu.RunConfig} to the constructor:
+Then you must pass the `tf.contrib.tpu.RunConfig` to the constructor:
 
 ``` python
 my_tpu_estimator = tf.contrib.tpu.TPUEstimator(
@@ -137,7 +137,7 @@ training locally to training on a cloud TPU you would need to:
 ## Optimizer
 
 When training on a cloud TPU you **must** wrap the optimizer in a
-@{tf.contrib.tpu.CrossShardOptimizer}, which uses an `allreduce` to aggregate
+`tf.contrib.tpu.CrossShardOptimizer`, which uses an `allreduce` to aggregate
 gradients and broadcast the result to each shard (each TPU core).
 
 The `CrossShardOptimizer` is not compatible with local training. So, to have
@@ -171,9 +171,9 @@ This section details the changes you must make to the model function
 During regular usage TensorFlow attempts to determine the shapes of each
 `tf.Tensor` during graph construction. During execution any unknown shape
 dimensions are determined dynamically,
-see @{$guide/tensors#shape$Tensor Shapes} for more details.
+see [Tensor Shapes](../guide/tensors.md#shape) for more details.
 
-To run on Cloud TPUs TensorFlow models are compiled using @{$xla$XLA}.
+To run on Cloud TPUs TensorFlow models are compiled using [XLA](../performance/xla/index.md).
 XLA uses a similar system for determining shapes at compile time. XLA requires
 that all tensor dimensions be statically defined at compile time. All shapes
 must evaluate to a constant, and not depend on external data, or stateful
@@ -184,7 +184,7 @@ operations like variables or a random number generator.
 
 Remove any use of `tf.summary` from your model.
 
-@{$summaries_and_tensorboard$TensorBoard summaries} are a great way see inside
+[TensorBoard summaries](../guide/summaries_and_tensorboard.md) are a great way see inside
 your model. A minimal set of basic summaries are automatically recorded by the
 `TPUEstimator`, to `event` files in the `model_dir`. Custom summaries, however,
 are currently unsupported when training on a Cloud TPU. So while the
@@ -200,7 +200,7 @@ Build your evaluation metrics dictionary in a stand-alone `metric_fn`.
 Evaluation metrics are an essential part of training a model. These are fully
 supported on Cloud TPUs, but with a slightly different syntax.
 
-A standard @{tf.metrics} returns two tensors. The first returns the running
+A standard `tf.metrics` returns two tensors. The first returns the running
 average of the metric value, while the second updates the running average and
 returns the value for this batch:
 
@@ -242,15 +242,15 @@ An `Estimator`'s `model_fn` must return an `EstimatorSpec`. An `EstimatorSpec`
 is a simple structure of named fields containing all the `tf.Tensors` of the
 model that the `Estimator` may need to interact with.
 
-`TPUEstimators` use a @{tf.contrib.tpu.TPUEstimatorSpec}. There are a few
-differences between it and a standard @{tf.estimator.EstimatorSpec}:
+`TPUEstimators` use a `tf.contrib.tpu.TPUEstimatorSpec`. There are a few
+differences between it and a standard `tf.estimator.EstimatorSpec`:
 
 
 *  The `eval_metric_ops` must be wrapped into a `metrics_fn`, this field is
    renamed `eval_metrics` ([see above](#metrics)).
-*  The @{tf.train.SessionRunHook$hooks} are unsupported, so these fields are
+*  The `tf.train.SessionRunHook` are unsupported, so these fields are
    omitted.
-*  The @{tf.train.Scaffold$`scaffold`}, if used, must also be wrapped in a
+*  The `tf.train.Scaffold`, if used, must also be wrapped in a
    function. This field is renamed to `scaffold_fn`.
 
 `Scaffold` and `Hooks` are for advanced usage, and can typically be omitted.
@@ -304,7 +304,7 @@ In many cases the batch size is the only unknown dimension.
 A typical input pipeline, using `tf.data`, will usually produce batches of a
 fixed size. The last batch of a finite `Dataset`, however, is typically smaller,
 containing just the remaining elements. Since a `Dataset` does not know its own
-length or finiteness, the standard @{tf.data.Dataset.batch$`batch`} method
+length or finiteness, the standard `tf.data.Dataset.batch` method
 cannot determine if all batches will have a fixed size batch on its own:
 
 ```
@@ -317,7 +317,7 @@ cannot determine if all batches will have a fixed size batch on its own:
 ```
 
 The most straightforward fix is to
-@{tf.data.Dataset.apply$apply} @{tf.contrib.data.batch_and_drop_remainder}
+`tf.data.Dataset.apply` `tf.contrib.data.batch_and_drop_remainder`
 as follows:
 
 ```
@@ -343,25 +343,25 @@ weight when creating your `tf.metrics`.
 
 Efficient use of the `tf.data.Dataset` API is critical when using a Cloud
 TPU, as it is impossible to use the Cloud TPU's unless you can feed it data
-quickly enough. See @{$datasets_performance} for details on dataset performance.
+quickly enough. See [Input Pipeline Performance Guide](../performance/datasets_performance.md) for details on dataset performance.
 
 For all but the simplest experimentation (using
-@{tf.data.Dataset.from_tensor_slices} or other in-graph data) you will need to
+`tf.data.Dataset.from_tensor_slices` or other in-graph data) you will need to
 store all data files read by the `TPUEstimator`'s `Dataset` in Google Cloud
 Storage Buckets.
 
 <!--TODO(markdaoust): link to the `TFRecord` doc when it exists.-->
 
 For most use-cases, we recommend converting your data into `TFRecord`
-format and using a @{tf.data.TFRecordDataset} to read it. This, however, is not
+format and using a `tf.data.TFRecordDataset` to read it. This, however, is not
 a hard requirement and you can use other dataset readers
 (`FixedLengthRecordDataset` or `TextLineDataset`) if you prefer.
 
 Small datasets can be loaded entirely into memory using
-@{tf.data.Dataset.cache}.
+`tf.data.Dataset.cache`.
 
 Regardless of the data format used, it is strongly recommended that you
-@{$performance_guide#use_large_files$use large files}, on the order of
+[use large files](../performance/performance_guide.md#use_large_files), on the order of
 100MB. This is especially important in this networked setting as the overhead
 of opening a file is significantly higher.
 
@@ -391,5 +391,5 @@ to make a Cloud TPU compatible model are the example models published in:
 
 For more information about tuning TensorFlow code for performance see:
 
- * The @{$performance$Performance Section.}
+ * The [Performance Section.](../performance/index.md)
 

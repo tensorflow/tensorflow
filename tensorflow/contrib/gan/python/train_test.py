@@ -666,6 +666,27 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(np.isscalar(loss_y2x_dis_np))
 
   @parameterized.named_parameters(
+      ('notcallable', create_stargan_model),
+      ('callable', create_callable_stargan_model),
+  )
+  def test_stargan(self, create_gan_model_fn):
+
+    model = create_gan_model_fn()
+    model_loss = train.stargan_loss(model)
+
+    self.assertIsInstance(model_loss, namedtuples.GANLoss)
+
+    with self.test_session() as sess:
+
+      sess.run(variables.global_variables_initializer())
+
+      gen_loss, disc_loss = sess.run(
+          [model_loss.generator_loss, model_loss.discriminator_loss])
+
+      self.assertTrue(np.isscalar(gen_loss))
+      self.assertTrue(np.isscalar(disc_loss))
+
+  @parameterized.named_parameters(
       ('gan', create_gan_model),
       ('callable_gan', create_callable_gan_model),
       ('infogan', create_infogan_model),

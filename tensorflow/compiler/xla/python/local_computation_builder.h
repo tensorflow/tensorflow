@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -301,6 +301,11 @@ class LocalComputationBuilder {
 
   StatusOr<bool> IsConstant(const LocalOp& operand);
 
+  LocalOp Sort(const LocalOp& operand, int64 dimension);
+
+  LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
+                     int64 dimension);
+
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
@@ -341,6 +346,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(ShiftRightLogical)
   _FORWARD_BINOP(Atan2)
   _FORWARD_BINOP(Pow)
+  _FORWARD_BINOP(Complex)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
@@ -356,7 +362,6 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Tanh)
   _FORWARD_UNOP(IsFinite)
   _FORWARD_UNOP(Neg)
-  _FORWARD_UNOP(Sort)
   _FORWARD_UNOP(Sqrt)
   _FORWARD_UNOP(Rsqrt)
   _FORWARD_UNOP(Square)
@@ -375,6 +380,9 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Atanh)
   _FORWARD_UNOP(Cosh)
   _FORWARD_UNOP(Sinh)
+  _FORWARD_UNOP(Real)
+  _FORWARD_UNOP(Imag)
+  _FORWARD_UNOP(Conj)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP

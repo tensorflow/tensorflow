@@ -184,7 +184,7 @@ else:
     Returns:
       A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
     """
-    argspecs = _inspect.getargspec(target)
+    argspecs = getargspec(target)
     fullargspecs = FullArgSpec(
         args=argspecs.args,
         varargs=argspecs.varargs,

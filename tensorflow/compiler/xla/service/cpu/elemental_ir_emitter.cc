@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -27,47 +29,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
-    const HloInstruction* op, llvm::Value* operand_value) const {
-  switch (op->opcode()) {
-    case HloOpcode::kTanh: {
-      PrimitiveType element_type = op->shape().element_type();
-      bool cast_result_to_fp16 = false;
-      string function_name;
-      switch (element_type) {
-        case F16:
-          cast_result_to_fp16 = true;
-          operand_value = b_->CreateFPCast(operand_value, b_->getFloatTy());
-          TF_FALLTHROUGH_INTENDED;
-        case F32:
-          function_name = "tanhf";
-          break;
-        case F64:
-          function_name = "tanh";
-          break;
-        default:
-          return Unimplemented("tanh");
-      }
-      // Create a function declaration.
-      llvm::Function* function =
-          llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-              llvm_ir::AsStringRef(function_name), operand_value->getType(),
-              operand_value->getType()));
-      function->setCallingConv(llvm::CallingConv::C);
-      function->setDoesNotThrow();
-      function->setDoesNotAccessMemory();
-      // Create an instruction to call the function.
-      llvm::Value* result = b_->CreateCall(function, operand_value);
-      if (cast_result_to_fp16) {
-        result = b_->CreateFPCast(result, b_->getHalfTy());
-      }
-      return result;
-    }
-    default:
-      return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
-  }
-}
 
 StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
@@ -104,6 +65,39 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
   return result;
 }
 
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  bool cast_result_to_fp16 = false;
+  string function_name;
+  switch (prim_type) {
+    case F16:
+      cast_result_to_fp16 = true;
+      value = b_->CreateFPCast(value, b_->getFloatTy());
+      TF_FALLTHROUGH_INTENDED;
+    case F32:
+      function_name = "tanhf";
+      break;
+    case F64:
+      function_name = "tanh";
+      break;
+    default:
+      return Unimplemented("tanh");
+  }
+  // Create a function declaration.
+  llvm::Function* function = llvm::cast<llvm::Function>(
+      module_->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
+                                   value->getType(), value->getType()));
+  function->setCallingConv(llvm::CallingConv::C);
+  function->setDoesNotThrow();
+  function->setDoesNotAccessMemory();
+  // Create an instruction to call the function.
+  llvm::Value* result = b_->CreateCall(function, value);
+  if (cast_result_to_fp16) {
+    result = b_->CreateFPCast(result, b_->getHalfTy());
+  }
+  return result;
+}
+
 llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const HloToElementGeneratorMap& operand_to_generator) const {
@@ -117,9 +111,8 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
                                 ElementwiseSourceIndex(index, *hlo, i)));
         operands.push_back(operand_value);
       }
-      return ir_emitter_->EmitScalarCall(hlo->shape().element_type(),
-                                         hlo->to_apply(), operands,
-                                         llvm_ir::IrName(hlo));
+      return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),
+                                           operands, llvm_ir::IrName(hlo));
     };
   }
   return ElementalIrEmitter::MakeElementGenerator(hlo, operand_to_generator);

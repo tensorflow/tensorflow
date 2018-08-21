@@ -47,6 +47,9 @@ def _get_toco_converter(flags):
 
   Returns:
     TocoConverter object.
+
+  Raises:
+    ValueError: Invalid flags.
   """
   # Parse input and output arrays.
   input_arrays = _parse_array(flags.input_arrays)
@@ -77,6 +80,9 @@ def _get_toco_converter(flags):
   elif flags.keras_model_file:
     converter_fn = lite.TocoConverter.from_keras_model_file
     converter_kwargs["model_file"] = flags.keras_model_file
+  else:
+    raise ValueError("--graph_def_file, --saved_model_dir, or "
+                     "--keras_model_file must be specified.")
 
   return converter_fn(**converter_kwargs)
 
@@ -203,8 +209,9 @@ def _check_flags(flags, unparsed):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
 
-  if flags.dump_graphviz_video and not flags.dump_graphviz:
-    raise ValueError("--dump_graphviz_video must be used with --dump_graphviz")
+  if flags.dump_graphviz_video and not flags.dump_graphviz_dir:
+    raise ValueError("--dump_graphviz_video must be used with "
+                     "--dump_graphviz_dir")
 
 
 def run_main(_):

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Linear-chain CRF layer.
 
-See the @{$python/contrib.crf} guide.
+See the [CRF](https://tensorflow.org/api_guides/python/contrib.crf) guide.
 
 @@crf_binary_score
 @@crf_decode

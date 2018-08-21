@@ -43,7 +43,8 @@ class RuntimeErrorsTest(test.TestCase):
     filename = tf_inspect.getsourcefile(function)
     lineno += line_offset
     loc = origin_info.LineLocation(filename, lineno)
-    origin = origin_info.OriginInfo(loc, 'test_function_name', 'test_code')
+    origin = origin_info.OriginInfo(loc, 'test_function_name', 'test_code',
+                                    'test_comment')
     return loc, origin
 
   def test_improved_errors_basic(self):

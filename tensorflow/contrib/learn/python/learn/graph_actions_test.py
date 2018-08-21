@@ -35,6 +35,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -124,7 +125,7 @@ class GraphActionsTest(test.TestCase):
 
   # TODO(ptucker): Test number and contents of checkpoint files.
   def _assert_ckpt(self, output_dir, expected=True):
-    ckpt_state = saver_lib.get_checkpoint_state(output_dir)
+    ckpt_state = checkpoint_management.get_checkpoint_state(output_dir)
     if expected:
       pattern = '%s/model.ckpt-.*' % output_dir
       primary_ckpt_path = ckpt_state.model_checkpoint_path
@@ -434,7 +435,7 @@ class GraphActionsTrainTest(test.TestCase):
 
   # TODO(ptucker): Test number and contents of checkpoint files.
   def _assert_ckpt(self, output_dir, expected=True):
-    ckpt_state = saver_lib.get_checkpoint_state(output_dir)
+    ckpt_state = checkpoint_management.get_checkpoint_state(output_dir)
     if expected:
       pattern = '%s/model.ckpt-.*' % output_dir
       primary_ckpt_path = ckpt_state.model_checkpoint_path

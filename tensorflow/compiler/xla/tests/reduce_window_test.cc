@@ -18,13 +18,14 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -357,7 +358,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
-  auto arg_literal = MakeUnique<Literal>(shape);
+  auto arg_literal = absl::make_unique<Literal>(shape);
   arg_literal->PopulateWithValue(1.0f);
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
@@ -368,7 +369,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
       ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
-  auto expected = MakeUnique<Literal>(result_shape);
+  auto expected = absl::make_unique<Literal>(result_shape);
   expected->PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }
@@ -1261,6 +1262,12 @@ struct R1ReduceWindowTestData {
      /*pad_low=*/{5},
      /*pad_high=*/{0},
      /*reducer=*/Reducer::kAdd},
+
+    {/*base_bounds=*/{4096}, /*window_bounds=*/{4096},
+     /*strides=*/{1},
+     /*pad_low=*/{4095},
+     /*pad_high=*/{0},
+     /*reducer=*/Reducer::kMax},
 };
 
 string R1ReduceWindowTestDataToString(
@@ -1341,7 +1348,7 @@ INSTANTIATE_TEST_CASE_P(
 // results on the interpreter backend.
 class ReduceWindowTextTest : public HloTestBase {};
 
-TEST_F(ReduceWindowTextTest, R2General256x384) {
+XLA_TEST_F(ReduceWindowTextTest, R2General256x384) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1358,7 +1365,7 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R2General256x384Layout01) {
+XLA_TEST_F(ReduceWindowTextTest, R2General256x384Layout01) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1375,7 +1382,7 @@ ROOT reduce-window = f32[256,384]{0,1} reduce-window(operand, constant), window=
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R2General2x5) {
+XLA_TEST_F(ReduceWindowTextTest, R2General2x5) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1392,7 +1399,7 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R2EffectiveScalar) {
+XLA_TEST_F(ReduceWindowTextTest, R2EffectiveScalar) {
   const string hlo_string = R"(
 HloModule R2Window
 mul {
@@ -1410,7 +1417,7 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(ReduceWindowTextTest, R3EffectiveScalar) {
+XLA_TEST_F(ReduceWindowTextTest, R3EffectiveScalar) {
   const string hlo_string = R"(
 HloModule R3Window
 mul {
@@ -1428,7 +1435,7 @@ ENTRY R3Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-TEST_F(HloTestBase, ReduceWindowIdentity) {
+XLA_TEST_F(HloTestBase, ReduceWindowIdentity) {
   const string hlo_string = R"(
 HloModule ReduceWindowIdentity
 identity.pad_to_reduce_window {
@@ -1445,7 +1452,7 @@ ENTRY reduce-window-identity {
   EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
 }
 
-TEST_F(HloTestBase, ReduceWindowS32) {
+XLA_TEST_F(HloTestBase, ReduceWindowS32) {
   const string hlo_string = R"(
 HloModule reduce-window
 
@@ -1458,6 +1465,25 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
   %parameter.0 = s32[81,8]{1,0} parameter(0)
   %parameter.1 = s32[] parameter(1)
   ROOT %reduce-window = s32[82,8]{1,0} reduce-window(s32[81,8]{1,0} %parameter.0, s32[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceWindowF16) {
+  const string hlo_string = R"(
+HloModule reduce-window
+
+%identity.pad_to_reduce_window (param0: f16[], param1: f16[]) -> f16[] {
+  %param0 = f16[] parameter(0)
+  ROOT %param1 = f16[] parameter(1)
+}
+
+ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
+  %parameter.0 = f16[81,8]{1,0} parameter(0)
+  %parameter.1 = f16[] parameter(1)
+  ROOT %reduce-window = f16[82,8]{1,0} reduce-window(f16[81,8]{1,0} %parameter.0, f16[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
 }
 
 )";

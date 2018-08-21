@@ -180,9 +180,6 @@ def get_nested_model_3(input_dim, num_classes):
       x = self.dense2(x)
       return self.bn(x)
 
-    def compute_output_shape(self, input_shape):
-      return tensor_shape.TensorShape((input_shape[0], 5))
-
   test_model = Inner()
   x = test_model(x)
   outputs = keras.layers.Dense(num_classes)(x)
@@ -190,6 +187,27 @@ def get_nested_model_3(input_dim, num_classes):
 
 
 class ModelSubclassingTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_custom_build(self):
+    class DummyModel(keras.Model):
+
+      def __init__(self):
+        super(DummyModel, self).__init__()
+        self.dense1 = keras.layers.Dense(32, activation='relu')
+        self.uses_custom_build = False
+
+      def call(self, inputs):
+        return self.dense1(inputs)
+
+      def build(self, input_shape):
+        self.uses_custom_build = True
+
+    test_model = DummyModel()
+    dummy_data = array_ops.ones((32, 50))
+    test_model(dummy_data)
+    self.assertTrue(test_model.uses_custom_build, 'Model should use user '
+                                                  'defined build when called.')
 
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_input_shape_build(self):
@@ -407,9 +425,10 @@ class ModelSubclassingTest(test.TestCase):
     model = SimpleTestModel(num_classes=num_classes,
                             use_dp=True,
                             use_bn=True)
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'])
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(learning_rate=0.001),
+        metrics=['acc', keras.metrics.CategoricalAccuracy()])
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))

@@ -46,7 +46,7 @@ from tensorflow.python.util.tf_export import estimator_export
 # TODO(nponomareva): Reveal pruning params here.
 _TreeHParams = collections.namedtuple('TreeHParams', [
     'n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity',
-    'min_node_weight', 'center_bias'
+    'min_node_weight', 'center_bias', 'pruning_mode'
 ])
 
 _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
@@ -410,9 +410,20 @@ class _EnsembleGrower(object):
     Args:
       tree_ensemble: A TreeEnsemble variable.
       tree_hparams: TODO. collections.namedtuple for hyper parameters.
+    Raises:
+      ValueError: when pruning mode is invalid or pruning is used and no tree
+      complexity is set.
     """
     self._tree_ensemble = tree_ensemble
     self._tree_hparams = tree_hparams
+    # pylint: disable=protected-access
+    self._pruning_mode_parsed = boosted_trees_ops.PruningMode.from_str(
+        tree_hparams.pruning_mode)
+
+    if (self._pruning_mode_parsed != boosted_trees_ops.PruningMode.NO_PRUNING
+        and tree_hparams.tree_complexity <= 0):
+      raise ValueError('For pruning, tree_complexity must be positive.')
+    # pylint: enable=protected-access
 
   @abc.abstractmethod
   def center_bias(self, center_bias_var, gradients, hessians):
@@ -500,7 +511,7 @@ class _EnsembleGrower(object):
         right_node_contribs=right_node_contribs_list,
         learning_rate=self._tree_hparams.learning_rate,
         max_depth=self._tree_hparams.max_depth,
-        pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING)
+        pruning_mode=self._pruning_mode_parsed)
     return grow_op
 
 
@@ -675,6 +686,7 @@ def _bt_model_fn(
   is_single_machine = (config.num_worker_replicas <= 1)
   sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
   center_bias = tree_hparams.center_bias
+
   if train_in_memory:
     assert n_batches_per_layer == 1, (
         'When train_in_memory is enabled, input_fn should return the entire '
@@ -691,9 +703,30 @@ def _bt_model_fn(
     global_step = training_util.get_or_create_global_step()
     bucket_size_list, feature_ids_list = _group_features_by_num_buckets(
         sorted_feature_columns)
+    # Create Ensemble resources.
+    tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
+
+    # Create logits.
+    if mode != model_fn.ModeKeys.TRAIN:
+      input_feature_list = _get_transformed_features(features,
+                                                     sorted_feature_columns)
+      logits = boosted_trees_ops.predict(
+          # For non-TRAIN mode, ensemble doesn't change after initialization,
+          # so no local copy is needed; using tree_ensemble directly.
+          tree_ensemble_handle=tree_ensemble.resource_handle,
+          bucketized_features=input_feature_list,
+          logits_dimension=head.logits_dimension)
+      return head.create_estimator_spec(
+          features=features,
+          mode=mode,
+          labels=labels,
+          train_op_fn=control_flow_ops.no_op,
+          logits=logits)
+
+    # ============== Training graph ==============
     # Extract input features and set up cache for training.
     training_state_cache = None
-    if mode == model_fn.ModeKeys.TRAIN and train_in_memory:
+    if train_in_memory:
       # cache transformed features as well for in-memory training.
       batch_size = array_ops.shape(labels)[0]
       input_feature_list, input_cache_op = (
@@ -705,63 +738,51 @@ def _bt_model_fn(
     else:
       input_feature_list = _get_transformed_features(features,
                                                      sorted_feature_columns)
-      if mode == model_fn.ModeKeys.TRAIN and example_id_column_name:
+      if example_id_column_name:
         example_ids = features[example_id_column_name]
         training_state_cache = _CacheTrainingStatesUsingHashTable(
             example_ids, head.logits_dimension)
 
-    # Create Ensemble resources.
-    tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
     # Variable that determines whether bias centering is needed.
     center_bias_var = variable_scope.variable(
         initial_value=center_bias, name='center_bias_needed', trainable=False)
-    # Create logits.
-    if mode != model_fn.ModeKeys.TRAIN:
-      logits = boosted_trees_ops.predict(
-          # For non-TRAIN mode, ensemble doesn't change after initialization,
-          # so no local copy is needed; using tree_ensemble directly.
-          tree_ensemble_handle=tree_ensemble.resource_handle,
+    if is_single_machine:
+      local_tree_ensemble = tree_ensemble
+      ensemble_reload = control_flow_ops.no_op()
+    else:
+      # Have a local copy of ensemble for the distributed setting.
+      with ops.device(worker_device):
+        local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
+            name=name + '_local', is_local=True)
+      # TODO(soroush): Do partial updates if this becomes a bottleneck.
+      ensemble_reload = local_tree_ensemble.deserialize(
+          *tree_ensemble.serialize())
+
+    if training_state_cache:
+      cached_tree_ids, cached_node_ids, cached_logits = (
+          training_state_cache.lookup())
+    else:
+      # Always start from the beginning when no cache is set up.
+      batch_size = array_ops.shape(labels)[0]
+      cached_tree_ids, cached_node_ids, cached_logits = (
+          array_ops.zeros([batch_size], dtype=dtypes.int32),
+          _DUMMY_NODE_ID * array_ops.ones([batch_size], dtype=dtypes.int32),
+          array_ops.zeros(
+              [batch_size, head.logits_dimension], dtype=dtypes.float32))
+
+    with ops.control_dependencies([ensemble_reload]):
+      (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+       last_layer_nodes_range) = local_tree_ensemble.get_states()
+      summary.scalar('ensemble/num_trees', num_trees)
+      summary.scalar('ensemble/num_finalized_trees', num_finalized_trees)
+      summary.scalar('ensemble/num_attempted_layers', num_attempted_layers)
+
+      partial_logits, tree_ids, node_ids = boosted_trees_ops.training_predict(
+          tree_ensemble_handle=local_tree_ensemble.resource_handle,
+          cached_tree_ids=cached_tree_ids,
+          cached_node_ids=cached_node_ids,
           bucketized_features=input_feature_list,
           logits_dimension=head.logits_dimension)
-    else:
-      if is_single_machine:
-        local_tree_ensemble = tree_ensemble
-        ensemble_reload = control_flow_ops.no_op()
-      else:
-        # Have a local copy of ensemble for the distributed setting.
-        with ops.device(worker_device):
-          local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
-              name=name + '_local', is_local=True)
-        # TODO(soroush): Do partial updates if this becomes a bottleneck.
-        ensemble_reload = local_tree_ensemble.deserialize(
-            *tree_ensemble.serialize())
-
-      if training_state_cache:
-        cached_tree_ids, cached_node_ids, cached_logits = (
-            training_state_cache.lookup())
-      else:
-        # Always start from the beginning when no cache is set up.
-        batch_size = array_ops.shape(labels)[0]
-        cached_tree_ids, cached_node_ids, cached_logits = (
-            array_ops.zeros([batch_size], dtype=dtypes.int32),
-            _DUMMY_NODE_ID * array_ops.ones([batch_size], dtype=dtypes.int32),
-            array_ops.zeros(
-                [batch_size, head.logits_dimension], dtype=dtypes.float32))
-
-      with ops.control_dependencies([ensemble_reload]):
-        (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
-         last_layer_nodes_range) = local_tree_ensemble.get_states()
-        summary.scalar('ensemble/num_trees', num_trees)
-        summary.scalar('ensemble/num_finalized_trees', num_finalized_trees)
-        summary.scalar('ensemble/num_attempted_layers', num_attempted_layers)
-
-        partial_logits, tree_ids, node_ids = boosted_trees_ops.training_predict(
-            tree_ensemble_handle=local_tree_ensemble.resource_handle,
-            cached_tree_ids=cached_tree_ids,
-            cached_node_ids=cached_node_ids,
-            bucketized_features=input_feature_list,
-            logits_dimension=head.logits_dimension)
-
       logits = cached_logits + partial_logits
 
     # Create training graph.
@@ -834,12 +855,11 @@ def _bt_model_fn(
       labels=labels,
       train_op_fn=_train_op_fn,
       logits=logits)
-  if mode == model_fn.ModeKeys.TRAIN:
-    # Add an early stop hook.
-    estimator_spec = estimator_spec._replace(
-        training_hooks=estimator_spec.training_hooks +
-        (_StopAtAttemptsHook(num_finalized_trees, num_attempted_layers,
-                             tree_hparams.n_trees, tree_hparams.max_depth),))
+  # Add an early stop hook.
+  estimator_spec = estimator_spec._replace(
+      training_hooks=estimator_spec.training_hooks +
+      (_StopAtAttemptsHook(num_finalized_trees, num_attempted_layers,
+                           tree_hparams.n_trees, tree_hparams.max_depth),))
   return estimator_spec
 
 
@@ -925,7 +945,8 @@ class BoostedTreesClassifier(estimator.Estimator):
                tree_complexity=0.,
                min_node_weight=0.,
                config=None,
-               center_bias=False):
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesClassifier` instance.
 
     Example:
@@ -999,7 +1020,11 @@ class BoostedTreesClassifier(estimator.Estimator):
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
-
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     Raises:
       ValueError: when wrong arguments are given or unsupported functionalities
@@ -1012,9 +1037,9 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
-                                l1_regularization, l2_regularization,
-                                tree_complexity, min_node_weight, center_bias)
+    tree_hparams = _TreeHParams(
+        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
@@ -1058,7 +1083,8 @@ class BoostedTreesRegressor(estimator.Estimator):
                tree_complexity=0.,
                min_node_weight=0.,
                config=None,
-               center_bias=False):
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesRegressor` instance.
 
     Example:
@@ -1125,6 +1151,11 @@ class BoostedTreesRegressor(estimator.Estimator):
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     Raises:
       ValueError: when wrong arguments are given or unsupported functionalities
@@ -1136,9 +1167,9 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
-                                l1_regularization, l2_regularization,
-                                tree_complexity, min_node_weight, center_bias)
+    tree_hparams = _TreeHParams(
+        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access

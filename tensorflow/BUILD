@@ -124,12 +124,6 @@ config_setting(
 )
 
 config_setting(
-    name = "windows_msvc",
-    values = {"cpu": "x64_windows_msvc"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_tensorflow_py_deps",
     define_values = {"no_tensorflow_py_deps": "true"},
     visibility = ["//visibility:public"],
@@ -381,6 +375,15 @@ config_setting(
     },
 )
 
+# Setting to use when loading kernels dynamically
+config_setting(
+    name = "dynamic_loaded_kernels",
+    define_values = {
+        "dynamic_loaded_kernels": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "using_cuda_nvcc",
     define_values = {
@@ -408,14 +411,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(laigd): consider removing this option and make TensorRT enabled
-# automatically when CUDA is enabled.
-config_setting(
-    name = "with_tensorrt_support",
-    values = {"define": "with_tensorrt_support=true"},
-    visibility = ["//visibility:public"],
-)
-
 package_group(
     name = "internal",
     packages = [
@@ -429,21 +424,16 @@ package_group(
 
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "if_mkl_ml",
 )
 
 filegroup(
     name = "intel_binary_blob",
-    data = if_mkl(
+    data = if_mkl_ml(
         [
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
-)
-
-filegroup(
-    name = "docs_src",
-    data = glob(["docs_src/**/*.md"]),
 )
 
 cc_library(
@@ -492,7 +482,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:darwin": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow:tf_framework_version_script.lds)",
@@ -534,7 +523,6 @@ tf_cc_shared_object(
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
@@ -559,7 +547,6 @@ tf_cc_shared_object(
             "$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
@@ -589,6 +576,7 @@ exports_files(
 gen_api_init_files(
     name = "tensorflow_python_api_gen",
     srcs = ["api_template.__init__.py"],
+    api_version = 1,
     root_init_template = "api_template.__init__.py",
 )
 

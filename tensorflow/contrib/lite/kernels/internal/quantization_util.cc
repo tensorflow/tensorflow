@@ -109,12 +109,12 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
 void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
                             float* nudged_min, float* nudged_max,
-                            float* scale) {
+                            float* nudged_scale) {
   // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
   const float quant_min_float = static_cast<float>(quant_min);
   const float quant_max_float = static_cast<float>(quant_max);
-  *scale = (max - min) / (quant_max_float - quant_min_float);
-  const float zero_point_from_min = quant_min_float - min / *scale;
+  *nudged_scale = (max - min) / (quant_max_float - quant_min_float);
+  const float zero_point_from_min = quant_min_float - min / *nudged_scale;
   uint16 nudged_zero_point;
   if (zero_point_from_min < quant_min_float) {
     nudged_zero_point = static_cast<uint16>(quant_min);
@@ -123,8 +123,25 @@ void NudgeQuantizationRange(const float min, const float max,
   } else {
     nudged_zero_point = static_cast<uint16>(TfLiteRound(zero_point_from_min));
   }
-  *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
-  *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
+  *nudged_min = (quant_min_float - nudged_zero_point) * (*nudged_scale);
+  *nudged_max = (quant_max_float - nudged_zero_point) * (*nudged_scale);
+}
+
+void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
+                       const float nudged_max, const float* input_data,
+                       float* output_data, const float size) {
+  // This code originates from tensorflow/core/kernels/fake_quant_ops_functor.h.
+  const float inv_nudged_scale = 1.0f / nudged_scale;
+
+  for (int i = 0; i < size; i++) {
+    const float src_val = input_data[i];
+    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
+    const float clamped_shifted = clamped - nudged_min;
+    const float dst_val =
+        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
+        nudged_min;
+    output_data[i] = dst_val;
+  }
 }
 
 bool CheckedLog2(const float x, int* log2_result) {

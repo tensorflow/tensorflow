@@ -18,8 +18,10 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -110,6 +112,12 @@ void HloToIrBindings::EmitBasePointersForHlos(
                 llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
             BindHloToIrValue(*non_io_hlo, b_->CreateAlloca(pointee_type),
                              index);
+          } else if (slice.allocation()->is_constant()) {
+            llvm::Value* global_for_constant =
+                module_->getGlobalVariable(llvm_ir::AsStringRef(
+                    llvm_ir::ConstantBufferAllocationToGlobalName(
+                        *slice.allocation())));
+            BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
             const int64 offset = slice.offset();
             CHECK_NE(nullptr, temp_buffer_base_);
@@ -135,6 +143,14 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
       EmitGetTupleElement(gte->operand(0), base_ptr), b_, module_);
 }
 
+// Returns true if `value` has a name that should not be changed.
+static bool HasMeaningfulName(llvm::Value* value) {
+  if (auto* global = llvm::dyn_cast<llvm::GlobalValue>(value)) {
+    return global->getLinkage() != llvm::GlobalValue::PrivateLinkage;
+  }
+  return false;
+}
+
 llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
                                               ShapeIndexView shape_index,
                                               llvm::Value* ir_value) {
@@ -149,8 +165,13 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
   } else {
     typed_ir_value = b_->CreateBitCast(ir_value, pointee_type->getPointerTo());
   }
-  ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
-  typed_ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
+  if (!HasMeaningfulName(ir_value)) {
+    ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
+  }
+  if (!HasMeaningfulName(typed_ir_value)) {
+    typed_ir_value->setName(
+        llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
+  }
   return typed_ir_value;
 }
 

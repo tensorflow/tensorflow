@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/kernels/register.h"
+#include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -107,6 +108,37 @@ TfLiteRegistration* Register_SHAPE();
 TfLiteRegistration* Register_POW();
 TfLiteRegistration* Register_FAKE_QUANT();
 TfLiteRegistration* Register_PACK();
+TfLiteRegistration* Register_ONE_HOT();
+TfLiteRegistration* Register_LOGICAL_OR();
+TfLiteRegistration* Register_LOGICAL_AND();
+TfLiteRegistration* Register_LOGICAL_NOT();
+
+TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
+  context->ReportError(
+      context,
+      "Regular TensorFlow ops are not supported by this interpreter. Make sure "
+      "you invoke the Eager delegate before inference.");
+  return kTfLiteError;
+}
+
+const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
+                                                    int version) const {
+  return MutableOpResolver::FindOp(op, version);
+}
+
+const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
+                                                    int version) const {
+  // Return the NULL Op for all ops whose name start with "Eager", allowing
+  // the interpreter to delegate their execution.
+  if (IsEagerOp(op)) {
+    static TfLiteRegistration null_op{
+        nullptr, nullptr, &UnsupportedTensorFlowOp,
+        nullptr, nullptr, BuiltinOperator_CUSTOM,
+        "Eager", 1};
+    return &null_op;
+  }
+  return MutableOpResolver::FindOp(op, version);
+}
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -197,6 +229,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_POW, Register_POW());
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK());
+  AddBuiltin(BuiltinOperator_ONE_HOT, Register_ONE_HOT());
+  AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
+  AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
+  AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

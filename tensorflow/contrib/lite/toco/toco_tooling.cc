@@ -90,8 +90,10 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSelect);
   transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStridedSlice);
+  transformations->Add(new ResolveConstantTile);
   transformations->Add(new ResolveConstantTranspose);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
@@ -309,8 +311,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     // HardcodeMinMax to move changes through the graph as we make changes.
     auto propagate_default_min_max =
         absl::make_unique<PropagateDefaultMinMax>();
-    if (toco_flags.has_default_ranges_min() &&
-        toco_flags.has_default_ranges_max()) {
+    bool has_default_ranges_flag = (toco_flags.has_default_ranges_min() &&
+                                    toco_flags.has_default_ranges_max());
+    if (has_default_ranges_flag) {
       propagate_default_min_max->DefineTypeRange(
           ArrayDataType::kUint8, toco_flags.default_ranges_min(),
           toco_flags.default_ranges_max());
@@ -335,6 +338,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
         new EnsureUint8WeightsSafeForFastInt8Kernels;
     ensure_safe_for_int8_kernels->set_allow_nudging_weights(
         toco_flags.allow_nudging_weights_to_use_fast_gemm_kernel());
+    ensure_safe_for_int8_kernels->set_has_default_ranges_flag(
+        has_default_ranges_flag);
     RunGraphTransformations(model, "quantization graph transformations",
                             {
                                 new RemoveTrivialQuantizedActivationFunc,

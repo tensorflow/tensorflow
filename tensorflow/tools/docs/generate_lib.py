@@ -22,12 +22,14 @@ import argparse
 import fnmatch
 import os
 import shutil
+import tempfile
 
 import six
 
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
+from tensorflow.tools.docs import doc_controls
 from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import parser
 from tensorflow.tools.docs import pretty_docs
@@ -56,7 +58,7 @@ def write_docs(output_dir,
                yaml_toc,
                root_title='TensorFlow',
                search_hints=True,
-               site_api_path=None):
+               site_api_path=''):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -74,8 +76,8 @@ def write_docs(output_dir,
     root_title: The title name for the root level index.md.
     search_hints: (bool) include meta-data search hints at the top of each
       output file.
-    site_api_path: Used to write the api-duplicates _redirects.yaml file. if
-      None (the default) the file is not generated.
+    site_api_path: The output path relative to the site root. Used in the
+      `_toc.yaml` and `_redirects.yaml` files.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
@@ -96,7 +98,7 @@ def write_docs(output_dir,
   symbol_to_file = {}
 
   # Collect redirects for an api _redirects.yaml file.
-  redirects = ['redirects:\n']
+  redirects = []
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(parser_config.index):
@@ -108,6 +110,9 @@ def write_docs(output_dir,
     # Methods and some routines are documented only as part of their class.
     if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
             _is_free_function(py_object, full_name, parser_config.index)):
+      continue
+
+    if doc_controls.should_skip(py_object):
       continue
 
     sitepath = os.path.join('api_docs/python',
@@ -156,24 +161,27 @@ def write_docs(output_dir,
       raise OSError(
           'Cannot write documentation for %s to %s' % (full_name, directory))
 
-    if site_api_path:
-      duplicates = parser_config.duplicates.get(full_name, [])
-      if not duplicates:
-        continue
+    duplicates = parser_config.duplicates.get(full_name, [])
+    if not duplicates:
+      continue
 
-      duplicates = [item for item in duplicates if item != full_name]
-      template = ('- from: /{}\n'
-                  '  to: /{}\n')
-      for dup in duplicates:
-        from_path = os.path.join(site_api_path, dup.replace('.', '/'))
-        to_path = os.path.join(site_api_path, full_name.replace('.', '/'))
-        redirects.append(
-            template.format(from_path, to_path))
+    duplicates = [item for item in duplicates if item != full_name]
 
-  if site_api_path:
-    api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
-    with open(api_redirects_path, 'w') as redirect_file:
-      redirect_file.write(''.join(redirects))
+    for dup in duplicates:
+      from_path = os.path.join(site_api_path, dup.replace('.', '/'))
+      to_path = os.path.join(site_api_path, full_name.replace('.', '/'))
+      redirects.append((
+          os.path.join('/', from_path),
+          os.path.join('/', to_path)))
+
+  redirects = sorted(redirects)
+  template = ('- from: {}\n'
+              '  to: {}\n')
+  redirects = [template.format(f, t) for f, t in redirects]
+  api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
+  with open(api_redirects_path, 'w') as redirect_file:
+    redirect_file.write('redirects:\n')
+    redirect_file.write(''.join(redirects))
 
   if yaml_toc:
     # Generate table of contents
@@ -203,7 +211,8 @@ def write_docs(output_dir,
             '- title: ' + title,
             '  section:',
             '  - title: Overview',
-            '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]]
+            '    path: ' + os.path.join('/', site_api_path,
+                                        symbol_to_file[module])]
         header = ''.join([indent+line+'\n' for line in header])
         f.write(header)
 
@@ -214,7 +223,8 @@ def write_docs(output_dir,
         for full_name in symbols_in_module:
           item = [
               '  - title: ' + full_name[len(module) + 1:],
-              '    path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[full_name]]
+              '    path: ' + os.path.join('/', site_api_path,
+                                          symbol_to_file[full_name])]
           item = ''.join([indent+line+'\n' for line in item])
           f.write(item)
 
@@ -235,12 +245,16 @@ def add_dict_to_dict(add_from, add_to):
 
 # Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
-  return {'tf.test': ['mock']}
+  return {
+      'tf.contrib.autograph': ['utils', 'operators'],
+      'tf.test': ['mock'],
+      'tf.compat': ['v1', 'v2'],
+  }
 
 
 # Exclude members of some libraries.
 def _get_default_do_not_descend_map():
-  # TODO(wicke): Shrink this list once the modules get sealed.
+  # TODO(markdaoust): Use docs_controls decorators, locally, instead.
   return {
       'tf': ['cli', 'lib', 'wrappers'],
       'tf.contrib': [
@@ -284,10 +298,13 @@ def _get_default_do_not_descend_map():
   }
 
 
-def extract(py_modules, private_map, do_not_descend_map):
+def extract(py_modules,
+            private_map,
+            do_not_descend_map,
+            visitor_cls=doc_generator_visitor.DocGeneratorVisitor):
   """Extract docs from tf namespace and write them to disk."""
   # Traverse the first module.
-  visitor = doc_generator_visitor.DocGeneratorVisitor(py_modules[0][0])
+  visitor = visitor_cls(py_modules[0][0])
   api_visitor = public_api.PublicAPIVisitor(visitor)
   api_visitor.set_root_name(py_modules[0][0])
   add_dict_to_dict(private_map, api_visitor.private_map)
@@ -518,6 +535,12 @@ class DocGenerator(object):
         action='store_false',
         default=True)
 
+    self.argument_parser.add_argument(
+        '--site_api_path',
+        type=str, default='',
+        help='The path from the site-root to api_docs'
+             'directory for this project')
+
   def add_output_dir_argument(self):
     self.argument_parser.add_argument(
         '--output_dir',
@@ -530,9 +553,9 @@ class DocGenerator(object):
     self.argument_parser.add_argument(
         '--src_dir',
         type=str,
-        default=None,
-        required=True,
-        help='Directory with the source docs.')
+        default=tempfile.mkdtemp(),
+        required=False,
+        help='Optional directory of source docs to add api_docs links to')
 
   def add_base_dir_argument(self, default_base_dir):
     self.argument_parser.add_argument(
@@ -634,7 +657,7 @@ class DocGenerator(object):
         yaml_toc=self.yaml_toc,
         root_title=root_title,
         search_hints=getattr(flags, 'search_hints', True),
-        site_api_path=getattr(flags, 'site_api_path', None))
+        site_api_path=getattr(flags, 'site_api_path', ''))
 
     # Replace all the @{} references in files under `FLAGS.src_dir`
     replace_refs(flags.src_dir, flags.output_dir, reference_resolver, '*.md')

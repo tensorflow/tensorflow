@@ -62,6 +62,7 @@ counterparts:
 *   [tf.nn.softmax](https://www.tensorflow.org/api_docs/python/tf/nn/softmax) -
     *as long as tensors are 2D and axis is the last dimension*
 *   [tf.nn.top_k](https://www.tensorflow.org/api_docs/python/tf/nn/top_k)
+*   [tf.one_hot](https://www.tensorflow.org/api_docs/python/tf/one_hot)
 *   [tf.pad](https://www.tensorflow.org/api_docs/python/tf/pad) - *as long as
     mode and constant_values are not used*
 *   [tf.reduce_mean](https://www.tensorflow.org/api_docs/python/tf/reduce_mean) -
@@ -827,6 +828,18 @@ Inputs {
 }
 Outputs {
   0: A tensor of stacked tensors.
+}
+```
+
+**LOGICAL_OR**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: a list of tensors.
+}
+Outputs {
+  0: A tensor of logical_or output tensors.
 }
 ```
 

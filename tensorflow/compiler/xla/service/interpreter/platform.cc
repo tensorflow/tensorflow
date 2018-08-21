@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
@@ -70,8 +71,8 @@ port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
-  auto executor = MakeUnique<StreamExecutor>(
-      this, MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
+  auto executor = absl::make_unique<StreamExecutor>(
+      this, absl::make_unique<XlaInterpreterExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
