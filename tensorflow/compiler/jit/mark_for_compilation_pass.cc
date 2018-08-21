@@ -418,6 +418,31 @@ Status FindCompilationCandidates(
   return Status::OK();
 }
 
+// Determine the global jit level which is ON if either the
+// GraphOptimizationPassOptions has the jit ON, or if the --tf_xla_auto_jit flag
+// is true.
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+    const GraphOptimizationPassOptions& options) {
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      options.session_options->config.graph_options()
+          .optimizer_options()
+          .global_jit_level();
+  if (global_jit_level == OptimizerOptions::DEFAULT) {
+    // To set compilation to be on by default, change the following line.
+    global_jit_level = OptimizerOptions::OFF;
+  }
+  legacy_flags::MarkForCompilationPassFlags* flags =
+      legacy_flags::GetMarkForCompilationPassFlags();
+  if (flags->tf_xla_auto_jit == -1 ||
+      (1 <= flags->tf_xla_auto_jit && flags->tf_xla_auto_jit <= 2)) {
+    // If the flag tf_xla_auto_jit is a valid, non-zero setting, it overrides
+    // the setting in ConfigProto.
+    global_jit_level =
+        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
+  }
+  return global_jit_level;
+}
+
 struct Cluster {
   // Identifies the node that represents this cluster in the cycle detection
   // graph.
@@ -440,22 +465,9 @@ Status MarkForCompilationPass::Run(
   // TODO(phawkins): precompute the "GetCompilationDevice" properties of each
   // device ahead of time.
   OptimizerOptions::GlobalJitLevel global_jit_level =
-      options.session_options->config.graph_options()
-          .optimizer_options()
-          .global_jit_level();
-  if (global_jit_level == OptimizerOptions::DEFAULT) {
-    // To set compilation to be on by default, change the following line.
-    global_jit_level = OptimizerOptions::OFF;
-  }
+      GetGlobalJitLevel(options);
   legacy_flags::MarkForCompilationPassFlags* flags =
       legacy_flags::GetMarkForCompilationPassFlags();
-  if (flags->tf_xla_auto_jit == -1 ||
-      (1 <= flags->tf_xla_auto_jit && flags->tf_xla_auto_jit <= 2)) {
-    // If the flag tf_xla_auto_jit is a valid, non-zero setting, it overrides
-    // the setting in ConfigProto.
-    global_jit_level =
-        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
-  }
   bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
   bool fusion_only = flags->tf_xla_fusion_only;
 
@@ -523,9 +535,9 @@ Status MarkForCompilationPass::Run(
     bool ignore_registration = cpu_global_jit && device_type == DEVICE_CPU;
     bool should_compile =
         (ignore_registration || registration->enable_jit_by_default) &&
-        global_jit_level > 0;
+        global_jit_level != OptimizerOptions::OFF;
     if (!should_compile) {
-      if (global_jit_level <= 0) {
+      if (global_jit_level == OptimizerOptions::OFF) {
         VLOG(2) << "Rejecting " << node->name() << ": global jit disabled.";
       } else {
         VLOG(2) << "Rejecting " << node->name() << ": JIT for device disabled.";
@@ -637,6 +649,8 @@ Status MarkForCompilationPass::RunImpl(
     worklist.push_back(&clusters[node->id()]);
   }
 
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      GetGlobalJitLevel(options);
   legacy_flags::MarkForCompilationPassFlags* flags =
       legacy_flags::GetMarkForCompilationPassFlags();
 
@@ -676,13 +690,15 @@ Status MarkForCompilationPass::RunImpl(
       }
       // Look for an _XlaScope on both nodes.  If both nodes have a
       // scope and the scopes do not match, do not cluster along this
-      // edge.  If even one of the nodes lacks an _XlaScope attribute,
+      // edge. This restriction is overridden if the global_jit_level is ON. If
+      // even one of the nodes lacks an _XlaScope attribute,
       // then it is treated as a "bridge" and a cluster may be created
       // along it.  We may want to restrict this behavior to require
       // all nodes marked with _XlaCompile=true to also have a
       // _XlaScope property set (and raise an error otherwise); but
       // for now we don't do this.
-      if (GetNodeAttr(node_from->attrs(), kXlaScopeAttr, &from_scope).ok() &&
+      if (global_jit_level == OptimizerOptions::OFF &&
+          GetNodeAttr(node_from->attrs(), kXlaScopeAttr, &from_scope).ok() &&
           GetNodeAttr(node_to->attrs(), kXlaScopeAttr, &to_scope).ok() &&
           from_scope != to_scope) {
         continue;
