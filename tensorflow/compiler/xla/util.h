@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -55,7 +55,7 @@ Status WithLogBacktrace(const Status& status);
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
 static constexpr int kInlineRank = 8;
-using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -461,9 +461,9 @@ std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
   return std::vector<T>(slice.begin(), slice.end());
 }
 
-template <typename T, int N>
+template <typename T, size_t N>
 std::vector<T> InlinedVectorToVector(
-    const tensorflow::gtl::InlinedVector<T, N>& inlined_vector) {
+    const absl::InlinedVector<T, N>& inlined_vector) {
   return std::vector<T>(inlined_vector.begin(), inlined_vector.end());
 }
 

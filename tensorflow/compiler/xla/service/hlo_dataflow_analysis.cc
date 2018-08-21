@@ -19,6 +19,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -93,7 +94,7 @@ HloDataflowAnalysis::HloDataflowAnalysis(
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
   tensorflow::gtl::FlatSet<const HloInstruction*> visited;
-  tensorflow::gtl::InlinedVector<const HloInstruction*, 4> stack;
+  absl::InlinedVector<const HloInstruction*, 4> stack;
   stack.push_back(inst);
   while (!stack.empty()) {
     const HloInstruction* current = stack.back();

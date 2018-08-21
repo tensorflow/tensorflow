@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -1103,7 +1104,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // result_index_locations[i] contains one or two pointers to the locations
     // in lhs_index or rhs_index where the i'th result index should go.
-    tensorflow::gtl::InlinedVector<std::pair<int64*, int64*>, kInlineRank>
+    absl::InlinedVector<std::pair<int64*, int64*>, kInlineRank>
         result_index_locations;
     result_index_locations.reserve(lhs_rank + rhs_rank - 2);
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -88,7 +89,7 @@ bool CanBeRematerialized(
 
 // Type holding a unique identifier for each Buffer object.
 using BufferId = int64;
-using BufferIdList = tensorflow::gtl::InlinedVector<BufferId, 3>;
+using BufferIdList = absl::InlinedVector<BufferId, 3>;
 
 // We wrap HloInstruction* with an Item that holds auxiliary
 // per-instruction state.
@@ -123,7 +124,7 @@ struct Item {
   int64 position;
 };
 
-using ItemList = tensorflow::gtl::InlinedVector<Item*, 3>;
+using ItemList = absl::InlinedVector<Item*, 3>;
 
 // Class which maintains an ordered list of instructions with fast insertion
 // before arbitrary elements.

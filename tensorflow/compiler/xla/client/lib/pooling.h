@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_POOLING_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_POOLING_H_
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace xla {
 
@@ -45,7 +45,7 @@ class TensorFormat {
   // The number of the dimension that represents the features.
   int feature_dimension_;
   // The dimension numbers for the spatial dimensions.
-  tensorflow::gtl::InlinedVector<int, 4> spatial_dimensions_;
+  absl::InlinedVector<int, 4> spatial_dimensions_;
 };
 
 // Computes the max pool of 'operand'.
