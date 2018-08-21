@@ -35,12 +35,13 @@ class LeafModelOperator {
   // number of instances seen).  For regression, it's e.g. the average value.
   float GetOutputValue(const decision_trees::Leaf& leaf, int32 o) const;
 
-  // Update the given Leaf's model with the given example.
-  virtual void UpdateModel(decision_trees::Leaf* leaf,
-                           const InputTarget* target, int example) const = 0;
-
   // Initialize an empty Leaf model.
-  void InitModel(decision_trees::Leaf* leaf) const;
+  void InitModel(tensor_forest::Leaf* leaf) const;
+
+  // Update the given Leaf's model with the given example.
+  virtual void UpdateModel(tensor_forest::Leaf* leaf,
+                           const DenseTensorType& target, int example) const = 0;
+
 
   virtual void ExportModel(const LeafStat& stat,
                            decision_trees::Leaf* leaf) const = 0;
@@ -77,7 +78,7 @@ class RegressionLeafModelOperator : public LeafModelOperator {
 class LeafModelOperatorFactory {
  public:
   static std::unique_ptr<LeafModelOperator> CreateLeafModelOperator(
-      const LeafModelType& model_type, const int32& num_output);
+      const LeafModelType& leaf_model_type, const int32& num_output);
 };
 
 }  // namespace tensorflow

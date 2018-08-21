@@ -51,24 +51,15 @@ message FeatureId {
   repeated google.protobuf.Any additional_data = 2;
 };
 
-message ObliqueFeatures {
-  // total value is sum(features[i] * weights[i]).
-  repeated FeatureId features = 1;
-  repeated float weights = 2;
-}
 
 
 message InequalityTest {
   // When the feature is missing, the test's outcome is undefined.
   oneof FeatureSum {
     FeatureId feature_id = 1;
-    ObliqueFeatures oblique = 4;
   }
   enum Type {
     LESS_OR_EQUAL = 0;
-    LESS_THAN = 1;
-    GREATER_OR_EQUAL = 2;
-    GREATER_THAN = 3;
   };
   Type type = 2;
   Value threshold = 3;
@@ -207,7 +198,6 @@ message FertileStats {
 message Model {
   oneof model {
     DecisionTree decision_tree = 1;
-    Ensemble ensemble = 2;
     google.protobuf.Any custom_model = 3;
   }
   repeated google.protobuf.Any additional_data = 4;

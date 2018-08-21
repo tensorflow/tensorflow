@@ -36,9 +36,10 @@ GrowStats::GrowStats(const int32& split_after_samples,
       num_splits_to_consider_(num_splits_to_consider),
       num_outputs_(params.num_outputs()) {}
 
-void GrowStats::AddSplit(const decision_trees::BinaryNode& split,
-                         const std::unique_ptr<TensorDataSet>& input_data,
-                         const InputTarget* target, int example) {
+void GrowStats::AddSplit(const tensor_forest::BinaryNode& split,
+                         const std::unique_ptr<DenseTensorType>& input_data,
+                         const std::unique_ptr<DenseTensorType>& target, 
+			 int example) {
   // It's possible that the split collection calls AddSplit, but we actually
   // have all the splits we need and are just waiting for them to be fully
   // initialized.

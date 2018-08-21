@@ -41,6 +41,8 @@ class CreateTreeVariableOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("leaf_model_type", &leaf_model_type_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("num_output", &num_output_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -49,7 +51,7 @@ class CreateTreeVariableOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(tree_config_t->shape()),
                 errors::InvalidArgument("Tree config must be a scalar."));
 
-    auto* result = new DecisionTreeResource(leaf_model_type_);
+    auto* result = new DecisionTreeResource(leaf_model_type_, num_output_);
     if (!ParseProtoUnlimited(result->mutable_decision_tree(),
                              tree_config_t->scalar<string>()())) {
       result->Unref();
@@ -69,6 +71,7 @@ class CreateTreeVariableOp : public OpKernel {
 
  private:
   int32 leaf_model_type_;
+  int32 num_output_;
 };
 
 // Op for serializing a model.
@@ -136,13 +139,13 @@ class TreeSizeOp : public OpKernel {
 };
 
 void TraverseTree(const DecisionTreeResource* tree_resource,
-                  const std::unique_ptr<TensorDataSet>& data, int32 start,
+                  const std::unique_ptr<DenseTensorType>& data, int32 start,
                   int32 end,
                   const std::function<void(int32, int32)>& set_leaf_id,
                   std::vector<TreePath>* tree_paths) {
   for (int i = start; i < end; ++i) {
     const int32 id =
-        tree_resource->TraverseTree(data, i, nullptr, &(*tree_paths)[i]);
+        tree_resource->TraverseTree(data, i, nullptr, (tree_paths == nullptr) ? nullptr : &(*tree_paths)[i]);
     set_leaf_id(i, id);
   }
 }
@@ -152,10 +155,11 @@ class TreePredictionsOp : public OpKernel {
  public:
   explicit TreePredictionsOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string serialized_params;
-    OP_REQUIRES_OK(context, context->GetAttr("params", &serialized_params));
-    ParseProtoUnlimited(&param_proto_, serialized_params);
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(param_proto_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("leaf_model_type", &leaf_model_type_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("num_output", &num_output_));
+    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(leaf_model_type_, num_output_);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -167,13 +171,13 @@ class TreePredictionsOp : public OpKernel {
     mutex_lock l(*decision_tree_resource->get_mutex());
     core::ScopedUnref unref_me(decision_tree_resource);
 
-    const int num_data = data_set->NumItems();
-    const int32 num_outputs = param_proto_.num_outputs();
+    std::unique_ptr<DenseTensorType> data_set = new DenseTensorType(input_data.tensor<float, 2>());
+    const int num_data = data_set->dimensions()[0];
 
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
     output_shape.AddDim(num_data);
-    output_shape.AddDim(num_outputs);
+    output_shape.AddDim(num_output_);
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape,
                                                      &output_predictions));
     TTypes<float, 2>::Tensor out = output_predictions->tensor<float, 2>();
@@ -224,7 +228,7 @@ class TreePredictionsOp : public OpKernel {
       sum += count;
     }
 
-    if (!is_regression_ && sum > 0 && sum != 1) {
+    if (leaf_model_type_ != LeafModelType.CLASSIFICATION && sum > 0 && sum != 1) {
       for (int j = 0; j < num_output_; ++j) {
         (*out)(i, j) /= sum;
       }
@@ -232,10 +236,8 @@ class TreePredictionsOp : public OpKernel {
   }
 
  private:
-  tensorforest::TensorForestDataSpec input_spec_;
   std::unique_ptr<LeafModelOperator> model_op_;
-  TensorForestParams param_proto_;
-  bool is_regression;
+  int32 leaf_model_type_;
   int32 num_output_;
 };
 
@@ -243,24 +245,10 @@ class TreePredictionsOp : public OpKernel {
 class TraverseTreeV4Op : public OpKernel {
  public:
   explicit TraverseTreeV4Op(OpKernelConstruction* context) : OpKernel(context) {
-    string serialized_params;
-    OP_REQUIRES_OK(context, context->GetAttr("params", &serialized_params));
-    ParseProtoUnlimited(&param_proto_, serialized_params);
-
-    string serialized_proto;
-    OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
-    input_spec_.ParseFromString(serialized_proto);
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(1);
-    const Tensor& sparse_input_indices = context->input(2);
-    const Tensor& sparse_input_values = context->input(3);
-    const Tensor& sparse_input_shape = context->input(4);
-
-    std::unique_ptr<TensorDataSet> data_set(new TensorDataSet(input_spec_, 0));
-    data_set->set_input_tensors(input_data, sparse_input_indices,
-                                sparse_input_values, sparse_input_shape);
 
     DecisionTreeResource* decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
@@ -268,7 +256,8 @@ class TraverseTreeV4Op : public OpKernel {
     mutex_lock l(*decision_tree_resource->get_mutex());
     core::ScopedUnref unref_me(decision_tree_resource);
 
-    const int num_data = data_set->NumItems();
+    std::unique_ptr<DenseTensorType> data_set = new DenseTensorType(input_data.tensor<float, 2>());
+    const int num_data = data_set->dimensions()[0];
 
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
@@ -295,25 +284,22 @@ class TraverseTreeV4Op : public OpKernel {
   }
 
  private:
-  tensorforest::TensorForestDataSpec input_spec_;
-  TensorForestParams param_proto_;
 };
 
 // Update the given leaf models using the batch of labels.
 class UpdateModelV4Op : public OpKernel {
  public:
   explicit UpdateModelV4Op(OpKernelConstruction* context) : OpKernel(context) {
-    string serialized_params;
-    OP_REQUIRES_OK(context, context->GetAttr("params", &serialized_params));
-    ParseProtoUnlimited(&param_proto_, serialized_params);
-
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(param_proto_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("leaf_model_type", &leaf_model_type_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("num_output", &num_output_));
+    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(leaf_model_type_, num_output_);
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& leaf_ids = context->input(1);
     const Tensor& input_labels = context->input(2);
-    const Tensor& input_weights = context->input(3);
 
     DecisionTreeResource* decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
@@ -329,7 +315,6 @@ class UpdateModelV4Op : public OpKernel {
     const int32 num_targets =
         param_proto_.is_regression() ? (std::max(1, label_dim)) : 1;
 
-    TensorInputTarget target(input_labels, input_weights, num_targets);
 
     // TODO(gilberth): Make this thread safe and multi-thread.
     UpdateModel(leaf_ids, target, 0, num_data, decision_tree_resource);
@@ -349,7 +334,8 @@ class UpdateModelV4Op : public OpKernel {
 
  private:
   std::unique_ptr<LeafModelOperator> model_op_;
-  TensorForestParams param_proto_;
+  int32 leaf_model_type_;
+  int32 num_output_;
 };
 
 // Op for getting feature usage counts.
