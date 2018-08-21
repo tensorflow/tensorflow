@@ -13,6 +13,10 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -202,7 +206,7 @@ filegroup(
             "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_not_windows([
+    ) + if_ngraph([
         "@ngraph//:LICENSE",
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE",
