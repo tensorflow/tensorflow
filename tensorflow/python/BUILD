@@ -2614,6 +2614,17 @@ py_library(
     ],
 )
 
+py_test(
+    name = "sparse_ops_test",
+    srcs = ["ops/sparse_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constant_op",
+        ":framework_test_lib",
+        ":sparse_ops",
+    ],
+)
+
 py_library(
     name = "spectral_grad",
     srcs = ["ops/spectral_grad.py"],
