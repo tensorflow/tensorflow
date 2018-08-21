@@ -51,7 +51,7 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
       tpu_system_metadata_lib._query_tpu_system_metadata(
           master,
           cluster_def=cluster_def,
-          query_topology=True))
+          query_topology=False))
 
   return tpu_system_metadata
 
