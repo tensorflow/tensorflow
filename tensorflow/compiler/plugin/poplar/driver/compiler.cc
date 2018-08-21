@@ -73,7 +73,7 @@ limitations under the License.
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
 
-#include <popconv/codelets.hpp>
+#include <poplin/codelets.hpp>
 #include <popnn/codelets.hpp>
 #include <popops/codelets.hpp>
 #include <poprand/codelets.hpp>
@@ -382,7 +382,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   poplar::Graph graph(dev);
   graph.addCodelets(GetPathToGraphProgFile());
-  popconv::addCodelets(graph);
+  poplin::addCodelets(graph);
   popnn::addCodelets(graph);
   popops::addCodelets(graph);
   poprand::addCodelets(graph);

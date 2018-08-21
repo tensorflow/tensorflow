@@ -155,12 +155,12 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
     poplar::Graph& graph, const HloInstruction* inst,
     const HloInstruction* op_target, const HloInstruction* conv_target,
     CompilerResources& resources) {
-  popconv::ConvParams params;
+  poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
   auto name = StrCat(GetDebugName(inst), "_input");
   poplar::OptionFlags opts;
-  poplar::Tensor out = popconv::createInput(graph, params, name, opts,
+  poplar::Tensor out = poplin::createInput(graph, params, name, opts,
                                             &resources.convolution_cache);
   return ShuffleConvolutionInputToTensorflow(conv_target, out);
 }
@@ -169,12 +169,12 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
     poplar::Graph& graph, const HloInstruction* inst,
     const HloInstruction* op_target, const HloInstruction* conv_target,
     CompilerResources& resources) {
-  popconv::ConvParams params;
+  poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
   auto name = StrCat(GetDebugName(inst), "_weights");
   poplar::OptionFlags opts;
-  poplar::Tensor out = popconv::createWeights(graph, params, name, opts,
+  poplar::Tensor out = poplin::createWeights(graph, params, name, opts,
                                               &resources.convolution_cache);
 
   out = RemoveGroupsDimensionFromWeights(params, out, false);
