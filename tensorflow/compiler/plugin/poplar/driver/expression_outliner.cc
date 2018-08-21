@@ -93,7 +93,7 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 }  // namespace
 
 ExpressionOutliner::ExpressionOutliner(struct CompilerAnnotations& annotations)
-    : HloMatcher({}, annotations, true) {}
+    : annotations_(annotations){};
 
 StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
@@ -157,14 +157,10 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   while (all_ops.size() > 0) {
     HloInstruction* root = all_ops.front();
     all_ops.pop_front();
-
-    HloMatcherMatched match;
-    match.computation = comp;
-    match.ok = true;
+    std::vector<HloInstruction*> instructions_to_outline;
 
     std::list<HloInstruction*> potential_list;
     std::set<HloInstruction*> potential_set;
-    std::map<HloInstruction*, HloInstruction*> parameter_map;
 
     std::set<HloInstruction*> outlined;
 
@@ -174,12 +170,12 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
       HloInstruction* inst = potential_list.front();
       potential_list.pop_front();
       potential_set.erase(inst);
-      auto current =
-          std::find(match.instructions.begin(), match.instructions.end(), inst);
-      if (current != match.instructions.end()) {
-        match.instructions.erase(current);
+      auto current = std::find(instructions_to_outline.begin(),
+                               instructions_to_outline.end(), inst);
+      if (current != instructions_to_outline.end()) {
+        instructions_to_outline.erase(current);
       }
-      match.instructions.push_back(inst);
+      instructions_to_outline.push_back(inst);
       outlined.insert(inst);
 
       for (auto* op : inst->operands()) {
@@ -199,25 +195,20 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
           if (potential_set.count(op) == 0) {
             potential_list.push_back(op);
             potential_set.insert(op);
-            parameter_map.erase(op);
           }
-        } else {
-          parameter_map[op] = inst;
         }
       }
     }
 
-    for (auto* inst : match.instructions) {
+    for (auto* inst : instructions_to_outline) {
       all_ops.remove(inst);
     }
 
-    if (match.instructions.size() > 1) {
-      for (auto&& p : parameter_map) {
-        auto pr = std::make_pair(p.second, p.second->operand_index(p.first));
-        match.parameters.push_back(pr);
-      }
-
-      OutlineExpressionFromComputation(match, "__arithmetic_expression", 0);
+    if (instructions_to_outline.size() > 1) {
+      std::reverse(instructions_to_outline.begin(),
+                   instructions_to_outline.end());
+      comp->parent()->OutlineExpressionFromComputation(
+          instructions_to_outline, "__arithmetic_expression", comp);
     }
   }
 

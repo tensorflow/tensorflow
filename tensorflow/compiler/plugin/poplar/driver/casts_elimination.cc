@@ -148,7 +148,7 @@ unsigned CastsElimination::ReplaceNodes() {
 
         // Replace all uses with the new reduction
         OutlinedInfo outlined_info;
-        outlined_info.removed_instructions.push_back(convert_out);
+        outlined_info.removed_or_modified_instructions.push_back(convert_out);
         TF_CHECK_OK(convert_out->ReplaceAllUsesWith(new_reduction));
         replacement_count += MarkReplacedInstructions(outlined_info);
       }
@@ -166,7 +166,7 @@ unsigned CastsElimination::ReplaceNodes() {
 
         // Replace all uses with val_in
         OutlinedInfo outlined_info;
-        outlined_info.removed_instructions.push_back(convert_out);
+        outlined_info.removed_or_modified_instructions.push_back(convert_out);
         TF_CHECK_OK(convert_out->ReplaceAllUsesWith(val_in));
         replacement_count += MarkReplacedInstructions(outlined_info);
       }
