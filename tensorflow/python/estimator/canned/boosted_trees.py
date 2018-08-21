@@ -981,8 +981,7 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
                       for tree in tree_ensemble.trees]
   tree_importances = np.array(tree_importances)
   tree_weights = np.array(tree_ensemble.tree_weights).reshape(-1, 1)
-  feature_importances = np.sum(tree_importances * tree_weights,
-                               axis=0) / np.sum(tree_weights)
+  feature_importances = np.sum(tree_importances * tree_weights, axis=0)
   assert np.all(feature_importances >= 0), ('feature_importances '
                                             'must be non-negative.')
   if normalize:

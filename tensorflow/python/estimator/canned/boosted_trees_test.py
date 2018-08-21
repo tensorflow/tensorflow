@@ -556,7 +556,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
-        n_trees=1,
+        n_trees=2,
         max_depth=5)
 
     # It will stop after 5 steps because of the max depth and num trees.
@@ -568,11 +568,11 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
 
     feature_names, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.2669208, 0.21333334, 0.0], importances)
+    self.assertAllClose([0.833933, 0.606342, 0.0], importances)
 
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.55579074, 0.44420926, 0.0], importances)
+    self.assertAllClose([0.579010, 0.420990, 0.0], importances)
 
   def testFeatureImportancesOnEmtpyEnsemble(self):
     input_fn = _make_train_input_fn(is_classification=True)
@@ -696,7 +696,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
     feature_names, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([2.5, 1.5, 1.0], importances)
+    self.assertAllClose([5.0, 3.0, 2.0], importances)
 
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
@@ -803,7 +803,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_names_expected = ['f_2_bucketized', 'f_0_bucketized', 'f_1_bucketized']
     feature_names, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([1.5, 0.5, 0.0], importances)
+    self.assertAllClose([3.0, 1.0, 0.0], importances)
 
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
@@ -934,7 +934,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
     feature_names, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([2, 1.2, 0.8], importances)
+    self.assertAllClose([10, 6.0, 4.0], importances)
 
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
@@ -1002,7 +1002,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
                               'categorical_indicator:bad']
     feature_names, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([2.5, 1.5, 1.0, 0.0], importances)
+    self.assertAllClose([5.0, 3.0, 2.0, 0.0], importances)
 
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
