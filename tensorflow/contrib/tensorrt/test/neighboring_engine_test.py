@@ -37,6 +37,7 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [2, 3, 7, 5]
+    output_name = "output"
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
@@ -54,18 +55,20 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
       t = math_ops.mul(conv, b, name="mul")
       e = self.trt_incompatible_op(conv, name="incompatible")
       t = math_ops.sub(t, e, name="sub")
-      array_ops.squeeze(t, name=self.output_name)
+      array_ops.squeeze(t, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        expected_engines={
-            "my_trt_op_0": ["bias", "mul", "sub"],
-            "my_trt_op_1": ["weights", "conv"]
-        },
-        expected_output_dims=(2, 4, 5, 4),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(2, 4, 5, 4)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {
+        "my_trt_op_0": ["bias", "mul", "sub"],
+        "my_trt_op_1": ["weights", "conv"]
+    }
 
 
 if __name__ == "__main__":

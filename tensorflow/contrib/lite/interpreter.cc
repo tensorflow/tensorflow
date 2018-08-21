@@ -157,7 +157,7 @@ Interpreter::~Interpreter() {
     TfLiteTensor* tensor = &context_.tensors[i];
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
         tensor->delegate->FreeBufferHandle != nullptr) {
-      tensor->delegate->FreeBufferHandle(tensor->delegate,
+      tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
                                          &tensor->buffer_handle);
     }
     TfLiteTensorFree(tensor);
@@ -988,7 +988,7 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
   tensor->delegate = delegate;
   if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
     TF_LITE_ENSURE(&context_, tensor->delegate->FreeBufferHandle != nullptr);
-    tensor->delegate->FreeBufferHandle(tensor->delegate,
+    tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
                                        &tensor->buffer_handle);
   }
   tensor->buffer_handle = buffer_handle;

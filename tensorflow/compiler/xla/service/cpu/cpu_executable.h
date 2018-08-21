@@ -85,6 +85,16 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
  private:
+  // This is for sharing the code between ExecuteOnStream and
+  // ExecuteAsyncOnStream.
+  //
+  // Notice that it's tricky to use correctly, as the profile object (when it
+  // exists) must out-live the task.
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      HloExecutionProfile* hlo_execution_profile);
+
   // Creates an array suitable for passing as the "temps" argument to the JIT
   // compiled function pointer.
   //

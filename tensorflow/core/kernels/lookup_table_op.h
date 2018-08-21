@@ -102,9 +102,12 @@ class LookupTableOp : public OpKernel {
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
     if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
-      TF_CHECK_OK(
-          cinfo_.resource_manager()->template Delete<lookup::LookupInterface>(
-              cinfo_.container(), cinfo_.name()));
+      if (!cinfo_.resource_manager()
+               ->template Delete<lookup::LookupInterface>(cinfo_.container(),
+                                                          cinfo_.name())
+               .ok()) {
+        // Do nothing; the resource can have been deleted by session resets.
+      }
     }
   }
 

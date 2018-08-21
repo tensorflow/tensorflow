@@ -882,24 +882,28 @@ Status XlaBuilder::VerifyConvolution(
 
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
-                       Padding padding) {
+                       Padding padding, int64 feature_group_count) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
-      CreateDefaultConvDimensionNumbers(window_strides.size()));
+      CreateDefaultConvDimensionNumbers(window_strides.size()),
+      feature_group_count);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    int64 feature_group_count) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
-                     CreateDefaultConvDimensionNumbers(window_strides.size()));
+                     CreateDefaultConvDimensionNumbers(window_strides.size()),
+                     feature_group_count);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
@@ -926,7 +930,7 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
     return ConvGeneral(lhs, rhs, window_strides,
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
-                       dimension_numbers);
+                       dimension_numbers, feature_group_count);
   });
 }
 
@@ -934,9 +938,10 @@ XlaOp XlaBuilder::ConvGeneral(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
-                            dimension_numbers);
+                            dimension_numbers, feature_group_count);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -945,7 +950,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -964,12 +970,13 @@ XlaOp XlaBuilder::ConvGeneralDilated(
                         MakeWindow(window_dimensions, window_strides, padding,
                                    lhs_dilation, rhs_dilation));
 
-    TF_ASSIGN_OR_RETURN(
-        *instr.mutable_shape(),
-        ShapeInference::InferConvolveShape(lhs_shape, rhs_shape, instr.window(),
-                                           dimension_numbers));
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferConvolveShape(
+                            lhs_shape, rhs_shape, instr.window(),
+                            dimension_numbers, feature_group_count));
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
+    instr.set_feature_group_count(feature_group_count);
 
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
@@ -1073,6 +1080,23 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           "Replicated sharding is not yet supported for infeeds");
     }
 
+    // Infeed takes a single token operand. Generate the token to pass to the
+    // infeed.
+    XlaOp token;
+    auto make_token = [&]() {
+      HloInstructionProto token_instr;
+      *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+      return AddInstruction(std::move(token_instr), HloOpcode::kAfterAll, {});
+    };
+    if (sharding()) {
+      // Arbitrarily assign token to device 0.
+      OpSharding sharding = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, sharding);
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    }
+
     // The sharding is set by the client according to the data tuple shape.
     // However, the shape of the infeed instruction is a tuple containing the
     // data and a token. For tuple sharding type, the sharding must be changed
@@ -1088,11 +1112,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
           sharding_builder::AssignDevice(0);
       XlaScopedShardingAssignment scoped_sharding(this,
                                                   infeed_instruction_sharding);
-      TF_ASSIGN_OR_RETURN(
-          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
+      TF_ASSIGN_OR_RETURN(infeed, AddInstruction(std::move(instr),
+                                                 HloOpcode::kInfeed, {token}));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          infeed, AddInstruction(std::move(instr), HloOpcode::kInfeed, {}));
+      TF_ASSIGN_OR_RETURN(infeed, AddInstruction(std::move(instr),
+                                                 HloOpcode::kInfeed, {token}));
     }
 
     // The infeed instruction produces a tuple of the infed data and a token
@@ -1158,8 +1182,15 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
 
     instr.set_outfeed_config(outfeed_config);
 
+    // Outfeed takes a token as its second operand. Generate the token to pass
+    // to the outfeed.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
+
     TF_RETURN_IF_ERROR(
-        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand})
+        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand, token})
             .status());
 
     // The outfeed instruction produces a token. However, existing users expect
@@ -1600,27 +1631,27 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
   });
 }
 
-XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
                          const GatherDimensionNumbers& dimension_numbers,
-                         tensorflow::gtl::ArraySlice<int64> window_bounds) {
+                         tensorflow::gtl::ArraySlice<int64> slice_sizes) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
-    TF_ASSIGN_OR_RETURN(const Shape& gather_indices_shape,
-                        GetShape(gather_indices));
+    TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
+                        GetShape(start_indices));
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
-        ShapeInference::InferGatherShape(input_shape, gather_indices_shape,
-                                         dimension_numbers, window_bounds));
+        ShapeInference::InferGatherShape(input_shape, start_indices_shape,
+                                         dimension_numbers, slice_sizes));
 
     *instr.mutable_gather_dimension_numbers() = dimension_numbers;
-    for (int64 bound : window_bounds) {
-      instr.add_gather_window_bounds(bound);
+    for (int64 bound : slice_sizes) {
+      instr.add_gather_slice_sizes(bound);
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kGather,
-                          {input, gather_indices});
+                          {input, start_indices});
   });
 }
 
@@ -2538,32 +2569,38 @@ XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
-           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
-  return lhs.builder()->Conv(lhs, rhs, window_strides, padding);
+           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+           int64 feature_group_count) {
+  return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
+                             feature_group_count);
 }
 
 XlaOp ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    int64 feature_group_count) {
   return lhs.builder()->ConvWithGeneralPadding(lhs, rhs, window_strides,
-                                               padding);
+                                               padding, feature_group_count);
 }
 
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return lhs.builder()->ConvWithGeneralDimensions(lhs, rhs, window_strides,
-                                                  padding, dimension_numbers);
+                                                  padding, dimension_numbers,
+                                                  feature_group_count);
 }
 
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   tensorflow::gtl::ArraySlice<int64> window_strides,
                   tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-                  const ConvolutionDimensionNumbers& dimension_numbers) {
+                  const ConvolutionDimensionNumbers& dimension_numbers,
+                  int64 feature_group_count) {
   return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
-                                    dimension_numbers);
+                                    dimension_numbers, feature_group_count);
 }
 
 XlaOp ConvGeneralDilated(
@@ -2572,10 +2609,11 @@ XlaOp ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return lhs.builder()->ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                           lhs_dilation, rhs_dilation,
-                                           dimension_numbers);
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
+  return lhs.builder()->ConvGeneralDilated(
+      lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+      dimension_numbers, feature_group_count);
 }
 
 XlaOp Fft(const XlaOp& operand, FftType fft_type,
@@ -2868,11 +2906,11 @@ XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                             mantissa_bits);
 }
 
-XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return input.builder()->Gather(input, gather_indices, dimension_numbers,
-                                 window_bounds);
+             tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  return input.builder()->Gather(input, start_indices, dimension_numbers,
+                                 slice_sizes);
 }
 
 XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,

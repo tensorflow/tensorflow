@@ -37,6 +37,7 @@ class ConcatenationTest(trt_test.TfTrtIntegrationTestBase):
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [2, 3, 3, 1]
+    output_name = "output"
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
@@ -68,15 +69,17 @@ class ConcatenationTest(trt_test.TfTrtIntegrationTestBase):
       concat1 = array_ops.concat([r1, r2, r3, r4, r5, r6], axis=-1)
       concat2 = array_ops.concat([r7, r8, r9, r10, r11, r12], axis=3)
       x = array_ops.concat([concat1, concat2], axis=-1)
-      gen_array_ops.reshape(x, [2, -1], name=self.output_name)
+      gen_array_ops.reshape(x, [2, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        expected_engines=["my_trt_op_0"],
-        expected_output_dims=(2, 126),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(2, 126)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["my_trt_op_0"]
 
 
 if __name__ == "__main__":

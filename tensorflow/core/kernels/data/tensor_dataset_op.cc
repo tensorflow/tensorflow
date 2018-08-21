@@ -43,10 +43,10 @@ class TensorDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
-        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
+        : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         shapes_.emplace_back(t.shape().dim_sizes());

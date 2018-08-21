@@ -22,8 +22,8 @@ Standard `Estimators` can drive models on CPU and GPUs. You must use
 `tf.contrib.tpu.TPUEstimator` to drive a model on TPUs.
 
 Refer to TensorFlow's Getting Started section for an introduction to the basics
-of using a @{$premade_estimators$pre-made `Estimator`}, and
-@{$custom_estimators$custom `Estimator`s}.
+of using a [pre-made `Estimator`](../guide/premade_estimators.md), and
+[custom `Estimator`s](../guide/custom_estimators.md).
 
 The `TPUEstimator` class differs somewhat from the `Estimator` class.
 
@@ -171,9 +171,9 @@ This section details the changes you must make to the model function
 During regular usage TensorFlow attempts to determine the shapes of each
 `tf.Tensor` during graph construction. During execution any unknown shape
 dimensions are determined dynamically,
-see @{$guide/tensors#shape$Tensor Shapes} for more details.
+see [Tensor Shapes](../guide/tensors.md#shape) for more details.
 
-To run on Cloud TPUs TensorFlow models are compiled using @{$xla$XLA}.
+To run on Cloud TPUs TensorFlow models are compiled using [XLA](../performance/xla/index.md).
 XLA uses a similar system for determining shapes at compile time. XLA requires
 that all tensor dimensions be statically defined at compile time. All shapes
 must evaluate to a constant, and not depend on external data, or stateful
@@ -184,7 +184,7 @@ operations like variables or a random number generator.
 
 Remove any use of `tf.summary` from your model.
 
-@{$summaries_and_tensorboard$TensorBoard summaries} are a great way see inside
+[TensorBoard summaries](../guide/summaries_and_tensorboard.md) are a great way see inside
 your model. A minimal set of basic summaries are automatically recorded by the
 `TPUEstimator`, to `event` files in the `model_dir`. Custom summaries, however,
 are currently unsupported when training on a Cloud TPU. So while the
@@ -343,7 +343,7 @@ weight when creating your `tf.metrics`.
 
 Efficient use of the `tf.data.Dataset` API is critical when using a Cloud
 TPU, as it is impossible to use the Cloud TPU's unless you can feed it data
-quickly enough. See @{$datasets_performance} for details on dataset performance.
+quickly enough. See [Input Pipeline Performance Guide](../performance/datasets_performance.md) for details on dataset performance.
 
 For all but the simplest experimentation (using
 `tf.data.Dataset.from_tensor_slices` or other in-graph data) you will need to
@@ -361,7 +361,7 @@ Small datasets can be loaded entirely into memory using
 `tf.data.Dataset.cache`.
 
 Regardless of the data format used, it is strongly recommended that you
-@{$performance_guide#use_large_files$use large files}, on the order of
+[use large files](../performance/performance_guide.md#use_large_files), on the order of
 100MB. This is especially important in this networked setting as the overhead
 of opening a file is significantly higher.
 
@@ -391,5 +391,5 @@ to make a Cloud TPU compatible model are the example models published in:
 
 For more information about tuning TensorFlow code for performance see:
 
- * The @{$performance$Performance Section.}
+ * The [Performance Section.](../performance/index.md)
 

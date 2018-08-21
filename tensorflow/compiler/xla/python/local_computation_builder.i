@@ -1011,6 +1011,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Pow;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
+%unignore xla::swig::LocalComputationBuilder::SortKeyVal;
 %unignore xla::swig::LocalComputationBuilder::Sqrt;
 %unignore xla::swig::LocalComputationBuilder::Rsqrt;
 %unignore xla::swig::LocalComputationBuilder::Square;

@@ -56,11 +56,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      def step_fn(ctx, inputs):
+      def step_fn(ctx, *inputs):
         del ctx  # Unused
         return distribution.group(
             distribution.call_for_each_tower(
-                model_fn, inputs, run_concurrently=layer.built))
+                model_fn, *inputs, run_concurrently=layer.built))
 
       iterator = distribution.distribute_dataset(
           dataset_fn).make_one_shot_iterator()
@@ -153,11 +153,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           use_callable_loss=True,
           create_optimizer_inside_model_fn=True)
 
-      def step_fn(ctx, inputs):
+      def step_fn(ctx, *inputs):
         del ctx  # Unused
         return distribution.group(
             distribution.call_for_each_tower(
-                model_fn, inputs, run_concurrently=layer.built))
+                model_fn, *inputs, run_concurrently=layer.built))
 
       iterator = distribution.distribute_dataset(
           dataset_fn).make_one_shot_iterator()
@@ -231,11 +231,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, mirrored_strategy.MirroredStrategy):
         self.assertFalse(distribution._prefetch_on_device)
 
-      def step_fn(ctx, inputs):
+      def step_fn(ctx, *inputs):
         del ctx  # Unused
         fetches = distribution.unwrap(
             distribution.call_for_each_tower(
-                model_fn, inputs, run_concurrently=batchnorm.built))
+                model_fn, *inputs, run_concurrently=batchnorm.built))
         if update_ops_in_cross_tower_mode:
           fetches += ops.get_collection(ops.GraphKeys.UPDATE_OPS)
         return control_flow_ops.group(fetches)
@@ -328,9 +328,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         labels = dataset_ops.Dataset.from_tensors([[6.], [21.]])
         return dataset_ops.Dataset.zip((features, labels)).repeat()
 
-      def step_fn(ctx, inputs):
+      def step_fn(ctx, x, y):
         del ctx  # Unused
-        x, y = inputs
         return distribution.group(
             distribution.call_for_each_tower(
                 model_fn, x, y, run_concurrently=False))
@@ -417,9 +416,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         output_context.set_non_tensor_output(key1, value1)
         return (train_op, loss)
 
-      def step_fn(output_context, inputs):
+      def step_fn(output_context, *inputs):
         (train_op, loss) = distribution.call_for_each_tower(
-            model_fn, output_context, inputs, run_concurrently=False)
+            model_fn, output_context, *inputs, run_concurrently=False)
         output_context.set_last_step_output(
             name="cross_tower_loss_agg",
             output=loss,

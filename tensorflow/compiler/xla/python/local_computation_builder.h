@@ -301,6 +301,11 @@ class LocalComputationBuilder {
 
   StatusOr<bool> IsConstant(const LocalOp& operand);
 
+  LocalOp Sort(const LocalOp& operand, int64 dimension);
+
+  LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
+                     int64 dimension);
+
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
@@ -357,7 +362,6 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Tanh)
   _FORWARD_UNOP(IsFinite)
   _FORWARD_UNOP(Neg)
-  _FORWARD_UNOP(Sort)
   _FORWARD_UNOP(Sqrt)
   _FORWARD_UNOP(Rsqrt)
   _FORWARD_UNOP(Square)

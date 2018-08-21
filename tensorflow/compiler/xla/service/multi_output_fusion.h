@@ -104,16 +104,16 @@ class MultiOutputFusion : public HloPassInterface {
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
 
- private:
-  // Update the internal data structures after instr1 and instr2 are fused into
-  // one fusion instruction.
-  void Update(HloInstruction* instr1, HloInstruction* instr2);
-
   // Optimization fuel is a compiler debugging technique that makes an
   // optimization pass stop what it is doing after having made N changes to the
   // program, where N is the fuel. By varying N, this can be used to find the
   // first single change that makes a test fail.
   int64 fuel_;
+
+ private:
+  // Update the internal data structures after instr1 and instr2 are fused into
+  // one fusion instruction.
+  void Update(HloInstruction* instr1, HloInstruction* instr2);
 
   // Computation for the pass.
   HloComputation* computation_;

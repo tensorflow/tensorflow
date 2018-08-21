@@ -108,7 +108,6 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/data_feeder_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
@@ -164,7 +163,6 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 py_test(
@@ -591,7 +589,6 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/io_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/learn/python/learn/datasets",

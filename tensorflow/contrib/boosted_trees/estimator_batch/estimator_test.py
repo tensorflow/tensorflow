@@ -16,7 +16,10 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import tempfile
+import numpy as np
+
 from tensorflow.contrib.boosted_trees.estimator_batch import estimator
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.layers.python.layers import feature_column as contrib_feature_column
@@ -26,6 +29,7 @@ from tensorflow.python.feature_column import feature_column_lib as core_feature_
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
@@ -472,6 +476,63 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
     classifier.train(input_fn=_multiclass_train_input_fn, steps=100)
     classifier.evaluate(input_fn=_multiclass_train_input_fn, steps=1)
     classifier.predict(input_fn=_eval_input_fn)
+
+  def testWeightedCategoricalColumn(self):
+    head_fn = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 1
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    feature_columns = [
+        core_feature_column.weighted_categorical_column(
+            categorical_column=core_feature_column.
+            categorical_column_with_vocabulary_list(
+                key="word", vocabulary_list=["the", "cat", "dog"]),
+            weight_feature_key="weight")
+    ]
+
+    labels = np.array([[1], [1], [0], [0.]], dtype=np.float32)
+
+    def _make_input_fn():
+
+      def _input_fn():
+        features_dict = {}
+        # Sparse tensor representing
+        # example 0: "cat","the"
+        # examaple 1: "dog"
+        # example 2: -
+        # example 3: "the"
+        # Weights for the words are 5 - cat, 6- dog and 1 -the.
+        features_dict["word"] = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [0, 1], [1, 0], [3, 0]],
+            values=constant_op.constant(
+                ["the", "cat", "dog", "the"], dtype=dtypes.string),
+            dense_shape=[4, 3])
+        features_dict["weight"] = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [0, 1], [1, 0], [3, 0]],
+            values=[1., 5., 6., 1.],
+            dense_shape=[4, 3])
+        return features_dict, labels
+
+      return _input_fn
+
+    est = estimator.CoreGradientBoostedDecisionTreeEstimator(
+        head=head_fn,
+        learner_config=learner_config,
+        num_trees=1,
+        examples_per_layer=3,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=feature_columns)
+
+    input_fn = _make_input_fn()
+    est.train(input_fn=input_fn, steps=100)
+    est.evaluate(input_fn=input_fn, steps=1)
+    est.predict(input_fn=input_fn)
 
 
 if __name__ == "__main__":

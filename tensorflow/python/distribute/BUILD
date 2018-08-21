@@ -41,3 +41,43 @@ py_test(
         "//tensorflow/python:variables",
     ],
 )
+
+py_library(
+    name = "distribute_coordinator_context",
+    srcs = [
+        "distribute_coordinator_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
+    name = "multi_worker_util",
+    srcs = [
+        "multi_worker_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_test(
+    name = "multi_worker_util_test",
+    srcs = ["multi_worker_util_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":multi_worker_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

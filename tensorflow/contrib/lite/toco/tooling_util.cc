@@ -2278,4 +2278,14 @@ void UndoWeightsShuffling(Model* model) {
   }
 }
 
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst) {
+  if (src.minmax) {
+    dst->GetOrCreateMinMax() = src.GetMinMax();
+  }
+  if (src.quantization_params) {
+    dst->GetOrCreateQuantizationParams() = src.GetQuantizationParams();
+  }
+  dst->narrow_range = src.narrow_range;
+}
+
 }  // namespace toco

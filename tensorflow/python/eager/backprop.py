@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -557,7 +558,7 @@ def _aggregate_grads(gradients):
   if len(gradients) == 1:
     return gradients[0]
   if all([isinstance(g, ops.Tensor) for g in gradients]):
-    return math_ops.add_n(gradients)
+    return gen_math_ops.add_n(gradients)
   else:
     assert all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
                 for g in gradients])
@@ -592,7 +593,9 @@ def _num_elements(grad):
 
 
 def _fast_fill(value, shape, dtype):
-  return array_ops.fill(shape, constant_op.constant(value, dtype=dtype))
+  return array_ops.fill(
+      constant_op.constant(shape, dtype=dtypes.int32),
+      constant_op.constant(value, dtype=dtype))
 
 
 def _zeros(shape, dtype):

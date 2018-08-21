@@ -106,6 +106,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(False, name="bool_test")
       self.assertAllEqual(bool(v), False)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testStridedSliceAssign(self):
+    v = resource_variable_ops.ResourceVariable([1.0, 2.0])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(v[0].assign(2.0))
+    self.assertAllEqual(self.evaluate(v), [2.0, 2.0])
+
   def testDifferentAssignGraph(self):
     with ops.Graph().as_default():
       v = resource_variable_ops.ResourceVariable(1.0)

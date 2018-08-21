@@ -94,26 +94,8 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
         ops.set_shape_and_handle_data_for_outputs(h.op)
       handle._handle_data = h._handle_data
     # pylint: enable=protected-access
-
-  # Clean up our reference cycles to avoid making the garbage collector run.
-  # pylint: disable=protected-access
-  # OrderedDict, constructed on Graph creation, makes a simple reference loop
-  # and hides it in an __attribute in some Python versions. We don't need to
-  # throw an error if we can't find it, but if we do find it we can break the
-  # loop to avoid creating work for the garbage collector.
-  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
-  # pylint: enable=protected-access
-  if problematic_cycle:
-    try:
-      del problematic_cycle[0][:]
-    except TypeError:
-      # This is probably not one of the problematic Python versions. Continue
-      # with the rest of our cleanup.
-      pass
-  # Now clean up our own reference cycles by clearing all of the attributes for
-  # the Graph and op we created.
-  h.__dict__ = {}
-  graph.__dict__ = {}
+  # Clean up op->graph->op reference cycles.
+  ops.dismantle_graph(graph)
   return handle
 
 
@@ -185,7 +167,8 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
-  See the @{$variables$Variables How To} for a high level overview.
+  See the [Variables How To](https://tensorflow.org/guide/variables)
+  for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.

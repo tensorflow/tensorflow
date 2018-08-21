@@ -23,6 +23,7 @@ import numpy as np
 import six
 
 from tensorflow.contrib import lookup
+from tensorflow.contrib.data.python.ops import counter
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -434,8 +435,10 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual([[0, 1], [2, 3], [-1, -1]], result)
 
       exported_keys, exported_values = table.export()
-      self.assertAllEqual([None], exported_keys.get_shape().as_list())
-      self.assertAllEqual([None, 2], exported_values.get_shape().as_list())
+      self.assertAllEqual([None], exported_keys.get_shape().as_list(),
+                          msg="Saw shape %s" % exported_keys.shape)
+      self.assertAllEqual([None, 2], exported_values.get_shape().as_list(),
+                          msg="Saw shape %s" % exported_values.shape)
       # exported data is in the order of the internal map, i.e. undefined
       sorted_keys = np.sort(exported_keys.eval())
       sorted_values = np.sort(exported_values.eval())
@@ -644,11 +647,11 @@ class MutableHashTableOpTest(test.TestCase):
                                       default_val)
 
       # insert with keys of the wrong type
-      with self.assertRaises(TypeError):
+      with self.assertRaises(ValueError):
         table.insert(constant_op.constant([4, 5, 6]), values).run()
 
       # insert with values of the wrong type
-      with self.assertRaises(TypeError):
+      with self.assertRaises(ValueError):
         table.insert(keys, constant_op.constant(["a", "b", "c"])).run()
 
       self.assertAllEqual(0, table.size().eval())
@@ -669,7 +672,7 @@ class MutableHashTableOpTest(test.TestCase):
 
       # lookup with keys of the wrong type
       input_string = constant_op.constant([1, 2, 3], dtypes.int64)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(ValueError):
         table.lookup(input_string).eval()
 
       # default value of the wrong type
@@ -853,7 +856,8 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       input_string = constant_op.constant([11, 12, 15], dtypes.int64)
       output = table.lookup(input_string)
-      self.assertAllEqual([3, 4], output.get_shape())
+      self.assertAllEqual(
+          [3, 4], output.shape, msg="Saw shape: %s" % output.shape)
 
       result = output.eval()
       self.assertAllEqual([[0, 1, 2, 3], [3, 4, 5, 6], [-1, -2, -3, -4]],
@@ -2392,6 +2396,61 @@ class IdTableWithHashBucketsTest(test.TestCase):
             lookup_table,
             oov_buckets,
             hasher_spec=lookup.StrongHashSpec([None, 2]))
+
+
+class MutableHashTableBenchmark(test.Benchmark):
+
+  def _create_table(self):
+    return lookup.MutableHashTable(dtypes.int64, dtypes.float32, 0.0)
+
+  def benchmark_single_repeated_scalar_insert_scalar(self):
+    table = self._create_table()
+    value = variables.Variable(1.0)
+    insert = table.insert(0, value)
+    size = table.size()
+    with session.Session() as sess:
+      sess.run(value.initializer)
+      self.run_op_benchmark(sess, insert, burn_iters=10, min_iters=10000)
+      assert sess.run(size) == 1
+
+  def benchmark_many_repeated_scalar_insert_scalar(self):
+    table = self._create_table()
+    c = counter.Counter().make_one_shot_iterator().get_next()
+    value = variables.Variable(1.0)
+    insert = table.insert(c, value)
+    size = table.size()
+    with session.Session() as sess:
+      sess.run(value.initializer)
+      self.run_op_benchmark(sess, insert, burn_iters=10, min_iters=10000)
+      assert sess.run(size) >= 10000
+
+  def benchmark_single_repeated_batch_32_insert_scalar(self):
+    table = self._create_table()
+    value = variables.Variable([1.0] * 32)
+    insert = table.insert(list(range(32)), value)
+    size = table.size()
+    with session.Session() as sess:
+      sess.run(value.initializer)
+      self.run_op_benchmark(sess, insert, burn_iters=10, min_iters=1000)
+      assert sess.run(size) == 32
+
+  def benchmark_many_repeated_batch_32_insert_scalar(self):
+    table = self._create_table()
+    c = counter.Counter().make_one_shot_iterator().get_next()
+    value = variables.Variable([1.0] * 32)
+    insert = table.insert(32 * c + list(range(32)), value)
+    size = table.size()
+    with session.Session() as sess:
+      sess.run(value.initializer)
+      self.run_op_benchmark(sess, insert, burn_iters=10, min_iters=1000)
+      assert sess.run(size) >= 1000*32
+
+
+class MutableDenseHashTableBenchmark(MutableHashTableBenchmark):
+
+  def _create_table(self):
+    return lookup.MutableDenseHashTable(
+        dtypes.int64, dtypes.float32, default_value=0.0, empty_key=-1)
 
 
 if __name__ == "__main__":

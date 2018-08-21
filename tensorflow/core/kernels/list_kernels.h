@@ -261,14 +261,15 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
         out_tensor.flat<dtype>().constant(dtype(0));             \
     break;
 
-      TF_CALL_NUMBER_TYPES(DTYPE_CASE)
+      TF_CALL_POD_TYPES(DTYPE_CASE)
 
 #undef DTYPE_CASE
       default:
         return errors::InvalidArgument(
-            "Trying to compute zeros_like for unsupported dtype",
-            out_tensor.dtype());
+            "Trying to compute zeros_like for unsupported dtype ",
+            DataTypeString(out_tensor.dtype()));
     }
+    y->tensors.emplace_back(out_tensor);
   }
   return Status::OK();
 }

@@ -281,27 +281,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kInfeed: {
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
-      if (proto.operand_ids_size() == 0) {
-        // TODO(b/80000000): Remove this when all uses of infeed are
-        // converted to take tokens.
-        instruction = CreateInfeed(data_shape, proto.infeed_config());
-      } else {
-        CHECK_EQ(proto.operand_ids_size(), 1);
-        instruction =
-            CreateInfeed(data_shape, operands(0), proto.infeed_config());
-      }
+      TF_RET_CHECK(proto.operand_ids_size() == 1);
+      instruction =
+          CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed:
-      if (proto.operand_ids_size() == 1) {
-        // TODO(b/80000000): Remove this when all uses of outfeed are
-        // converted to take tokens.
-        instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
-                                    proto.outfeed_config());
-      } else {
-        CHECK_EQ(proto.operand_ids_size(), 2);
-        instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
-                                    operands(1), proto.outfeed_config());
-      }
+      TF_RET_CHECK(proto.operand_ids_size() == 2);
+      instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
+                                  operands(1), proto.outfeed_config());
       break;
     case HloOpcode::kCrossReplicaSum: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -335,9 +322,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
-      instruction =
-          CreateConvolve(proto.shape(), operands(0), operands(1),
-                         proto.window(), proto.convolution_dimension_numbers());
+      instruction = CreateConvolve(
+          proto.shape(), operands(0), operands(1), proto.window(),
+          proto.convolution_dimension_numbers(),
+          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
       break;
     case HloOpcode::kReduceWindow:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
@@ -404,13 +392,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Gather instruction should have GatherDimensionNumbers set.";
       std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
           MakeUnique<GatherDimensionNumbers>(proto.gather_dimension_numbers());
-      std::vector<int64> gather_window_bounds;
-      for (int64 bound : proto.gather_window_bounds()) {
-        gather_window_bounds.push_back(bound);
+      std::vector<int64> gather_slice_sizes;
+      for (int64 bound : proto.gather_slice_sizes()) {
+        gather_slice_sizes.push_back(bound);
       }
-      instruction =
-          CreateGather(proto.shape(), operands(0), operands(1),
-                       *gather_dimension_numbers, gather_window_bounds);
+      instruction = CreateGather(proto.shape(), operands(0), operands(1),
+                                 *gather_dimension_numbers, gather_slice_sizes);
       break;
     }
     case HloOpcode::kScatter: {
@@ -622,10 +609,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
-  return MakeUnique<HloConvolutionInstruction>(shape, lhs, rhs, window,
-                                               dimension_numbers);
+    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
+  return MakeUnique<HloConvolutionInstruction>(
+      shape, lhs, rhs, window, dimension_numbers, feature_group_count);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -694,23 +681,11 @@ HloInstruction::CreateCrossReplicaSum(
   return MakeUnique<HloInfeedInstruction>(infeed_shape, token_operand, config);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
-    const Shape& infeed_shape, const string& config) {
-  return MakeUnique<HloInfeedInstruction>(infeed_shape, config);
-}
-
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
     const Shape& outfeed_shape, HloInstruction* operand,
     HloInstruction* token_operand, tensorflow::StringPiece outfeed_config) {
   return MakeUnique<HloOutfeedInstruction>(outfeed_shape, operand,
                                            token_operand, outfeed_config);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
-    const Shape& outfeed_shape, HloInstruction* operand,
-    tensorflow::StringPiece outfeed_config) {
-  return MakeUnique<HloOutfeedInstruction>(outfeed_shape, operand,
-                                           outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
@@ -1102,11 +1077,11 @@ bool HloInstruction::HasSideEffect() const {
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
-    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> window_bounds) {
-  return MakeUnique<HloGatherInstruction>(shape, operand, gather_indices,
-                                          gather_dim_numbers, window_bounds);
+    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  return MakeUnique<HloGatherInstruction>(shape, operand, start_indices,
+                                          gather_dim_numbers, slice_sizes);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
@@ -3206,6 +3181,10 @@ void HloInstruction::set_convolution_dimension_numbers(
   }
 }
 
+int64 HloInstruction::feature_group_count() const {
+  return Cast<HloConvolutionInstruction>(this)->feature_group_count();
+}
+
 HloComputation* HloInstruction::select() const {
   return Cast<HloSelectAndScatterInstruction>(this)->select();
 }
@@ -3246,9 +3225,8 @@ const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {
   return Cast<HloGatherInstruction>(this)->gather_dimension_numbers();
 }
 
-tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_window_bounds()
-    const {
-  return Cast<HloGatherInstruction>(this)->gather_window_bounds();
+tensorflow::gtl::ArraySlice<int64> HloInstruction::gather_slice_sizes() const {
+  return Cast<HloGatherInstruction>(this)->gather_slice_sizes();
 }
 
 const ScatterDimensionNumbers& HloInstruction::scatter_dimension_numbers()
