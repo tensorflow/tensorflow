@@ -485,6 +485,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     progs.push_back(visitor.host_to_device);
     progs.push_back(visitor.device_to_host);
 
+    char* vertex_filename = getenv("TF_DUMP_VERTEX_GRAPH");
+    if (vertex_filename) {
+      std::ofstream stream(vertex_filename);
+      graph.outputVertexGraph(stream, progs);
+    }
+
     if (visitor.all_outputs_are_parameters) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";
     } else {
