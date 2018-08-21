@@ -601,7 +601,7 @@ class FileIoTest(test.TestCase):
     # Change noread to noread access.
     os.chmod(noread_path, 0)
     expected_match = [
-        compat.as_bytes(os.path.join(any_path, name)) for name in files]
+        os.path.join(any_path, name) for name in files]
     self.assertItemsEqual(
         file_io.get_matching_files(os.path.join(dir_path, "*", "file*.txt")),
         expected_match)
