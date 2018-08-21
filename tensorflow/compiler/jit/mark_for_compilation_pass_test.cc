@@ -199,7 +199,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
                                 {}, {{{"n_c"}, "UncompilableUnary", {"n_a"}}});
   FunctionDef noinline = compilable;
   noinline.mutable_signature()->set_name("NoInlineFn");
-  AddAttr("_noinline", bool(true), noinline.mutable_attr());
+  AddAttr("_noinline", static_cast<bool>(true), noinline.mutable_attr());
 
   FunctionDefLibrary flib;
   *flib.add_function() = compilable;
@@ -370,6 +370,44 @@ TEST(XlaCompilationTest, Loops) {
   // Nothing should be compiled. In particular, 'd' and 'c' must not be
   // compiled.
   EXPECT_EQ(0, clusters.size());
+}
+
+TEST(XlaCompilationTest, CyclesWithAllDifferentScopesGlobalJitOverridden) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_FLOAT)
+                                         .WithAttr("value", Tensor())
+                                         .WithAttr(kXlaScopeAttr, "ScopeA"));
+    Node* b = ops::UnaryOp(
+        "Relu", a,
+        builder.opts().WithName("B").WithAttr(kXlaScopeAttr, "ScopeB"));
+    ops::BinaryOp(
+        "MatMul", a, b,
+        builder.opts().WithName("C").WithAttr(kXlaScopeAttr, "ScopeC"));
+    TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  }
+
+  FunctionDefLibrary flib;
+  FunctionLibraryDefinition flib_def(graph->op_registry(), flib);
+  SessionOptions session_options;
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_global_jit_level(OptimizerOptions::ON_2);
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph, &flib_def, &session_options));
+  auto clusters = GetClusters(*graph);
+
+  // The computation is: C = A + relu(A)
+  // where A sits in ScopeA, relu(A) sits in ScopeB, and C sits in ScopeC.
+  // In this case, the GlobalJitLevel overrides the scopes to cluster while
+  // ignoring scopes.
+  EXPECT_EQ(3, clusters.size());
+  EXPECT_EQ(clusters["A"], clusters["B"]);
+  EXPECT_EQ(clusters["A"], clusters["C"]);
 }
 
 TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
