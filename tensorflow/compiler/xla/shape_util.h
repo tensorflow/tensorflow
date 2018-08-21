@@ -22,6 +22,7 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -74,7 +74,7 @@ class ShapeIndex {
   // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
-  using container_type = tensorflow::gtl::InlinedVector<int64, 2>;
+  using container_type = absl::InlinedVector<int64, 2>;
 
   container_type::const_iterator begin() const { return indices_.begin(); }
   container_type::const_iterator end() const { return indices_.end(); }

@@ -172,7 +172,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -237,10 +237,10 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -681,6 +681,7 @@ cc_library(
         ":shape_util",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
@@ -86,10 +87,10 @@ namespace gpu {
 
 namespace {
 
+using absl::InlinedVector;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::InlinedVector;
 using tensorflow::gtl::nullopt;
 using tensorflow::gtl::optional;
 using tensorflow::strings::StrCat;

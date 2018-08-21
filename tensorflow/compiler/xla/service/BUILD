@@ -239,6 +239,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -316,6 +317,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1927,6 +1929,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2083,6 +2086,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2262,13 +2266,13 @@ cc_library(
         ":hlo_scheduling",
         ":logical_buffer",
         ":tuple_points_to_analysis",
-        ":tuple_simplifier",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -3018,6 +3022,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -3101,6 +3106,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

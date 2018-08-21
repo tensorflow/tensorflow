@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -2394,8 +2395,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
 template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-using DFSStack =
-    tensorflow::gtl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
 
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.

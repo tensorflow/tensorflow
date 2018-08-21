@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -22,7 +23,7 @@ namespace xla {
 namespace {
 
 TensorFormat MakeNCHWFormat(int num_spatial_dims) {
-  tensorflow::gtl::InlinedVector<int64, 4> spatial_dimensions;
+  absl::InlinedVector<int64, 4> spatial_dimensions;
   for (int i = 0; i < num_spatial_dims; ++i) {
     spatial_dimensions.push_back(i + 2);
   }

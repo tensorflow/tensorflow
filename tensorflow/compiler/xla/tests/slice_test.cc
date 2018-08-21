@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -195,7 +196,7 @@ class SliceR1Test : public ClientLibraryTestBase,
   void Run(const R1Spec& spec) {
     // This can't be an std::vector, since you can't grab an ArraySlice of a
     // vector<bool>.
-    tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
+    absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
     auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
@@ -205,7 +206,7 @@ class SliceR1Test : public ClientLibraryTestBase,
           {spec.slice_stride});
 
     // Ditto.
-    tensorflow::gtl::InlinedVector<NativeT, 1> expected;
+    absl::InlinedVector<NativeT, 1> expected;
     for (int i = spec.slice_start; i < spec.slice_limit;
          i += spec.slice_stride) {
       expected.push_back(i);

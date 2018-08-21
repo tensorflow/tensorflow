@@ -80,13 +80,13 @@ def assert_like_rnncell(cell_name, cell):
   conditions = [
       hasattr(cell, "output_size"),
       hasattr(cell, "state_size"),
-      hasattr(cell, "zero_state"),
+      hasattr(cell, "get_initial_state") or hasattr(cell, "zero_state"),
       callable(cell),
   ]
   errors = [
       "'output_size' property is missing",
       "'state_size' property is missing",
-      "'zero_state' method is missing",
+      "either 'zero_state' or 'get_initial_state' method is required",
       "is not callable"
   ]
 
@@ -265,6 +265,36 @@ class RNNCell(base_layer.Layer):
     # This tells the parent Layer object that it's OK to call
     # self.add_variable() inside the call() method.
     pass
+
+  def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+    if inputs is not None:
+      # Validate the given batch_size and dtype against inputs if provided.
+      inputs = ops.convert_to_tensor(inputs, name="inputs")
+      if batch_size is not None:
+        if tensor_util.is_tensor(batch_size):
+          static_batch_size = tensor_util.constant_value(
+              batch_size, partial=True)
+        else:
+          static_batch_size = batch_size
+        if inputs.shape[0].value != static_batch_size:
+          raise ValueError(
+              "batch size from input tensor is different from the "
+              "input param. Input tensor batch: {}, batch_size: {}".format(
+                  inputs.shape[0].value, batch_size))
+
+      if dtype is not None and inputs.dtype != dtype:
+        raise ValueError(
+            "dtype from input tensor is different from the "
+            "input param. Input tensor dtype: {}, dtype: {}".format(
+                inputs.dtype, dtype))
+
+      batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+      dtype = inputs.dtype
+    if None in [batch_size, dtype]:
+      raise ValueError(
+          "batch_size and dtype cannot be None while constructing initial "
+          "state: batch_size={}, dtype={}".format(batch_size, dtype))
+    return self.zero_state(batch_size, dtype)
 
   def zero_state(self, batch_size, dtype):
     """Return zero-filled state tensor(s).

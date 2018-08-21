@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
@@ -93,7 +93,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
   // Depth first search over the DAG, invoking ComputeArrayFor in post order.
   // The HLO instructions already in the cache are considered leaves.
 
-  gtl::InlinedVector<const HloInstruction*, 4> stack;
+  absl::InlinedVector<const HloInstruction*, 4> stack;
 
   enum DfsState { kDiscovered, kVisited };
   gtl::FlatMap<const HloInstruction*, DfsState> dfs_state_map;
@@ -531,7 +531,7 @@ StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::ReshapeToAddDegenerateDims(
     // element is true iff the i'th component of the result index is an output
     // index.
 
-    gtl::InlinedVector<bool, 6> output_dims_bitvector(
+    absl::InlinedVector<bool, 6> output_dims_bitvector(
         operand->shape().dimensions_size());
     for (int64 output_dim : operand->output_dims()) {
       output_dims_bitvector[output_dim] = true;

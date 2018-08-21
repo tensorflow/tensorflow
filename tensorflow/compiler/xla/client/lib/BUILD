@@ -130,7 +130,7 @@ cc_library(
         ":constants",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -142,6 +142,7 @@ xla_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
