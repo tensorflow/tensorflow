@@ -19,8 +19,6 @@ message SplitInfo {
 }
 
 message ObliviousSplitInfo {
-  // The split node with the feature_column and threshold defined.
   tensorflow.boosted_trees.trees.TreeNode split_node = 1;
-  // The new leaves of the tree.
-  repeated tensorflow.boosted_trees.trees.Leaf children_leaves = 2;
+  repeated tensorflow.boosted_trees.trees.Leaf children = 2;
 }
