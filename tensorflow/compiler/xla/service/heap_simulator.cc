@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -45,7 +46,7 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
   // bound, by minimizing the liveness of sub-computations.
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
+      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(), *module,
                          module_sequence, *points_to_analysis, size_function));
   return result.heap_size;
 }
@@ -60,9 +61,10 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
         memory_by_computation) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
-                         sequence, points_to_analysis, size_function,
-                         HeapSimulator::Options(), memory_by_computation));
+      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
+                         computation, sequence, points_to_analysis,
+                         size_function, HeapSimulator::Options(),
+                         memory_by_computation));
   return result.heap_size;
 }
 
@@ -344,7 +346,7 @@ HeapSimulator::HeapSimulator(
     const SequentialHloOrdering::HloModuleSequence* module_sequence,
     const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
         memory_by_computation)
-    : no_fragmentation_stats_(MakeUnique<NoFragmentationStatsHeap>()),
+    : no_fragmentation_stats_(absl::make_unique<NoFragmentationStatsHeap>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),

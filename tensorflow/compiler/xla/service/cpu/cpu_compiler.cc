@@ -26,6 +26,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
+#include "absl/memory/memory.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
@@ -453,7 +453,7 @@ Status CreateHloProfilingArtifacts(
         computation_to_profile_idx,
     std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
     std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
-  *hlo_profile_index_map = MakeUnique<HloProfileIndexMap>(module);
+  *hlo_profile_index_map = absl::make_unique<HloProfileIndexMap>(module);
   const HloComputation& entry_computation = *module.entry_computation();
 
   TF_ASSIGN_OR_RETURN(
@@ -520,11 +520,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       &pre_optimization_ir_hook, &post_optimization_ir_hook));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  auto llvm_context = xla::MakeUnique<llvm::LLVMContext>();
+  auto llvm_context = absl::make_unique<llvm::LLVMContext>();
   auto llvm_module =
-      xla::MakeUnique<llvm::Module>("__compute_module", *llvm_context);
+      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
-  auto jit = xla::MakeUnique<SimpleOrcJIT>(
+  auto jit = absl::make_unique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
@@ -566,12 +566,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          module.get(),
-          xla::MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-          BufferSizeBytesFunction(), memory_alignment,
-          /*allow_input_output_aliasing=*/false,
-          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(module.get(),
+                          absl::make_unique<SequentialHloOrdering>(
+                              module.get(), module_sequence),
+                          BufferSizeBytesFunction(), memory_alignment,
+                          /*allow_input_output_aliasing=*/false,
+                          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
   XLA_VLOG_LINES(2, assignment->ToString());
@@ -716,7 +716,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   llvm::StringRef cpu_name = llvm_ir::AsStringRef(options.cpu_name());
   llvm::StringRef features = llvm_ir::AsStringRef(options.features());
   llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
-  std::unique_ptr<llvm::TargetMachine> target_machine = WrapUnique(
+  std::unique_ptr<llvm::TargetMachine> target_machine = absl::WrapUnique(
       target->createTargetMachine(triple.getTriple(), cpu_name, features,
                                   CompilerTargetOptions(modules[0]->config()),
                                   reloc_model, llvm::None, opt_level));
@@ -757,7 +757,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
             module,
-            xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
+            absl::make_unique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment,
             /*allow_input_output_aliasing=*/false,
             /*allocate_buffers_for_constants=*/true));
@@ -851,7 +851,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment->GetUniqueTopLevelOutputSlice());
 
-    results.emplace_back(MakeUnique<CpuAotCompilationResult>(
+    results.emplace_back(absl::make_unique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_infos),
         result_slice.index(), std::move(hlo_profile_printer_data)));
   }
@@ -874,7 +874,7 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::host::kHostPlatformId,
-      []() { return xla::MakeUnique<xla::cpu::CpuCompiler>(); });
+      []() { return absl::make_unique<xla::cpu::CpuCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

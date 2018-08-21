@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/tf2xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/tf2xla/str_util.h"
@@ -617,7 +618,7 @@ Status GenerateMetadata(const CodegenOpts& opts,
 
   if (opts.gen_program_shape) {
     program_shape =
-        tensorflow::MakeUnique<xla::ProgramShape>(compile_result.program_shape);
+        absl::make_unique<xla::ProgramShape>(compile_result.program_shape);
     // The parameter names are currently meaningless, and redundant with the
     // rest of our metadata, so clear them out to avoid confusion and save
     // space.

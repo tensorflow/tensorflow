@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -245,7 +245,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
     const ExecutionOptions* execution_options) {
-  auto config = MakeUnique<HloModuleConfig>(program_shape);
+  auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
   if (program_shape.parameters_size() != argument_shapes.size()) {
@@ -326,7 +326,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     if (directory_path.empty() && execution_directory_path.empty()) {
       continue;
     }
-    auto hlo_snapshot = MakeUnique<HloSnapshot>();
+    auto hlo_snapshot = absl::make_unique<HloSnapshot>();
     *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = *module_protos[i];
     if (!directory_path.empty()) {
       string filename =
@@ -409,7 +409,8 @@ Service::ExecuteParallelAndRegisterResult(
       streams.push_back(std::move(stream));
 
       if (replica == 0 && profile != nullptr) {
-        timers.push_back(MakeUnique<se::Timer>(streams.back()->parent()));
+        timers.push_back(
+            absl::make_unique<se::Timer>(streams.back()->parent()));
         streams.back()
             ->InitTimer(timers.back().get())
             .ThenStartTimer(timers.back().get());
@@ -800,7 +801,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       module_proto.name().c_str());
 
   // Dump computation proto state if flag is set.
-  auto hlo_snapshot = MakeUnique<HloSnapshot>();
+  auto hlo_snapshot = absl::make_unique<HloSnapshot>();
   const string& directory_path =
       module_config->debug_options().xla_dump_computations_to();
   const string& execution_directory_path =
@@ -954,7 +955,7 @@ namespace {
 // shape and DeviceMemoryBase values of the clone are identical to the original.
 std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
     const ShapedBuffer& shaped_buffer, int device_ordinal) {
-  auto clone = MakeUnique<ShapedBuffer>(
+  auto clone = absl::make_unique<ShapedBuffer>(
       shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape(),
       shaped_buffer.platform(), device_ordinal);
   clone->buffers() = shaped_buffer.buffers();

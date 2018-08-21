@@ -24,13 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -96,7 +96,7 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                  << HloOpcodeString(opcode);
   }
 
-  auto result = MakeUnique<Literal>(shape);
+  auto result = absl::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<OperandT>(multi_index),
                       rhs_literal.Get<OperandT>(multi_index));
@@ -126,7 +126,7 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
                  << HloOpcodeString(opcode);
   }
 
-  auto result = MakeUnique<Literal>(shape);
+  auto result = absl::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<complex64>(multi_index),
                       rhs_literal.Get<complex64>(multi_index));
@@ -139,44 +139,57 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
 
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
-  typed_visitors_[PRED] = MakeUnique<HloEvaluatorTypedVisitor<bool>>(this);
-  typed_visitors_[U8] = MakeUnique<HloEvaluatorTypedVisitor<uint8>>(this);
-  typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-        "U16.");
-  });
-  typed_visitors_[U32] = MakeUnique<HloEvaluatorTypedVisitor<uint32>>(this);
-  typed_visitors_[U64] = MakeUnique<HloEvaluatorTypedVisitor<uint64>>(this);
-  typed_visitors_[S8] = MakeUnique<HloEvaluatorTypedVisitor<int8>>(this);
-  typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-        "S16.");
-  });
-  typed_visitors_[S32] = MakeUnique<HloEvaluatorTypedVisitor<int32>>(this);
-  typed_visitors_[S64] = MakeUnique<HloEvaluatorTypedVisitor<int64>>(this);
+  typed_visitors_[PRED] =
+      absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
+  typed_visitors_[U8] =
+      absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
+  typed_visitors_[U16] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+            "U16.");
+      });
+  typed_visitors_[U32] =
+      absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
+  typed_visitors_[U64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<uint64>>(this);
+  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
+  typed_visitors_[S16] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+            "S16.");
+      });
+  typed_visitors_[S32] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
+  typed_visitors_[S64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int64>>(this);
   typed_visitors_[F16] =
-      MakeUnique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
-  typed_visitors_[F32] = MakeUnique<HloEvaluatorTypedVisitor<float>>(this);
-  typed_visitors_[F64] = MakeUnique<HloEvaluatorTypedVisitor<double>>(this);
-  typed_visitors_[C64] = MakeUnique<HloEvaluatorTypedVisitor<complex64>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
+  typed_visitors_[F32] =
+      absl::make_unique<HloEvaluatorTypedVisitor<float>>(this);
+  typed_visitors_[F64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
+  typed_visitors_[C64] =
+      absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] =
-      MakeUnique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
 
-  typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
-  });
-  typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented(
-        "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
-  });
+  typed_visitors_[TUPLE] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
+      });
+  typed_visitors_[OPAQUE] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
+      });
 }
 
 template <typename LiteralPtr>
@@ -956,7 +969,7 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
 
-  evaluated_[get_tuple_element] = MakeUnique<Literal>(
+  evaluated_[get_tuple_element] = absl::make_unique<Literal>(
       ShapeUtil::GetTupleElementShape(operand->shape(), index));
   return evaluated_[get_tuple_element]->CopyFrom(operand_tuple_literal,
                                                  /*dest_shape_index=*/{},
@@ -1158,10 +1171,11 @@ StatusOr<std::unique_ptr<Literal>> EvaluateSortInternal(
       result_keys.push_back(key_value.first);
       result_values.push_back(key_value.second);
     }
-    auto result_keys_literal = MakeUnique<Literal>(keys_literal.shape());
+    auto result_keys_literal = absl::make_unique<Literal>(keys_literal.shape());
     result_keys_literal->PopulateR1(
         tensorflow::gtl::ArraySlice<KeyType>(result_keys));
-    auto result_values_literal = MakeUnique<Literal>(values_literal.shape());
+    auto result_values_literal =
+        absl::make_unique<Literal>(values_literal.shape());
     result_values_literal->PopulateR1(
         tensorflow::gtl::ArraySlice<ValueType>(result_values));
     return std::make_pair(std::move(result_keys_literal),
@@ -1176,8 +1190,9 @@ StatusOr<std::unique_ptr<Literal>> EvaluateSortInternal(
   } else {
     // For R2 sort, the desired semantics are to sort each matrix row
     // independently.
-    auto keys_result_literal = MakeUnique<Literal>(keys_literal.shape());
-    auto values_result_literal = MakeUnique<Literal>(values_literal.shape());
+    auto keys_result_literal = absl::make_unique<Literal>(keys_literal.shape());
+    auto values_result_literal =
+        absl::make_unique<Literal>(values_literal.shape());
     int64 r1_length = keys_literal.shape().dimensions(1);
     for (int64 row = 0; row < keys_literal.shape().dimensions(0); ++row) {
       TF_ASSIGN_OR_RETURN(auto keys_r1_slice,

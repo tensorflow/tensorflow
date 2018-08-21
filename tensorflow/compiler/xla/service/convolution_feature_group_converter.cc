@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -214,7 +214,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     expanded_filter = add(HloInstruction::CreateConcatenate(
         expanded_filter_shape, concat_operands, input_feature_dim));
   }
-  auto zero = add(HloInstruction::CreateConstant(MakeUnique<Literal>(
+  auto zero = add(HloInstruction::CreateConstant(absl::make_unique<Literal>(
       LiteralUtil::Zero(expanded_filter_shape.element_type()))));
   auto zero_filter =
       add(HloInstruction::CreateBroadcast(expanded_filter_shape, zero, {}));

@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"

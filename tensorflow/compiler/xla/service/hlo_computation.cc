@@ -24,9 +24,9 @@ limitations under the License.
 #include <sstream>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -57,8 +57,8 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   HloInstruction* root =
       root_instruction ? root_instruction : last_added_instruction_;
   CHECK_NE(nullptr, root);
-  return WrapUnique(new HloComputation(name_, parameter_count, &instructions_,
-                                       root, fusion_instruction_));
+  return absl::WrapUnique(new HloComputation(
+      name_, parameter_count, &instructions_, root, fusion_instruction_));
 }
 
 HloComputation::HloComputation(
@@ -494,9 +494,9 @@ HloComputation::CreateFromProto(
               return to_proto_id[a.get()] < to_proto_id[b.get()];
             });
 
-  return WrapUnique(new HloComputation(proto.name(), parameter_count,
-                                       &instructions, root,
-                                       /*fusion_instruction=*/nullptr));
+  return absl::WrapUnique(new HloComputation(proto.name(), parameter_count,
+                                             &instructions, root,
+                                             /*fusion_instruction=*/nullptr));
 }
 
 void HloComputation::FuseInstructionsInto(
@@ -675,7 +675,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
 std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
     const {
   const auto& all = MakeInstructionPostOrder();
-  auto result = MakeUnique<HloReachabilityMap>(all);
+  auto result = absl::make_unique<HloReachabilityMap>(all);
 
   std::vector<HloInstruction*> inputs;
   for (const HloInstruction* hlo : all) {
@@ -830,7 +830,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     HloCloneContext* context, const string& suffix) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
-    context_ptr = MakeUnique<HloCloneContext>(parent(), suffix);
+    context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
   }
 

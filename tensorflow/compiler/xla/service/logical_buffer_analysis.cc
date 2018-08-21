@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -89,7 +90,7 @@ void LogicalBufferAnalysis::NewLogicalBuffer(HloInstruction* instruction,
                                              const ShapeIndex& index) {
   CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
   logical_buffers_.emplace_back(
-      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
+      absl::make_unique<LogicalBuffer>(instruction, index, next_buffer_id_));
   output_buffers_[std::make_pair(instruction, index)] =
       logical_buffers_.back().get();
 

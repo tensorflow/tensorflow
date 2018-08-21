@@ -59,6 +59,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 

@@ -17,12 +17,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -133,7 +133,7 @@ class TestLinspaceMaxParametric
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
-    auto arhs = MakeUnique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
+    auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
     XlaBuilder builder(
         tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));

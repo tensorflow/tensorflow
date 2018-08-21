@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -25,14 +26,14 @@ namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
     HloComputation* computation, string domain_kind) {
-  auto domain_map = WrapUnique(new HloDomainMap(std::move(domain_kind)));
+  auto domain_map = absl::WrapUnique(new HloDomainMap(std::move(domain_kind)));
   TF_RETURN_IF_ERROR(domain_map->Populate(computation));
   return std::move(domain_map);
 }
 
 /* static */ StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
     HloModule* module, string domain_kind) {
-  auto domain_map = WrapUnique(new HloDomainMap(std::move(domain_kind)));
+  auto domain_map = absl::WrapUnique(new HloDomainMap(std::move(domain_kind)));
   for (HloComputation* computation : module->computations()) {
     TF_RETURN_IF_ERROR(domain_map->Populate(computation));
   }
@@ -56,14 +57,14 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
   // both sides.
   for (HloInstruction* operand : instruction->unique_operands()) {
     if (IsDomainInstruction(operand)) {
-      auto domain = MakeUnique<DomainMetadata::Domain>();
+      auto domain = absl::make_unique<DomainMetadata::Domain>();
       domain->enter_domains.insert(operand);
       domain->exit_domains.insert(instruction);
       TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
     }
   }
   if (instruction == instruction->parent()->root_instruction()) {
-    auto domain = MakeUnique<DomainMetadata::Domain>();
+    auto domain = absl::make_unique<DomainMetadata::Domain>();
     domain->enter_domains.insert(instruction);
     TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
   }
@@ -143,7 +144,7 @@ Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
 
 StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(
     HloInstruction* instruction) const {
-  auto domain = MakeUnique<DomainMetadata::Domain>();
+  auto domain = absl::make_unique<DomainMetadata::Domain>();
   TF_RETURN_IF_ERROR(ExpandDomain(instruction, domain.get()));
   domain->instructions = MakeNonDomainInstructions(domain->reach_set);
   return std::move(domain);

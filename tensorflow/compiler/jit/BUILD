@@ -128,11 +128,11 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -191,6 +191,7 @@ cc_library(
         "//tensorflow/core/kernels/data:generator_dataset_op",
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -235,6 +236,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -283,6 +285,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -303,6 +306,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/memory",
     ],
 )
 

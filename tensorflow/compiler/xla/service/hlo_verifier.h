@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -128,11 +129,11 @@ class HloVerifier : public HloPassInterface {
   // Uses standard shape inference.
   explicit HloVerifier()
       : shape_verifier_factory_(
-            [] { return MakeUnique<ShapeVerifier>(false); }) {}
+            [] { return absl::make_unique<ShapeVerifier>(false); }) {}
 
   explicit HloVerifier(bool allow_mixed_precision)
       : shape_verifier_factory_([allow_mixed_precision] {
-          return MakeUnique<ShapeVerifier>(allow_mixed_precision);
+          return absl::make_unique<ShapeVerifier>(allow_mixed_precision);
         }) {}
 
   // Uses custom shape verification.

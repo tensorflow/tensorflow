@@ -239,6 +239,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -265,6 +266,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -314,6 +316,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -452,6 +455,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -520,6 +524,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -577,6 +582,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -618,6 +624,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -650,6 +657,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -722,6 +730,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -739,6 +748,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -769,6 +779,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -816,6 +827,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -834,6 +846,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -850,6 +863,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -867,6 +881,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -926,6 +941,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -953,6 +969,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -980,6 +997,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1034,6 +1052,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1052,6 +1071,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1068,6 +1088,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1085,6 +1106,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1186,6 +1208,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1203,6 +1226,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1274,6 +1298,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1297,6 +1322,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1320,6 +1346,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1421,6 +1448,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1610,6 +1638,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1643,6 +1672,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1662,6 +1692,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = True,  # Contains per-platform computation placer registration
 )
@@ -1753,6 +1784,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1798,6 +1830,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1814,6 +1847,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1873,6 +1907,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1891,6 +1926,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1932,6 +1968,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2025,6 +2062,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2037,7 +2075,6 @@ cc_library(
         ":hlo_dataflow_analysis",
         ":logical_buffer",
         ":logical_buffer_analysis",
-        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -2045,6 +2082,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2095,6 +2133,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2185,6 +2224,7 @@ cc_library(
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2267,6 +2307,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2348,6 +2389,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2385,6 +2427,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2401,6 +2444,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2432,6 +2476,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2446,6 +2491,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2506,6 +2552,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2606,10 +2653,10 @@ cc_library(
         ":computation_layout",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2790,9 +2837,9 @@ cc_library(
     hdrs = ["stream_pool.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2890,6 +2937,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -3085,6 +3133,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
     ],
 )
 

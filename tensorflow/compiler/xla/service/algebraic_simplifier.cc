@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -541,7 +542,7 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   // If a literal is all the same element replace it with a scalar broadcast.
   if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
       constant->literal().IsAllFirst()) {
-    std::unique_ptr<Literal> unique_scalar = MakeUnique<Literal>(
+    std::unique_ptr<Literal> unique_scalar = absl::make_unique<Literal>(
         LiteralUtil::GetFirstScalarLiteral(constant->literal()));
     HloInstruction* scalar = computation_->AddInstruction(
         HloInstruction::CreateConstant(std::move(unique_scalar)));

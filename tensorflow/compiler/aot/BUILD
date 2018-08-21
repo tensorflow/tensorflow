@@ -55,6 +55,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -193,6 +194,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",

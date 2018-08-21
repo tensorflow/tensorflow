@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -25,7 +26,7 @@ limitations under the License.
 namespace xla {
 
 HloVerifiedTestBase::HloVerifiedTestBase()
-    : shape_verifier_(MakeUnique<ShapeVerifier>()) {}
+    : shape_verifier_(absl::make_unique<ShapeVerifier>()) {}
 
 HloVerifiedTestBase::~HloVerifiedTestBase() {
   // We can't call the ASSERT or EXPECT test macros in destructors, so we

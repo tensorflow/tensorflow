@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
@@ -257,9 +257,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       local_service_->CompileExecutable(
                           computation, argument_layouts, updated_options));
-  return WrapUnique(new LocalExecutable(std::move(executable),
-                                        local_service_->mutable_backend(),
-                                        updated_options));
+  return absl::WrapUnique(new LocalExecutable(std::move(executable),
+                                              local_service_->mutable_backend(),
+                                              updated_options));
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(

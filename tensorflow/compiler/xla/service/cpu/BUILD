@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -85,6 +86,7 @@ cc_library(
         ":ir_emitter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
+        "@com_google_absl//absl/memory",
         "//tensorflow/compiler/tf2xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla:literal",
@@ -178,6 +180,7 @@ cc_library(
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
+        "@com_google_absl//absl/memory",
         "@llvm//:execution_engine",
         "@llvm//:core",
         "@llvm//:mc",  # fixdeps: keep
@@ -418,6 +421,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
         "@llvm//:analysis",
         "@llvm//:core",
         "@llvm//:ipo",
@@ -634,6 +638,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -810,6 +815,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/memory",
     ],
 )
 

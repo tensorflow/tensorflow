@@ -23,8 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -275,7 +275,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = MakeUnique<HloModule>(proto.name(), module_config);
+  auto module = absl::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   std::sort(computations.begin(), computations.end(),
@@ -508,7 +508,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = MakeUnique<HloModule>(name_ + "-" + suffix, config_);
+  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config_);
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
