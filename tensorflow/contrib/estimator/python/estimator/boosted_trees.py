@@ -33,7 +33,7 @@ def _validate_input_fn_and_repeat_dataset(train_input_fn):
   return _input_fn
 
 
-class _BoostedTreesEstimator(estimator.Estimator):
+class _BoostedTreesEstimator(canned_boosted_trees._BoostedTrees):  # pylint: disable=protected-access
   """An Estimator for Tensorflow Boosted Trees models."""
 
   def __init__(self,
@@ -115,7 +115,8 @@ class _BoostedTreesEstimator(estimator.Estimator):
           config=config)
 
     super(_BoostedTreesEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        feature_columns=feature_columns)
     # pylint:enable=protected-access
 
 
