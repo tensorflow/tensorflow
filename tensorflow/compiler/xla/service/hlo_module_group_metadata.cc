@@ -204,6 +204,10 @@ const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
   return channels_[channel_id_map_.at(channel_id)];
 }
 
+bool HloModuleGroupMetadata::HasChannel(int64 channel_id) const {
+  return channel_id_map_.find(channel_id) != channel_id_map_.end();
+}
+
 HloComputation* HloModuleGroupMetadata::PeerComputation(
     const HloInstruction* instruction) const {
   CHECK(IsChannelInstruction(instruction));

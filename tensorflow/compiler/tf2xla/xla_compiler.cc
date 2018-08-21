@@ -792,14 +792,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
-  // Copy the host transfer metadata to the result.
-  for (const auto& send : host_compute_sends_) {
-    *result->host_compute_metadata.add_device_to_host() = send.second;
-  }
-  for (const auto& recv : host_compute_recvs_) {
-    *result->host_compute_metadata.add_host_to_device() = recv.second;
-  }
-
   // Tensorflow expects a major-to-minor order of results.
   xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
@@ -814,6 +806,30 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
+                                                 xla::ChannelHandle* channel) {
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second,
+                        client()->CreateHostToDeviceChannelHandle());
+  }
+  *channel = result.first->second;
+  VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
+                                                 xla::ChannelHandle* channel) {
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second,
+                        client()->CreateDeviceToHostChannelHandle());
+  }
+  *channel = result.first->second;
+  VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();
   return Status::OK();
 }
 

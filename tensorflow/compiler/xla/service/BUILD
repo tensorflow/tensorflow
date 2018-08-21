@@ -1098,6 +1098,7 @@ cc_library(
     hdrs = ["hlo_module_group_util.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_module_group_metadata",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:status",
