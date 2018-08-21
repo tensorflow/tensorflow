@@ -21,11 +21,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -143,7 +143,7 @@ StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
 Status BuildLoopCondition(const Graph& graph, Frame* frame,
                           std::unique_ptr<Graph>* cond_output) {
   VLOG(2) << "Building loop condition for " << frame->name;
-  *cond_output = xla::MakeUnique<Graph>(graph.op_registry());
+  *cond_output = absl::make_unique<Graph>(graph.op_registry());
   Graph* output = cond_output->get();
 
   // Map from nodes in the original graph to the condition graph.
@@ -180,7 +180,7 @@ Status BuildLoopBody(const Graph& graph, Frame* frame,
                      DataTypeVector* arg_types,
                      std::unique_ptr<Graph>* body_output) {
   VLOG(2) << "Building loop body for " << frame->name;
-  *body_output = xla::MakeUnique<Graph>(graph.op_registry());
+  *body_output = absl::make_unique<Graph>(graph.op_registry());
   Graph* output = body_output->get();
 
   // Map from nodes in the original graph to the condition graph.

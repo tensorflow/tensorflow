@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
@@ -305,7 +306,7 @@ bool HloParser::ParseHloModule() {
     return false;
   }
 
-  module_ = MakeUnique<HloModule>(name, config_);
+  module_ = absl::make_unique<HloModule>(name, config_);
 
   return ParseComputations();
 }
@@ -358,7 +359,7 @@ bool HloParser::ParseComputation(HloComputation** entry_computation) {
   if (!ParseName(&name)) {
     return false;
   }
-  auto builder = MakeUnique<HloComputation::Builder>(name);
+  auto builder = absl::make_unique<HloComputation::Builder>(name);
 
   LocTy shape_loc = nullptr;
   Shape shape;
@@ -1511,14 +1512,14 @@ bool HloParser::ParseDomain(DomainData* domain) {
     return false;
   }
   if (*kind == ShardingMetadata::KindName()) {
-    auto entry_sharding_ptr = MakeUnique<HloSharding>(
+    auto entry_sharding_ptr = absl::make_unique<HloSharding>(
         HloSharding::FromProto(*entry_sharding).ValueOrDie());
-    auto exit_sharding_ptr = MakeUnique<HloSharding>(
+    auto exit_sharding_ptr = absl::make_unique<HloSharding>(
         HloSharding::FromProto(*exit_sharding).ValueOrDie());
     domain->entry_metadata =
-        MakeUnique<ShardingMetadata>(std::move(entry_sharding_ptr));
+        absl::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
     domain->exit_metadata =
-        MakeUnique<ShardingMetadata>(std::move(exit_sharding_ptr));
+        absl::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
   } else {
     return TokenError(StrCat("unsupported domain kind: ", *kind));
   }
@@ -1927,7 +1928,7 @@ bool HloParser::ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
 
   tensorflow::int64 rank = ShapeUtil::Rank(shape);
 
-  *literal = MakeUnique<Literal>(shape);
+  *literal = absl::make_unique<Literal>(shape);
 
   if (!ParseToken(TokKind::kLbrace,
                   "expects '{' at the beginning of a sparse literal")) {

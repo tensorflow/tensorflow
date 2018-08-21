@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -319,7 +319,7 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
   *padding_config.add_dimensions() = padding_config_dim;
 
   HloInstruction* zero = computation->AddInstruction(
-      HloInstruction::CreateConstant(MakeUnique<Literal>(
+      HloInstruction::CreateConstant(absl::make_unique<Literal>(
           LiteralUtil::Zero(operand->shape().element_type()))));
   return MakePadHlo(operand, zero, padding_config);
 }
@@ -329,7 +329,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
     ArraySlice<int64> broadcast_dimensions) {
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(LiteralUtil::Zero(element_type))));
+          absl::make_unique<Literal>(LiteralUtil::Zero(element_type))));
   return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
                           /*result_shape_bounds=*/broadcast_dimensions);
 }

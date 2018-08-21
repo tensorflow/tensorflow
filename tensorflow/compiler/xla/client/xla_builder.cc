@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -2297,7 +2298,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
 std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
     const string& computation_name) {
-  auto sub_builder = MakeUnique<XlaBuilder>(computation_name);
+  auto sub_builder = absl::make_unique<XlaBuilder>(computation_name);
   sub_builder->parent_builder_ = this;
   sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
   return sub_builder;

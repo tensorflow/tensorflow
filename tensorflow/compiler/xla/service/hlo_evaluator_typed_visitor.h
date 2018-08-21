@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -897,7 +898,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << ShapeUtil::HumanString(inferred_return_shape);
 
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
-    auto result = MakeUnique<Literal>(result_shape);
+    auto result = absl::make_unique<Literal>(result_shape);
 
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> out_index) {
@@ -1054,7 +1055,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return static_cast<ReturnT>(result_val);
     };
 
-    auto result = MakeUnique<Literal>(result_shape);
+    auto result = absl::make_unique<Literal>(result_shape);
     TF_RETURN_IF_ERROR(result->PopulateParallel<ReturnT>(func));
 
     parent_->evaluated_[conv] = std::move(result);
@@ -1128,7 +1129,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
-    auto result = MakeUnique<Literal>(dot->shape());
+    auto result = absl::make_unique<Literal>(dot->shape());
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> result_index) {
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
@@ -1177,7 +1178,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // Create new HLO of padded shape with padding value.
     ReturnT scalar =
         parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
-    auto result = MakeUnique<Literal>(pad->shape());
+    auto result = absl::make_unique<Literal>(pad->shape());
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&scalar](tensorflow::gtl::ArraySlice<int64> multi_index) {
           return scalar;
@@ -1342,7 +1343,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto operands = map->operands();
     HloComputation* computation = map->to_apply();
 
-    auto result = MakeUnique<Literal>(map->shape());
+    auto result = absl::make_unique<Literal>(map->shape());
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
@@ -1456,7 +1457,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 [](const ReturnT& a, const ReturnT& b) {
                   return SafeLess<ReturnT>(a, b);
                 });
-      auto result_literal = MakeUnique<Literal>(keys_literal.shape());
+      auto result_literal = absl::make_unique<Literal>(keys_literal.shape());
       result_literal->PopulateR1(
           tensorflow::gtl::ArraySlice<ReturnT>(result_data));
       VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
@@ -1468,7 +1469,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     } else {
       // For R2 sort, the desired semantics are to sort each matrix row
       // independently.
-      auto result_literal = MakeUnique<Literal>(keys_literal.shape());
+      auto result_literal = absl::make_unique<Literal>(keys_literal.shape());
       int64 r1_length = keys->shape().dimensions(1);
       for (int64 row = 0; row < keys->shape().dimensions(0); ++row) {
         TF_ASSIGN_OR_RETURN(auto r1_slice,
@@ -1542,7 +1543,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
-    auto result = MakeUnique<Literal>(reduce->shape());
+    auto result = absl::make_unique<Literal>(reduce->shape());
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
@@ -1623,7 +1624,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
     auto init_scalar = init_literal.Get<ReturnT>({});
 
-    auto result = MakeUnique<Literal>(select_and_scatter->shape());
+    auto result = absl::make_unique<Literal>(select_and_scatter->shape());
 
     // Initialize result array with the init value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
@@ -1759,7 +1760,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
-    auto result = MakeUnique<Literal>(reduce_window->shape());
+    auto result = absl::make_unique<Literal>(reduce_window->shape());
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> output_index) {
@@ -2412,7 +2413,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 std::is_same<NativeT, int32>::value ||
                 std::is_same<NativeT, uint32>::value>::type* = nullptr>
   Status HandleIota(HloInstruction* iota) {
-    auto result = MakeUnique<Literal>(iota->shape());
+    auto result = absl::make_unique<Literal>(iota->shape());
     auto data = result->data<ReturnT>();
     std::iota(data.begin(), data.end(), 0);
     parent_->evaluated_[iota] = std::move(result);
@@ -2494,7 +2495,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     std::vector<int64> operand_indices(start.size());
-    auto result = MakeUnique<Literal>(result_shape);
+    auto result = absl::make_unique<Literal>(result_shape);
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           for (int64 i = 0; i < operand_indices.size(); ++i) {
@@ -2580,7 +2581,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    auto result = MakeUnique<Literal>(shape);
+    auto result = absl::make_unique<Literal>(shape);
 
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
@@ -2618,7 +2619,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
     const Literal& ehs_literal = parent_->GetEvaluatedLiteralFor(ehs);
 
-    auto result = MakeUnique<Literal>(shape);
+    auto result = absl::make_unique<Literal>(shape);
 
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {

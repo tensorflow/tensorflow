@@ -22,8 +22,8 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -1100,8 +1100,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       options.buffers_to_assign = &buffer_value_set;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
-          HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment)),
+          HeapSimulator::Run(absl::make_unique<DecreasingSizeRunsHeap>(
+                                 absl::make_unique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_, options));
@@ -1130,11 +1130,12 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         options.buffers_to_assign = &buffer_value_set;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
-            HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                   MakeUnique<LazyBestFitHeap>(alignment)),
-                               *computation, *instruction_sequence,
-                               assignment->points_to_analysis(),
-                               assignment->buffer_size_, options));
+            HeapSimulator::Run(
+                absl::make_unique<DecreasingSizeRunsHeap>(
+                    absl::make_unique<LazyBestFitHeap>(alignment)),
+                *computation, *instruction_sequence,
+                assignment->points_to_analysis(), assignment->buffer_size_,
+                options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
@@ -1646,7 +1647,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   XLA_VLOG_LINES(3, liveness->ToString());
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 
-  // Can't use MakeUnique because BufferAssignment constructor is private.
+  // Can't use absl::make_unique because BufferAssignment constructor is
+  // private.
   std::unique_ptr<BufferAssignment> assignment(
       new BufferAssignment(module, std::move(liveness), std::move(buffer_size),
                            std::move(color_alignment)));

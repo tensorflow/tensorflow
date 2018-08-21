@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
@@ -310,7 +311,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
   Status status;
-  auto step_container = xla::MakeUnique<ScopedStepContainer>(
+  auto step_container = absl::make_unique<ScopedStepContainer>(
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });

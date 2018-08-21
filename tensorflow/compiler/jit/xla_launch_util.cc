@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -175,7 +176,7 @@ void XlaComputationLaunchContext::PopulateInputs(
           << " not the same as on-host shape "
           << xla::ShapeUtil::HumanStringWithLayout(shape);
       se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
-      arg_buffers_[i] = xla::MakeUnique<ShapedBuffer>(
+      arg_buffers_[i] = absl::make_unique<ShapedBuffer>(
           /*on_host_shape=*/shape, /*on_device_shape=*/shape,
           client_->platform(), client_->default_device_ordinal());
       arg_buffers_[i]->set_buffer(dmem, /*index=*/{});

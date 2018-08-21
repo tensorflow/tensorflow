@@ -32,6 +32,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -1052,7 +1053,7 @@ class HloInstruction {
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
-    sharding_ = MakeUnique<HloSharding>(sharding);
+    sharding_ = absl::make_unique<HloSharding>(sharding);
   }
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.

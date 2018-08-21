@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -119,8 +119,8 @@ TEST_F(BufferLivenessTest, ElementwiseChain) {
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, negate));
@@ -167,10 +167,10 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
 
   SequentialHloOrdering::HloModuleSequence sequence;
   sequence.insert({entry, {param0, negate, param1, exp, add}});
-  auto liveness =
-      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
-                                            module.get(), sequence))
-          .ConsumeValueOrDie();
+  auto liveness = BufferLiveness::Run(module.get(),
+                                      absl::make_unique<SequentialHloOrdering>(
+                                          module.get(), sequence))
+                      .ConsumeValueOrDie();
 
   // Entry parameters interfere as if they are defined simultaneously at
   // the very beginning.
@@ -215,8 +215,8 @@ TEST_F(BufferLivenessTest, NonElementwiseOperand) {
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
@@ -249,8 +249,8 @@ TEST_F(BufferLivenessTest, OverlappedBuffers) {
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
@@ -293,10 +293,10 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   SequentialHloOrdering::HloModuleSequence module_sequence;
   std::vector<const HloInstruction*> order = {param, negate, exp, add};
   module_sequence.emplace(computation, order);
-  auto liveness =
-      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
-                                            module.get(), module_sequence))
-          .ConsumeValueOrDie();
+  auto liveness = BufferLiveness::Run(module.get(),
+                                      absl::make_unique<SequentialHloOrdering>(
+                                          module.get(), module_sequence))
+                      .ConsumeValueOrDie();
 
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
@@ -342,10 +342,10 @@ TEST_F(BufferLivenessTest, RootInstructionIsNotLastInSequentialOrder) {
   std::vector<const HloInstruction*> order = {param,     add,  recv,
                                               recv_done, send, send_done};
   module_sequence.emplace(computation, order);
-  auto liveness =
-      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
-                                            module.get(), module_sequence))
-          .ConsumeValueOrDie();
+  auto liveness = BufferLiveness::Run(module.get(),
+                                      absl::make_unique<SequentialHloOrdering>(
+                                          module.get(), module_sequence))
+                      .ConsumeValueOrDie();
 
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, add));
   // Check the root instruction (add) buffer interferes with the recv buffer.
@@ -376,8 +376,8 @@ TEST_F(BufferLivenessTest, TupleLiveOut) {
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // All buffers should be live out except the param
@@ -412,8 +412,8 @@ TEST_F(BufferLivenessTest, EmbeddedComputation) {
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // Buffers in different computations should always interfere.
@@ -453,8 +453,8 @@ TEST_F(BufferLivenessTest, TupleConstantLiveOut) {
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // Only the element buffers of the tuple constant which are pointed to by
@@ -518,8 +518,8 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
   module->AddEmbeddedComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // We compare tuple element pairs that are input/output to the computation:
@@ -580,8 +580,8 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
   module->AddEmbeddedComputation(builder.Build());
 
   auto liveness =
-      BufferLiveness::Run(module.get(),
-                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
+      BufferLiveness::Run(
+          module.get(), absl::make_unique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // We compare tuple element pairs that are input/output to the computation:
@@ -668,10 +668,10 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
 
     // Run BufferLiveness on 'module'.
-    auto liveness =
-        BufferLiveness::Run(
-            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()))
-            .ConsumeValueOrDie();
+    auto liveness = BufferLiveness::Run(
+                        module.get(),
+                        absl::make_unique<DependencyHloOrdering>(module.get()))
+                        .ConsumeValueOrDie();
     // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
     return TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1});
@@ -780,10 +780,10 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     module->AddEntryComputation(BuildDummyComputation());
     module->AddEmbeddedComputation(builder.Build());
     // Run BufferLiveness on 'module'.
-    auto liveness =
-        BufferLiveness::Run(
-            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()))
-            .ConsumeValueOrDie();
+    auto liveness = BufferLiveness::Run(
+                        module.get(),
+                        absl::make_unique<DependencyHloOrdering>(module.get()))
+                        .ConsumeValueOrDie();
     // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
     return TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1});

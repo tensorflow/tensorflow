@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -237,8 +237,8 @@ void CallGraph::SetCallContexts() {
 
 /* static */
 std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
-  // Constructor for CallGraph is private so MakeUnique can't be used.
-  auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
+  // Constructor for CallGraph is private so absl::make_unique can't be used.
+  auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
 
   VLOG(2) << "Building call graph for:";
   XLA_VLOG_LINES(2, module->ToString());

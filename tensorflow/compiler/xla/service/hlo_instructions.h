@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -1080,7 +1081,7 @@ class HloCustomCallInstruction : public HloInstruction {
   }
 
   void set_window(const Window& window) override {
-    window_ = MakeUnique<Window>(window);
+    window_ = absl::make_unique<Window>(window);
   }
 
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -1091,7 +1092,7 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_convolution_dimension_numbers(
       const ConvolutionDimensionNumbers& dnums) {
     convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(dnums);
+        absl::make_unique<ConvolutionDimensionNumbers>(dnums);
   }
   const string& custom_call_target() const { return custom_call_target_; }
   // Returns a serialized representation of this instruction.

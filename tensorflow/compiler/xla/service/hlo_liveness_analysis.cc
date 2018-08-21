@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -296,7 +296,7 @@ StatusOr<std::unique_ptr<HloLivenessAnalysis>> HloLivenessAnalysis::Run(
   VLOG(1) << "HloLivenessAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto liveness_analysis = WrapUnique(new HloLivenessAnalysis(module));
+  auto liveness_analysis = absl::WrapUnique(new HloLivenessAnalysis(module));
 
   liveness_analysis->RunAnalysis();
 

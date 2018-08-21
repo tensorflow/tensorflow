@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -95,11 +95,11 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool allow_mixed_precision_in_hlo_verifier)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
   hlo_verifier_ =
-      MakeUnique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
+      absl::make_unique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
 }
 
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
-  return MakeUnique<HloModule>(name, GetModuleConfigForTest());
+  return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
 }
 
 /* static */
