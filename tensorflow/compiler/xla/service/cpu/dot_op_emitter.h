@@ -121,7 +121,7 @@ class DotOpEmitter {
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
 
-  bool EmitExperimentalGebpDotIfEnabled(const MatMultDims& mat_mult_dims);
+  bool EmitSmallGemmIfProfitable(const MatMultDims& mat_mult_dims);
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
