@@ -88,7 +88,7 @@ else
 fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
-  ./tensorflow/tools/ci_build/update_version.py --nightly
+  python tensorflow/tools/ci_build/update_version.py --nightly
   EXTRA_PIP_FLAG="--nightly_flag"
 fi
 
