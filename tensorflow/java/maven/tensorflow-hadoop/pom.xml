@@ -3,7 +3,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.tensorflow</groupId>
-    <artifactId>hadoop</artifactId>
+    <artifactId>tensorflow-hadoop</artifactId>
     <packaging>jar</packaging>
     <version>1.10.0</version>
     <name>tensorflow-hadoop</name>
@@ -15,7 +15,7 @@
         <maven.compiler.source>1.6</maven.compiler.source>
         <maven.compiler.target>1.6</maven.compiler.target>
         <hadoop.version>2.6.0</hadoop.version>
-        <protobuf.version>3.3.1</protobuf.version>
+        <protobuf.version>3.5.1</protobuf.version>
         <junit.version>4.11</junit.version>
     </properties>
 
