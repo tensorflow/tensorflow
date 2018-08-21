@@ -973,7 +973,8 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
     feature_importances: A list of corresponding feature importances.
 
   Raises:
-    AssertionError: If normalize = True and normalization is not possible
+    AssertionError: If feature importances contain negative value.
+      Or if normalize = True and normalization is not possible
       (e.g. ensemble is empty or trees contain only a root node).
   """
   tree_importances = [_compute_feature_importances_per_tree(tree, num_features)
@@ -982,6 +983,8 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
   tree_weights = np.array(tree_ensemble.tree_weights).reshape(-1, 1)
   feature_importances = np.sum(tree_importances * tree_weights,
                                axis=0) / np.sum(tree_weights)
+  assert np.all(feature_importances >= 0), ('feature_importances '
+                                            'must be non-negative.')
   if normalize:
     normalizer = np.sum(feature_importances)
     assert normalizer > 0, 'Trees are all empty or contains only a root node.'

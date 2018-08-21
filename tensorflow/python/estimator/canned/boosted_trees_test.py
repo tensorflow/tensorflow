@@ -550,7 +550,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
     self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
 
-  def testExperimentalFeatureImportancesWithTrainedEnsemble(self):
+  def testFeatureImportancesWithTrainedEnsemble(self):
     input_fn = _make_train_input_fn(is_classification=True)
 
     est = boosted_trees.BoostedTreesClassifier(
@@ -616,7 +616,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
           save_path = os.path.join(est.model_dir, 'model.ckpt')
           saver.save(sess, save_path)
 
-  def testExperimentalCalculateFeatureImportances(self):
+  def testFeatureImportances(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
@@ -702,7 +702,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
 
-  def testExperimentalCalculateFeatureImportancesWithTreeWeights(self):
+  def testFeatureImportancesWithTreeWeights(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
@@ -758,7 +758,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
 
-  def testExperimentalCalculateFeatureImportancesWithEmptyTree(self):
+  def testFeatureImportancesWithEmptyTree(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
@@ -809,7 +809,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.75, 0.25, 0.0], importances)
 
-  def testExperimentalCalculateFeatureImportancesWithAllEmptyTree(self):
+  def testFeatureImportancesWithAllEmptyTree(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
@@ -845,7 +845,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(AssertionError, 'empty or contains'):
       est.experimental_feature_importances(normalize=True)
 
-  def testExperimentalCalculateFeatureImportancesWithMoreTrees(self):
+  def testFeatureImportancesWithMoreTrees(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
@@ -1007,6 +1007,46 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2, 0.0], importances)
+
+  def testNegativeFeatureImportances(self):
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    tree_ensemble_text = """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 1
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: -5.0
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 2
+              left_id: 3
+              right_id: 4
+            }
+            metadata {
+              gain: 2.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        """
+    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+
+    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
+      est.experimental_feature_importances(normalize=False)
+
+    with self.assertRaisesRegexp(AssertionError, 'non-negative'):
+      est.experimental_feature_importances(normalize=True)
 
 
 class ModelFnTests(test_util.TensorFlowTestCase):
