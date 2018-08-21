@@ -237,6 +237,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
             "-ftemplate-depth=900",
         ]) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
+        if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
@@ -815,9 +816,9 @@ def tf_gpu_cc_test(
         name = name,
         srcs = srcs,
         suffix = "_gpu",
-        deps = deps + if_cuda([
+	deps=deps + [
             clean_dep("//tensorflow/core:gpu_runtime"),
-        ]),
+        ],
         linkstatic = select({
             # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
             clean_dep("//tensorflow:darwin"): 1,
@@ -1098,7 +1099,7 @@ def tf_gpu_library(deps=None, gpu_deps=None, copts=tf_copts(), **kwargs):
                 clean_dep("//tensorflow/core:rocm"),
                 "@local_config_rocm//rocm:rocm_headers"
             ]),
-        copts=(copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
+        copts=(copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
                if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs)
 
@@ -1922,7 +1923,7 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+            "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu") + if_rocm("rocm", "cpu"),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],
     )
