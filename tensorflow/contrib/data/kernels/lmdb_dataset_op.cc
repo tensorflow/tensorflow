@@ -43,10 +43,10 @@ class LMDBDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const std::vector<string>& filenames)
-        : GraphDatasetBase(ctx), filenames_(filenames) {}
+        : DatasetBase(DatasetContext(ctx)), filenames_(filenames) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
@@ -69,7 +69,8 @@ class LMDBDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "LMDBDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
