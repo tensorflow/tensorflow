@@ -19,10 +19,19 @@ in the Dockerfile itself.
 
 ## Running
 
-After building the image with the tag `tf` (for example):
+After building the image with the tag `tf` (for example), use `docker run` to
+run the images. Examples are below.
+
+Note for new Docker users: the `-v` and `-u` flags share directories between
+the Docker container and your machine, and very important. Without
+`-v`, your work will be wiped once the container quits, and without `-u`, files
+created by the container will have the wrong file permissions on your host
+machine. If you are confused, check out the [Docker run
+documentation](https://docs.docker.com/engine/reference/run/).
 
 ```bash
-# A volume mount is optional but highly recommended, especially for Jupyter
+# A volume mount (-v) is optional but highly recommended, especially for Jupyter
+# User permissions (-u) are required if you use (-v).
 
 # CPU-based images
 $ docker run -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
@@ -32,13 +41,12 @@ $ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
 
 # Images with Jupyter run on port 8888, and needs a volume for notebooks
 $ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(PWD):/notebooks -it tf
-
-# Development images
-$ docker run --user $(id -u):$(id -g) -it tf
-docker$ git clone https://github.com/tensorflow/tensorflow
 ```
 
-## Maintaining
+These images do not come with the TensorFlow source code -- but the development
+images have git included, so you can `git clone` it yourself.
+
+## Contributing
 
 To make changes to TensorFlow's Dockerfiles, you'll update `spec.yml` and the
 `*.partial.Dockerfile` files in the `partials` directory, then run
