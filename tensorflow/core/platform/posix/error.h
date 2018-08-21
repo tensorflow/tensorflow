@@ -24,4 +24,4 @@ Status IOError(const string& context, int err_number);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_POSIX_POSIX_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_POSIX_ERROR_H_

@@ -140,4 +140,4 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorIO.h"
 
 #include "Eigen/src/Core/util/ReenableStupidWarnings.h"
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_TENSOR_REDUCED_INSTANTIATIONS_H
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_TENSOR_REDUCED_INSTANTIATIONS_GOOGLE_H_

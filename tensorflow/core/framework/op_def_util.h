@@ -16,8 +16,8 @@ limitations under the License.
 // TODO(josh11b): Probably not needed for OpKernel authors, so doesn't
 // need to be as publicly accessible as other files in framework/.
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
-#define TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_
 
 #include <string>
 #include "tensorflow/core/framework/api_def.pb.h"
@@ -103,4 +103,4 @@ uint64 OpDefHash(const OpDef& o);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_

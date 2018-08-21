@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_MATH_MATH_UTIL_H_
-#define TENSORFLOW_LIB_MATH_MATH_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
+#define TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 
 #include <type_traits>
 
@@ -160,4 +160,4 @@ T MathUtil::IPow(T base, int exp) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_MATH_MATH_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_

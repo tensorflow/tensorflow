@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_FRAMEWORK_COLLECTIVE_EXECUTOR_H_
-#define TENSORFLOW_FRAMEWORK_COLLECTIVE_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_
 
 #include <string>
 #include <vector>
@@ -308,4 +308,4 @@ class PerStepCollectiveRemoteAccess : public CollectiveRemoteAccess {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_COLLECTIVE_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_

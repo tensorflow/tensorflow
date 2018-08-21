@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_FUNCTION_H_
-#define TENSORFLOW_FRAMEWORK_FUNCTION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -736,4 +736,4 @@ GET_ATTR(bool)
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_FUNCTION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
