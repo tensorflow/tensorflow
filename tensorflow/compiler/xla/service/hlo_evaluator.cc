@@ -230,7 +230,6 @@ template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction, ArraySlice<LiteralPtr> arg_literals) {
   TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   evaluated_.clear();
   arg_literals_.clear();
@@ -267,7 +266,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     return tensorflow::errors::FailedPrecondition(
         "Not all operands are constants.");
   }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();
   evaluated_.clear();
@@ -1285,7 +1283,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
-  return Status::OK();
+  return ShapeUtil::ValidateShape(hlo->shape());
 }
 
 Status HloEvaluator::Postprocess(HloInstruction* hlo) {

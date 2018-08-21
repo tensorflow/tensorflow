@@ -2456,6 +2456,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_constant_folding",
         ":hlo_matchers",
+        ":hlo_parser",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

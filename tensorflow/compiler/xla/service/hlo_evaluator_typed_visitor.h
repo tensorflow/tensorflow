@@ -1544,10 +1544,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     auto result = absl::make_unique<Literal>(reduce->shape());
+    Status eval_status;
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           ReturnT result_val = init_scalar;
+          if (!eval_status.ok()) {
+            return result_val;
+          }
 
           std::vector<int64> base(arg_dimensions.size());
           for (int64 i = 0; i < multi_index.size(); ++i) {
@@ -1568,7 +1572,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                                     arg_dim_steps, func);
             return static_cast<ReturnT>(computed_result);
           }
-          auto func = [&](tensorflow::gtl::ArraySlice<int64> input_index) {
+          auto func = [&](tensorflow::gtl::ArraySlice<int64> input_index)
+              -> StatusOr<bool> {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
             // Evaluate computation with specified literal operands.
@@ -1576,12 +1581,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             auto result_val_literal =
                 LiteralUtil::CreateR0<ReturnT>(result_val);
 
-            std::unique_ptr<Literal> computed_result =
-                embedded_evaluator
-                    .Evaluate<const Literal*>(
-                        *function,
-                        {result_val_literal.get(), curr_val_literal.get()})
-                    .ConsumeValueOrDie();
+            TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> computed_result,
+                                embedded_evaluator.Evaluate<const Literal*>(
+                                    *function, {result_val_literal.get(),
+                                                curr_val_literal.get()}));
             // Clear visit states so that we can use the evaluator again on
             // the same computation.
             embedded_evaluator.ResetVisitStates();
@@ -1591,13 +1594,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           };
           // Computes one element of the result, reducing all dimensions that
           // contribute to that element.
-          ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
-                                  arg_dim_steps, func);
+          eval_status = ShapeUtil::ForEachIndexWithStatus(
+              arg_literal.shape(), base, arg_dim_counts, arg_dim_steps, func);
           return result_val;
         }));
 
     parent_->evaluated_[reduce] = std::move(result);
-    return Status::OK();
+    return eval_status;
   }
 
   bool IsScalarAdd(HloComputation* computation) {
