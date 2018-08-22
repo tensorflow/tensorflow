@@ -929,39 +929,33 @@ void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       std::move(done)));
 }
 
-class IteratorGetNextSyncOp : public OpKernel {
- public:
-  explicit IteratorGetNextSyncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
+  IteratorResource* iterator;
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  core::ScopedUnref unref_iterator(iterator);
 
-  void Compute(OpKernelContext* ctx) override {
-    IteratorResource* iterator;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
-    core::ScopedUnref unref_iterator(iterator);
+  std::vector<Tensor> components;
+  bool end_of_sequence = false;
 
-    std::vector<Tensor> components;
-    bool end_of_sequence = false;
+  IteratorContext::Params params;
+  params.env = ctx->env();
+  params.runner = *(ctx->runner());
+  params.function_library = iterator->function_library();
+  DeviceBase* device = ctx->function_library()->device();
+  params.allocator_getter = [device](AllocatorAttributes attrs) {
+    return device->GetAllocator(attrs);
+  };
+  IteratorContext iter_ctx(std::move(params));
 
-    IteratorContext::Params params;
-    params.env = ctx->env();
-    params.runner = *(ctx->runner());
-    params.function_library = iterator->function_library();
-    DeviceBase* device = ctx->function_library()->device();
-    params.allocator_getter = [device](AllocatorAttributes attrs) {
-      return device->GetAllocator(attrs);
-    };
-    IteratorContext iter_ctx(std::move(params));
+  OP_REQUIRES_OK(ctx,
+                 iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+  OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
 
-    OP_REQUIRES_OK(ctx,
-                   iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
-    OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
-
-    for (int i = 0; i < components.size(); ++i) {
-      // TODO(mrry): Check that the shapes match the shape attrs.
-      ctx->set_output(i, components[i]);
-    }
+  for (int i = 0; i < components.size(); ++i) {
+    // TODO(mrry): Check that the shapes match the shape attrs.
+    ctx->set_output(i, components[i]);
   }
-};
+}
 
 class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
  public:
