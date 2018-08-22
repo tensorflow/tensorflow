@@ -146,7 +146,7 @@ class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
 
   def testCenterBias(self):
     """Tests bias centering for multiple iterations."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -297,7 +297,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEmptyEnsemble(self):
     """Test growing an empty ensemble."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -516,7 +516,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowExistingEnsembleTreeNotFinalized(self):
     """Test growing an existing ensemble with the last tree not finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create existing ensemble with one root split
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge("""
@@ -707,7 +707,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowExistingEnsembleTreeFinalized(self):
     """Test growing an existing ensemble with the last tree finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create existing ensemble with one root split
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge("""
@@ -890,7 +890,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsemblePrePrune(self):
     """Test growing an ensemble with pre-pruning."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -957,7 +957,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsemblePostPruneNone(self):
     """Test growing an empty ensemble."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -1065,7 +1065,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsemblePostPruneAll(self):
     """Test growing an ensemble with post-pruning."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -1216,7 +1216,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsemblePostPrunePartial(self):
     """Test growing an ensemble with post-pruning."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create empty ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -1419,7 +1419,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowEnsembleTreeLayerByLayer(self):
     """Test growing an existing ensemble with the last tree not finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create existing ensemble with one root split
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge("""
@@ -1799,7 +1799,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowExistingEnsembleTreeFinalizedWithDropout(self):
     """Test growing an existing ensemble with the last tree finalized."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create existing ensemble with one root split and one bias tree.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge("""
@@ -1924,7 +1924,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
 
   def testGrowExistingEnsembleTreeWithFeatureSelectionUsedHandlers(self):
     """Test growing a tree with feature selection."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create existing ensemble with one root split and one bias tree.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge("""

@@ -98,7 +98,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
     self._seed = 123
 
   def testCreate(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree = tree_ensemble_config.trees.add()
       _append_to_leaf(tree.nodes.add().leaf, 0, -0.4)
@@ -204,10 +204,10 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result.eval(), [[0.5, -0.2], [0, 1.0]])
 
   def testRestore(self):
-    # Calling self.test_session() without a graph specified results in
+    # Calling self.cached_session() without a graph specified results in
     # TensorFlowTestCase caching the session and returning the same one
     # every time. In this test, we need to create two different sessions
-    # which is why we also create a graph and pass it to self.test_session()
+    # which is why we also create a graph and pass it to self.cached_session()
     # to ensure no caching occurs under the hood.
     save_path = os.path.join(self.get_temp_dir(), "restore-test")
     with ops.Graph().as_default() as graph:
@@ -311,7 +311,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result.eval(), [[-1.1], [-1.1]])
 
   def testUsedHandlers(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree_ensemble_config.growing_metadata.used_handler_ids.append(1)
       tree_ensemble_config.growing_metadata.used_handler_ids.append(5)

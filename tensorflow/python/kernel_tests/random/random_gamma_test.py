@@ -256,7 +256,7 @@ class RandomGammaTest(test.TestCase):
   def testPositive(self):
     n = int(10e3)
     for dt in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         x = random_ops.random_gamma(shape=[n], alpha=0.001, dtype=dt, seed=0)
         self.assertEqual(0, math_ops.reduce_sum(math_ops.cast(
             math_ops.less_equal(x, 0.), dtype=dtypes.int64)).eval())
