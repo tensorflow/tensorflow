@@ -31,12 +31,12 @@ class HloDomainIsolator::RunContext {
   StatusOr<bool> Run();
 
  private:
-  // Inserts a kDomain instruction between parent and operand, in case
-  // the attribute (ie, sharding) values change between instruction and operand.
+  // Inserts a kDomain instruction between operand and instruction in case
+  // the attribute (ie, sharding) values change between root and instruction.
   // Returns the newly inserted kDomain instruction, or nullptr if no kDomain
   // instruction was necessary.
   StatusOr<HloInstruction*> CreateDomain(HloInstruction* instruction,
-                                         HloInstruction* parent,
+                                         HloInstruction* root,
                                          HloInstruction* operand);
 
   HloModule* module_;
@@ -44,14 +44,14 @@ class HloDomainIsolator::RunContext {
 };
 
 StatusOr<HloInstruction*> HloDomainIsolator::RunContext::CreateDomain(
-    HloInstruction* instruction, HloInstruction* parent,
+    HloInstruction* instruction, HloInstruction* root,
     HloInstruction* operand) {
   HloInstruction* domain = nullptr;
   std::unique_ptr<HloInstruction> domain_instruction =
-      isolator_->creator_(instruction, operand);
+      isolator_->creator_(instruction, root, operand);
   if (domain_instruction != nullptr) {
     domain = operand->parent()->AddInstruction(std::move(domain_instruction));
-    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(parent, domain));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(instruction, domain));
   }
   return domain;
 }
@@ -71,14 +71,13 @@ StatusOr<bool> HloDomainIsolator::RunContext::Run() {
         // When applying multiple domains, we could end up stacking more than
         // one in one edge, so here we want to build the effective
         // (kDomain-less) instruction->operand edge.
-        HloInstruction* parent = instruction;
-        while (operand->opcode() == HloOpcode::kDomain) {
-          parent = operand;
-          operand = operand->mutable_operand(0);
+        HloInstruction* root = operand;
+        while (root->opcode() == HloOpcode::kDomain) {
+          root = root->mutable_operand(0);
         }
         // Check whether a kDomain is necessary between instruction and operand.
         TF_ASSIGN_OR_RETURN(HloInstruction * domain,
-                            CreateDomain(instruction, parent, operand));
+                            CreateDomain(instruction, root, operand));
         if (domain != nullptr) {
           VLOG(4) << "New domain: " << domain->ToString();
           ++added_domains;
