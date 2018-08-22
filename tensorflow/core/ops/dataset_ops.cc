@@ -170,7 +170,6 @@ REGISTER_OP("ParseExampleDataset")
     .Input("input_dataset: variant")
     .Input("num_parallel_calls: int64")
     .Input("dense_defaults: Tdense")
-
     .Output("handle: variant")
     .Attr("sparse_keys: list(string) >= 0")
     .Attr("dense_keys: list(string) >= 0")
