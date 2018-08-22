@@ -69,11 +69,12 @@ std::vector<std::pair<int64, int64>> MakeSpatialPadding(
     const TensorFormat& data_format);
 
 // Computes the average pool gradient.
-XlaOp AvgPoolGrad(XlaOp out_backprop,
-                  tensorflow::gtl::ArraySlice<int64> gradients_size,
-                  tensorflow::gtl::ArraySlice<int64> kernel_size,
-                  tensorflow::gtl::ArraySlice<int64> stride, Padding padding,
-                  const TensorFormat& data_format);
+XlaOp AvgPoolGrad(
+    XlaOp out_backprop, tensorflow::gtl::ArraySlice<int64> gradients_size,
+    tensorflow::gtl::ArraySlice<int64> kernel_size,
+    tensorflow::gtl::ArraySlice<int64> stride,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> spatial_padding,
+    const TensorFormat& data_format, const bool counts_include_padding);
 
 }  // namespace xla
 
