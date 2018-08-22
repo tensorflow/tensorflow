@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import cross_tower_utils
+from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.core.protobuf import config_pb2
@@ -368,14 +369,23 @@ class MultiWorkerCrossTowerOpsTest(multi_worker_test_base.MultiWorkerTestBase,
                                       ("xring", 2, -1)], 0, 0, 0)),
       ],
       distribution=[
-          combinations.multi_worker_strategy_with_cpu,
-          combinations.multi_worker_strategy_with_one_gpu,
-          combinations.multi_worker_strategy_with_two_gpus
+          combinations.NamedDistribution(
+              "MirroredCPU",
+              lambda: mirrored_strategy.MirroredStrategy(["/cpu:0"]),
+              required_gpus=2),
+          combinations.NamedDistribution(
+              "Mirrored1GPU",
+              lambda: mirrored_strategy.MirroredStrategy(["/gpu:1"]),
+              required_gpus=2), combinations.mirrored_strategy_with_two_gpus
       ],
       mode=["graph"])
 
   @combinations.generate(multi_worker_allreduce_combinations)
   def testReductionAndBroadcast(self, cross_tower_ops, distribution):
+    distribution.configure(cluster_spec={
+        "worker":
+            ["/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"]
+    })
     with distribution.scope():
       self._testReductionAndBroadcast(cross_tower_ops, distribution)
 
