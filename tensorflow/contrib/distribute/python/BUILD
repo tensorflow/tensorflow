@@ -85,6 +85,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -271,6 +272,7 @@ cuda_py_test(
     srcs = ["mirrored_strategy_multigpu_test.py"],
     additional_deps = [
         ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":values",
         ":strategy_test_lib",
         "//tensorflow/python:distribute",
@@ -601,6 +603,7 @@ cuda_py_test(
         ":combinations",
         ":cross_tower_ops",
         ":multi_worker_test_base",
+        ":mirrored_strategy",
         ":values",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
