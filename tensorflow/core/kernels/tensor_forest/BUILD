@@ -1,5 +1,5 @@
 # Description:
-#   OpKernels for boosted trees ops.
+#   OpKernels for tensor forest ops.
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -48,6 +48,7 @@ tf_kernel_library(
     deps = [
         ":resources",
         "//tensorflow/core:framework",
+        "//tensorflow/core:tensor_forest_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
@@ -58,6 +59,7 @@ tf_kernel_library(
     srcs = ["prediction_ops.cc"],
     deps = [
         ":resources",
+        "//tensorflow/core:tensor_forest_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

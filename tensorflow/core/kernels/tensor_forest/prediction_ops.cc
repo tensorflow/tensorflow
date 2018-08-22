@@ -14,7 +14,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/tensor_forest/leaf_model.h"
+//#include "tensorflow/core/kernels/tensor_forest/leaf_model.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -127,4 +127,8 @@ class TreePredictionsOp : public OpKernel {
   LeafModelType leaf_model_type_;
   int32 num_output_;
 };
+
+REGISTER_KERNEL_BUILDER(Name("TreePredictions").Device(DEVICE_CPU),
+                        TreePredictionsOp);
+
 }  // namespace tensorflow

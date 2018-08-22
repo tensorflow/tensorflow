@@ -29,11 +29,8 @@ namespace tensorflow {
 
 class LeafModelResource : public ResourceBase {
  public:
-  LeafModelResource(const int32& leaf_model_type, const int32& num_output)
-      : leaf_model_type_(static_cast<LeafModelType>(leaf_model_type)) {
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(
-        leaf_model_type_, num_output);
-  };
+  explicit LeafModelResource(const int32& leaf_model_type,
+                             const int32& num_output);
 
   virtual void MaybeInitialize();
 

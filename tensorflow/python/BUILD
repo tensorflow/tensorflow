@@ -1562,6 +1562,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "tensor_forest_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:tensor_forest_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -1838,6 +1846,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "tensor_forest_ops",
+    srcs = ["ops/tensor_forest_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor_forest_ops_gen",
+        ":framework",
+        ":ops",
+        ":training",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_py",
+    ],
+)
 py_library(
     name = "sets",
     srcs = [

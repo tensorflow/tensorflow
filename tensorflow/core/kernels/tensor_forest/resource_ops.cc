@@ -28,7 +28,7 @@ class CreateTreeVariableOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("leaf_model_type", &leaf_model_type_));
-    OP_REQUIRES_OK(context, context->GetAttr("leaf_model_type", &num_output_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_output", &num_output_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -82,6 +82,8 @@ class TreeSerializeOp : public OpKernel {
 // Op for deserializing a tree variable from a checkpoint.
 class TreeDeserializeOp : public OpKernel {
  public:
+  explicit TreeDeserializeOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {
     DecisionTreeResource* decision_tree_resource;
     auto handle = HandleFromInput(context, 0);
@@ -123,4 +125,21 @@ class TreeSizeOp : public OpKernel {
         decision_tree_resource->decision_tree().decision_tree().nodes_size();
   }
 };
+
+REGISTER_RESOURCE_HANDLE_KERNEL(DecisionTreeResource);
+
+REGISTER_KERNEL_BUILDER(Name("TreeIsInitializedOp").Device(DEVICE_CPU),
+                        IsResourceInitialized<DecisionTreeResource>);
+
+REGISTER_KERNEL_BUILDER(Name("CreateTreeVariable").Device(DEVICE_CPU),
+                        CreateTreeVariableOp);
+
+REGISTER_KERNEL_BUILDER(Name("TreeSerialize").Device(DEVICE_CPU),
+                        TreeSerializeOp);
+
+REGISTER_KERNEL_BUILDER(Name("TreeDeserialize").Device(DEVICE_CPU),
+                        TreeDeserializeOp);
+
+REGISTER_KERNEL_BUILDER(Name("TreeSize").Device(DEVICE_CPU), TreeSizeOp);
+
 }  // namespace tensorflow
