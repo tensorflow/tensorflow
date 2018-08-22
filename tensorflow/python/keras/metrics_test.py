@@ -198,7 +198,7 @@ class KerasMetricsTest(test.TestCase):
     self.assertTrue(m.stateful)
     self.assertEqual(m.dtype, dtypes.float32)
     self.assertEqual(len(m.variables), 2)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(m.variables))
 
     # check initial state
     self.assertEqual(self.evaluate(m.total), 0)
@@ -225,7 +225,7 @@ class KerasMetricsTest(test.TestCase):
   def test_mean_with_sample_weight(self):
     m = metrics.Mean(dtype=dtypes.float64)
     self.assertEqual(m.dtype, dtypes.float64)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(m.variables))
 
     # check scalar weight
     result_t = m(100, sample_weight=0.5)
@@ -270,7 +270,7 @@ class KerasMetricsTest(test.TestCase):
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
-      sess.run(variables.global_variables_initializer())
+      sess.run(variables.variables_initializer(m.variables))
 
       # check __call__()
       result_t = m(v, sample_weight=w)
@@ -291,7 +291,7 @@ class KerasMetricsTest(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
     m = metrics.Mean()
     checkpoint = checkpointable_utils.Checkpoint(mean=m)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(m.variables))
 
     # update state
     self.evaluate(m(100.))
@@ -325,7 +325,7 @@ class KerasMetricsTest(test.TestCase):
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
 
     # verify that correct value is returned
     update_op = acc_obj.update_state([[1], [0]], [[1], [0]])
@@ -357,7 +357,7 @@ class KerasMetricsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_binary_accuracy_threshold(self):
     acc_obj = metrics.BinaryAccuracy(threshold=0.7)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
     result_t = acc_obj([[1], [1], [0], [0]], [[0.9], [0.6], [0.4], [0.8]])
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.5, 2)
