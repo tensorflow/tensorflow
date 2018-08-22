@@ -370,7 +370,7 @@ public:
     return this->getOperation()->operand_end();
   }
   llvm::iterator_range<const_operand_iterator> getOperands() const {
-    return this->getOperands();
+    return this->getOperation()->getOperands();
   }
 };
 

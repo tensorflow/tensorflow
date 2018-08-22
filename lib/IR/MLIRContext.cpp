@@ -255,7 +255,7 @@ public:
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
-  DenseMap<Function *, FunctionAttr *> functionAttrs;
+  DenseMap<const Function *, FunctionAttr *> functionAttrs;
 
 public:
   MLIRContextImpl() : identifiers(allocator) {
@@ -648,15 +648,19 @@ TypeAttr *TypeAttr::get(Type *type, MLIRContext *context) {
   return result;
 }
 
-FunctionAttr *FunctionAttr::get(Function *value, MLIRContext *context) {
+FunctionAttr *FunctionAttr::get(const Function *value, MLIRContext *context) {
+  assert(value && "Cannot get FunctionAttr for a null function");
+
   auto *&result = context->getImpl().functionAttrs[value];
   if (result)
     return result;
 
   result = context->getImpl().allocator.Allocate<FunctionAttr>();
-  new (result) FunctionAttr(value);
+  new (result) FunctionAttr(const_cast<Function *>(value));
   return result;
 }
+
+FunctionType *FunctionAttr::getType() const { return getValue()->getType(); }
 
 /// This function is used by the internals of the Function class to null out
 /// attributes refering to functions that are about to be deleted.

@@ -410,7 +410,7 @@ bb0:
 
 // -----
 
-cfgfunc @foo() {
+cfgfunc @undefined_function() {
 bb0:
   %x = constant @bar : (i32) -> ()  // expected-error {{reference to undefined function 'bar'}}
   return

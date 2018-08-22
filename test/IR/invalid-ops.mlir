@@ -35,7 +35,7 @@ bb:
 cfgfunc @affine_apply_no_map() {
 bb0:
   %i = "constant"() {value: 0} : () -> affineint
-  %x = "affine_apply" (%i) { } : (affineint) -> (affineint) //  expected-error {{'affine_apply' op requires an affine map.}}
+  %x = "affine_apply" (%i) { } : (affineint) -> (affineint) //  expected-error {{'affine_apply' op requires an affine map}}
   return
 }
 
@@ -105,3 +105,11 @@ mlfunc @mlfunc_constant() {
   %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
   return
 }
+
+// -----
+
+mlfunc @calls(%arg0 : i32) {
+  %x = call @calls() : () -> i32  // expected-error {{reference to function with mismatched type}}
+  return
+}
+

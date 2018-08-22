@@ -41,7 +41,6 @@ class AddFOp
     : public OpBase<AddFOp, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
                     OpTrait::SameOperandsAndResultType> {
 public:
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "addf"; }
 
   template <class Builder, class Value>
@@ -86,7 +85,6 @@ public:
     return getAttrOfType<AffineMapAttr>("map")->getValue();
   }
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "affine_apply"; }
 
   // Hooks to customize behavior of this op.
@@ -136,6 +134,63 @@ private:
   explicit AllocOp(const Operation *state) : OpBase(state) {}
 };
 
+/// The "call" operation represents a direct call to a function.  The operands
+/// and result types of the call must match the specified function type.  The
+/// callee is encoded as a function attribute named "callee".
+///
+///   %31 = call @my_add(%0, %1)
+///            : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
+class CallOp : public OpBase<CallOp, OpTrait::VariadicOperands,
+                             OpTrait::VariadicResults> {
+public:
+  static StringRef getOperationName() { return "call"; }
+
+  static OperationState build(Builder *builder, Function *callee,
+                              ArrayRef<SSAValue *> operands);
+
+  Function *getCallee() const {
+    return getAttrOfType<FunctionAttr>("callee")->getValue();
+  }
+
+  // Hooks to customize behavior of this op.
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  const char *verify() const;
+
+protected:
+  friend class Operation;
+  explicit CallOp(const Operation *state) : OpBase(state) {}
+};
+
+/// The "call_indirect" operation represents an indirect call to a value of
+/// function type.  Functions are first class types in MLIR, and may be passed
+/// as arguments and merged together with basic block arguments.  The operands
+/// and result types of the call must match the specified function type.
+///
+///   %31 = call_indirect %15(%0, %1)
+///            : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
+///
+class CallIndirectOp : public OpBase<CallIndirectOp, OpTrait::VariadicOperands,
+                                     OpTrait::VariadicResults> {
+public:
+  static StringRef getOperationName() { return "call_indirect"; }
+
+  static OperationState build(Builder *builder, SSAValue *callee,
+                              ArrayRef<SSAValue *> operands);
+
+  const SSAValue *getCallee() const { return getOperand(0); }
+  SSAValue *getCallee() { return getOperand(0); }
+
+  // Hooks to customize behavior of this op.
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  const char *verify() const;
+
+protected:
+  friend class Operation;
+  explicit CallIndirectOp(const Operation *state) : OpBase(state) {}
+};
+
 /// The "constant" operation requires a single attribute named "value".
 /// It returns its value as an SSA value.  For example:
 ///
@@ -147,7 +202,6 @@ class ConstantOp
 public:
   Attribute *getValue() const { return getAttr("value"); }
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "constant"; }
 
   // Hooks to customize behavior of this op.
@@ -264,7 +318,6 @@ public:
     return (unsigned)getAttrOfType<IntegerAttr>("index")->getValue();
   }
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "dim"; }
 
   // Hooks to customize behavior of this op.
@@ -362,7 +415,6 @@ private:
 class ReturnOp
     : public OpBase<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "return"; }
 
   // Hooks to customize behavior of this op.

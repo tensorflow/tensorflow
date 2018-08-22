@@ -247,6 +247,7 @@ public:
   }
 
   void print(const Module *module);
+  void printFunctionReference(const Function *func);
   void printAttribute(const Attribute *attr);
   void printType(const Type *type);
   void print(const Function *fn);
@@ -387,6 +388,10 @@ static void printFloatValue(double value, raw_ostream &os) {
   }
 }
 
+void ModulePrinter::printFunctionReference(const Function *func) {
+  os << '@' << func->getName();
+}
+
 void ModulePrinter::printAttribute(const Attribute *attr) {
   switch (attr->getKind()) {
   case Attribute::Kind::Bool:
@@ -420,7 +425,8 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     if (!function) {
       os << "<<FUNCTION ATTR FOR DELETED FUNCTION>>";
     } else {
-      os << '@' << function->getName() << " : ";
+      printFunctionReference(function);
+      os << " : ";
       printType(function->getType());
     }
     break;
@@ -767,6 +773,9 @@ public:
   }
   void printAffineExpr(const AffineExpr *expr) {
     return ModulePrinter::printAffineExpr(expr);
+  }
+  void printFunctionReference(const Function *func) {
+    return ModulePrinter::printFunctionReference(func);
   }
 
   void printOperand(const SSAValue *value) { printValueID(value); }

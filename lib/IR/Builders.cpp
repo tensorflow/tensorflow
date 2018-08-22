@@ -111,7 +111,7 @@ TypeAttr *Builder::getTypeAttr(Type *type) {
   return TypeAttr::get(type, context);
 }
 
-FunctionAttr *Builder::getFunctionAttr(Function *value) {
+FunctionAttr *Builder::getFunctionAttr(const Function *value) {
   return FunctionAttr::get(value, context);
 }
 

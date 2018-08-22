@@ -31,6 +31,7 @@ namespace mlir {
 class AffineMap;
 class AffineExpr;
 class Builder;
+class Function;
 
 //===----------------------------------------------------------------------===//
 // OpAsmPrinter
@@ -65,6 +66,7 @@ public:
     }
   }
   virtual void printType(const Type *type) = 0;
+  virtual void printFunctionReference(const Function *func) = 0;
   virtual void printAttribute(const Attribute *attr) = 0;
   virtual void printAffineMap(const AffineMap *map) = 0;
   virtual void printAffineExpr(const AffineExpr *expr) = 0;
@@ -147,9 +149,12 @@ public:
   // High level parsing methods.
   //===--------------------------------------------------------------------===//
 
-  // These return void if they always succeed.  If they can fail, they emit an
-  // error and return "true".  On success, they can optionally provide location
-  // information for clients who want it.
+  // These emit an error and return "true" on failure.  On success, they can
+  // optionally provide location information for clients who want it.
+
+  /// Get the location of the next token and store it into the argument.  This
+  /// always succeeds.
+  virtual bool getCurrentLocation(llvm::SMLoc *loc) = 0;
 
   /// This parses... a comma!
   virtual bool parseComma(llvm::SMLoc *loc = nullptr) = 0;
@@ -190,6 +195,14 @@ public:
     return false;
   }
 
+  /// Add the specified types to the end of the specified type list and return
+  /// false.  This is a helper designed to allow parse methods to be simple and
+  /// chain through || operators.
+  bool addTypesToList(ArrayRef<Type *> types, SmallVectorImpl<Type *> &result) {
+    result.append(types.begin(), types.end());
+    return false;
+  }
+
   /// Parse an arbitrary attribute and return it in result.  This also adds the
   /// attribute to the specified attribute list with the specified name.  this
   /// captures the location of the attribute in 'loc' if it is non-null.
@@ -225,6 +238,10 @@ public:
   virtual bool
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result,
                              llvm::SMLoc *loc = nullptr) = 0;
+
+  /// Parse a function name like '@foo' and return the name in a form that can
+  /// be passed to resolveFunctionName when a function type is available.
+  virtual bool parseFunctionName(StringRef &result, llvm::SMLoc &loc) = 0;
 
   /// This is the representation of an operand reference.
   struct OperandType {
@@ -270,7 +287,7 @@ public:
 
   /// Resolve an operand to an SSA value, emitting an error and returning true
   /// on failure.
-  virtual bool resolveOperand(OperandType operand, Type *type,
+  virtual bool resolveOperand(const OperandType &operand, Type *type,
                               SmallVectorImpl<SSAValue *> &result) = 0;
 
   /// Resolve a list of operands to SSA values, emitting an error and returning
@@ -288,14 +305,23 @@ public:
   /// emitting an error and returning true on failure, or appending the results
   /// to the list on success.
   virtual bool resolveOperands(ArrayRef<OperandType> operands,
-                               ArrayRef<Type *> types,
+                               ArrayRef<Type *> types, llvm::SMLoc loc,
                                SmallVectorImpl<SSAValue *> &result) {
+    if (operands.size() != types.size())
+      return emitError(loc, Twine(operands.size()) +
+                                " operands present, but expected " +
+                                Twine(types.size()));
+
     for (unsigned i = 0, e = operands.size(); i != e; ++i) {
       if (resolveOperand(operands[i], types[i], result))
         return true;
     }
     return false;
   }
+
+  /// Resolve a parse function name and a type into a function reference.
+  virtual bool resolveFunctionName(StringRef name, FunctionType *type,
+                                   llvm::SMLoc loc, Function *&result) = 0;
 
   /// Emit a diagnostic at the specified location and return true.
   virtual bool emitError(llvm::SMLoc loc, const Twine &message) = 0;

@@ -224,12 +224,22 @@ public:
   static FunctionType *get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
                            MLIRContext *context);
 
+  // Input types.
+  unsigned getNumInputs() const { return getSubclassData(); }
+
+  Type *getInput(unsigned i) const { return getInputs()[i]; }
+
   ArrayRef<Type*> getInputs() const {
-    return ArrayRef<Type*>(inputsAndResults, getSubclassData());
+    return ArrayRef<Type *>(inputsAndResults, getNumInputs());
   }
 
+  // Result types.
+  unsigned getNumResults() const { return numResults; }
+
+  Type *getResult(unsigned i) const { return getResults()[i]; }
+
   ArrayRef<Type*> getResults() const {
-    return ArrayRef<Type*>(inputsAndResults+getSubclassData(), numResults);
+    return ArrayRef<Type *>(inputsAndResults + getSubclassData(), numResults);
   }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

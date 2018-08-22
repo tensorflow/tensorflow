@@ -86,7 +86,7 @@ public:
   ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
   AffineMapAttr *getAffineMapAttr(AffineMap *value);
   TypeAttr *getTypeAttr(Type *type);
-  FunctionAttr *getFunctionAttr(Function *value);
+  FunctionAttr *getFunctionAttr(const Function *value);
 
   // Affine Expressions and Affine Map.
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,

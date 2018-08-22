@@ -24,6 +24,7 @@
 namespace mlir {
 class AffineMap;
 class Function;
+class FunctionType;
 class MLIRContext;
 class Type;
 
@@ -222,9 +223,11 @@ private:
 /// remain in MLIRContext.
 class FunctionAttr : public Attribute {
 public:
-  static FunctionAttr *get(Function *value, MLIRContext *context);
+  static FunctionAttr *get(const Function *value, MLIRContext *context);
 
   Function *getValue() const { return value; }
+
+  FunctionType *getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {

@@ -129,7 +129,7 @@ const char *AffineApplyOp::verify() const {
   // Check that affine map attribute was specified.
   auto *affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
-    return "requires an affine map.";
+    return "requires an affine map";
 
   // Check input and output dimensions match.
   auto *map = affineMapAttr->getValue();
@@ -198,7 +198,152 @@ const char *AllocOp::verify() const {
 }
 
 //===----------------------------------------------------------------------===//
-// ConstantOp
+// CallOp
+//===----------------------------------------------------------------------===//
+
+OperationState CallOp::build(Builder *builder, Function *callee,
+                             ArrayRef<SSAValue *> operands) {
+  OperationState result(builder->getIdentifier("call"));
+  result.operands.append(operands.begin(), operands.end());
+  result.attributes.push_back(
+      {builder->getIdentifier("callee"), builder->getFunctionAttr(callee)});
+  result.types.append(callee->getType()->getResults().begin(),
+                      callee->getType()->getResults().end());
+  return result;
+}
+
+bool CallOp::parse(OpAsmParser *parser, OperationState *result) {
+  StringRef calleeName;
+  llvm::SMLoc calleeLoc;
+  FunctionType *calleeType = nullptr;
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  Function *callee = nullptr;
+  if (parser->parseFunctionName(calleeName, calleeLoc) ||
+      parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
+                               OpAsmParser::Delimiter::Paren) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(calleeType) ||
+      parser->resolveFunctionName(calleeName, calleeType, calleeLoc, callee) ||
+      parser->addTypesToList(calleeType->getResults(), result->types) ||
+      parser->resolveOperands(operands, calleeType->getInputs(), calleeLoc,
+                              result->operands))
+    return true;
+
+  auto &builder = parser->getBuilder();
+  result->attributes.push_back(
+      {builder.getIdentifier("callee"), builder.getFunctionAttr(callee)});
+
+  return false;
+}
+
+void CallOp::print(OpAsmPrinter *p) const {
+  *p << "call ";
+  p->printFunctionReference(getCallee());
+  *p << '(';
+  p->printOperands(getOperands());
+  *p << ')';
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"callee");
+  *p << " : " << *getCallee()->getType();
+}
+
+const char *CallOp::verify() const {
+  // Check that the callee attribute was specified.
+  auto *fnAttr = getAttrOfType<FunctionAttr>("callee");
+  if (!fnAttr)
+    return "requires a 'callee' function attribute";
+
+  // Verify that the operand and result types match the callee.
+  auto *fnType = fnAttr->getValue()->getType();
+  if (fnType->getNumInputs() != getNumOperands())
+    return "incorrect number of operands for callee";
+
+  for (unsigned i = 0, e = fnType->getNumInputs(); i != e; ++i) {
+    if (getOperand(i)->getType() != fnType->getInput(i))
+      return "operand type mismatch";
+  }
+
+  if (fnType->getNumResults() != getNumResults())
+    return "incorrect number of results for callee";
+
+  for (unsigned i = 0, e = fnType->getNumResults(); i != e; ++i) {
+    if (getResult(i)->getType() != fnType->getResult(i))
+      return "result type mismatch";
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// CallIndirectOp
+//===----------------------------------------------------------------------===//
+
+OperationState CallIndirectOp::build(Builder *builder, SSAValue *callee,
+                                     ArrayRef<SSAValue *> operands) {
+  auto *fnType = cast<FunctionType>(callee->getType());
+
+  OperationState result(builder->getIdentifier("call_indirect"));
+  result.operands.push_back(callee);
+  result.operands.append(operands.begin(), operands.end());
+  result.types.append(fnType->getResults().begin(), fnType->getResults().end());
+  return result;
+}
+
+bool CallIndirectOp::parse(OpAsmParser *parser, OperationState *result) {
+  FunctionType *calleeType = nullptr;
+  OpAsmParser::OperandType callee;
+  llvm::SMLoc operandsLoc;
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  return parser->parseOperand(callee) ||
+         parser->getCurrentLocation(&operandsLoc) ||
+         parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
+                                  OpAsmParser::Delimiter::Paren) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(calleeType) ||
+         parser->resolveOperand(callee, calleeType, result->operands) ||
+         parser->resolveOperands(operands, calleeType->getInputs(), operandsLoc,
+                                 result->operands) ||
+         parser->addTypesToList(calleeType->getResults(), result->types);
+}
+
+void CallIndirectOp::print(OpAsmPrinter *p) const {
+  *p << "call_indirect ";
+  p->printOperand(getCallee());
+  *p << '(';
+  auto operandRange = getOperands();
+  p->printOperands(++operandRange.begin(), operandRange.end());
+  *p << ')';
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"callee");
+  *p << " : " << *getCallee()->getType();
+}
+
+const char *CallIndirectOp::verify() const {
+  // The callee must be a function.
+  auto *fnType = dyn_cast<FunctionType>(getCallee()->getType());
+  if (!fnType)
+    return "callee must have function type";
+
+  // Verify that the operand and result types match the callee.
+  if (fnType->getNumInputs() != getNumOperands() - 1)
+    return "incorrect number of operands for callee";
+
+  for (unsigned i = 0, e = fnType->getNumInputs(); i != e; ++i) {
+    if (getOperand(i + 1)->getType() != fnType->getInput(i))
+      return "operand type mismatch";
+  }
+
+  if (fnType->getNumResults() != getNumResults())
+    return "incorrect number of results for callee";
+
+  for (unsigned i = 0, e = fnType->getNumResults(); i != e; ++i) {
+    if (getResult(i)->getType() != fnType->getResult(i))
+      return "result type mismatch";
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// Constant*Op
 //===----------------------------------------------------------------------===//
 
 void ConstantOp::print(OpAsmPrinter *p) const {
@@ -444,10 +589,10 @@ const char *LoadOp::verify() const {
 bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type *, 2> types;
-
-  return parser->parseOperandList(opInfo, -1, OpAsmParser::Delimiter::None) ||
+  llvm::SMLoc loc;
+  return parser->getCurrentLocation(&loc) || parser->parseOperandList(opInfo) ||
          (!opInfo.empty() && parser->parseColonTypeList(types)) ||
-         parser->resolveOperands(opInfo, types, result->operands);
+         parser->resolveOperands(opInfo, types, loc, result->operands);
 }
 
 void ReturnOp::print(OpAsmPrinter *p) const {
@@ -541,7 +686,7 @@ const char *StoreOp::verify() const {
 
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
-  opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DeallocOp,
-                      DimOp, LoadOp, ReturnOp, StoreOp>(
+  opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, CallOp, CallIndirectOp,
+                      ConstantOp, DeallocOp, DimOp, LoadOp, ReturnOp, StoreOp>(
       /*prefix=*/"");
 }

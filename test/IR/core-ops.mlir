@@ -58,6 +58,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
   // CHECK: %f_1 = constant @affine_apply : () -> ()
   %11 = constant @affine_apply : () -> ()
 
+  // CHECK: %f_2 = constant @affine_apply : () -> ()
+  %12 = constant @affine_apply : () -> ()
+
   return
 }
 
@@ -101,3 +104,32 @@ mlfunc @return_op(%a : i32) -> i32 {
   // CHECK: return %arg0 : i32
   "return" (%a) : (i32)->()
 }
+
+// CHECK-LABEL: mlfunc @calls(%arg0 : i32) {
+mlfunc @calls(%arg0 : i32) {
+  // CHECK: %0 = call @return_op(%arg0) : (i32) -> i32
+  %x = call @return_op(%arg0) : (i32) -> i32
+  // CHECK: %1 = call @return_op(%0) : (i32) -> i32
+  %y = call @return_op(%x) : (i32) -> i32
+  // CHECK: %2 = call @return_op(%0) : (i32) -> i32
+  %z = "call"(%x) {callee: @return_op : (i32) -> i32} : (i32) -> i32
+
+  // CHECK: %f = constant @affine_apply : () -> ()
+  %f = constant @affine_apply : () -> ()
+
+  // CHECK: call_indirect %f() : () -> ()
+  call_indirect %f() : () -> ()
+
+  // CHECK: %f_0 = constant @return_op : (i32) -> i32
+  %f_0 = constant @return_op : (i32) -> i32
+
+  // CHECK: %3 = call_indirect %f_0(%arg0) : (i32) -> i32
+  %2 = call_indirect %f_0(%arg0) : (i32) -> i32
+
+  // CHECK: %4 = call_indirect %f_0(%arg0) : (i32) -> i32
+  %3 = "call_indirect"(%f_0, %arg0) : ((i32) -> i32, i32) -> i32
+
+  return
+}
+
+
