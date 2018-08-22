@@ -237,6 +237,27 @@ py_test(
     ],
 )
 
+py_test(
+    name = "parsing_ops_test",
+    size = "small",
+    srcs = ["parsing_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:parsing_ops",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "prefetching_ops_test",
     size = "small",
@@ -323,6 +344,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
 )
