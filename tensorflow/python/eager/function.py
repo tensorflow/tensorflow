@@ -33,6 +33,7 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -179,6 +180,14 @@ class CapturingGraph(ops.Graph):
         compute_device=compute_device)
 
 
+def _get_device_functions(ctx, graph):
+  """Returns a tuple of device functions representing the device stack."""
+  if ctx.executing_eagerly():
+    return (pydev.merge_device(ctx.device_name),)
+  else:
+    return tuple(graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
+
+
 class FuncGraph(CapturingGraph):
   """Graph representing a function body.
 
@@ -200,8 +209,8 @@ class FuncGraph(CapturingGraph):
   def __init__(self, name):
     """Construct a new FuncGraph.
 
-    The graph will inherit its graph key, collections, seed, and distribution
-    strategy stack from the current context or graph.
+    The graph will inherit its graph key, collections, seed, device stack, and
+    distribution strategy stack from the current context or graph.
 
     Args:
       name: the name of the function.
@@ -219,9 +228,11 @@ class FuncGraph(CapturingGraph):
     if context.executing_eagerly():
       self.seed = context.global_seed()
       self._xla_compile = (context.context().device_spec.device_type == "TPU")
+      self._add_device_to_stack(context.context().device_name)
     else:
       self.seed = graph.seed
       self._xla_compile = getattr(graph, "_xla_compile", False)
+      self._device_function_stack = graph._device_function_stack.copy()  # pylint: disable=protected-access
 
     # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
     # from the default graph even in eager mode. It'd be nice to not have a
@@ -449,6 +460,8 @@ class GraphCallable(object):
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = attrs or {}
+    self._device_functions = tuple(
+        self._func_graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
 
     self._inference_function = _EagerDefinedFunction(
         _inference_name(self._func_graph.name), self._func_graph,
@@ -602,7 +615,17 @@ class GraphCallable(object):
     return self._captured_inputs
 
   def __call__(self, *args):
-    """Executes the passed function in eager mode."""
+    """Executes the wrapped function."""
+    ctx = context.context()
+    device_functions = _get_device_functions(ctx, ops.get_default_graph())
+    if device_functions != self._device_functions:
+      raise ValueError(
+          "The current device stack does not match the device stack under "
+          "which the TensorFlow function '%s' was created.\n"
+          "Current device stack: %s\n%s device stack: %s" %
+          (self._inference_function.name, device_functions,
+           self._inference_function.name, self._device_functions))
+
     for v in self._func_graph.variables:
       if v.trainable:
         tape.watch_variable(v)
@@ -614,7 +637,6 @@ class GraphCallable(object):
     if tape.should_record(tensor_inputs) or tape.should_record(captures):
       return self._backprop_call(args)
 
-    ctx = context.context()
     outputs = self._inference_function.call(ctx, args)
     return self._build_call_outputs(outputs)
 
@@ -931,17 +953,24 @@ class _PolymorphicFunction(object):
     # then `instance` will be `foo` (and `owner` will be `Foo`).
     return functools.partial(self.__call__, instance)
 
-  def _cache_key(self, args, kwds):
-    """Computes the cache key given inputs."""
+  def _cache_key(self, args, kwds, ctx, graph):
+    """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwds) if kwds else args
       cache_key = tuple(_encode_arg(arg) for arg in inputs)
     else:
       del args, kwds
       cache_key = self._flat_input_signature
+
     # The graph, or whether we're executing eagerly, should be a part of the
     # cache key so we don't improperly capture tensors such as variables.
-    return cache_key + (context.executing_eagerly() or ops.get_default_graph(),)
+    execution_context = ctx.executing_eagerly() or graph
+
+    # Putting the device in the cache key ensures that call-site device
+    # annotations are respected.
+    device_functions = _get_device_functions(ctx, graph)
+
+    return cache_key + (execution_context, device_functions)
 
   def _canonicalize_function_inputs(self, *args, **kwds):
     """Canonicalizes `args` and `kwds`.
@@ -1029,7 +1058,8 @@ class _PolymorphicFunction(object):
     """
 
     args, kwds = self._canonicalize_function_inputs(*args, **kwds)
-    cache_key = self._cache_key(args, kwds)
+    cache_key = self._cache_key(args, kwds, context.context(),
+                                ops.get_default_graph())
     with self._lock:
       try:
         graph_function = self._arguments_to_functions.get(cache_key, None)
