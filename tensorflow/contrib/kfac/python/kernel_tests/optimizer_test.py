@@ -84,7 +84,7 @@ class OptimizerTest(test.TestCase):
           momentum_type='regular')
 
   def testSquaredFisherNorm(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       grads_and_vars = [(array_ops.constant([[1., 2.], [3., 4.]]), None),
                         (array_ops.constant([[2., 3.], [4., 5.]]), None)]
       pgrads_and_vars = [(array_ops.constant([[3., 4.], [5., 6.]]), None),
@@ -94,7 +94,7 @@ class OptimizerTest(test.TestCase):
       self.assertAlmostEqual(174., sess.run(sq_norm), places=5)
 
   def testUpdateClipCoeff(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       grads_and_vars = [(array_ops.constant([[1., 2.], [3., 4.]]), None),
                         (array_ops.constant([[2., 3.], [4., 5.]]), None)]
       pgrads_and_vars = [(array_ops.constant([[3., 4.], [5., 6.]]), None),
@@ -129,7 +129,7 @@ class OptimizerTest(test.TestCase):
     pass
 
   def testUpdateVelocities(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       layers = lc.LayerCollection()
       layers.register_categorical_predictive_distribution(
           array_ops.constant([1.0]))
@@ -167,7 +167,7 @@ class OptimizerTest(test.TestCase):
         self.assertFalse(np.equal(first, second).all())
 
   def testApplyGradients(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       layer_collection = lc.LayerCollection()
 
       inputs = array_ops.ones((2, 1)) * 2
