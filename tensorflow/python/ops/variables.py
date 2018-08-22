@@ -459,7 +459,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign(self, value, use_locking=False):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     """Assigns a new value to the variable.
 
     This is essentially a shortcut for `assign(self, value)`.
@@ -467,6 +467,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -474,7 +477,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign_add(self, delta, use_locking=False):
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     """Adds a value to this variable.
 
      This is essentially a shortcut for `assign_add(self, delta)`.
@@ -482,6 +485,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -489,7 +495,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
-  def assign_sub(self, delta, use_locking=False):
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     """Subtracts a value from this variable.
 
     This is essentially a shortcut for `assign_sub(self, delta)`.
@@ -497,6 +503,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Args:
       delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
@@ -1450,7 +1459,7 @@ class RefVariable(Variable):
     """
     return self._constraint
 
-  def assign(self, value, use_locking=False):
+  def assign(self, value, use_locking=False, name=None, read_value=True):
     """Assigns a new value to the variable.
 
     This is essentially a shortcut for `assign(self, value)`.
@@ -1458,14 +1467,21 @@ class RefVariable(Variable):
     Args:
       value: A `Tensor`. The new value for this variable.
       use_locking: If `True`, use locking during the assignment.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the assignment has completed.
     """
-    return state_ops.assign(self._variable, value, use_locking=use_locking)
+    assign = state_ops.assign(self._variable, value, use_locking=use_locking,
+                              name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def assign_add(self, delta, use_locking=False):
+  def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     """Adds a value to this variable.
 
      This is essentially a shortcut for `assign_add(self, delta)`.
@@ -1473,14 +1489,21 @@ class RefVariable(Variable):
     Args:
       delta: A `Tensor`. The value to add to this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the addition has completed.
     """
-    return state_ops.assign_add(self._variable, delta, use_locking=use_locking)
+    assign = state_ops.assign_add(
+        self._variable, delta, use_locking=use_locking, name=name)
+    if read_value:
+      return assign
+    return assign.op
 
-  def assign_sub(self, delta, use_locking=False):
+  def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     """Subtracts a value from this variable.
 
     This is essentially a shortcut for `assign_sub(self, delta)`.
@@ -1488,12 +1511,19 @@ class RefVariable(Variable):
     Args:
       delta: A `Tensor`. The value to subtract from this variable.
       use_locking: If `True`, use locking during the operation.
+      name: The name of the operation to be created
+      read_value: if True, will return something which evaluates to the
+        new value of the variable; if False will return the assign op.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the subtraction has completed.
     """
-    return state_ops.assign_sub(self._variable, delta, use_locking=use_locking)
+    assign = state_ops.assign_sub(
+        self._variable, delta, use_locking=use_locking, name=name)
+    if read_value:
+      return assign
+    return assign.op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
