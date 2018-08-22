@@ -34,6 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import estimator_export
 
@@ -117,14 +118,15 @@ def _is_google_env():
 
 @estimator_export('estimator.TrainSpec')
 class TrainSpec(
-    collections.namedtuple('TrainSpec', ['input_fn', 'max_steps', 'hooks'])):
+    collections.namedtuple('TrainSpec', ['input_fn', 'max_steps',
+                                         'num_steps', 'hooks'])):
   """Configuration for the "train" part for the `train_and_evaluate` call.
 
   `TrainSpec` determines the input data for the training, as well as the
   duration. Optional hooks run at various stages of training.
   """
 
-  def __new__(cls, input_fn, max_steps=None, hooks=None):
+  def __new__(cls, input_fn, max_steps=None, num_steps=None, hooks=None):
     """Creates a validated `TrainSpec` instance.
 
     Args:
@@ -142,6 +144,8 @@ class TrainSpec(
         If `None`, train forever. The training `input_fn` is not expected to
         generate `OutOfRangeError` or `StopIteration` exceptions. See the
         `train_and_evaluate` stop condition section for details.
+      num_steps: Int. Positive number of number of steps for which to train model.
+        Cannot be specified together with `max_steps`.
       hooks: Iterable of `tf.train.SessionRunHook` objects to run
         on all workers (including chief) during training.
 
@@ -160,11 +164,20 @@ class TrainSpec(
       raise ValueError(
           'Must specify max_steps > 0, given: {}'.format(max_steps))
 
+    if num_steps is not None and num_steps <= 0:
+      raise ValueError(
+          'Must specify num_steps > 0, given: {}'.format(num_steps))
+
+    if max_steps is not None and num_steps is not None:
+      raise ValueError(
+          'Must specify either max_steps or num_steps')
+
     # Validate hooks.
     hooks = _validate_hooks(hooks)
 
     return super(TrainSpec, cls).__new__(
-        cls, input_fn=input_fn, max_steps=max_steps, hooks=hooks)
+        cls, input_fn=input_fn, max_steps=max_steps,
+        num_steps=num_steps, hooks=hooks)
 
 
 @estimator_export('estimator.EvalSpec')
@@ -646,7 +659,8 @@ class _TrainingExecutor(object):
     # But here, throttle_secs will skip the next intermediate checkpoint and,
     # so, the double final export chance is very small.
     evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
-                                             self._train_spec.max_steps)
+                                             self._train_spec.max_steps,
+                                             self._train_spec.num_steps)
 
     # When the underlying `Estimator` object saves a new checkpoint, we would
     # like this callback to be called so that evaluation and export can trigger.
@@ -681,7 +695,8 @@ class _TrainingExecutor(object):
                      self._estimator.config.save_checkpoints_secs))
 
     evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
-                                             self._train_spec.max_steps)
+                                             self._train_spec.max_steps,
+                                             self._train_spec.num_steps)
 
     listener_for_eval = _NewCheckpointListenerForEvaluate(
         evaluator, self._eval_spec.throttle_secs,
@@ -691,6 +706,7 @@ class _TrainingExecutor(object):
     self._estimator.train(
         input_fn=self._train_spec.input_fn,
         max_steps=self._train_spec.max_steps,
+        steps=self._train_spec.num_steps,
         hooks=train_hooks,
         saving_listeners=saving_listeners)
 
@@ -768,6 +784,7 @@ class _TrainingExecutor(object):
     self._estimator.train(
         input_fn=self._train_spec.input_fn,
         max_steps=self._train_spec.max_steps,
+        steps=self._train_spec.num_steps,
         hooks=list(self._train_spec.hooks) + list(self._train_hooks),
         saving_listeners=saving_listeners)
 
@@ -783,7 +800,8 @@ class _TrainingExecutor(object):
 
     latest_eval_result = None
     evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
-                                             self._train_spec.max_steps)
+                                             self._train_spec.max_steps,
+                                             self._train_spec.num_steps)
 
     should_early_stop = False
     while not should_early_stop:
@@ -850,7 +868,8 @@ class _TrainingExecutor(object):
   class _Evaluator(object):
     """A helper class to call `Estimator.evaluate` and export model."""
 
-    def __init__(self, estimator, eval_spec, max_training_steps):
+    def __init__(self, estimator, eval_spec, max_training_steps,
+                 num_training_steps):
       self._estimator = estimator
 
       _assert_eval_spec(eval_spec)
@@ -860,6 +879,17 @@ class _TrainingExecutor(object):
       self._previous_ckpt_path = None
       self._last_warning_time = 0
       self._max_training_steps = max_training_steps
+
+      if num_training_steps is not None:
+        latest_ckpt_path = self._estimator.latest_checkpoint()
+        if latest_ckpt_path:
+          checkpoint_reader = training.NewCheckpointReader(
+              latest_ckpt_path)
+          last_global_step = checkpoint_reader.get_tensor(
+              ops.GraphKeys.GLOBAL_STEP)
+          self._max_training_steps = num_training_steps + last_global_step
+        else:
+          self._max_training_steps = num_training_steps
 
     @property
     def is_final_export_triggered(self):
