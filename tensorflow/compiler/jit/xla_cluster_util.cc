@@ -185,14 +185,14 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   return Status::OK();
 }
 
-gtl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
+absl::optional<StringPiece> GetXlaClusterForNode(const Node& node) {
   const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
   if (attr_value == nullptr) {
-    return gtl::nullopt;
+    return absl::nullopt;
   }
   Status s = AttrValueHasType(*attr_value, "string");
   if (!s.ok()) {
-    return gtl::nullopt;
+    return absl::nullopt;
   }
   return attr_value->s();
 }

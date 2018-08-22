@@ -22,7 +22,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -94,12 +96,14 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
       add_unique_predecessor(control_predecessor);
     }
   }
-  if (instruction->opcode() == HloOpcode::kRecvDone) {
+  if (instruction->opcode() == HloOpcode::kRecvDone &&
+      !DynCast<HloRecvDoneInstruction>(instruction)->is_host_transfer()) {
     // Send is a remote predecessor of RecvDone.
     HloInstruction* send = metadata_.GetChannel(instruction->channel_id()).send;
     add_unique_predecessor(send);
   }
-  if (instruction->opcode() == HloOpcode::kSend) {
+  if (instruction->opcode() == HloOpcode::kSend &&
+      !DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
     // Recv is a remote predecessor of Send.
     HloInstruction* recv_done =
         metadata_.GetChannel(instruction->channel_id()).recv_done;
@@ -170,14 +174,16 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
       add_unique_successor(control_successor);
     }
   }
-  if (instruction->opcode() == HloOpcode::kRecv) {
+  if (instruction->opcode() == HloOpcode::kRecv &&
+      !DynCast<HloRecvInstruction>(instruction)->is_host_transfer()) {
     // Send is a remote successor of Recv.
     const HloInstruction* recv_done = instruction->users().front();
     CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
     HloInstruction* send = metadata_.GetChannel(instruction->channel_id()).send;
     add_unique_successor(send);
   }
-  if (instruction->opcode() == HloOpcode::kSend) {
+  if (instruction->opcode() == HloOpcode::kSend &&
+      !DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
     // RecvDone is a remote successor of Send.
     HloInstruction* recv_done =
         metadata_.GetChannel(instruction->channel_id()).recv_done;
@@ -332,7 +338,7 @@ HloModuleGroupUtil::ComputeReachability(
     TF_RETURN_IF_ERROR(
         VisitTopologicalOrder(&visit_states, visit_function, root));
   }
-  auto reachability = MakeUnique<HloReachabilityMap>(post_order);
+  auto reachability = absl::make_unique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
     reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }

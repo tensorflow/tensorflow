@@ -77,6 +77,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+// TODO(aaroey): put these constants into some class.
+const char* const kInputPHName = "TensorRTInputPH_";
+const char* const kOutputPHName = "TensorRTOutputPH_";
+
 namespace convert {
 using ::tensorflow::str_util::Split;
 using ::tensorflow::strings::StrAppend;

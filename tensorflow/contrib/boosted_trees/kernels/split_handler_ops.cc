@@ -383,19 +383,20 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
     best_gain -= num_elements * state->tree_complexity_regularization();
 
     ObliviousSplitInfo oblivious_split_info;
-    auto* oblivious_dense_split = oblivious_split_info.mutable_split_node()
-                                      ->mutable_dense_float_binary_split();
+    auto* oblivious_dense_split =
+        oblivious_split_info.mutable_split_node()
+            ->mutable_oblivious_dense_float_binary_split();
     oblivious_dense_split->set_feature_column(state->feature_column_group_id());
     oblivious_dense_split->set_threshold(
         bucket_boundaries(bucket_ids(best_bucket_idx, 0)));
     (*gains)(0) = best_gain;
 
     for (int root_idx = 0; root_idx < num_elements; root_idx++) {
-      auto* left_children = oblivious_split_info.add_children_leaves();
-      auto* right_children = oblivious_split_info.add_children_leaves();
+      auto* left_child = oblivious_split_info.add_children();
+      auto* right_child = oblivious_split_info.add_children();
 
-      state->FillLeaf(best_left_node_stats[root_idx], left_children);
-      state->FillLeaf(best_right_node_stats[root_idx], right_children);
+      state->FillLeaf(best_left_node_stats[root_idx], left_child);
+      state->FillLeaf(best_right_node_stats[root_idx], right_child);
 
       const int start_index = partition_boundaries[root_idx];
       (*output_partition_ids)(root_idx) = partition_ids(start_index);

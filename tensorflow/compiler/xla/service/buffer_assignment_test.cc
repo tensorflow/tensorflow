@@ -21,8 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
@@ -87,7 +87,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -98,7 +98,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
       HloModule* module, int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -109,7 +109,7 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
-               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -127,7 +127,8 @@ class BufferAssignmentTest : public HloTestBase {
                                            instruction_sequence.end());
     return BufferAssigner::Run(
                module,
-               xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
+               absl::make_unique<SequentialHloOrdering>(module,
+                                                        module_sequence),
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -1769,7 +1770,8 @@ class WhileBufferAssignmentTest : public HloTestBase {
     auto sequence =
         ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
-               module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
+               module,
+               absl::make_unique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allow_input_output_aliasing=*/false,
@@ -2083,7 +2085,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       auto assignment,
       BufferAssigner::Run(
           module.get(),
-          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          absl::make_unique<SequentialHloOrdering>(module.get(), sequence),
           backend().compiler()->BufferSizeBytesFunction(),
           [](LogicalBuffer::Color) { return 1; },
           /*allow_input_output_aliasing=*/false,
@@ -2340,7 +2342,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto assignment =
       BufferAssigner::Run(
           module.get(),
-          xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
+          absl::make_unique<SequentialHloOrdering>(module.get(), sequence),
           ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
           /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true)

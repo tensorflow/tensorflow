@@ -777,6 +777,34 @@ class ParallelInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
+  def testShutdownRace(self):
+    dataset = dataset_ops.Dataset.range(20)
+    map_fn = lambda x: dataset_ops.Dataset.range(20 * x, 20 * (x + 1))
+    dataset = dataset.apply(
+        interleave_ops.parallel_interleave(
+            map_fn,
+            cycle_length=3,
+            sloppy=False,
+            buffer_output_elements=1,
+            prefetch_input_elements=0))
+    dataset = dataset.batch(32)
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    results = []
+    with self.test_session() as sess:
+      for _ in range(2):
+        elements = []
+        sess.run(iterator.initializer)
+        try:
+          while True:
+            elements.extend(sess.run(next_element))
+        except errors.OutOfRangeError:
+          pass
+        results.append(elements)
+
+    self.assertAllEqual(results[0], results[1])
+
 
 if __name__ == "__main__":
   test.main()

@@ -32,6 +32,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -101,6 +102,7 @@ class HloPrintOptions {
     return HloPrintOptions()
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
+        .set_print_backend_config(false)
         .set_compact_operands(true)
         .set_print_operand_shape(true)
         .set_print_program_shape(false)
@@ -182,7 +184,7 @@ class HloPrintOptions {
     return print_subcomputation_mode_;
   }
   bool print_metadata() const { return print_metadata_; }
-  bool print_backend_config() const { return print_metadata_; }
+  bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_program_shape() const { return print_program_shape_; }
@@ -448,7 +450,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& all_reduce_id);
 
   // This op handles the communication of an Alltoall operation. On each core,
   // the operands are N ops in the same shape, where N is the number of cores
@@ -708,12 +710,6 @@ class HloInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       tensorflow::StringPiece custom_call_target);
 
-  // Creates a HostCompute instruction, which records host-side control and
-  // data dependencies for use in instruction scheduling.
-  static std::unique_ptr<HloInstruction> CreateHostCompute(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      tensorflow::StringPiece channel_name, const int64 cost_estimate_ns);
-
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
   static std::unique_ptr<HloInstruction> CreateTuple(
@@ -766,7 +762,7 @@ class HloInstruction {
   int64 operand_count() const { return operands_.size(); }
 
   // Returns the vector of operands of this instruction.
-  using InstructionVector = tensorflow::gtl::InlinedVector<HloInstruction*, 2>;
+  using InstructionVector = absl::InlinedVector<HloInstruction*, 2>;
   const InstructionVector& operands() const { return operands_; }
 
   // Returns the vector of unique operands, in the same order they are found
@@ -860,6 +856,11 @@ class HloInstruction {
     }
 
     if (backend_config_ != other.backend_config_) {
+      return false;
+    }
+
+    if (!ContainersEqual(precision_config_.operand_precision(),
+                         other.precision_config_.operand_precision())) {
       return false;
     }
 
@@ -1043,16 +1044,16 @@ class HloInstruction {
     return sharding_ ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
-  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+  absl::optional<int64> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return tensorflow::gtl::optional<int64>();
+      return absl::optional<int64>();
     }
     return sharding_->UniqueDevice();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
-    sharding_ = MakeUnique<HloSharding>(sharding);
+    sharding_ = absl::make_unique<HloSharding>(sharding);
   }
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
@@ -1109,6 +1110,9 @@ class HloInstruction {
 
   // Returns the dump string of the dot dimension numbers.
   string DotDimensionNumbersToString() const;
+
+  // Returns the dump string of the precision configuration.
+  string PrecisionConfigToString() const;
 
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
@@ -1252,6 +1256,20 @@ class HloInstruction {
   //
   static StatusOr<string> BackendConfigToRawString(
       const tensorflow::protobuf::Message& proto);
+
+  // Returns the information used to tell the implementation information about
+  // what sort of precision is requested. The meaning of the field is backend
+  // specific. At the moment, it is only supported for kConvolution and kDot.
+  // Transformations on one kDot or kConvolution to another will preserve this
+  // information. Transformations to other HLOs will not preserve this
+  // information but it is presumed that the alternate lowering is strictly
+  // superior.
+  const PrecisionConfigProto& precision_config() const {
+    return precision_config_;
+  }
+  void set_precision_config(const PrecisionConfigProto& precision_config) {
+    precision_config_ = precision_config;
+  }
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1432,7 +1450,7 @@ class HloInstruction {
   void set_cross_replica_sum_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
-  tensorflow::gtl::optional<int64> all_reduce_id() const;
+  absl::optional<int64> all_reduce_id() const;
 
   // Returns data on the window in a windowed operation such as
   // convolution.
@@ -1474,9 +1492,6 @@ class HloInstruction {
 
   // Delegates to HloCustomCallInstruction::custom_call_target.
   const string& custom_call_target() const;
-
-  // Delegates to HloHostComputeInstruction::channel_name.
-  const string& channel_name() const;
 
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
@@ -1565,7 +1580,7 @@ class HloInstruction {
   // NOTE: For all instructions other than kFusion, being elementwise on one of
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
-      const tensorflow::gtl::optional<int64>& operand_idx) const;
+      const absl::optional<int64>& operand_idx) const;
   // Prints an instruction to a string.
   //
   // The canonical string representation needs to name operands and instruction
@@ -1661,6 +1676,10 @@ class HloInstruction {
   // HLO. See the documentation on backend_config().
   string backend_config_;
 
+  // Information used to communicate to the implementation about the algorithm
+  // used to produce results. See the documentation on precision_config().
+  PrecisionConfigProto precision_config_;
+
   // String identifier for instruction.
   string name_;
 
@@ -1683,10 +1702,12 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string OpMetadataToString(const OpMetadata& metadata);
 string RandomDistributionToString(const RandomDistribution& distribution);
+string PrecisionToString(const PrecisionConfigProto::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
+StatusOr<PrecisionConfigProto::Precision> StringToPrecision(const string& name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

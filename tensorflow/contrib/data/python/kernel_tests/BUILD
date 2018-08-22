@@ -139,7 +139,6 @@ py_test(
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "manual",
         "no_oss",
         "no_pip",
         "notap",
@@ -231,12 +230,15 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":stats_dataset_test_base",
+        ":test_utils",
         "//tensorflow/contrib/data/python/ops:optimization",
         "//tensorflow/contrib/data/python/ops:stats_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
@@ -547,5 +549,15 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+    ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["test_utils.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/util:nest",
     ],
 )

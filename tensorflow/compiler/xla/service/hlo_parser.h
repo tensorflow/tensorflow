@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
@@ -33,6 +33,11 @@ namespace xla {
 // format, parses the string and creates a HloModule with the given config.
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(
     tensorflow::StringPiece str, const HloModuleConfig& config);
+
+// Parses the text for a single HLO operation into an HLO module with a function
+// that runs that operation (with the same parameters) as its entry computation.
+StatusOr<std::unique_ptr<HloModule>> ParseHloOpToModule(
+    tensorflow::StringPiece str, tensorflow::StringPiece name = "single_op");
 
 // The api of the hlo parser. Given a string in the HloModule::ToString()
 // format, parses the string and creates a HloModule with default config.

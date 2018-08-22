@@ -258,8 +258,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
     oblivious_split_info = split_info_pb2.ObliviousSplitInfo()
     oblivious_split_info.ParseFromString(splits[0])
-    split_node = oblivious_split_info.split_node.dense_float_binary_split
-
+    split_node = oblivious_split_info.split_node
+    split_node = split_node.oblivious_dense_float_binary_split
     self.assertAllClose(0.3, split_node.threshold, 0.00001)
     self.assertEqual(0, split_node.feature_column)
 
@@ -279,8 +279,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     # (0.2 + -0.5 + 1.2 - 0.1) ** 2 / (0.12 + 0.07 + 0.2 + 1)
     expected_bias_gain_0 = 0.46043165467625896
 
-    left_child = oblivious_split_info.children_leaves[0].vector
-    right_child = oblivious_split_info.children_leaves[1].vector
+    left_child = oblivious_split_info.children[0].vector
+    right_child = oblivious_split_info.children[1].vector
 
     self.assertAllClose([expected_left_weight_0], left_child.value, 0.00001)
 
@@ -296,8 +296,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
     # (-4 + 0.1) ** 2 / (0.13 + 1)
     expected_bias_gain_1 = 13.460176991150442
 
-    left_child = oblivious_split_info.children_leaves[2].vector
-    right_child = oblivious_split_info.children_leaves[3].vector
+    left_child = oblivious_split_info.children[2].vector
+    right_child = oblivious_split_info.children[3].vector
 
     self.assertAllClose([expected_left_weight_1], left_child.value, 0.00001)
 

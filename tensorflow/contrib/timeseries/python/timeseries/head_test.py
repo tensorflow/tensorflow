@@ -172,6 +172,7 @@ class EvaluationMetricsTests(test.TestCase):
     evaluation = estimator.evaluate(input_fn, steps=1)
     self.assertIn("plain_boring_metric386", evaluation)
     self.assertIn("fun_metric101", evaluation)
+    self.assertIn("average_loss", evaluation)
     # The values are deterministic because of fixed tf_random_seed.
     # However if they become flaky, remove such exacts comparisons.
     self.assertAllClose(evaluation["plain_boring_metric386"], 1.130380)
@@ -398,6 +399,7 @@ class OneShotTests(parameterized.TestCase):
         num_threads=1, batch_size=16, window_size=16)
     estimator.train(input_fn=train_input_fn, steps=5)
     result = estimator.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertIn("average_loss", result)
     self.assertNotIn(feature_keys.State.STATE_TUPLE, result)
     input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
     export_location = estimator.export_savedmodel(_new_temp_dir(),

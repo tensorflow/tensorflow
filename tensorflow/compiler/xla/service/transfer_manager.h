@@ -152,6 +152,26 @@ class TransferManager {
       const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
       int device_ordinal);
 
+  // The given ShapedBuffer holds a handle to allocated memory, but it is not
+  // in the general case legal to immediately copy or access that allocated
+  // memory because queued operations on the device may alias that memory.
+  // Memory ordering is enforced by the Stream's happens-before relationship
+  // which allows eager deallocation and reallocation of buffers host-side even
+  // if the device hasn't finished with them.
+  //
+  // In certain cases, it can be known that a ShapedBuffer does not have any
+  // conflicting accesses on the device and thus is eligible to be accessed at
+  // any time from the host.
+  //
+  // This function returns true if device_buffer can be accessed immediately
+  // without waiting for the Stream's previously enqueued items. This only
+  // returns true if all subbuffers in device_buffer can be accessed
+  // immediately.
+  virtual bool CanShapedBufferBeAccessedNow(
+      se::StreamExecutor* executor, const ShapedBuffer& device_buffer) const {
+    return false;
+  }
+
   /////
   // The TransferManager class also serves as a point to register objects for
   // the various platforms.

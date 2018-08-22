@@ -38,7 +38,7 @@ bool PotentiallyImplementedAsEigenDot(
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
-tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
 // Returns true to indicate that we can generate a tiled LLVM IR implementation
@@ -121,7 +121,7 @@ class DotOpEmitter {
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
 
-  bool EmitExperimentalGebpDotIfEnabled(const MatMultDims& mat_mult_dims);
+  bool EmitSmallGemmIfProfitable(const MatMultDims& mat_mult_dims);
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.

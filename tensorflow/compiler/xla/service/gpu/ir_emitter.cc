@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/algorithm/container.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -518,7 +519,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // We don't have to iterate over the batch dimensions in both arrays, simplify
   // the loop nest of the rhs.
   for (int i = 0; i != dnums.lhs_batch_dimensions_size(); ++i) {
-    DCHECK(c_linear_search(dnums.lhs_batch_dimensions(), i));
+    DCHECK(absl::c_linear_search(dnums.lhs_batch_dimensions(), i));
     rhs_index[i] = lhs_index[i];
   }
 

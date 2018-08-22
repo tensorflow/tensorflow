@@ -15,7 +15,7 @@ limitations under the License.
 #include <string.h>
 #include <numeric>
 #include <vector>
-#include "include/flatbuffers/flexbuffers.h"  // flatbuffers
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"

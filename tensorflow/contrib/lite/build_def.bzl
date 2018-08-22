@@ -267,6 +267,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "reduce_max",
+        "reduce_min",
         "reduce_prod",
         "relu",
         "relu1",

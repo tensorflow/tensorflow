@@ -409,10 +409,10 @@ tensorflow::ImportNumpy();
   $1 = &temp;
 }
 
-%typemap(in) const tensorflow::gtl::optional<Shape>& (
-    tensorflow::gtl::optional<Shape> temp) {
+%typemap(in) const absl::optional<Shape>& (
+    absl::optional<Shape> temp) {
   if ($input == Py_None) {
-    temp = tensorflow::gtl::nullopt;
+    temp = absl::nullopt;
     $1 = &temp;
   } else {
     StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
@@ -448,8 +448,8 @@ tensorflow::ImportNumpy();
   $1 = &temps;
 }
 
-%typemap(in) const std::vector<tensorflow::gtl::optional<Shape> >& (
-    std::vector<tensorflow::gtl::optional<Shape> > temps) {
+%typemap(in) const std::vector<absl::optional<Shape> >& (
+    std::vector<absl::optional<Shape> > temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
     SWIG_fail;
@@ -458,7 +458,7 @@ tensorflow::ImportNumpy();
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
     if (o == Py_None) {
-      temps.push_back(tensorflow::gtl::nullopt);
+      temps.push_back(absl::nullopt);
     } else {
       StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
       Py_DECREF(o);
@@ -1011,6 +1011,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Pow;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
+%unignore xla::swig::LocalComputationBuilder::SortKeyVal;
 %unignore xla::swig::LocalComputationBuilder::Sqrt;
 %unignore xla::swig::LocalComputationBuilder::Rsqrt;
 %unignore xla::swig::LocalComputationBuilder::Square;

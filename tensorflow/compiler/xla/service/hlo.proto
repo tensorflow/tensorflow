@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 51
+// Next ID: 52
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -171,6 +171,9 @@ message HloInstructionProto {
   bool is_host_transfer = 47;
 
   xla.ScatterDimensionNumbers scatter_dimension_numbers = 48;
+
+  // Precision configuration for the instruction. Has backend-specific meaning.
+  xla.PrecisionConfigProto precision_config = 51;
 }
 
 // Serialization of HloComputation.

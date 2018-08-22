@@ -51,7 +51,7 @@ class CsvDatasetOpTest(test.TestCase):
     assert ds1.output_classes == ds2.output_classes
     next1 = ds1.make_one_shot_iterator().get_next()
     next2 = ds2.make_one_shot_iterator().get_next()
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       # Run through datasets and check that outputs match, or errors match.
       while True:
         try:
@@ -138,7 +138,7 @@ class CsvDatasetOpTest(test.TestCase):
     filenames = self._setup_files(inputs, linebreak, compression_type)
     kwargs['compression_type'] = compression_type
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = readers.CsvDataset(filenames, **kwargs)
         self._verify_output_or_err(sess, dataset, expected_output,
                                    expected_err_re)
@@ -192,7 +192,7 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['1,"2"3",4', '1,"2"3",4",5,5', 'a,b,"c"d"', 'e,f,g']]
     filenames = self._setup_files(inputs)
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
         dataset = dataset.apply(error_ops.ignore_errors())
         self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
@@ -202,7 +202,7 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['1,2"3,4', 'a,b,c"d', '9,8"7,6,5', 'e,f,g']]
     filenames = self._setup_files(inputs)
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
         dataset = dataset.apply(error_ops.ignore_errors())
         self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
@@ -378,7 +378,7 @@ class CsvDatasetOpTest(test.TestCase):
           file_path, batch_size=1, shuffle=False, num_epochs=1)
       next_batch = ds.make_one_shot_iterator().get_next()
 
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       result = list(sess.run(next_batch).values())
 
     self.assertEqual(result, sorted(result))

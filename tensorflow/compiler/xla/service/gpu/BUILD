@@ -56,6 +56,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -91,6 +92,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -107,6 +109,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -180,6 +183,10 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -243,6 +250,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -257,6 +265,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -337,6 +346,8 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -373,6 +384,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -466,6 +478,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:multi_output_fusion",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -513,6 +526,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -544,6 +558,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:shape_inference",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -600,6 +615,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:infeed_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
         "@llvm//:core",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
@@ -670,6 +686,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
         "@llvm//:core",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -702,8 +720,8 @@ cc_library(
         ":xfeed_queue",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -718,6 +736,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -767,12 +786,12 @@ cc_library(
         ":stream_assignment",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_value",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:hlo_scheduling",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -789,6 +808,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 

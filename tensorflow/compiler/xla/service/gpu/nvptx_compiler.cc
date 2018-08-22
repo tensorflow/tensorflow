@@ -21,13 +21,13 @@ limitations under the License.
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -690,7 +690,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   const std::vector<uint8> cubin =
       CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
 
-  auto thunk_schedule = MakeUnique<ThunkSchedule>(
+  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
   VLOG(2) << "Printing the thunk schedule...";
@@ -704,7 +704,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     cost_analysis.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
     profile_printer =
         CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
@@ -813,7 +813,7 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return xla::MakeUnique<xla::gpu::NVPTXCompiler>(); });
+      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

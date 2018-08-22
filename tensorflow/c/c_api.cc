@@ -202,7 +202,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   buf->len_ = len;
   if (dtype != TF_STRING && dtype != TF_RESOURCE &&
       tensorflow::DataTypeCanUseMemcpy(static_cast<DataType>(dtype)) &&
-      reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
+      reinterpret_cast<intptr_t>(data) % std::max(1, EIGEN_MAX_ALIGN_BYTES) !=
+          0) {
     // TF_STRING and TF_RESOURCE tensors have a different representation in
     // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
     // (any alignment requirements will be taken care of by TF_TensorToTensor

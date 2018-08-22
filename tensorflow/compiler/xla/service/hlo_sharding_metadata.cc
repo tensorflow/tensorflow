@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -121,9 +122,9 @@ std::unique_ptr<HloSharding> CloneShardingForDomain(
     const HloSharding& sharding) {
   auto single_sharding = sharding.ExtractSingleSharding();
   if (!single_sharding) {
-    return MakeUnique<HloSharding>(sharding);
+    return absl::make_unique<HloSharding>(sharding);
   }
-  return MakeUnique<HloSharding>(*single_sharding);
+  return absl::make_unique<HloSharding>(*single_sharding);
 }
 
 Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
@@ -318,9 +319,9 @@ std::unique_ptr<HloInstruction> CreateDomain(HloInstruction* instruction,
                   : "None");
 
   std::unique_ptr<DomainMetadata> operand_side_metadata =
-      MakeUnique<ShardingMetadata>(std::move(real_operand_sharding));
+      absl::make_unique<ShardingMetadata>(std::move(real_operand_sharding));
   std::unique_ptr<DomainMetadata> user_side_metadata =
-      MakeUnique<ShardingMetadata>(std::move(real_instruction_sharding));
+      absl::make_unique<ShardingMetadata>(std::move(real_instruction_sharding));
   return HloInstruction::CreateDomain(operand->shape(), operand,
                                       std::move(operand_side_metadata),
                                       std::move(user_side_metadata));
@@ -357,9 +358,9 @@ StatusOr<std::unique_ptr<HloSharding>> ExtractOriginalCommonSharding(
 std::unique_ptr<DomainMetadata> ShardingMetadata::Clone() const {
   std::unique_ptr<HloSharding> sharding;
   if (sharding_ != nullptr) {
-    sharding = MakeUnique<HloSharding>(*sharding_);
+    sharding = absl::make_unique<HloSharding>(*sharding_);
   }
-  return MakeUnique<ShardingMetadata>(std::move(sharding));
+  return absl::make_unique<ShardingMetadata>(std::move(sharding));
 }
 
 bool ShardingMetadata::Matches(const DomainMetadata& other) const {

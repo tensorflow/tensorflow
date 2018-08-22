@@ -18,8 +18,8 @@ limitations under the License.
 
 namespace xla {
 
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
+using absl::nullopt;
+using absl::optional;
 
 // Finds and returns the non-constant operand in instr.
 //

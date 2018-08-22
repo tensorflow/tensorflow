@@ -165,7 +165,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
     with ops.name_scope('interpolator'):
       interpolator = interpolate_spline.interpolate_spline(
           train_points, train_values, query_points, interpolation_order)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         fetches = [query_points, train_points, train_values, interpolator]
         query_points_, train_points_, train_values_, interp_ = sess.run(fetches)
 
@@ -205,7 +205,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
 
         target_interpolation = tp.HARDCODED_QUERY_VALUES[(order, reg_weight)]
         target_interpolation = np.array(target_interpolation)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           interp_val = sess.run(interpolator)
           self.assertAllClose(interp_val[0, :, 0], target_interpolation)
 
@@ -223,7 +223,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
 
         target_interpolation = tp.HARDCODED_QUERY_VALUES[(order, reg_weight)]
         target_interpolation = np.array(target_interpolation)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           interp_val = sess.run(interpolator)
           self.assertAllClose(interp_val[0, :, 0], target_interpolation)
 
@@ -253,7 +253,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
 
     target_interpolation = tp.HARDCODED_QUERY_VALUES[(order, reg_weight)]
     target_interpolation = np.array(target_interpolation)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       (train_points_value, train_values_value, query_points_value) = sess.run(
           [train_points, train_values, query_points])
@@ -330,7 +330,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
       opt_func = optimizer.apply_gradients(zip(grad, [train_points]))
       init_op = variables.global_variables_initializer()
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(init_op)
         for _ in range(100):
           sess.run([loss, opt_func])

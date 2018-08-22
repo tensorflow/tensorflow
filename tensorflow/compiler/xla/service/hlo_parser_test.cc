@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include <string>
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+
+namespace op = ::xla::testing::opcode_matchers;
 
 namespace xla {
 
@@ -1720,6 +1723,27 @@ ENTRY nontuple_infeed {
 })";
   ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "infeed must have a non-empty tuple shape");
+}
+
+TEST(HloParserSingleOpTest, SingleOp) {
+  const string text =
+      "%multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, "
+      "f32[2,4]{1,0} %x)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(op::Parameter(0), op::Parameter(1)));
+}
+
+TEST(HloParserSingleOpTest, SingleOpNoShapesProducesError) {
+  const string text = "%multiply = f32[2,4]{1,0} multiply(%broadcast, %x)";
+  StatusOr<std::unique_ptr<HloModule>> module = ParseHloOpToModule(text);
+  ASSERT_TRUE(!module.status().ok());
+  LOG(INFO) << "Status: " << module.status();
+  EXPECT_THAT(
+      module.status().ToString(),
+      ::testing::HasSubstr("Operand broadcast had no shape in HLO text"));
 }
 
 }  // namespace

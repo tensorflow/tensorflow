@@ -450,7 +450,9 @@ def clone_and_build_model(
     else:
       optimizer_config = model.optimizer.get_config()
       optimizer = model.optimizer.__class__.from_config(optimizer_config)
-    optimizer.iterations = training_util.get_or_create_global_step()
+    global_step = training_util.get_or_create_global_step()
+    K.track_variable(global_step)
+    optimizer.iterations = global_step
 
     clone.compile(
         optimizer,

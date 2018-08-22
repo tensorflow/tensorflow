@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -365,6 +365,7 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
     line_no = line_no_cache_.line_no_of_query;
   }
   for (; ptr != location; ptr++) {
+    CHECK_LT(ptr, buf_.end());
     if (*ptr == '\n') {
       line_no++;
     }

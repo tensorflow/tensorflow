@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -131,7 +132,7 @@ bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
       max_rank_layout = &param->shape().layout();
     }
   }
-  return c_all_of(params, [&](HloInstruction* param) {
+  return absl::c_all_of(params, [&](HloInstruction* param) {
     return (ShapeUtil::Rank(param->shape()) < max_rank) ||
            (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
   });
@@ -184,6 +185,19 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
       (instr2->opcode() != HloOpcode::kFusion &&
        instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
     return false;
+  }
+
+  // Multi-output loop fusions must have equal output shapes to be lowered.
+  if (instr1->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    Shape shape1 = instr1->IsMultiOutputFusion()
+                       ? instr1->shape().tuple_shapes(0)
+                       : instr1->shape();
+    Shape shape2 = instr2->IsMultiOutputFusion()
+                       ? instr2->shape().tuple_shapes(0)
+                       : instr2->shape();
+    if (!ShapeUtil::Equal(shape1, shape2)) {
+      return false;
+    }
   }
 
   // Do this check last, as it may be expensive.
@@ -248,7 +262,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       }
       // Do not fuse a producer if the other operands of the fusion are
       // reachable from the producer, this would create a cycle.
-      if (c_any_of(consumer_operands, [&](HloInstruction* operand) {
+      if (absl::c_any_of(consumer_operands, [&](HloInstruction* operand) {
             return producer != operand &&
                    reachability()->IsReachable(producer, operand);
           })) {
@@ -268,7 +282,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   for (auto& fusion_pair : potential_fusion_list) {
     HloInstruction* producer = fusion_pair.first;
     HloInstruction* consumer = fusion_pair.second;
-    if (!c_any_of(consumer->operands(), [&](HloInstruction* operand) {
+    if (!absl::c_any_of(consumer->operands(), [&](HloInstruction* operand) {
           return producer != operand &&
                  reachability()->IsReachable(producer, operand);
         })) {

@@ -15,12 +15,13 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 
@@ -130,7 +131,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  auto literal = MakeUnique<Literal>(shape);
+  auto literal = absl::make_unique<Literal>(shape);
   switch (shape.element_type()) {
     case BF16:
       PopulateWithRandomFloatingPointData<bfloat16>(literal.get(), engine,
@@ -383,13 +384,15 @@ StatusOr<std::unique_ptr<Literal>> MakeConstrainedArgument(
 
 StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape,
                                                    bool pseudo_random) {
-  auto engine = pseudo_random ? MakeUnique<std::minstd_rand0>() : nullptr;
+  auto engine =
+      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*no_duplicates=*/false);
 }
 
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
     HloModule* const module, bool pseudo_random) {
-  auto engine = pseudo_random ? MakeUnique<std::minstd_rand0>() : nullptr;
+  auto engine =
+      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get());
 }
 

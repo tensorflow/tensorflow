@@ -36,6 +36,7 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
@@ -314,7 +315,15 @@ def _save_first_checkpoint(keras_model, custom_objects, config):
         if not model.train_function:
           # pylint: disable=protected-access
           model._make_train_function()
-          K._initialize_variables(sess)
+          # We are using global variables collection here because:
+          # estimator runs eager mode under context.graph_mode() context manager
+          # When we try to get all the TF optimizer variables using
+          # optimizer.variables() we try to return variables that belong to the
+          # current graph. This check (variable.op.graph is current_graph) will
+          # error as the context is graph mode but variables are eager.
+          # TODO(psv): investigate this and see if we can remove the usage of
+          # collection here.
+          K._initialize_variables(sess, variables_module.global_variables())
           # pylint: enable=protected-access
         saver = saver_lib.Saver()
         latest_path = os.path.join(keras_model_dir, 'keras_model.ckpt')

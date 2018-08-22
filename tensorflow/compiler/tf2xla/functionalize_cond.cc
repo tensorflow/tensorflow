@@ -21,18 +21,18 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 using xla::StatusOr;
 
@@ -399,7 +399,8 @@ Status Conditional::BuildArgumentNodes() {
 Status Conditional::ExtractBodies(Graph* graph) {
   VLOG(2) << "Extracting bodies for " << name();
   for (auto b : {BranchType::kElseBranch, BranchType::kThenBranch}) {
-    bodies_[static_cast<int>(b)] = xla::MakeUnique<Graph>(graph->op_registry());
+    bodies_[static_cast<int>(b)] =
+        absl::make_unique<Graph>(graph->op_registry());
   }
 
   auto find_branch = [&](const Edge* e) {
@@ -463,7 +464,11 @@ Status Conditional::ExtractBodies(Graph* graph) {
             // Constants are treated specially to workaround the case of
             // non-dominated constant nodes.
             if (!IsConstant(src)) {
-              return errors::InvalidArgument(
+              // TODO(b/78882471): A node that feeds into two different
+              // CondState is not necessarily an error so log a warning for now
+              // but revisit to improve the testing to enable making this an
+              // error.
+              LOG(WARNING) << errors::InvalidArgument(
                   "Graph contains node ", src->name(), " that feeds into node ",
                   dst->name(),
                   " but these nodes are in different control contexts (",
@@ -858,7 +863,7 @@ CondStateMap::ContainsResult CondStateMap::LhsHoldsWhereverRhsHolds(
 
 BranchType CondStateMap::FindBranchOf(CondId id, OutputTensor predicate) const {
   if (IsEmpty(id)) return BranchType::kNeither;
-  gtl::optional<BranchType> b;
+  absl::optional<BranchType> b;
   const CondState& nodes = *id;
   for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
     if (it->type == CondStateMap::CondNode::Type::kSwitch &&

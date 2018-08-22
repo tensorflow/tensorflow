@@ -33,7 +33,7 @@ class ControlFlowTest(converter_testing.TestCase):
       inputs = (inputs,)
     with self.converted(test_fn, control_flow, {},
                         constant_op.constant) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertEqual(sess.run(result.test_fn(*inputs)), expected)
 
   def test_while_basic(self):
@@ -89,7 +89,7 @@ class ControlFlowTest(converter_testing.TestCase):
       return obj
 
     with self.converted(test_fn, control_flow, {}) as result:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         res_obj = result.test_fn(constant_op.constant(1), TestClass(0, 0))
         self.assertEqual(sess.run((res_obj.a, res_obj.b)), (-1, 0))
         res_obj = result.test_fn(constant_op.constant(-1), TestClass(0, 0))

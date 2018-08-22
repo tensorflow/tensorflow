@@ -38,6 +38,9 @@ patch versions.  The public APIs consist of
   `tensorflow` module and its submodules, except for
     * functions and classes in `tf.contrib`
     * functions and classes whose names start with `_` (as these are private)
+    * functions, arguments, properties and classes whose name starts with
+      `experimental`, or whose fully qualified name includes a module called
+      `experimental`
   Note that the code in the `examples/` and `tools/` directories is not
   reachable through the `tensorflow` Python module and is thus not covered by
   the compatibility guarantee.

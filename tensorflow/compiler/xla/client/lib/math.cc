@@ -207,7 +207,11 @@ XlaOp Lgamma(XlaOp input) {
 
   XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + Log(x);
 
-  XlaOp reflection = log_pi - Log(Sin(pi * input)) - log_y;
+  // If z = a + 0j, the analytic continuation of log reduces to taking the
+  // absolute value of the real part.
+  // Re(log(z)) = Re(log|z| + arg(z)j)
+  //            = log|a|
+  XlaOp reflection = log_pi - Log(Abs(Sin(pi * input))) - log_y;
   XlaOp result = Select(need_to_reflect, reflection, log_y);
   return result;
 }

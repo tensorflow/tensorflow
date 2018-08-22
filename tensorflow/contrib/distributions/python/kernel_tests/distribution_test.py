@@ -47,7 +47,7 @@ class DistributionTest(test.TestCase):
     ]
 
     sample_shapes = [(), (10,), (10, 20, 30)]
-    with self.test_session():
+    with self.cached_session():
       for cls in classes:
         for sample_shape in sample_shapes:
           param_shapes = cls.param_shapes(sample_shape)
@@ -62,7 +62,7 @@ class DistributionTest(test.TestCase):
           self.assertEqual(dist.parameters, dist_copy.parameters)
 
   def testCopyExtraArgs(self):
-    with self.test_session():
+    with self.cached_session():
       # Note: we cannot easily test all distributions since each requires
       # different initialization arguments. We therefore spot test a few.
       normal = tfd.Normal(loc=1., scale=2., validate_args=True)
@@ -72,7 +72,7 @@ class DistributionTest(test.TestCase):
       self.assertEqual(wishart.parameters, wishart.copy().parameters)
 
   def testCopyOverride(self):
-    with self.test_session():
+    with self.cached_session():
       normal = tfd.Normal(loc=1., scale=2., validate_args=True)
       unused_normal_copy = normal.copy(validate_args=False)
       base_params = normal.parameters.copy()
@@ -82,7 +82,7 @@ class DistributionTest(test.TestCase):
       self.assertEqual(base_params, copy_params)
 
   def testIsScalar(self):
-    with self.test_session():
+    with self.cached_session():
       mu = 1.
       sigma = 2.
 
@@ -152,7 +152,7 @@ class DistributionTest(test.TestCase):
   def testSampleShapeHints(self):
     fake_distribution = self._GetFakeDistribution()
 
-    with self.test_session():
+    with self.cached_session():
       # Make a new session since we're playing with static shapes. [And below.]
       x = array_ops.placeholder(dtype=dtypes.float32)
       dist = fake_distribution(batch_shape=[2, 3], event_shape=[5])
@@ -162,28 +162,28 @@ class DistributionTest(test.TestCase):
       # unknown values, ie, Dimension(None).
       self.assertAllEqual([6, 7, 2, 3, 5], y.get_shape().as_list())
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
       dist = fake_distribution(batch_shape=[None, 3], event_shape=[5])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertAllEqual([6, 7, None, 3, 5], y.get_shape().as_list())
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
       dist = fake_distribution(batch_shape=[None, 3], event_shape=[None])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertAllEqual([6, 7, None, 3, None], y.get_shape().as_list())
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
       dist = fake_distribution(batch_shape=None, event_shape=None)
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
 
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
       dist = fake_distribution(batch_shape=[None, 3], event_shape=None)
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)

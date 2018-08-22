@@ -155,7 +155,7 @@ class EstimatorTest(test.TestCase):
 
   def test_cov_update_thunks(self):
     """Ensures covariance update ops run once per global_step."""
-    with self._graph.as_default(), self.test_session() as sess:
+    with self._graph.as_default(), self.cached_session() as sess:
       fisher_estimator = estimator.FisherEstimatorRoundRobin(
           variables=[self.weights],
           layer_collection=self.layer_collection,
@@ -241,7 +241,7 @@ class EstimatorTest(test.TestCase):
 
   def test_inv_update_thunks(self):
     """Ensures inverse update ops run once per global_step."""
-    with self._graph.as_default(), self.test_session() as sess:
+    with self._graph.as_default(), self.cached_session() as sess:
       fisher_estimator = estimator.FisherEstimatorRoundRobin(
           variables=[self.weights],
           layer_collection=self.layer_collection,

@@ -213,4 +213,4 @@ class api_export(object):  # pylint: disable=invalid-name
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(tf_export, api_name=ESTIMATOR_API_NAME)
+estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)

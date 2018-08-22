@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -441,7 +442,7 @@ PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
   PerInstruction* pi = PerInst(instruction);
   CHECK(pi->points_to_set == nullptr)
       << "instruction should not have been present in the map.";
-  auto set = MakeUnique<PointsToSet>(&instruction->shape());
+  auto set = absl::make_unique<PointsToSet>(&instruction->shape());
   pi->points_to_set = std::move(set);
   // Return *set using the iterator returned by emplace.
   return *pi->points_to_set;

@@ -102,14 +102,14 @@ class MinOrMaxGradientTest(test.TestCase):
   def testMinGradient(self):
     inputs = constant_op.constant([1.0], dtype=dtypes.float32)
     outputs = math_ops.reduce_min(array_ops.concat([inputs, inputs], 0))
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
   def testMaxGradient(self):
     inputs = constant_op.constant([1.0], dtype=dtypes.float32)
     outputs = math_ops.reduce_max(array_ops.concat([inputs, inputs], 0))
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
@@ -119,14 +119,14 @@ class MaximumOrMinimumGradientTest(test.TestCase):
   def testMaximumGradient(self):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     outputs = math_ops.maximum(inputs, 3.0)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [4], outputs, [4])
       self.assertLess(error, 1e-4)
 
   def testMinimumGradient(self):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     outputs = math_ops.minimum(inputs, 2.0)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [4], outputs, [4])
       self.assertLess(error, 1e-4)
 
@@ -137,7 +137,7 @@ class ProdGradientTest(test.TestCase):
     inputs = constant_op.constant([[1., 2.], [3., 4.]],
                                   dtype=dtypes.float32)
     outputs = math_ops.reduce_prod(inputs)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(
           inputs, inputs.get_shape().as_list(),
           outputs, outputs.get_shape().as_list())
@@ -147,7 +147,7 @@ class ProdGradientTest(test.TestCase):
     inputs = constant_op.constant([[1., 2.], [3., 4.]],
                                   dtype=dtypes.float32)
     outputs = math_ops.reduce_prod(inputs, -1)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(
           inputs, inputs.get_shape().as_list(),
           outputs, outputs.get_shape().as_list())
@@ -158,7 +158,7 @@ class ProdGradientTest(test.TestCase):
       inputs = constant_op.constant([[1 + 3j, 2 - 1j], [3j, 4]],
                                     dtype=dtype)
       outputs = math_ops.reduce_prod(inputs)
-      with self.test_session():
+      with self.cached_session():
         error = gradient_checker.compute_gradient_error(
             inputs, inputs.get_shape().as_list(),
             outputs, outputs.get_shape().as_list())
@@ -169,7 +169,7 @@ class ProdGradientTest(test.TestCase):
       inputs = constant_op.constant([[1 + 3j, 2 - 1j], [3j, 4]],
                                     dtype=dtype)
       outputs = math_ops.reduce_prod(inputs, -1)
-      with self.test_session():
+      with self.cached_session():
         error = gradient_checker.compute_gradient_error(
             inputs, inputs.get_shape().as_list(),
             outputs, outputs.get_shape().as_list())
@@ -182,7 +182,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
     data = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
     segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
     segment_min = math_ops.segment_min(data, segment_ids)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(data, [3], segment_min,
                                                       [2])
       self.assertLess(error, 1e-4)
@@ -191,7 +191,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
     data = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
     segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
     segment_max = math_ops.segment_max(data, segment_ids)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(data, [3], segment_max,
                                                       [2])
       self.assertLess(error, 1e-4)
@@ -201,7 +201,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
     data = array_ops.concat([inputs, inputs], 0)
     segment_ids = constant_op.constant([0, 0], dtype=dtypes.int64)
     segment_min = math_ops.segment_min(data, segment_ids)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [1], segment_min,
                                                       [1])
       self.assertLess(error, 1e-4)
@@ -211,7 +211,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
     data = array_ops.concat([inputs, inputs], 0)
     segment_ids = constant_op.constant([0, 0], dtype=dtypes.int64)
     segment_max = math_ops.segment_max(data, segment_ids)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [1], segment_max,
                                                       [1])
       self.assertLess(error, 1e-4)
@@ -225,18 +225,19 @@ class FloorModGradientTest(test.TestCase):
     ns = constant_op.constant([17.], dtype=dtypes.float32)
     inputs = constant_op.constant([131.], dtype=dtypes.float32)
     floor_mod = math_ops.floormod(inputs, ns)
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [1],
                                                       floor_mod, [1])
       self.assertLess(error, 1e-4)
 
 
-class UnsafeDivGradientTest(test.TestCase):
+class DivNoNanGradientTest(test.TestCase):
 
   def testBasicGradient(self):
-    inputs = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
-    outputs = math_ops.unsafe_div(inputs, 1 + math_ops.abs(inputs))
-    with self.test_session():
+    inputs = constant_op.constant(np.arange(-3, 3),
+                                  dtype=dtypes.float32)
+    outputs = math_ops.div_no_nan(inputs, 1 + math_ops.abs(inputs))
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(
           inputs,
           inputs.get_shape().as_list(), outputs,
@@ -244,10 +245,12 @@ class UnsafeDivGradientTest(test.TestCase):
       self.assertLess(error, 1e-4)
 
   def testGradientWithDenominatorIsZero(self):
-    x = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
-    y = array_ops.zeros_like(x, dtype=dtypes.float32)
-    outputs = math_ops.unsafe_div(x, y)
-    with self.test_session():
+    x = constant_op.constant(np.arange(-3, 3),
+                             dtype=dtypes.float32)
+    y = array_ops.zeros_like(x,
+                             dtype=dtypes.float32)
+    outputs = math_ops.div_no_nan(x, y)
+    with self.cached_session():
       dx, dy = gradients.gradients(outputs, [x, y])
       self.assertAllClose(dx.eval(), np.zeros(x.shape.as_list()))
       self.assertAllClose(dy.eval(), np.zeros(y.shape.as_list()))

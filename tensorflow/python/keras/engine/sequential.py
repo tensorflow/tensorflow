@@ -239,9 +239,9 @@ class Sequential(Model):
     x = inputs
     for layer in self.layers:
       kwargs = {}
-      if 'mask' in tf_inspect.getargspec(layer.call).args:
+      if 'mask' in tf_inspect.getfullargspec(layer.call).args:
         kwargs['mask'] = mask
-      if 'training' in tf_inspect.getargspec(layer.call).args:
+      if 'training' in tf_inspect.getfullargspec(layer.call).args:
         kwargs['training'] = training
 
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:

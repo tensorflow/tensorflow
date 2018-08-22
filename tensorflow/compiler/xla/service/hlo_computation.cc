@@ -23,9 +23,10 @@ limitations under the License.
 #include <set>
 #include <sstream>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -56,8 +57,8 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   HloInstruction* root =
       root_instruction ? root_instruction : last_added_instruction_;
   CHECK_NE(nullptr, root);
-  return WrapUnique(new HloComputation(name_, parameter_count, &instructions_,
-                                       root, fusion_instruction_));
+  return absl::WrapUnique(new HloComputation(
+      name_, parameter_count, &instructions_, root, fusion_instruction_));
 }
 
 HloComputation::HloComputation(
@@ -320,6 +321,7 @@ void ComputeComputationPostOrder(
 enum State { kVisiting, kVisited };
 
 void ComputeInstructionPostOrder(
+    std::map<int64, std::vector<HloInstruction*>> channel_dependency_map,
     std::vector<HloInstruction*>* post_order, HloInstruction* root,
     tensorflow::gtl::FlatMap<HloInstruction*, State>* visited) {
   std::vector<HloInstruction*> dfs_stack;
@@ -354,12 +356,67 @@ void ComputeInstructionPostOrder(
     for (HloInstruction* op : current->control_predecessors()) {
       dfs_stack.emplace_back(op);
     }
+
+    // Add inputs for send->recv_done dependencies and cross-replica-sum
+    // dependencies.
+    switch (current->opcode()) {
+      case HloOpcode::kRecvDone: {
+        const auto& dependencies =
+            channel_dependency_map[current->channel_id()];
+        for (HloInstruction* op : dependencies) {
+          dfs_stack.emplace_back(op);
+        }
+        break;
+      }
+      case HloOpcode::kCrossReplicaSum: {
+        auto all_reduce_id = current->all_reduce_id();
+        if (all_reduce_id) {
+          const auto& dependencies =
+              channel_dependency_map[all_reduce_id.value()];
+          for (HloInstruction* op : dependencies) {
+            dfs_stack.emplace_back(op);
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
   }
 }
 
 }  // namespace
 
+std::map<int64, std::vector<HloInstruction*>>
+HloComputation::ComputeChannelDependencies() const {
+  std::map<int64, std::vector<HloInstruction*>> channel_dependency_map;
+  for (const auto& instruction : instructions_) {
+    switch (instruction->opcode()) {
+      case HloOpcode::kSend: {
+        channel_dependency_map[instruction->channel_id()].push_back(
+            instruction.get());
+        break;
+      }
+      case HloOpcode::kCrossReplicaSum: {
+        auto all_reduce_id = instruction->all_reduce_id();
+        if (all_reduce_id) {
+          auto& dependencies = channel_dependency_map[all_reduce_id.value()];
+          absl::c_copy(instruction->operands(),
+                       std::back_inserter(dependencies));
+          absl::c_copy(instruction->control_predecessors(),
+                       std::back_inserter(dependencies));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return channel_dependency_map;
+}
+
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+  auto channel_dependency_map = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
@@ -371,7 +428,8 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // users).
       trace_instructions.push_back(instruction.get());
     } else if (instruction->users().empty()) {
-      ComputeInstructionPostOrder(&post_order, instruction.get(), &visited);
+      ComputeInstructionPostOrder(channel_dependency_map, &post_order,
+                                  instruction.get(), &visited);
     }
   }
   post_order.insert(post_order.end(), trace_instructions.begin(),
@@ -493,9 +551,9 @@ HloComputation::CreateFromProto(
               return to_proto_id[a.get()] < to_proto_id[b.get()];
             });
 
-  return WrapUnique(new HloComputation(proto.name(), parameter_count,
-                                       &instructions, root,
-                                       /*fusion_instruction=*/nullptr));
+  return absl::WrapUnique(new HloComputation(proto.name(), parameter_count,
+                                             &instructions, root,
+                                             /*fusion_instruction=*/nullptr));
 }
 
 void HloComputation::FuseInstructionsInto(
@@ -674,13 +732,34 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
 std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
     const {
   const auto& all = MakeInstructionPostOrder();
-  auto result = MakeUnique<HloReachabilityMap>(all);
+  auto result = absl::make_unique<HloReachabilityMap>(all);
+  auto channel_dependency_map = ComputeChannelDependencies();
 
   std::vector<HloInstruction*> inputs;
   for (const HloInstruction* hlo : all) {
     inputs.assign(hlo->operands().begin(), hlo->operands().end());
     inputs.insert(inputs.end(), hlo->control_predecessors().begin(),
                   hlo->control_predecessors().end());
+
+    switch (hlo->opcode()) {
+      case HloOpcode::kRecvDone: {
+        const auto& dependencies = channel_dependency_map[hlo->channel_id()];
+        absl::c_copy(dependencies, std::back_inserter(inputs));
+        break;
+      }
+      case HloOpcode::kCrossReplicaSum: {
+        auto all_reduce_id = hlo->all_reduce_id();
+        if (all_reduce_id) {
+          const auto& dependencies =
+              channel_dependency_map[all_reduce_id.value()];
+          absl::c_copy(dependencies, std::back_inserter(inputs));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
     result->FastSetReachabilityToUnion(inputs, hlo);
   }
   return result;
@@ -829,7 +908,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     HloCloneContext* context, const string& suffix) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
-    context_ptr = MakeUnique<HloCloneContext>(parent(), suffix);
+    context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
   }
 
@@ -901,9 +980,9 @@ void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
 HloInstruction* HloComputation::GetInstructionWithName(
     tensorflow::StringPiece name) {
   auto instructions_in_computation = instructions();
-  auto it = c_find_if(instructions_in_computation, [&](HloInstruction* instr) {
-    return instr->name() == name;
-  });
+  auto it = absl::c_find_if(
+      instructions_in_computation,
+      [&](HloInstruction* instr) { return instr->name() == name; });
   return it == instructions_in_computation.end() ? nullptr : *it;
 }
 

@@ -782,8 +782,9 @@ with tf.train.MonitoredTrainingSession(...) as sess:
     sess.run(training_op)
 ```
 
-To use a `Dataset` in the `input_fn` of a `tf.estimator.Estimator`, we also
-recommend using `Dataset.make_one_shot_iterator()`. For example:
+To use a `Dataset` in the `input_fn` of a `tf.estimator.Estimator`, simply
+return the `Dataset` and the framework will take care of creating an iterator
+and initializing it for you. For example:
 
 ```python
 def dataset_input_fn():
@@ -814,10 +815,9 @@ def dataset_input_fn():
   dataset = dataset.shuffle(buffer_size=10000)
   dataset = dataset.batch(32)
   dataset = dataset.repeat(num_epochs)
-  iterator = dataset.make_one_shot_iterator()
 
-  # `features` is a dictionary in which each value is a batch of values for
-  # that feature; `labels` is a batch of labels.
-  features, labels = iterator.get_next()
-  return features, labels
+  # Each element of `dataset` is tuple containing a dictionary of features
+  # (in which each value is a batch of values for that feature), and a batch of
+  # labels.
+  return dataset
 ```

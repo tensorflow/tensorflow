@@ -246,7 +246,7 @@ class LayerCollectionTest(test.TestCase):
     self.assertIn('was already registered', str(cm.exception))
 
   def testRegisterCategoricalPredictiveDistribution(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       logits = linalg_ops.eye(2)
 
@@ -342,7 +342,7 @@ class LayerCollectionTest(test.TestCase):
       lc.register_categorical_predictive_distribution(logits, seed=200)
 
   def testRegisterCategoricalPredictiveDistributionSpecifiedTargets(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       logits = array_ops.constant([[1., 2.], [3., 4.]], dtype=dtypes.float32)
       lc = layer_collection.LayerCollection()
@@ -353,7 +353,7 @@ class LayerCollectionTest(test.TestCase):
       self.assertAlmostEqual(1.6265233, single_loss)
 
   def testRegisterNormalPredictiveDistribution(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       predictions = array_ops.constant(
           [[1., 2.], [3., 4]], dtype=dtypes.float32)
@@ -370,7 +370,7 @@ class LayerCollectionTest(test.TestCase):
       self.assertAlmostEqual(2 * single_loss, double_loss)
 
   def testRegisterNormalPredictiveDistributionSpecifiedTargets(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       predictions = array_ops.constant(
           [[1., 2.], [3., 4.]], dtype=dtypes.float32)

@@ -18,11 +18,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -89,7 +89,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
         "TransferToServer request");
   }
 
-  return MakeUnique<GlobalData>(stub_, response.data());
+  return absl::make_unique<GlobalData>(stub_, response.data());
 }
 
 Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
@@ -248,7 +248,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     }
   }
 
-  return MakeUnique<GlobalData>(stub_, response.output());
+  return absl::make_unique<GlobalData>(stub_, response.output());
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
@@ -278,7 +278,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   std::vector<std::unique_ptr<GlobalData>> outputs;
   for (size_t i = 0; i < computations.size(); ++i) {
     outputs.push_back(
-        MakeUnique<GlobalData>(stub_, response.responses(i).output()));
+        absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
     if (computations[i].execution_profile != nullptr) {
       *computations[i].execution_profile = response.responses(i).profile();
     }
@@ -340,7 +340,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 
   std::vector<std::unique_ptr<GlobalData>> handles;
   for (auto& handle : response.element_handles()) {
-    handles.push_back(MakeUnique<GlobalData>(stub_, handle));
+    handles.push_back(absl::make_unique<GlobalData>(stub_, handle));
   }
   return std::move(handles);
 }
@@ -369,7 +369,7 @@ StatusOr<ComputationStats> Client::GetComputationStats(
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
-  return MakeUnique<ProgramShape>(result);
+  return absl::make_unique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {

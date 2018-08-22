@@ -59,7 +59,7 @@ def _make_psd(dim):
 class UtilsTest(test.TestCase):
 
   def testComputePiTracenorm(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       diag = ops.convert_to_tensor([1., 2., 0., 1.])
       left_factor = lo.LinearOperatorDiag(diag)
@@ -103,7 +103,7 @@ class FullFBTest(test.TestCase):
       block.instantiate_factors(grads, 0.5)
 
   def testMultiplyInverseTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
@@ -124,7 +124,7 @@ class FullFBTest(test.TestCase):
       self.assertAllClose(sess.run(vector * 2 / 3.), sess.run(output))
 
   def testMultiplyInverseNotTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
       block = fb.FullFB(lc.LayerCollection(), params)
@@ -145,7 +145,7 @@ class FullFBTest(test.TestCase):
       self.assertAllClose(sess.run(vector * 2 / 3.), sess.run(output))
 
   def testMultiplyInverseAgainstExplicit(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
@@ -203,7 +203,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       block.instantiate_factors(grads, 0.5)
 
   def testMultiplyInverseTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
@@ -222,7 +222,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       self.assertAllClose(sess.run(vector * 2 / 3.), sess.run(output))
 
   def testMultiplyInverseNotTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
@@ -240,7 +240,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       self.assertAllClose(sess.run(vector * 2 / 3.), sess.run(output))
 
   def testMultiplyInverseAgainstExplicit(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
@@ -382,7 +382,7 @@ class FullyConnectedDiagonalFBTest(test.TestCase):
       multiply_result: Result of FisherBlock.multiply(params)
       multiply_inverse_result: Result of FisherBlock.multiply_inverse(params)
     """
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       inputs = as_tensors(inputs)
       outputs = as_tensors(outputs)
       output_grads = as_tensors(output_grads)
@@ -425,7 +425,7 @@ class EmbeddingKFACFBTest(test.TestCase):
       block.instantiate_factors(((grads,),), damping)
 
   def testMultiplyInverse(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
 
       # Create a Fisher Block.
@@ -503,7 +503,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       block.instantiate_factors(((grads,),), 0.5)
 
   def testMultiplyInverseTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
@@ -535,7 +535,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       self.assertAllClose([0.343146, 0.686291], output[1])
 
   def testMultiplyInverseNotTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
@@ -561,7 +561,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
                           sess.run(output))
 
   def testMultiplyInverseAgainstExplicit(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       input_dim, output_dim = 3, 2
       inputs = array_ops.zeros([32, input_dim])
@@ -757,7 +757,7 @@ class ConvDiagonalFBTest(test.TestCase):
       multiply_result: Result of FisherBlock.multiply(params)
       multiply_inverse_result: Result of FisherBlock.multiply_inverse(params)
     """
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       inputs = as_tensors(inputs)
       outputs = as_tensors(outputs)
       output_grads = as_tensors(output_grads)
@@ -795,7 +795,7 @@ class DepthwiseConvKFCBasicFBTest(test.TestCase):
       block.instantiate_factors(([grads],), 0.5)
 
   def testMultiplyInverse(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = random_ops.random_normal((3, 3, 8, 2))
       inputs = random_ops.random_normal((32, 5, 5, 8))
@@ -851,7 +851,7 @@ class ConvKFCBasicFBTest(test.TestCase):
     self._testConvKFCBasicFBInitParams([np.ones([1, 2, 2])])
 
   def testMultiplyInverseTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
@@ -882,7 +882,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       self.assertAllClose([0.27291, 0.409365], output[1])
 
   def testMultiplyInverseNotTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
@@ -910,7 +910,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       self.assertAllClose([0.136455, 0.27291], sess.run(output)[0])
 
   def testMultiplyInverseNotTupleWithBias(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = [random_ops.random_normal((2, 2, 2, 2))]
       inputs = random_ops.random_normal((2, 2, 2, 2))
@@ -938,7 +938,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       self.assertAllClose([0.136455, 0.27291], sess.run(output)[0])
 
   def testMultiplyInverseAgainstExplicit(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.zeros((2, 2, 2, 2))
       inputs = array_ops.zeros((2, 2, 2, 2))

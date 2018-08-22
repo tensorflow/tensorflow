@@ -36,7 +36,7 @@ class OpQueueTest(test.TestCase):
       ]
       queue = op_queue.OpQueue(ops, seed=0)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         # Ensure every inv update op gets selected.
         selected_ops = set([queue.next_op(sess) for _ in ops])
         self.assertEqual(set(ops), set(selected_ops))

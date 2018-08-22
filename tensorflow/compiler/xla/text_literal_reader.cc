@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -102,7 +102,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
         ShapeUtil::HumanString(shape).c_str());
   }
 
-  auto result = MakeUnique<Literal>(shape);
+  auto result = absl::make_unique<Literal>(shape);
   const float fill = std::numeric_limits<float>::quiet_NaN();
   result->PopulateWithValue<float>(fill);
   std::vector<tensorflow::StringPiece> pieces;

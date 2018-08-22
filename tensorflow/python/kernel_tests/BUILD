@@ -84,6 +84,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "batch_scatter_ops_test",
+    srcs = ["batch_scatter_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_py_test(
     name = "bcast_ops_test",
     size = "small",
     srcs = ["bcast_ops_test.py"],
@@ -645,7 +664,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "parameterized_truncated_normal_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

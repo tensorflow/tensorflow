@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
-#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -2327,8 +2327,8 @@ void GlobalBatchNormalization(const float* input_data,
   }
 }
 
-inline void Relu(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+inline void Relu(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
 
   const auto input = MapAsVector(input_data, input_shape);
@@ -4544,8 +4544,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
+                     const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -4690,8 +4690,8 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
-                     int16* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
+                     const RuntimeShape& output_shape, int16* output_data) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -4750,8 +4750,14 @@ inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
+// Legacy version.
+inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
+                     int16* output_data, const RuntimeShape& output_shape) {
+  Logistic(input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -5014,12 +5020,19 @@ inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
+inline void Floor(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Floor");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::floor(input_map.array());
+}
+
+// Legacy Dims<4> version.
 inline void Floor(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Floor");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
-  output_map.array() = Eigen::floor(input_map.array());
+  Floor(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 #ifdef USE_NEON
@@ -5598,12 +5611,14 @@ inline void PadImpl(const tflite::PadParams& op_params,
   // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
   // we can pad them to 4 dims (yes, we are "padding the padding").
   std::vector<int> left_padding_copy(4, 0);
+  const int left_padding_extend = 4 - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i] = op_params.left_padding[i];
+    left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
   }
   std::vector<int> right_padding_copy(4, 0);
+  const int right_padding_extend = 4 - op_params.right_padding_count;
   for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i] = op_params.right_padding[i];
+    right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
@@ -5622,7 +5637,6 @@ inline void PadImpl(const tflite::PadParams& op_params,
   const int right_d_padding = right_padding_copy[3];
 
   const int input_depth = ext_input_shape.Dims(3);
-  // const T pad_value = ExtractFloatOrInt<T>(op_params.pad_value);
   const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
@@ -5732,7 +5746,6 @@ inline void PadV2(const T* input_data, const Dims<4>& input_dims,
     op_params.left_padding[i] = left_paddings[3 - i];
     op_params.right_padding[i] = right_paddings[3 - i];
   }
-  // SetFloatOrInt(pad_value, &op_params.pad_value);
   const T pad_value_copy = pad_value;
 
   Pad(op_params, DimsToShape(input_dims), input_data, &pad_value_copy,
@@ -5978,4 +5991,4 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
 #pragma GCC diagnostic pop
 #endif
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_

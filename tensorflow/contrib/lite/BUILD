@@ -154,6 +154,14 @@ cc_library(
         "optional_debug_tools.h",
     ],
     copts = tflite_copts(),
+    linkopts = [
+    ] + select({
+        "//tensorflow:android": [
+            "-llog",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     deps = [
         ":arena_planner",
         ":builtin_op_data",

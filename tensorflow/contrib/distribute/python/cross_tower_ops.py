@@ -53,7 +53,7 @@ def validate_destinations(destinations):
   if not isinstance(
       destinations,
       (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
-       six.string_types, list)):
+       value_lib.AggregatingVariable, six.string_types, list)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, a device string, a list of device "
                      "strings or None")
@@ -78,7 +78,8 @@ def _validate_value_destination_pairs(value_destination_pairs):
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
-  elif isinstance(destinations, resource_variable_ops.ResourceVariable):
+  elif isinstance(destinations, (resource_variable_ops.ResourceVariable,
+                                 value_lib.AggregatingVariable)):
     return [destinations.device]
   elif isinstance(destinations, six.string_types):
     return [device_util.resolve(destinations)]

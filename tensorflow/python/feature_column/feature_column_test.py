@@ -262,7 +262,7 @@ class NumericColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[20., 110.]], features['price'].eval())
 
   def test_parse_example_with_default_value(self):
@@ -284,7 +284,7 @@ class NumericColumnTest(test.TestCase):
                     no_data.SerializeToString()],
         features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[20., 110.], [11., 11.]], features['price'].eval())
 
   def test_normalizer_fn_must_be_callable(self):
@@ -298,7 +298,7 @@ class NumericColumnTest(test.TestCase):
 
     price = fc.numeric_column('price', shape=[2], normalizer_fn=_increment_two)
     output = _transform_features({'price': [[1., 2.], [5., 6.]]}, [price])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[3., 4.], [7., 8.]], output[price].eval())
 
   def test_get_dense_tensor(self):
@@ -433,7 +433,7 @@ class BucketizedColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([bucketized_price]))
     self.assertIn('price', features)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[20., 110.]], features['price'].eval())
 
   def test_transform_feature(self):
@@ -700,7 +700,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -719,7 +719,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     output = outputs[hashed_sparse]
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [6, 4, 1]
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(dtypes.int64, output.values.dtype)
       self.assertAllEqual(expected_values, output.values.eval())
       self.assertAllEqual(wire_tensor.indices.eval(), output.indices.eval())
@@ -775,7 +775,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     output = builder.get(hashed_sparse)
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_values, output.values.eval())
 
   def test_int32_64_is_compatible(self):
@@ -789,7 +789,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     output = builder.get(hashed_sparse)
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_values, output.values.eval())
 
   def test_get_sparse_tensors(self):
@@ -984,7 +984,7 @@ class CrossedColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([price_cross_wire]))
     self.assertIn('price', features)
     self.assertIn('wire', features)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[20., 110.]], features['price'].eval())
       wire_sparse = features['wire']
       self.assertAllEqual([[0, 0], [0, 1]], wire_sparse.indices.eval())
@@ -1007,7 +1007,7 @@ class CrossedColumnTest(test.TestCase):
     }
     outputs = _transform_features(features, [price_cross_wire])
     output = outputs[price_cross_wire]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_val = sess.run(output)
       self.assertAllEqual(
           [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [1, 3]], output_val.indices)
@@ -3262,7 +3262,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         dense_shape=(2, 2))
     column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     with self.assertRaisesRegexp(errors.OpError, 'file_does_not_exist'):
-      with self.test_session():
+      with self.cached_session():
         lookup_ops.tables_initializer().run()
 
   def test_invalid_vocabulary_size(self):
@@ -3286,7 +3286,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         dense_shape=(2, 2))
     column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     with self.assertRaisesRegexp(errors.OpError, 'Invalid vocab_size'):
-      with self.test_session():
+      with self.cached_session():
         lookup_ops.tables_initializer().run()
 
   def test_invalid_num_oov_buckets(self):
@@ -3350,7 +3350,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -3775,7 +3775,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -3797,7 +3797,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -4096,7 +4096,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -4365,7 +4365,7 @@ class IndicatorColumnTest(test.TestCase):
         fc.categorical_column_with_hash_bucket('animal', 4))
     builder = _LazyBuilder({'animal': ['fox', 'fox']})
     output = builder.get(animal)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]], output.eval())
 
   def test_2D_shape_succeeds(self):
@@ -4380,7 +4380,7 @@ class IndicatorColumnTest(test.TestCase):
                 dense_shape=[2, 1])
     })
     output = builder.get(animal)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]], output.eval())
 
   def test_multi_hot(self):
@@ -4393,7 +4393,7 @@ class IndicatorColumnTest(test.TestCase):
                 indices=[[0, 0], [0, 1]], values=[1, 1], dense_shape=[1, 2])
     })
     output = builder.get(animal)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[0., 2., 0., 0.]], output.eval())
 
   def test_multi_hot2(self):
@@ -4405,7 +4405,7 @@ class IndicatorColumnTest(test.TestCase):
                 indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
     })
     output = builder.get(animal)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([[0., 1., 1., 0.]], output.eval())
 
   def test_deep_copy(self):
@@ -4430,7 +4430,7 @@ class IndicatorColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a_indicator]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -4641,7 +4641,7 @@ class EmbeddingColumnTest(test.TestCase):
         serialized=[data.SerializeToString()],
         features=fc.make_parse_example_spec([a_embedded]))
     self.assertIn('aaa', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -5407,7 +5407,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([a_embedded, b_embedded]))
     self.assertIn('aaa', features)
     self.assertIn('bbb', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
@@ -5990,7 +5990,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([a_weighted]))
     self.assertIn('aaa', features)
     self.assertIn('weights', features)
-    with self.test_session():
+    with self.cached_session():
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(

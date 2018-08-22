@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -357,7 +358,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
-  auto arg_literal = MakeUnique<Literal>(shape);
+  auto arg_literal = absl::make_unique<Literal>(shape);
   arg_literal->PopulateWithValue(1.0f);
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
@@ -368,7 +369,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
       ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
-  auto expected = MakeUnique<Literal>(result_shape);
+  auto expected = absl::make_unique<Literal>(result_shape);
   expected->PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }
@@ -1448,7 +1449,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
@@ -1467,7 +1468,7 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
@@ -1486,7 +1487,7 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 }  // namespace

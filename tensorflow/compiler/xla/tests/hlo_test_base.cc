@@ -20,9 +20,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -41,9 +42,9 @@ namespace xla {
 
 namespace {
 
+using absl::optional;
 using tensorflow::StringPiece;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::optional;
 
 constexpr char kInterpreter[] = "interpreter";
 
@@ -94,12 +95,11 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool allow_mixed_precision_in_hlo_verifier)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
   hlo_verifier_ =
-      MakeUnique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
+      absl::make_unique<HloVerifier>(allow_mixed_precision_in_hlo_verifier);
 }
 
-/* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
-  return MakeUnique<HloModule>(name, GetModuleConfigForTest());
+  return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
 }
 
 /* static */
@@ -117,7 +117,6 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
   return status_or;
 }
 
-/*static*/
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
@@ -217,7 +216,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
 
   std::vector<Literal*> fake_argument_ptrs;
-  c_transform(
+  absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
 
@@ -231,7 +230,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   const auto& fake_arguments =
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
   std::vector<Literal*> fake_argument_ptrs;
-  c_transform(
+  absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
 
@@ -240,8 +239,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    const StringPiece hlo_string,
-    const tensorflow::gtl::optional<ErrorSpec>& error,
+    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -266,7 +264,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       MakeFakeArguments(module_or_status.ValueOrDie().get())
           .ConsumeValueOrDie();
   std::vector<Literal*> fake_argument_ptrs;
-  c_transform(
+  absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
   return test_runner_
@@ -278,7 +276,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
-    const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+    const string& filename, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
@@ -291,8 +289,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    const StringPiece hlo_string,
-    const tensorflow::gtl::optional<ErrorSpec>& error,
+    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -306,7 +303,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
-    const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+    const string& filename, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
@@ -321,8 +318,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 HloComputation* HloTestBase::FindComputation(HloModule* module,
                                              tensorflow::StringPiece name) {
   auto computations = module->computations();
-  auto it = c_find_if(computations,
-                      [&](HloComputation* c) { return c->name() == name; });
+  auto it = absl::c_find_if(
+      computations, [&](HloComputation* c) { return c->name() == name; });
   if (it == computations.end()) {
     return nullptr;
   }
@@ -333,8 +330,8 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              tensorflow::StringPiece name) {
   for (const HloComputation* c : module->computations()) {
     auto instructions = c->instructions();
-    auto it = c_find_if(instructions,
-                        [&](HloInstruction* i) { return i->name() == name; });
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->name() == name; });
     if (it != instructions.end()) {
       return *it;
     }
