@@ -957,7 +957,7 @@ def _compute_feature_importances_per_tree(tree, num_features):
 
 
 def _compute_feature_importances(tree_ensemble, num_features, normalize):
-  """Compute the feature importances.
+  """Computes gain-based feature importances.
 
   The higher the value, the more important the feature.
 
@@ -986,7 +986,7 @@ def _compute_feature_importances(tree_ensemble, num_features, normalize):
                                             'must be non-negative.')
   if normalize:
     normalizer = np.sum(feature_importances)
-    assert normalizer > 0, 'Trees are all empty or contains only a root node.'
+    assert normalizer > 0, 'Trees are all empty or contain only a root node.'
     feature_importances /= normalizer
 
   sorted_feature_idx = np.argsort(feature_importances)[::-1]
@@ -1000,8 +1000,11 @@ class _BoostedTrees(estimator.Estimator):
     super(_BoostedTrees, self).__init__(
         model_fn=model_fn, model_dir=model_dir, config=config)
 
-    self._sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
+    self._sorted_feature_columns = sorted(feature_columns,
+                                          key=lambda tc: tc.name)
     self._num_features = _calculate_num_features(self._sorted_feature_columns)
+    self._names_for_feature_id = np.array(
+        _generate_feature_name_mapping(self._sorted_feature_columns))
 
   def experimental_feature_importances(self, normalize=False):
     """Computes gain-based feature importances.
@@ -1017,21 +1020,20 @@ class _BoostedTrees(estimator.Estimator):
       feature_importances: 1-D array of the corresponding feature importance.
 
     Raises:
-      ValueError: Empty ensemble.
+      ValueError: When attempting to normalize on an empty ensemble
+        or an ensemble of trees which have no splits.
     """
     reader = checkpoint_utils.load_checkpoint(self._model_dir)
     serialized = reader.get_tensor('boosted_trees:0_serialized')
     if not serialized:
       raise ValueError('Found empty serialized string for TreeEnsemble.'
-                       'You should only call the method after training.')
+                       'You should only call this method after training.')
     ensemble_proto = boosted_trees_pb2.TreeEnsemble()
     ensemble_proto.ParseFromString(serialized)
 
-    names_for_feature_id = np.array(
-        _generate_feature_name_mapping(self._sorted_feature_columns))
     sorted_feature_id, importances = _compute_feature_importances(
         ensemble_proto, self._num_features, normalize)
-    return names_for_feature_id[sorted_feature_id], importances
+    return self._names_for_feature_id[sorted_feature_id], importances
 
 
 @estimator_export('estimator.BoostedTreesClassifier')
