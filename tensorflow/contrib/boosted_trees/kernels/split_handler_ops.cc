@@ -400,6 +400,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
 
       const int start_index = partition_boundaries[root_idx];
       (*output_partition_ids)(root_idx) = partition_ids(start_index);
+      oblivious_split_info.add_children_parent_id(partition_ids(start_index));
     }
     oblivious_split_info.SerializeToString(&(*output_splits)(0));
   }
