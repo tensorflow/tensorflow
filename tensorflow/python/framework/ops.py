@@ -753,6 +753,9 @@ class _EagerTensorBase(Tensor):
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
 
+  def __reduce__(self):
+    return (convert_to_tensor, (self.numpy(),))
+
   def _numpy(self):
     raise NotImplementedError()
 
