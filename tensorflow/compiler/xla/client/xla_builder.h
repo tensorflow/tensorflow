@@ -501,17 +501,21 @@ class XlaBuilder {
            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Enqueues a dot instruction onto the computation.
-  XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs);
+  XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
+            const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues a general dot instruction onto the computation.
-  XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                   const DotDimensionNumbers& dimension_numbers);
+  XlaOp DotGeneral(
+      const XlaOp& lhs, const XlaOp& rhs,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues a convolution instruction onto the computation, which uses the
   // default convolution dimension numbers.
   XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
              tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-             int64 feature_group_count = 1);
+             int64 feature_group_count = 1,
+             const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided padding configuration in the format returned by MakePadding().
@@ -519,7 +523,8 @@ class XlaBuilder {
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      int64 feature_group_count = 1);
+      int64 feature_group_count = 1,
+      const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided dimension numbers configuration.
@@ -527,7 +532,8 @@ class XlaBuilder {
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count = 1);
+      int64 feature_group_count = 1,
+      const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided padding configuration as well as the dimension numbers.
@@ -536,7 +542,8 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count = 1);
+      int64 feature_group_count = 1,
+      const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues a convolution instruction onto the computation, with the caller
   // provided padding configuration, dilation factors and dimension numbers.
@@ -547,7 +554,8 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<int64> lhs_dilation,
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count = 1);
+      int64 feature_group_count = 1,
+      const PrecisionConfigProto* precision_config_proto = nullptr);
 
   // Enqueues an FFT instruction onto the computation, of the given type and
   // with the given FFT length.
@@ -1146,28 +1154,34 @@ class XlaBuilder {
                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   friend XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
                   tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
-  friend XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs);
+  friend XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
+                   const PrecisionConfigProto* precision_config_proto);
   friend XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                          const DotDimensionNumbers& dimension_numbers);
+                          const DotDimensionNumbers& dimension_number,
+                          const PrecisionConfigProto* precision_config_proto);
   friend XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
                     tensorflow::gtl::ArraySlice<int64> window_strides,
-                    Padding padding, int64 feature_group_count);
+                    Padding padding, int64 feature_group_count,
+                    const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-      int64 feature_group_count);
+      int64 feature_group_count,
+      const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count);
+      int64 feature_group_count,
+      const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvGeneral(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count);
+      int64 feature_group_count,
+      const PrecisionConfigProto* precision_config_proto);
   friend XlaOp ConvGeneralDilated(
       const XlaOp& lhs, const XlaOp& rhs,
       tensorflow::gtl::ArraySlice<int64> window_strides,
@@ -1175,7 +1189,8 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<int64> lhs_dilation,
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count);
+      int64 feature_group_count,
+      const PrecisionConfigProto* precision_config_proto);
   friend XlaOp Fft(const XlaOp& operand, FftType fft_type,
                    tensorflow::gtl::ArraySlice<int64> fft_length);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
@@ -1626,17 +1641,20 @@ XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
 // Enqueues a dot instruction onto the computation.
-XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs);
+XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
+          const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a general dot instruction onto the computation.
 XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                 const DotDimensionNumbers& dimension_numbers);
+                 const DotDimensionNumbers& dimension_numbers,
+                 const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, which uses the
 // default convolution dimension numbers.
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
            tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-           int64 feature_group_count = 1);
+           int64 feature_group_count = 1,
+           const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration in the format returned by MakePadding().
@@ -1644,7 +1662,8 @@ XlaOp ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    int64 feature_group_count = 1);
+    int64 feature_group_count = 1,
+    const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided dimension numbers configuration.
@@ -1652,7 +1671,8 @@ XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count = 1);
+    int64 feature_group_count = 1,
+    const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration as well as the dimension numbers.
@@ -1660,7 +1680,8 @@ XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   tensorflow::gtl::ArraySlice<int64> window_strides,
                   tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
-                  int64 feature_group_count = 1);
+                  int64 feature_group_count = 1,
+                  const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
 // provided padding configuration, dilation factors and dimension numbers.
@@ -1671,7 +1692,8 @@ XlaOp ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count = 1);
+    int64 feature_group_count = 1,
+    const PrecisionConfigProto* precision_config_proto = nullptr);
 
 // Enqueues an FFT instruction onto the computation, of the given type and
 // with the given FFT length.

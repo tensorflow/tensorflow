@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -808,7 +809,8 @@ XlaOp XlaBuilder::Lt(const XlaOp& lhs, const XlaOp& rhs,
   return BinaryOp(HloOpcode::kLt, lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs) {
+XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs,
+                      const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
 
@@ -816,12 +818,14 @@ XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs) {
     dimension_numbers.add_lhs_contracting_dimensions(
         lhs_shape.dimensions_size() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
-    return DotGeneral(lhs, rhs, dimension_numbers);
+    return DotGeneral(lhs, rhs, dimension_numbers, precision_config_proto);
   });
 }
 
-XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                             const DotDimensionNumbers& dimension_numbers) {
+XlaOp XlaBuilder::DotGeneral(
+    const XlaOp& lhs, const XlaOp& rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -830,6 +834,9 @@ XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                         ShapeInference::InferDotOpShape(lhs_shape, rhs_shape,
                                                         dimension_numbers));
     *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+    if (precision_config_proto != nullptr) {
+      *instr.mutable_precision_config() = *precision_config_proto;
+    }
     return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
   });
 }
@@ -883,28 +890,31 @@ Status XlaBuilder::VerifyConvolution(
 
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
-                       Padding padding, int64 feature_group_count) {
+                       Padding padding, int64 feature_group_count,
+                       const PrecisionConfigProto* precision_config_proto) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
       CreateDefaultConvDimensionNumbers(window_strides.size()),
-      feature_group_count);
+      feature_group_count, precision_config_proto);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    int64 feature_group_count) {
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
                      CreateDefaultConvDimensionNumbers(window_strides.size()),
-                     feature_group_count);
+                     feature_group_count, precision_config_proto);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count) {
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
@@ -931,7 +941,8 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
     return ConvGeneral(lhs, rhs, window_strides,
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
-                       dimension_numbers, feature_group_count);
+                       dimension_numbers, feature_group_count,
+                       precision_config_proto);
   });
 }
 
@@ -940,9 +951,11 @@ XlaOp XlaBuilder::ConvGeneral(
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count) {
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
-                            dimension_numbers, feature_group_count);
+                            dimension_numbers, feature_group_count,
+                            precision_config_proto);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -952,7 +965,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count) {
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -978,6 +992,10 @@ XlaOp XlaBuilder::ConvGeneralDilated(
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
     instr.set_feature_group_count(feature_group_count);
+
+    if (precision_config_proto != nullptr) {
+      *instr.mutable_precision_config() = *precision_config_proto;
+    }
 
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
@@ -2548,48 +2566,57 @@ XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
   return lhs.builder()->Le(lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs) {
-  return lhs.builder()->Dot(lhs, rhs);
+XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
+          const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->Dot(lhs, rhs, precision_config_proto);
 }
 
 XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
-                 const DotDimensionNumbers& dimension_numbers) {
-  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers);
+                 const DotDimensionNumbers& dimension_numbers,
+                 const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
+                                   precision_config_proto);
 }
 
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
            tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
-           int64 feature_group_count) {
+           int64 feature_group_count,
+           const PrecisionConfigProto* precision_config_proto) {
   return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
-                             feature_group_count);
+                             feature_group_count, precision_config_proto);
 }
 
 XlaOp ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    int64 feature_group_count) {
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return lhs.builder()->ConvWithGeneralPadding(lhs, rhs, window_strides,
-                                               padding, feature_group_count);
+                                               padding, feature_group_count,
+                                               precision_config_proto);
 }
 
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count) {
-  return lhs.builder()->ConvWithGeneralDimensions(lhs, rhs, window_strides,
-                                                  padding, dimension_numbers,
-                                                  feature_group_count);
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
+  return lhs.builder()->ConvWithGeneralDimensions(
+      lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
+      precision_config_proto);
 }
 
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   tensorflow::gtl::ArraySlice<int64> window_strides,
                   tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
-                  int64 feature_group_count) {
+                  int64 feature_group_count,
+                  const PrecisionConfigProto* precision_config_proto) {
   return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
-                                    dimension_numbers, feature_group_count);
+                                    dimension_numbers, feature_group_count,
+                                    precision_config_proto);
 }
 
 XlaOp ConvGeneralDilated(
@@ -2599,10 +2626,11 @@ XlaOp ConvGeneralDilated(
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count) {
+    int64 feature_group_count,
+    const PrecisionConfigProto* precision_config_proto) {
   return lhs.builder()->ConvGeneralDilated(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
-      dimension_numbers, feature_group_count);
+      dimension_numbers, feature_group_count, precision_config_proto);
 }
 
 XlaOp Fft(const XlaOp& operand, FftType fft_type,

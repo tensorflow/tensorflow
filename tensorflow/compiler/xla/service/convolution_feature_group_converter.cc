@@ -224,6 +224,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   auto new_convolution = HloInstruction::CreateConvolve(
       convolution->shape(), convolution->mutable_operand(0), new_filter,
       convolution->window(), dim_numbers, /*feature_group_count=*/1);
+  new_convolution->set_precision_config(convolution->precision_config());
   TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
       convolution, std::move(new_convolution)));
   return Status::OK();
