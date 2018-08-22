@@ -48,7 +48,7 @@ class CheckpointUtilsWithDistributionStrategyTest(
       mode=["graph"]))
   def testInitFromCheckpoint(self, distribution, in_tower_mode):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1_value, v2_value, _, _ = checkpoint_utils_test._create_checkpoints(
           session, checkpoint_dir)
 
