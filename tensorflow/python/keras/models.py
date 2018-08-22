@@ -447,6 +447,7 @@ def clone_and_build_model(
   elif model.optimizer:
     if isinstance(model.optimizer, optimizers.TFOptimizer):
       optimizer = model.optimizer
+      K.track_tf_optimizer(optimizer)
     else:
       optimizer_config = model.optimizer.get_config()
       optimizer = model.optimizer.__class__.from_config(optimizer_config)
