@@ -73,6 +73,9 @@ class InverseOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._verifyInverseReal(self._makeBatch(matrix1, matrix2))
     # Complex
+    if test.is_built_with_rocm() :
+      # GEMM operation for complex datatype not yet supported in ROCm
+      return
     matrix1 = matrix1.astype(np.complex64)
     matrix1 += 1j * matrix1
     matrix2 = matrix2.astype(np.complex64)
@@ -91,6 +94,9 @@ class InverseOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._verifyInverseReal(self._makeBatch(matrix1, matrix2))
     # Complex
+    if test.is_built_with_rocm() :
+      # GEMM operation for complex datatype not yet supported in ROCm
+      return
     matrix1 = matrix1.astype(np.complex64)
     matrix1 += 1j * matrix1
     matrix2 = matrix2.astype(np.complex64)
