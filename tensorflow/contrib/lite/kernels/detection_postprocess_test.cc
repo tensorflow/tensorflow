@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"

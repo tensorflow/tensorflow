@@ -19,10 +19,10 @@ load(
     "//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
     "def_file_filter_configure",
 )
+load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 
 def initialize_third_party():
-    # Fill in later
-    pass
+    flatbuffers()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -738,18 +738,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
             "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/0f77d9d182265259b135dad949230ecbf1a2633d.tar.gz",
         ],
         build_file = clean_dep("//third_party:arm_neon_2_x86_sse.BUILD"),
-    )
-
-    tf_http_archive(
-        name = "flatbuffers",
-        strip_prefix = "flatbuffers-1.9.0",
-        sha256 = "5ca5491e4260cacae30f1a5786d109230db3f3a6e5a0eb45d0d0608293d247e3",
-        urls = [
-            "https://mirror.bazel.build/github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
-            "https://github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
-        ],
-        build_file = clean_dep("//third_party/flatbuffers:flatbuffers.BUILD"),
-        system_build_file = clean_dep("//third_party/systemlibs:flatbuffers.BUILD"),
     )
 
     native.new_http_archive(

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/delegates/eager/kernel.h"
 
-#include "flatbuffers/flexbuffers.h"
+#include "flatbuffers/flexbuffers.h"  // flatbuffers
 #include "tensorflow/contrib/lite/builtin_ops.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/context_util.h"
