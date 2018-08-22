@@ -24,7 +24,6 @@ import os.path
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
-from tensorflow.python.util import compat
 
 
 class FileIoTest(test.TestCase):
