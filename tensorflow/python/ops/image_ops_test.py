@@ -238,7 +238,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_one(self):
     """Same image should be returned for gamma equal to one"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
@@ -252,7 +252,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_less_zero(self):
     """White image should be returned for gamma equal to zero"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
@@ -270,7 +270,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_less_zero_tensor(self):
     """White image should be returned for gamma equal to zero"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
@@ -290,7 +290,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_zero(self):
     """White image should be returned for gamma equal to zero"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
@@ -308,7 +308,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
   def test_adjust_gamma_less_one(self):
     """Verifying the output with expected results for gamma
     correction with gamma equal to half"""
-    with self.test_session():
+    with self.cached_session():
       x_np = np.arange(0, 255, 4, np.uint8).reshape(8, 8)
       y = image_ops.adjust_gamma(x_np, gamma=0.5)
       y_tf = np.trunc(y.eval())
@@ -329,7 +329,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
   def test_adjust_gamma_greater_one(self):
     """Verifying the output with expected results for gamma
     correction with gamma equal to two"""
-    with self.test_session():
+    with self.cached_session():
       x_np = np.arange(0, 255, 4, np.uint8).reshape(8, 8)
       y = image_ops.adjust_gamma(x_np, gamma=2)
       y_tf = np.trunc(y.eval())
@@ -2367,7 +2367,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
     for opt in self.OPTIONS:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         image = constant_op.constant(img_np, shape=img_shape)
         y = image_ops.resize_images(image, [height, width], opt)
         yshape = array_ops.shape(y)
@@ -3076,7 +3076,7 @@ class JpegTest(test_util.TensorFlowTestCase):
         self.assertLess(error, 4)
 
   def testCropAndDecodeJpeg(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
       base = "tensorflow/core/lib/jpeg/testdata"
       jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
@@ -3102,7 +3102,7 @@ class JpegTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(image1_crop, image2)
 
   def testCropAndDecodeJpegWithInvalidCropWindow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
       base = "tensorflow/core/lib/jpeg/testdata"
       jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
@@ -3577,7 +3577,7 @@ class FormatTest(test_util.TensorFlowTestCase):
         "png": functools.partial(image_ops.decode_png, channels=3),
         "gif": lambda s: array_ops.squeeze(image_ops.decode_gif(s), axis=0),
     }
-    with self.test_session():
+    with self.cached_session():
       for path in paths:
         contents = io_ops.read_file(os.path.join(prefix, path)).eval()
         images = {}
@@ -3592,7 +3592,7 @@ class FormatTest(test_util.TensorFlowTestCase):
 
   def testError(self):
     path = "tensorflow/core/lib/gif/testdata/scan.gif"
-    with self.test_session():
+    with self.cached_session():
       for decode in image_ops.decode_jpeg, image_ops.decode_png:
         with self.assertRaisesOpError(r"Got 12 frames"):
           decode(io_ops.read_file(path)).eval()
@@ -3606,7 +3606,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
     max_output_size_np = 3
     iou_threshold_np = 0.5
-    with self.test_session():
+    with self.cached_session():
       boxes = constant_op.constant(boxes_np)
       scores = constant_op.constant(scores_np)
       max_output_size = constant_op.constant(max_output_size_np)
@@ -3686,7 +3686,7 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     # The output shape of the padded operation must be fully defined.
     self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(selected_indices_padded.eval(), [3, 0, 5, 0, 0])
       self.assertEqual(num_valid_padded.eval(), 3)
       self.assertAllClose(selected_indices.eval(), [3, 0, 5])
@@ -4035,7 +4035,7 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
     expected_dx = np.reshape([[2, 1, -2, 0], [-1, -2, 1, 0]], shape)
 
     dy, dx = image_ops.image_gradients(img)
-    with self.test_session():
+    with self.cached_session():
       actual_dy = dy.eval()
       actual_dx = dx.eval()
       self.assertAllClose(expected_dy, actual_dy)
