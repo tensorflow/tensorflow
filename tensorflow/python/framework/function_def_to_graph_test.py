@@ -56,7 +56,7 @@ class FunctionDefToGraphTest(test.TestCase):
     fdef = self._build_function_def()
     g = function_def_to_graph.function_def_to_graph(fdef)
     self.assertEqual(g.name, "_whats_in_a_name")
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       inputs = sess.run(g.inputs, feed_dict={"x:0": 2, "y:0": 3})
       self.assertSequenceEqual(inputs, [2.0, 3.0])
       outputs = sess.run(g.outputs, feed_dict={"x:0": 2, "y:0": 3})
@@ -204,7 +204,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
     with func_graph.as_default():
       x_ph, y_ph = func_graph.inputs
-      with self.test_session(graph=func_graph) as sess:
+      with self.session(graph=func_graph) as sess:
         self.assertEqual(
             sess.run(func_graph.outputs[0], feed_dict={
                 x_ph: 5.0,

@@ -214,7 +214,7 @@ class CauchyTest(test.TestCase):
         ]:
           value = func(x)
           grads = gradients_impl.gradients(value, [loc, scale])
-          with self.test_session(graph=g):
+          with self.session(graph=g):
             variables.global_variables_initializer().run()
             self.assertAllFinite(value)
             self.assertAllFinite(grads[0])

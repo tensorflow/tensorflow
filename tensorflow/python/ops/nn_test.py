@@ -541,7 +541,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           "b",
           partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
           initializer=constant_op.constant(biases))
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         variables.global_variables_initializer().run()
         return sess.run([list(sharded_weights), list(sharded_biases)])
 
@@ -1016,7 +1016,7 @@ class MomentsTest(test_lib.TestCase):
           expected_var = np.var(
               input_values, axis=moments_axes, keepdims=keep_dims)
           with ops.Graph().as_default() as g:
-            with self.test_session(graph=g) as sess:
+            with self.session(graph=g) as sess:
               inputs = constant_op.constant(
                   input_values, shape=input_shape, dtype=dtypes.float32)
               mean, variance = nn_impl.moments(

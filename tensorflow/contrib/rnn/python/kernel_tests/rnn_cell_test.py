@@ -1440,7 +1440,7 @@ class CompiledWrapperTest(test.TestCase):
     atol = 1e-5
 
     random_seed.set_random_seed(1234)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       xla_ops = _create_multi_lstm_cell_ops(
           batch_size=batch_size,
           num_units=num_units,
@@ -1452,7 +1452,7 @@ class CompiledWrapperTest(test.TestCase):
       xla_results = sess.run(xla_ops)
 
     random_seed.set_random_seed(1234)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       non_xla_ops = _create_multi_lstm_cell_ops(
           batch_size=batch_size,
           num_units=num_units,

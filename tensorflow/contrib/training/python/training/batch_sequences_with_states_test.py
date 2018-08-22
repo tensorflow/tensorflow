@@ -508,7 +508,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
 class PaddingTest(test.TestCase):
 
   def testPaddingInvalidLengths(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       sequences = {
           "key_1": constant_op.constant([1, 2, 3]),  # length 3
           "key_2": constant_op.constant([1.5, 2.5])  # length 2
@@ -520,7 +520,7 @@ class PaddingTest(test.TestCase):
         padded_seq["key_1"].eval()
 
   def testPadding(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       sequences = {
           "key_1": constant_op.constant([1, 2]),
           "key_2": constant_op.constant([0.5, -1.0]),
@@ -549,7 +549,7 @@ class PaddingTest(test.TestCase):
     val2 = np.array([9, 12])
     shape2 = np.array([5])
 
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       sp_tensor1 = sparse_tensor.SparseTensor(
           indices=array_ops.constant(ind1, dtypes.int64),
           values=array_ops.constant(val1, dtypes.int64),

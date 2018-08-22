@@ -43,7 +43,7 @@ class ReaderTest(test.TestCase):
   def testReadSavedModelValid(self):
     saved_model_dir = os.path.join(test.get_temp_dir(), "valid_saved_model")
     builder = saved_model_builder.SavedModelBuilder(saved_model_dir)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
     builder.save()
@@ -68,35 +68,35 @@ class ReaderTest(test.TestCase):
     # Graph with a single variable. SavedModel invoked to:
     # - add with weights.
     # - a single tag (from predefined constants).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
     # - a single tag (from predefined constants).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 43)
       builder.add_meta_graph([tag_constants.SERVING])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
     # - multiple predefined tags.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 44)
       builder.add_meta_graph([tag_constants.SERVING, tag_constants.GPU])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
     # - multiple predefined tags for serving on TPU.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 44)
       builder.add_meta_graph([tag_constants.SERVING, tag_constants.TPU])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
     # - multiple custom tags.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 45)
       builder.add_meta_graph(["foo", "bar"])
 

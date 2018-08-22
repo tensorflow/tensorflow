@@ -168,7 +168,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testEmptyFails(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = array_ops.placeholder(dtypes.float32)
         with g.gradient_override_map({"Identity": "BadGrad"}):
           y = array_ops.identity(x)
@@ -180,7 +180,7 @@ class GradientCheckerTest(test.TestCase):
 
   def testNaNGradFails(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = array_ops.placeholder(dtypes.float32)
         with g.gradient_override_map({"Identity": "NaNGrad"}):
           y = array_ops.identity(x)

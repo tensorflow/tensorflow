@@ -72,7 +72,7 @@ class BNTest(test.TestCase):
              dtype=dtypes.float32):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, train_op, saver = self._simple_model(image, is_fused, freeze_mode)
       if restore:
@@ -94,7 +94,7 @@ class BNTest(test.TestCase):
     dtype = image_val.dtype
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, _, saver = self._simple_model(image, is_fused, True)
       saver.restore(sess, checkpoint_path)

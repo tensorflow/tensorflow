@@ -91,7 +91,7 @@ class TransformedDistributionTest(test.TestCase):
       # sample
       sample = log_normal.sample(100000, seed=235)
       self.assertAllEqual([], log_normal.event_shape)
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         self.assertAllEqual([], log_normal.event_shape_tensor().eval())
         self.assertAllClose(
             sp_dist.mean(), np.mean(sample.eval()), atol=0.0, rtol=0.05)
@@ -107,7 +107,7 @@ class TransformedDistributionTest(test.TestCase):
                    [log_normal.log_survival_function, sp_dist.logsf]]:
         actual = func[0](test_vals)
         expected = func[1](test_vals)
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
   def testNonInjectiveTransformedDistribution(self):
@@ -123,7 +123,7 @@ class TransformedDistributionTest(test.TestCase):
       # sample
       sample = abs_normal.sample(100000, seed=235)
       self.assertAllEqual([], abs_normal.event_shape)
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         sample_ = sample.eval()
         self.assertAllEqual([], abs_normal.event_shape_tensor().eval())
 

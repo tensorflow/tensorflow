@@ -133,7 +133,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
 
   def testSerialization(self):
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph):
+      with self.session(graph):
         tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
         # Bias tree only for second class.
         tree1 = tree_ensemble_config.trees.add()
@@ -164,7 +164,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         serialized_config = serialized_config.eval()
 
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph):
+      with self.session(graph):
         tree_ensemble_handle2 = model_ops.tree_ensemble_variable(
             stamp_token=9,
             tree_ensemble_config=serialized_config,
@@ -211,7 +211,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
     # to ensure no caching occurs under the hood.
     save_path = os.path.join(self.get_temp_dir(), "restore-test")
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph) as sess:
+      with self.session(graph) as sess:
         # Prepare learner config.
         learner_config = learner_pb2.LearnerConfig()
         learner_config.num_classes = 2
@@ -288,7 +288,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
     # Start a second session.  In that session the parameter nodes
     # have not been initialized either.
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph) as sess:
+      with self.session(graph) as sess:
         tree_ensemble_handle = model_ops.tree_ensemble_variable(
             stamp_token=0, tree_ensemble_config="", name="restore_tree")
         my_saver = saver.Saver()

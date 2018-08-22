@@ -76,7 +76,7 @@ class GGTOptimizerTest(test.TestCase):
   def doTestBasic(self, use_resource=False):
     # SVD does not support float16
     for i, dtype in enumerate([dtypes.float32, dtypes.float64]):
-      with self.test_session(graph=ops.Graph()):
+      with self.session(graph=ops.Graph()):
         # Initialize variables for numpy implementation.
         m0 = 0.0
         window = 3
