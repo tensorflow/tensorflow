@@ -163,7 +163,7 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
     for data_input in data_inputs[1:]:
       if (data_input.output_types != data_inputs[0].output_types or
           data_input.output_classes != data_inputs[0].output_classes):
-        raise TypeError("All datasets must have the same type.")
+        raise TypeError("All datasets must have the same type and class.")
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access

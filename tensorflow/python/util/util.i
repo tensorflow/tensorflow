@@ -110,6 +110,9 @@ Raises:
 %unignore tensorflow::swig::FlattenForData;
 %noexception tensorflow::swig::FlattenForData;
 
+%unignore tensorflow::swig::AssertSameStructureForData;
+%noexception tensorflow::swig::AssertSameStructureForData;
+
 %include "tensorflow/python/util/util.h"
 
 %unignoreall
