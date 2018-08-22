@@ -61,7 +61,6 @@ py_library(
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
         "//tensorflow/contrib/kernel_methods",
-        "//tensorflow/contrib/kfac",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
