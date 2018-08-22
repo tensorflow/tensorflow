@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "TreeIsInitializedOp"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+A handle to a tree
+END
+  }
+  out_arg {
+   name: "is_initialized"
+   description: <<END
+   initialized or not
+   END
+}
+}

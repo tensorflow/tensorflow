@@ -37,44 +37,22 @@ REGISTER_OP("CreateTreeVariable")
     .Attr("num_output: int")
     .Input("tree_handle: resource")
     .Input("tree_config: string")
-    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
-    .Doc(R"doc(
-Creates a tree  model and returns a handle to it.
-leaf_model_type: A type for classification.
-num_output: the output dimension.
-tree_handle: handle to the tree resource to be created.
-tree_config: Serialized proto of the tree.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs);
 
 REGISTER_OP("TreeSerialize")
     .Input("tree_handle: resource")
     .Output("tree_config: string")
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
-    .Doc(R"doc(
-Serializes the tree  to a proto.
-tree_handle: The handle to the tree.
-tree_config: Serialized proto of the tree.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 REGISTER_OP("TreeDeserialize")
     .Input("tree_handle: resource")
     .Input("tree_config: string")
-    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
-    .Doc(R"doc(
-Deserializes a serialized tree config and replaces current tree.
-tree_handle: The handle to the tree .
-tree_config: Serialized proto of the .
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs);
 
 REGISTER_OP("TreeSize")
     .Input("tree_handle: resource")
     .Output("tree_size: int32")
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
-    .Doc(R"doc(
-Outputs the size of the tree, including leaves.
-tree_handle: The handle to the tree.
-tree_size: Size scalar.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 REGISTER_OP("TreePredictions")
     .Attr("leaf_model_type: int")
@@ -94,15 +72,5 @@ REGISTER_OP("TreePredictions")
       c->set_output(0, c->Matrix(num_points, c->UnknownDim()));
       c->set_output(1, c->Vector(c->UnknownDim()));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Outputs the predictions for the given input data.
-leaf_model_type: A type for classification.
-num_output: the output dimension.
-tree_handle: The handle to the tree.
-input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
-   gives the j-th feature of the i-th input.
-predictions: `predictions[i][j]` is the probability that input i is class j.
-tree_paths: `tree_paths[i]` is a serialized TreePath proto for example i.
-)doc");
+    });
 }  // namespace tensorflow

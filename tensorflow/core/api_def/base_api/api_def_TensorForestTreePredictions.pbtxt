@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "TreePredictions"
+  visibility: HIDDEN
+  attr {
+    name: "leaf_model_type"
+    description: <<END
+type for classification or regression
+END
+  }
+  attr {
+    name: "num_output"
+    description: <<END
+number of output
+END
+  }
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+Handle to the tree resource to be used.
+END
+  }
+  in_arg {
+    name: "input_data"
+    description: <<END
+the data tensor.
+END
+  }
+  out_arg {
+    name: "predictions"
+    description: <<END
+the predictied tensor.
+END
+  }
+  out_arg {
+    name: "tree_paths"
+    description: <<END
+the predictied tree_paths.
+END
+  }
+  summary: "Output the predictions for the given input data"
+}
