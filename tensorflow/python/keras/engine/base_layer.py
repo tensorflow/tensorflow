@@ -50,6 +50,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 class CallConvention(enum.Enum):
@@ -79,6 +80,7 @@ class Layer(checkpointable.CheckpointableBase):
   Users will just instantiate a layer and then treat it as a callable.
 
   We recommend that descendants of `Layer` implement the following methods:
+
   * `__init__()`: Save configuration in member variables
   * `build()`: Called once from `__call__`, when we know the shapes of inputs
     and `dtype`. Should have the calls to `add_weight()`, and then
@@ -272,6 +274,7 @@ class Layer(checkpointable.CheckpointableBase):
       return []
     return self._updates
 
+  @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
 
@@ -372,6 +375,7 @@ class Layer(checkpointable.CheckpointableBase):
     else:
       return self._losses
 
+  @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
@@ -463,10 +467,12 @@ class Layer(checkpointable.CheckpointableBase):
     """Creates the variables of the layer."""
     self.built = True
 
+  @doc_controls.for_subclass_implementers
   def add_variable(self, *args, **kwargs):
     """Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name,
                  shape,
@@ -656,6 +662,7 @@ class Layer(checkpointable.CheckpointableBase):
           activity_regularization = self._activity_regularizer(output)
         self.add_loss(activity_regularization, inputs=inputs)
 
+  @doc_controls.for_subclass_implementers
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
@@ -1422,11 +1429,13 @@ class Layer(checkpointable.CheckpointableBase):
                            'instead.' % self.name)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def inbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._inbound_nodes
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def outbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
