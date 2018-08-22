@@ -974,6 +974,9 @@ class ResourceVariable(variables.RefVariable):
         return self._lazy_read(assign_op)
     return assign_op
 
+  def __reduce__(self):
+    return (ResourceVariable, (self.numpy(),))
+
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
 
