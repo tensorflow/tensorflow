@@ -574,7 +574,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.579010, 0.420990, 0.0], importances)
 
-  def testFeatureImportancesOnEmtpyEnsemble(self):
+  def testFeatureImportancesOnEmptyEnsemble(self):
     input_fn = _make_train_input_fn(is_classification=True)
 
     est = boosted_trees.BoostedTreesClassifier(
@@ -616,236 +616,7 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
           save_path = os.path.join(est.model_dir, 'model.ckpt')
           saver.save(sess, save_path)
 
-  def testFeatureImportances(self):
-    est = boosted_trees.BoostedTreesClassifier(
-        feature_columns=self._feature_columns,
-        n_batches_per_layer=1,
-        n_trees=2,
-        max_depth=5)
-
-    tree_ensemble_text = """
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 2
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 2.0
-            }
-          }
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 3
-              right_id: 4
-            }
-            metadata {
-              gain: 3.0
-            }
-          }
-          nodes {
-            bucketized_split {
-              feature_id: 1
-              left_id: 5
-              right_id: 6
-            }
-            metadata {
-              gain: 2.0
-            }
-          }
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 7
-              right_id: 8
-            }
-            metadata {
-              gain: 1.0
-            }
-          }
-        }
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 1.0
-            }
-          }
-          nodes {
-            bucketized_split {
-              feature_id: 2
-              left_id: 3
-              right_id: 4
-            }
-            metadata {
-              gain: 1.0
-            }
-          }
-        }
-        tree_weights: 1.0
-        tree_weights: 1.0
-        """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
-
-    feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([5.0, 3.0, 2.0], importances)
-
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.5, 0.3, 0.2], importances)
-
-  def testFeatureImportancesWithTreeWeights(self):
-    est = boosted_trees.BoostedTreesClassifier(
-        feature_columns=self._feature_columns,
-        n_batches_per_layer=1,
-        n_trees=2,
-        max_depth=5)
-
-    tree_ensemble_text = """
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 12.5
-            }
-          }
-          nodes {
-            bucketized_split {
-              feature_id: 1
-              left_id: 3
-              right_id: 4
-            }
-            metadata {
-              gain: 5.0
-            }
-          }
-        }
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 2
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 5.0
-            }
-          }
-        }
-        tree_weights: 0.4
-        tree_weights: 0.6
-        """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
-
-    feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([5.0, 3.0, 2.0], importances)
-
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.5, 0.3, 0.2], importances)
-
-  def testFeatureImportancesWithEmptyTree(self):
-    est = boosted_trees.BoostedTreesClassifier(
-        feature_columns=self._feature_columns,
-        n_batches_per_layer=1,
-        n_trees=2,
-        max_depth=5)
-
-    tree_ensemble_text = """
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 2
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 3.0
-            }
-          }
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 3
-              right_id: 4
-            }
-            metadata {
-              gain: 1.0
-            }
-          }
-        }
-        trees {
-          nodes {
-            leaf {
-              scalar: 0.0
-            }
-          }
-        }
-        tree_weights: 1.0
-        tree_weights: 1.0
-        """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
-
-    feature_names_expected = ['f_2_bucketized', 'f_0_bucketized', 'f_1_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([3.0, 1.0, 0.0], importances)
-
-    feature_names, importances = est.experimental_feature_importances(normalize=True)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.75, 0.25, 0.0], importances)
-
-  def testFeatureImportancesWithAllEmptyTree(self):
-    est = boosted_trees.BoostedTreesClassifier(
-        feature_columns=self._feature_columns,
-        n_batches_per_layer=1,
-        n_trees=2,
-        max_depth=5)
-
-    tree_ensemble_text = """
-        trees {
-          nodes {
-            leaf {
-              scalar: 0.0
-            }
-          }
-        }
-        trees {
-          nodes {
-            leaf {
-              scalar: 0.0
-            }
-          }
-        }
-        tree_weights: 1.0
-        tree_weights: 1.0
-        """
-    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
-
-    # Reverse order because feature importances are sorted by np.argsort(f)[::-1]
-    feature_names_expected = ['f_2_bucketized', 'f_1_bucketized', 'f_0_bucketized']
-    feature_names, importances = est.experimental_feature_importances(normalize=False)
-    self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([0.0, 0.0, 0.0], importances)
-
-    with self.assertRaisesRegexp(AssertionError, 'empty or contains'):
-      est.experimental_feature_importances(normalize=True)
-
-  def testFeatureImportancesWithFullTrees(self):
+  def testFeatureImportancesOnNonEmptyEnsemble(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
@@ -900,8 +671,23 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
             }
           }
           nodes {
+            bucketized_split {
+              feature_id: 0
+              left_id: 7
+              right_id: 8
+            }
+            metadata {
+              gain: 1.0
+            }
+          }
+          nodes {
             leaf {
               scalar: 3.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
             }
           }
         }
@@ -913,12 +699,12 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
               right_id: 2
             }
             metadata {
-              gain: 2.0
+              gain: 1.0
             }
           }
           nodes {
             leaf {
-              scalar: -0.88
+              scalar: 3.34
             }
           }
           nodes {
@@ -933,12 +719,12 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
           }
           nodes {
             leaf {
-              scalar: 1.88
+              scalar: 3.34
             }
           }
           nodes {
             leaf {
-              scalar: -2.88
+              scalar: 1.34
             }
           }
         }
@@ -956,23 +742,23 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
 
-  def testFeatureImportancesWithMoreTrees(self):
+  def testFeatureImportancesWithTreeWeights(self):
     est = boosted_trees.BoostedTreesClassifier(
         feature_columns=self._feature_columns,
         n_batches_per_layer=1,
-        n_trees=5,
+        n_trees=3,
         max_depth=5)
 
     tree_ensemble_text = """
         trees {
           nodes {
             bucketized_split {
-              feature_id: 2
+              feature_id: 0
               left_id: 1
               right_id: 2
             }
             metadata {
-              gain: 4.0
+              gain: 12.5
             }
           }
           nodes {
@@ -982,7 +768,22 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
               right_id: 4
             }
             metadata {
-              gain: 3.0
+              gain: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.0
             }
           }
         }
@@ -994,50 +795,29 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
               right_id: 2
             }
             metadata {
-              gain: 2.0
+              gain: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
             }
           }
         }
         trees {
           nodes {
-            bucketized_split {
-              feature_id: 1
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 1.0
+            leaf {
+              scalar: 0.0
             }
           }
         }
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 8.0
-            }
-          }
-        }
-        trees {
-          nodes {
-            bucketized_split {
-              feature_id: 0
-              left_id: 1
-              right_id: 2
-            }
-            metadata {
-              gain: 2.0
-            }
-          }
-        }
-        tree_weights: 1.0
-        tree_weights: 1.0
-        tree_weights: 1.0
-        tree_weights: 1.0
+        tree_weights: 0.4
+        tree_weights: 0.6
         tree_weights: 1.0
         """
     self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
@@ -1045,11 +825,48 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     feature_names_expected = ['f_0_bucketized', 'f_2_bucketized', 'f_1_bucketized']
     feature_names, importances = est.experimental_feature_importances(normalize=False)
     self.assertAllEqual(feature_names_expected, feature_names)
-    self.assertAllClose([10, 6.0, 4.0], importances)
+    self.assertAllClose([5.0, 3.0, 2.0], importances)
 
     feature_names, importances = est.experimental_feature_importances(normalize=True)
     self.assertAllEqual(feature_names_expected, feature_names)
     self.assertAllClose([0.5, 0.3, 0.2], importances)
+
+  def testFeatureImportancesWithAllEmptyTree(self):
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=2,
+        max_depth=5)
+
+    tree_ensemble_text = """
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_weights: 1.0
+        """
+    self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
+
+    # Reverse order because feature importances are sorted by np.argsort(f)[::-1]
+    feature_names_expected = ['f_2_bucketized', 'f_1_bucketized', 'f_0_bucketized']
+    feature_names, importances = est.experimental_feature_importances(normalize=False)
+    self.assertAllEqual(feature_names_expected, feature_names)
+    self.assertAllClose([0.0, 0.0, 0.0], importances)
+
+    with self.assertRaisesRegexp(AssertionError,
+                                 'all empty or contain only a root node'):
+      est.experimental_feature_importances(normalize=True)
 
   def TestFeatureImportancesNamesForCategoricalColumn(self):
     categorical = feature_column.categorical_column_with_vocabulary_list(
@@ -1089,6 +906,21 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
               gain: 2.0
             }
           }
+          nodes {
+            leaf {
+              scalar: -0.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
         }
         trees {
           nodes {
@@ -1099,6 +931,16 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
             }
             metadata {
               gain: 3.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.34
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
             }
           }
         }
@@ -1126,6 +968,8 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
         n_trees=1,
         max_depth=5)
 
+    # In order to generate a negative feature importances,
+    # We assign an invalid value -1 to tree_weights here.
     tree_ensemble_text = """
         trees {
           nodes {
@@ -1135,21 +979,21 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
               right_id: 2
             }
             metadata {
-              gain: -5.0
+              gain: 5.0
             }
           }
           nodes {
-            bucketized_split {
-              feature_id: 2
-              left_id: 3
-              right_id: 4
+            leaf {
+              scalar: -0.34
             }
-            metadata {
-              gain: 2.0
+          }
+          nodes {
+            leaf {
+              scalar: 1.34
             }
           }
         }
-        tree_weights: 1.0
+        tree_weights: -1.0
         """
     self._create_fake_checkpoint_with_tree_ensemble_proto(est, tree_ensemble_text)
 
