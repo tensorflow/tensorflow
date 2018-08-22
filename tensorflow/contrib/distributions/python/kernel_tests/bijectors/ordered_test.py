@@ -38,7 +38,7 @@ class OrderedBijectorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBijectorVector(self):
-    with self.test_session():
+    with self.cached_session():
       ordered = Ordered()
       self.assertEqual("ordered", ordered.name)
       x = np.asarray([[2., 3, 4], [4., 8, 13]])
@@ -57,7 +57,7 @@ class OrderedBijectorTest(test.TestCase):
           rtol=1e-7)
 
   def testBijectorUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       ordered = Ordered()
       self.assertEqual("ordered", ordered.name)
       x = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
@@ -84,7 +84,7 @@ class OrderedBijectorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testShapeGetters(self):
-    with self.test_session():
+    with self.cached_session():
       x = tensor_shape.TensorShape([4])
       y = tensor_shape.TensorShape([4])
       bijector = Ordered(validate_args=True)
@@ -98,7 +98,7 @@ class OrderedBijectorTest(test.TestCase):
                               y.as_list())))
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       ordered = Ordered()
       x = np.sort(self._rng.randn(3, 10), axis=-1).astype(np.float32)
       y = (self._rng.randn(3, 10)).astype(np.float32)
