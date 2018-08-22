@@ -32,6 +32,7 @@ py_test(
     name = "predict_test",
     timeout = "long",  # Moderate but for asan
     srcs = ["predict_test.py"],
+    data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",  # TODO: needs investigation on Windows
