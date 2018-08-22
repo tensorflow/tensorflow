@@ -14,7 +14,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-//#include "tensorflow/core/kernels/tensor_forest/leaf_model.h"
+#include "tensorflow/core/kernels/tensor_forest/leaf_model.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -37,14 +37,12 @@ class TreePredictionsOp : public OpKernel {
  public:
   explicit TreePredictionsOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    int32 leaf_model_type;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("leaf_model_type", &leaf_model_type));
+                   context->GetAttr("leaf_model_type", &leaf_model_type_));
 
     OP_REQUIRES_OK(context, context->GetAttr("num_output", &num_output_));
-    leaf_model_type_ = static_cast<LeafModelType>(leaf_model_type);
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(
-        leaf_model_type_, num_output_);
+    model_op_ = LeafModelFactory::CreateLeafModelOperator(leaf_model_type_,
+                                                          num_output_);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -114,8 +112,8 @@ class TreePredictionsOp : public OpKernel {
       sum += count;
     }
 
-    if (leaf_model_type_ != LeafModelType::CLASSIFICATION && sum > 0 &&
-        sum != 1) {
+    if (leaf_model_type_ != static_cast<int32>(LeafModelType::CLASSIFICATION) &&
+        sum > 0 && sum != 1) {
       for (int j = 0; j < num_output_; ++j) {
         (*out)(i, j) /= sum;
       }
@@ -124,7 +122,7 @@ class TreePredictionsOp : public OpKernel {
 
  private:
   std::unique_ptr<LeafModelOperator> model_op_;
-  LeafModelType leaf_model_type_;
+  int32 leaf_model_type_;
   int32 num_output_;
 };
 

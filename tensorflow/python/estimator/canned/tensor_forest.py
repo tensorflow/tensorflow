@@ -114,7 +114,6 @@ class RandomForestGraphs(object):
         training=training,
         tree_configs=tree_configs,
         tree_stats=tree_stats)
-    tree_params_proto =
     self.decision_trees = [
         RandomDecisionTreeGraphs(self.variables[i], self.params, i)
         for i in range(self.params.num_trees)

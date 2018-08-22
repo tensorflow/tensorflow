@@ -9,7 +9,6 @@ option java_package = "org.tensorflow.framework";
 import "google/protobuf/any.proto";
 import "google/protobuf/wrappers.proto";
 
-
 // Represents a single value of any type, e.g. 5 or "abc".
 message Value {
   oneof value {
@@ -28,7 +27,6 @@ message SparseVector {
 message Vector {
   repeated Value value = 1;
 }
-
 
 message Leaf {
   oneof leaf {
@@ -54,16 +52,12 @@ message FeatureId {
   repeated google.protobuf.Any additional_data = 2;
 };
 
-
-
 message InequalityTest {
   // When the feature is missing, the test's outcome is undefined.
   oneof FeatureSum {
     FeatureId feature_id = 1;
   }
-  enum Type {
-    LESS_OR_EQUAL = 0;
-  };
+  enum Type { LESS_OR_EQUAL = 0; };
   Type type = 2;
   Value threshold = 3;
 }
@@ -86,7 +80,6 @@ message BinaryNode {
     google.protobuf.Any custom_left_child_test = 5;
   }
 }
-
 
 message TreeNode {
   // Following fields are provided for convenience and better readability.

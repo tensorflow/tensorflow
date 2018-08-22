@@ -27,32 +27,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-class LeafModelResource : public ResourceBase {
- public:
-  explicit LeafModelResource(const int32& leaf_model_type,
-                             const int32& num_output);
-
-  virtual void MaybeInitialize();
-
-  mutex* get_mutex() { return &mu_; }
-
- protected:
-  const LeafModelType leaf_model_type_;
-  std::shared_ptr<LeafModelOperator> model_op_;
-
- private:
-  mutex mu_;
-};
-
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
-class DecisionTreeResource : public LeafModelResource {
+class DecisionTreeResource : public ResourceBase {
  public:
   DecisionTreeResource(const int32& leaf_model_type, const int32& num_output)
-      : LeafModelResource(leaf_model_type, num_output) {}
+      : leaf_model_type_(leaf_model_type) {
+    model_op_ =
+        LeafModelFactory::CreateLeafModelOperator(leaf_model_type_, num_output);
+  };
   string DebugString() override {
     return strings::StrCat("DecisionTree[size=",
                            decision_tree_->decision_tree().nodes_size(), "]");
   }
+
+  mutex* get_mutex() { return &mu_; }
 
   const tensorforest::Model& decision_tree() const { return *decision_tree_; }
 
@@ -70,7 +58,7 @@ class DecisionTreeResource : public LeafModelResource {
   // Caller needs to hold the mutex lock while calling this.
   void Reset() { decision_tree_.reset(new tensorforest::Model()); }
 
-  void MaybeInitialize() override;
+  void MaybeInitialize();
   int32 TraverseTree(const std::unique_ptr<DenseTensorType>& input_data,
                      int example, tensorforest::TreePath* path) const;
 
@@ -78,6 +66,9 @@ class DecisionTreeResource : public LeafModelResource {
   //                std::vector<int32>* new_children);
 
  private:
+  mutex mu_;
+  const int32 leaf_model_type_;
+  std::shared_ptr<LeafModelOperator> model_op_;
   std::unique_ptr<tensorforest::Model> decision_tree_;
   std::vector<std::unique_ptr<BinaryDecisionNodeEvaluator>> node_evaluators_;
 };

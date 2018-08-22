@@ -70,12 +70,11 @@ class ClassificationLeafModelOperator : public LeafModelOperator {
   void ExportModel(const LeafStat& stat, Leaf* leaf) const override;
 };
 
-class LeafModelOperatorFactory {
+class LeafModelFactory {
  public:
   static std::unique_ptr<LeafModelOperator> CreateLeafModelOperator(
-      const LeafModelType& leaf_model_type, const int32& num_output);
+      const int32& model_type, const int32& num_output);
 };
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_TENSOR_FOREST_LEAF_MODEL_H_

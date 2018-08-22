@@ -84,6 +84,7 @@ py_library(
         ":array_ops",
         ":bitwise_ops",
         ":boosted_trees_ops",
+        ":tensor_forest_ops",
         ":check_ops",
         ":client",
         ":client_testlib",

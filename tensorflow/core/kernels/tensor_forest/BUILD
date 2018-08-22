@@ -25,18 +25,35 @@ cc_library(
     srcs = ["leaf_model.cc"],
     hdrs = ["leaf_model.h"],
     deps = [
+	"//third_party/eigen3",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
-	"//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_library(
+    name = "evaluator",
+    hdrs = ["evaluator.h"],
+    srcs = ["evaluator.cc"],
+    deps = [
+        ":leaf_model",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
 	"//third_party/eigen3",
     ],
 )
 
 cc_library(
     name = "resources",
-    hdrs = ["resources.h", "evaluator.h"],
+    hdrs = ["resources.h"],
     srcs = ["resources.cc"],
     deps = [
         ":leaf_model",
+        ":evaluator",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
 	"//third_party/eigen3",
     ],
@@ -47,10 +64,11 @@ tf_kernel_library(
     srcs = ["resource_ops.cc"],
     deps = [
         ":resources",
+        ":leaf_model",
         "//tensorflow/core:framework",
-        "//tensorflow/core:tensor_forest_ops_op_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:tensor_forest_ops_op_lib",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
     ],
 )
 
@@ -59,10 +77,11 @@ tf_kernel_library(
     srcs = ["prediction_ops.cc"],
     deps = [
         ":resources",
-        "//tensorflow/core:tensor_forest_ops_op_lib",
+        ":leaf_model",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:tensor_forest_ops_op_lib",
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
     ],
 )
 tf_kernel_library(

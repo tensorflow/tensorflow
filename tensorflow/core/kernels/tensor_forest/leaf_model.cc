@@ -50,10 +50,9 @@ void ClassificationLeafModelOperator::ExportModel(const LeafStat& stat,
 }
 
 // ------------------------ factory ----------------------------- //
-std::unique_ptr<LeafModelOperator>
-LeafModelOperatorFactory::CreateLeafModelOperator(
-    const LeafModelType& model_type, const int32& num_output) {
-  switch (model_type) {
+std::unique_ptr<LeafModelOperator> LeafModelFactory::CreateLeafModelOperator(
+    const int32& model_type, const int32& num_output) {
+  switch (static_cast<LeafModelType>(model_type)) {
     case CLASSIFICATION:
       return std::unique_ptr<LeafModelOperator>(
           new ClassificationLeafModelOperator(num_output));

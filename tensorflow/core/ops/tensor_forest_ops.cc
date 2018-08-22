@@ -33,8 +33,8 @@ Checks whether a tree has been initialized.
 )doc");
 
 REGISTER_OP("CreateTreeVariable")
-    .Attr("leaf_model_type: int32")
-    .Attr("num_output: int32")
+    .Attr("leaf_model_type: int")
+    .Attr("num_output: int")
     .Input("tree_handle: resource")
     .Input("tree_config: string")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
@@ -77,8 +77,8 @@ tree_size: Size scalar.
 )doc");
 
 REGISTER_OP("TreePredictions")
-    .Attr("leaf_model_type: int32")
-    .Attr("num_output: int32")
+    .Attr("leaf_model_type: int")
+    .Attr("num_output: int")
     .Input("tree_handle: resource")
     .Input("input_data: float")
     .Output("predictions: float")
@@ -97,7 +97,6 @@ REGISTER_OP("TreePredictions")
     })
     .Doc(R"doc(
 Outputs the predictions for the given input data.
-params: A serialized TensorForestParams proto.
 leaf_model_type: A type for classification.
 num_output: the output dimension.
 tree_handle: The handle to the tree.

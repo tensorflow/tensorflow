@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.contrib.tensor_forest.ops.tensor_forest."""
+"""Tests for tensor_forest estimator and model_fn."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.kernels.tensor_forest import tensor_forest_pb2
 from google.protobuf.json_format import ParseDict
+from tensorflow.core.kernels.tensor_forest import tensor_forest_pb2
 from tensorflow.python.estimator.canned import tensor_forest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
