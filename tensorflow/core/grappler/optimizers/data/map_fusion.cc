@@ -102,9 +102,8 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const NodeDef* map_node = get_map_node(node);
     if (!map_node) continue;
 
-    GraphView::InputPort input_port = graph.GetInputPort(map_node->name(), 0);
     const NodeDef* parent_map_node =
-        get_map_node(*graph.GetRegularFanin(input_port).node);
+        get_map_node(*graph_utils::GetInputNode(*map_node, graph));
     if (!parent_map_node) continue;
 
     const auto* fused_function = get_fused_function(parent_map_node, map_node);
