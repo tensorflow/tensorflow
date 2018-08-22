@@ -17,9 +17,13 @@ py_test(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
