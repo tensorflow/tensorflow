@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import gc
 
 import numpy as np
@@ -105,6 +106,27 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(False, name="bool_test")
       self.assertAllEqual(bool(v), False)
+
+  def testEagerDeepCopy(self):
+    with context.eager_mode():
+      init_value = np.ones((4, 4, 4))
+      variable = resource_variable_ops.ResourceVariable(init_value,
+                                                        name="init")
+
+      copied_variable = copy.deepcopy(variable)
+      copied_variable.assign(4 * np.ones((4, 4, 4)))
+
+      # Copying the variable should create a new underlying tensor with distinct
+      # values.
+      self.assertFalse(np.allclose(variable.numpy(), copied_variable.numpy()))
+
+  def testGraphDeepCopy(self):
+    with self.test_session():
+      init_value = np.ones((4, 4, 4))
+      variable = resource_variable_ops.ResourceVariable(init_value,
+                                                        name="init")
+      with self.assertRaises(NotImplementedError):
+        copy.deepcopy(variable)
 
   @test_util.run_in_graph_and_eager_modes
   def testStridedSliceAssign(self):
