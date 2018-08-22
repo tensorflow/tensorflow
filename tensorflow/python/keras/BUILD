@@ -140,6 +140,7 @@ py_library(
         ":backend",
         "//tensorflow/python/data",
         "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
