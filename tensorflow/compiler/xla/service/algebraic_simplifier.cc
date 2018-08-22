@@ -268,7 +268,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
-      const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
+      const HloInstruction& dot, HloInstruction* lhs, int64 lhs_contracting_dim,
       HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped);
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
@@ -829,18 +829,18 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * optimized_lhs_concat,
-      OptimizeDotOfConcatHelper(dot->shape(), lhs, lhs_contracting_dim, rhs,
+      OptimizeDotOfConcatHelper(*dot, lhs, lhs_contracting_dim, rhs,
                                 rhs_contracting_dim, /*swapped=*/false));
   if (optimized_lhs_concat) {
     return optimized_lhs_concat;
   }
 
-  return OptimizeDotOfConcatHelper(dot->shape(), rhs, rhs_contracting_dim, lhs,
+  return OptimizeDotOfConcatHelper(*dot, rhs, rhs_contracting_dim, lhs,
                                    lhs_contracting_dim, /*swapped=*/true);
 }
 
 StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
-    const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
+    const HloInstruction& dot, HloInstruction* lhs, int64 lhs_contracting_dim,
     HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped) {
   bool can_optimize = lhs->opcode() == HloOpcode::kConcatenate &&
                       lhs->concatenate_dimension() == lhs_contracting_dim &&
@@ -939,11 +939,12 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
     }
 
     auto* new_dot = computation_->AddInstruction(HloInstruction::CreateDot(
-        dot_shape, new_dot_lhs, new_dot_rhs, new_dot_dnums));
+        dot.shape(), new_dot_lhs, new_dot_rhs, new_dot_dnums));
+    new_dot->set_precision_config(dot.precision_config());
 
     if (add_result) {
       add_result = computation_->AddInstruction(HloInstruction::CreateBinary(
-          dot_shape, HloOpcode::kAdd, add_result, new_dot));
+          dot.shape(), HloOpcode::kAdd, add_result, new_dot));
     } else {
       add_result = new_dot;
     }
@@ -1042,6 +1043,7 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   auto memoized_shape = ShapeUtil::MakeShape(F32, {m, n});
   auto* memoized_inst = computation_->AddInstruction(HloInstruction::CreateDot(
       memoized_shape, left_operand, right_operand, dnums));
+  memoized_inst->set_precision_config(dot->precision_config());
   // Get pair {start, 0} or {0, start}.
   HloInstruction* original_start_indices =
       lhs_is_dynamic_slice ? lhs->mutable_operand(1) : rhs->mutable_operand(1);
@@ -1139,6 +1141,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         ShapeUtil::PermuteDimensions({1, 0}, dot->shape()),
         rhs->mutable_operand(0), lhs->mutable_operand(0),
         dot_dimension_numbers));
+    new_dot->set_precision_config(dot->precision_config());
     return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
   }
@@ -2297,6 +2300,8 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   dot_dimension_numbers.add_rhs_contracting_dimensions(0);
   auto dot = computation_->AddInstruction(HloInstruction::CreateDot(
       dot_output_shape, new_lhs, new_rhs, dot_dimension_numbers));
+  dot->set_precision_config(convolution->precision_config());
+
   return ReplaceInstruction(convolution, add_bitcast(convolution_shape, dot));
 }
 

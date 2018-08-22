@@ -155,6 +155,7 @@ class HloParser {
     kFusionKind,
     kDistribution,
     kDomain,
+    kPrecisionList,
   };
 
   struct AttrConfig {
@@ -220,6 +221,7 @@ class HloParser {
   bool ParseWindowPad(std::vector<std::vector<tensorflow::int64>>* pad);
 
   bool ParseSliceRanges(SliceRanges* result);
+  bool ParsePrecisionList(std::vector<PrecisionConfigProto::Precision>* result);
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim,
                       std::vector<tensorflow::int64>* result);
@@ -238,6 +240,7 @@ class HloParser {
   bool ParseFftType(FftType* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
+  bool ParsePrecision(PrecisionConfigProto::Precision* result);
   bool ParseInt64(tensorflow::int64* result);
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
@@ -501,6 +504,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   optional<string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
+
+  optional<std::vector<PrecisionConfigProto::Precision>> operand_precision;
+  attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                &operand_precision};
 
   HloInstruction* instruction;
   switch (opcode) {
@@ -1365,6 +1372,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(std::move(*backend_config));
+  }
+  if (operand_precision) {
+    PrecisionConfigProto precision_config;
+    *precision_config.mutable_operand_precision() = {operand_precision->begin(),
+                                                     operand_precision->end()};
+    instruction->set_precision_config(precision_config);
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
@@ -2343,6 +2356,16 @@ bool HloParser::ParseAttributeHelper(
       case AttrTy::kDomain: {
         return ParseDomain(static_cast<DomainData*>(attr_out_ptr));
       }
+      case AttrTy::kPrecisionList: {
+        std::vector<PrecisionConfigProto::Precision> result;
+        if (!ParsePrecisionList(&result)) {
+          return false;
+        }
+        static_cast<optional<std::vector<PrecisionConfigProto::Precision>>*>(
+            attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
@@ -2613,6 +2636,24 @@ bool HloParser::ParseSliceRanges(SliceRanges* result) {
     result->strides.push_back(range.size() == 3 ? range[2] : 1);
   }
   return ParseToken(TokKind::kRbrace, "expects '}' to end ranges");
+}
+
+// precisionlist ::= start precision_elements end
+// precision_elements
+//   ::= /*empty*/
+//   ::= precision_val (delim precision_val)*
+bool HloParser::ParsePrecisionList(
+    std::vector<PrecisionConfigProto::Precision>* result) {
+  auto parse_and_add_item = [&]() {
+    PrecisionConfigProto::Precision item;
+    if (!ParsePrecision(&item)) {
+      return false;
+    }
+    result->push_back(item);
+    return true;
+  };
+  return ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                   parse_and_add_item);
 }
 
 // int64list ::= start int64_elements end
@@ -2935,6 +2976,23 @@ bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
     return TokenError(
         Printf("expects random distribution but sees: %s, error: %s",
                val.c_str(), status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParsePrecision(PrecisionConfigProto::Precision* result) {
+  VLOG(1) << "ParsePrecision";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects random distribution");
+  }
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToPrecision(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects precision but sees: %s, error: %s", val.c_str(),
+               status_or_result.status().error_message().c_str()));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();
