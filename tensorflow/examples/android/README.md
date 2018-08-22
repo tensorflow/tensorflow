@@ -119,11 +119,13 @@ the Android NDK and SDK must be installed on your system.
 1.  Install the latest version of Bazel as per the instructions [on the Bazel
     website](https://bazel.build/versions/master/docs/install.html).
 2.  The Android NDK is required to build the native (C/C++) TensorFlow code. The
-    current recommended version is 14b, which may be found
-    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-14b-downloads).
+    current recommended version is 16b, which may be found
+    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-16b-downloads).
 
-      * NDK 16, the revision released in November 2017, is **incompatible** with
-        Bazel. See [here](https://github.com/tensorflow/tensorflow/issues/14918).
+      * The latest release of Bazel may lag in compatibility
+        with latest NDK revisions. Bazel 0.16.1 is compatible with NDK16,
+        though NDK17 compatibility has already been merged into master.
+        [See this file for current NDK compatibility](https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/bazel/rules/android/ndkcrosstools/AndroidNdkCrosstools.java).
 
 3.  The Android SDK and build tools may be obtained
     [here](https://developer.android.com/tools/revisions/build-tools.html), or
@@ -133,8 +135,8 @@ the Android NDK and SDK must be installed on your system.
     devices).
 
       - The Android Studio SDK Manager's NDK installer will install the latest
-        revision of the NDK, which is **incompatible** with Bazel. You'll need
-        to download an older version manually, as (2) suggests.
+        revision of the NDK, which may be **incompatible** with Bazel. If
+        needed, download an older version manually, as (2) suggests.
 
 ##### Edit WORKSPACE
 
@@ -151,7 +153,7 @@ and SDK. Otherwise an error such as: "The external label
 Also edit the API levels for the SDK in WORKSPACE to the highest level you have
 installed in your SDK. This must be >= 23 (this is completely independent of the
 API level of the demo, which is defined in AndroidManifest.xml). The NDK API
-level may remain at 14.
+level may remain at 16.
 
 ##### Install Model Files (optional)
 
