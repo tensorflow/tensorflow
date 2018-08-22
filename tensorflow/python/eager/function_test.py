@@ -211,6 +211,18 @@ class FunctionTest(test.TestCase):
     random_seed.set_random_seed(1)
     self.assertAllEqual(f(), x)
 
+  def testSymGradGatherNd(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+
+      @function.defun
+      def f(x):
+        return array_ops.gather_nd(x, [[0]])
+
+      c = constant_op.constant([[2.]])
+      f_c = f(c)
+      g, = gradients_impl.gradients(f_c, c)
+      self.assertAllEqual(sess.run(g), [[1.0]])
+
   def testNestedInputsDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)
 
