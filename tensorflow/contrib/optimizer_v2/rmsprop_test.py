@@ -162,7 +162,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([dtypes.float32, dtypes.float64])
   def testMinimizeSparseResourceVariable(self, dtype):
-    with self.test_session():
+    with self.cached_session():
       var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
       x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
       pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
@@ -184,7 +184,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([dtypes.float32, dtypes.float64])
   def testMinimizeSparseResourceVariableCentered(self, dtype):
-    with self.test_session():
+    with self.cached_session():
       var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
       x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
       pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
