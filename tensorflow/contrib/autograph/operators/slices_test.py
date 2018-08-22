@@ -32,7 +32,7 @@ class SlicesTest(test.TestCase):
     l = list_ops.tensor_list_from_tensor(initial_list, element_shape=elem_shape)
     l = slices.set_item(l, 0, [5, 6])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       t = list_ops.tensor_list_stack(l, element_dtype=initial_list.dtype)
       self.assertAllEqual(sess.run(t), [[5, 6], [3, 4]])
 
@@ -43,7 +43,7 @@ class SlicesTest(test.TestCase):
     t = slices.get_item(
         l, 1, slices.GetItemOpts(element_dtype=initial_list.dtype))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(t), [3, 4])
 
 
