@@ -548,7 +548,9 @@ class MultiDeviceIterator : public ResourceBase {
         devices_(devices),
         flib_def_(std::move(flib_def)),
         pflr_(std::move(pflr)),
-        lib_(lib) {}
+        lib_(lib) {
+    CHECK_NOTNULL(lib_);
+  }
 
   string DebugString() override {
     return strings::StrCat("MultiDeviceIterator for ", devices_.size(),
@@ -598,6 +600,11 @@ class MultiDeviceIterator : public ResourceBase {
   std::shared_ptr<const FunctionLibraryDefinition> function_library() {
     tf_shared_lock l(mu_);
     return lib_def_;
+  }
+
+  FunctionLibraryRuntime* const lib() {
+    tf_shared_lock l(mu_);
+    return lib_;
   }
 
  private:
@@ -930,8 +937,10 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     core::ScopedUnref unref(resource);
 
     std::unique_ptr<IteratorBase> iterator;
-    OP_REQUIRES_OK(ctx, dataset->MakeIterator(IteratorContext(ctx), "Iterator",
-                                              &iterator));
+    IteratorContext iter_ctx(ctx);
+    iter_ctx.set_lib(resource->lib());
+    OP_REQUIRES_OK(
+        ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
     int64 incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
                                        &incarnation_id));
