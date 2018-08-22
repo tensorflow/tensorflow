@@ -241,7 +241,7 @@ class Metric(Layer):
 
   ```python
   m = SomeMetric(...)
-  init_op = tf.global_variables_initializer()  # Initialize variables
+  init_op = tf.variables_initializer(m.variables)  # Initialize variables
   with tf.Session() as sess:
     sess.run(init_op)
     for input in ...:
@@ -401,6 +401,7 @@ class Metric(Layer):
         dtype=self._dtype,
         trainable=False,
         initializer=initializer,
+        collections=[],
         synchronization=synchronization,
         aggregation=aggregation)
 
