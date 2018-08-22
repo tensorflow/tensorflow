@@ -6696,6 +6696,13 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "tensor_forest_ops",
+    deps = [
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_ops",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         "//tensorflow/core/kernels/data",

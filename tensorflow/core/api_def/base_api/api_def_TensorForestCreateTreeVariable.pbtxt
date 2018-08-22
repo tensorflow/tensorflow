@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "TensorForestCreateTreeVariable"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+Handle to the tree resource to be created.
+END
+  }
+  in_arg {
+    name: "tree_config"
+    description: <<END
+Serialized proto string of the boosted_trees.Tree.
+END
+  }
+  summary: "Creates a tree resource and returns a handle to it."
+}
