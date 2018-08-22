@@ -302,9 +302,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       instruction = CreateCrossReplicaSum(
           proto.shape(), all_operands(), computations(0),
-          /*replica_group_ids=*/
-          std::vector<int64>(proto.replica_group_ids().begin(),
-                             proto.replica_group_ids().end()),
+          /*replica_groups=*/
+          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
+                                    proto.replica_groups().end()),
           /*barrier=*/proto.cross_replica_sum_barrier(),
           /*all_reduce_id=*/all_reduce_id);
       break;
@@ -665,11 +665,11 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 HloInstruction::CreateCrossReplicaSum(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     HloComputation* reduce_computation,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    const std::vector<ReplicaGroup>& replica_groups,
     tensorflow::StringPiece barrier,
     const absl::optional<int64>& all_reduce_id) {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, operands, reduce_computation, replica_group_ids, barrier,
+      shape, operands, reduce_computation, replica_groups, barrier,
       all_reduce_id);
 }
 
@@ -3184,11 +3184,10 @@ const string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
 }
 
-const std::vector<int64>& HloInstruction::replica_group_ids() const {
-  return Cast<HloAllReduceInstruction>(this)->replica_group_ids();
-}
-
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
+  if (opcode() == HloOpcode::kCrossReplicaSum) {
+    return Cast<HloAllReduceInstruction>(this)->replica_groups();
+  }
   return Cast<HloAllToAllInstruction>(this)->replica_groups();
 }
 

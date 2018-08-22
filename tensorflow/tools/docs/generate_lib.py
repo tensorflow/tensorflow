@@ -171,14 +171,15 @@ def write_docs(output_dir,
           os.path.join('/', from_path),
           os.path.join('/', to_path)))
 
-  redirects = sorted(redirects)
-  template = ('- from: {}\n'
-              '  to: {}\n')
-  redirects = [template.format(f, t) for f, t in redirects]
-  api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
-  with open(api_redirects_path, 'w') as redirect_file:
-    redirect_file.write('redirects:\n')
-    redirect_file.write(''.join(redirects))
+  if redirects:
+    redirects = sorted(redirects)
+    template = ('- from: {}\n'
+                '  to: {}\n')
+    redirects = [template.format(f, t) for f, t in redirects]
+    api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
+    with open(api_redirects_path, 'w') as redirect_file:
+      redirect_file.write('redirects:\n')
+      redirect_file.write(''.join(redirects))
 
   if yaml_toc:
     # Generate table of contents

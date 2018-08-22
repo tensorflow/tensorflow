@@ -60,10 +60,10 @@ class ShardingMetadata : public DomainMetadata {
 
 // Given an HLO graph edge between instruction and one of its operands, creates
 // a ShardingMetadata based kDomain instruction if the sharding between
-// instruction and operand changes. Returns nullptr if there is no need for a
+// instruction and parent changes. Returns nullptr if there is no need for a
 // domain separation.
 std::unique_ptr<HloInstruction> CreateShardingDomain(
-    HloInstruction* instruction, HloInstruction* operand);
+    HloInstruction* instruction, HloInstruction* root, HloInstruction* operand);
 
 }  // namespace xla
 

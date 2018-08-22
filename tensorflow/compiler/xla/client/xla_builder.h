@@ -685,7 +685,7 @@ class XlaBuilder {
   // sum for each subgroup.
   XlaOp CrossReplicaSum(
       const XlaOp& operand,
-      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {});
+      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {});
 
   // Enqueues an operation that do an AllReduce of the operand cross cores. Here
   // AllReduce means doing a reduction on the input operand cross cores and then
@@ -694,10 +694,11 @@ class XlaBuilder {
   // scalars, e.g., add, min, or max. The way that AllReduce is applied is
   // configured by:
   //
-  // - `replica_group_ids`: maps replica ids to subgroup ids. If empty, all
-  // replicas belong to one group. Allreduce will be applied within subgroups.
-  // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
-  // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
+  // - `replica_groups`: each ReplicaGroup contains a list of replica id. If
+  // empty, all replicas belong to one group. Allreduce will be applied within
+  // subgroups. For example, we have 4 replicas, then
+  // replica_groups={{0,2},{1,3}} means, replica 0 and 2 are in subgroup 0,
+  // replica 1 and 3 are in subgroup 1.
   //
   // - `channel_id`: for Allreduce nodes from different modules, if they have
   // the same channel_id, they will be 'Allreduce'd. If empty, Allreduce will
@@ -706,7 +707,7 @@ class XlaBuilder {
   // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
   XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {},
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
   // Enqueues an operation that do an Alltoall of the operand cross cores.
@@ -1253,10 +1254,10 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(
       const XlaOp& operand,
-      tensorflow::gtl::ArraySlice<int64> replica_group_ids);
+      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups);
   friend XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups,
       const absl::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
@@ -1833,7 +1834,7 @@ XlaOp ReduceWindowWithGeneralPadding(
 // sum for each subgroup.
 XlaOp CrossReplicaSum(
     const XlaOp& operand,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids = {});
+    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {});
 
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then
@@ -1842,10 +1843,10 @@ XlaOp CrossReplicaSum(
 // scalars, e.g., add, min, or max. The way that AllReduce is applied is
 // configured by:
 //
-// - `replica_group_ids`: maps replica ids to subgroup ids. If empty, all
-// replicas belong to one group. Allreduce will be applied within subgroups.
-// For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
-// replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
+// - `replica_groups`: each ReplicaGroup contains a list of replica id. If
+// empty, all replicas belong to one group. Allreduce will be applied within
+// subgroups. For example, we have 4 replicas, then replica_groups={{0,2},{1,3}}
+// means, replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
 //
 // - `channel_id`: for Allreduce nodes from different modules, if they have the
 // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
@@ -1854,7 +1855,7 @@ XlaOp CrossReplicaSum(
 // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
 XlaOp CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups = {},
     const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
