@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Assemble common TF Dockerfiles from many parts.
 
 This script constructs TF's Dockerfiles by aggregating partial
@@ -324,7 +323,8 @@ def construct_documentation(header, partial_specs, image_spec):
 
   """
   # Comment and wrap header and image description
-  commented_header = '\n'.join(['# ' + l for l in header.splitlines()])
+  commented_header = '\n'.join(
+      [('# ' + l).rstrip() for l in header.splitlines()])
   commented_desc = '\n'.join(
       ['# ' + l for l in image_spec.get('desc', '').splitlines()])
   partial_descriptions = []
