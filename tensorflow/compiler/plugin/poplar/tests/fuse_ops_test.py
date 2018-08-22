@@ -52,6 +52,34 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'Sigmoid/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
+  def testSigmoidNotInplace(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [3], name="a")
+      c = math_ops.sigmoid(pa) + pa
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        pa: [-6.0, 0.0, 6.0]
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, [-5.997527, 0.5, 6.997527])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'Sigmoid/call/Nonlinearity',
+            'Copy_XLA_Args/arg0.*_to_Sigmoid/call/OnTileCopy-0',
+            'add/add.*/AddTo']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
   def testSigmoidGrad(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [3], name="grad")
@@ -104,6 +132,34 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Relu/call/Nonlinearity']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testReluNotInPlace(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [3], name="a")
+      c = nn_ops.relu(pa) + pa
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        pa: [1, -2, 1]
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, [2, -2, 2])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'host-exchange-local-copy-',
+            'Relu/call/Nonlinearity',
+            'Copy_XLA_Args/arg0.*_to_Relu/call/OnTileCopy-0',
+            'add/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testReluGrad(self):
