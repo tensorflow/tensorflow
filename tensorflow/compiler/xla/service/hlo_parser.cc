@@ -681,7 +681,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<string> barrier;
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
-      attrs["barrier"] = {/*required=*/false, AttrTy::kString, &barrier};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -689,8 +688,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
-          shape, operands, replica_groups, barrier ? *barrier : ""));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateAllToAll(shape, operands, replica_groups));
       break;
     }
     case HloOpcode::kReshape: {

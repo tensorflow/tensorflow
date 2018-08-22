@@ -1094,7 +1094,7 @@ R"(HloModule AllToAllWithSubgroups
 
 ENTRY AllToAllWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}, barrier="abc"
+  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}
 }
 
 )"

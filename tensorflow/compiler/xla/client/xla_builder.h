@@ -711,8 +711,6 @@ class XlaBuilder {
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
   // Enqueues an operation that do an Alltoall of the operand cross cores.
-  //
-  // TODO(b/110096724): This is NOT YET ready to use.
   XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                  int64 concat_dimension, int64 split_count,
                  const std::vector<ReplicaGroup>& replica_groups);
@@ -1859,8 +1857,6 @@ XlaOp CrossReplicaSum(
     const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
-//
-// TODO(b/110096724): This is NOT YET ready to use.
 XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
                const std::vector<ReplicaGroup>& replica_groups = {});

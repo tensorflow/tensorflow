@@ -466,12 +466,9 @@ class HloInstruction {
   // within replica 1, 2, 3, and in the gather phase, the received blocks will
   // be concatenated in the order of 1, 2, 3; another Alltoall will be applied
   // within replica 4, 5, 0, and the concatenation order is 4, 5, 0.
-  //
-  // TODO(b/110096724): This is NOT YET ready to use.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      const std::vector<ReplicaGroup>& replica_groups,
-      tensorflow::StringPiece barrier);
+      const std::vector<ReplicaGroup>& replica_groups);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
