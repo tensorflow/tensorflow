@@ -778,8 +778,6 @@ def make_batched_features_dataset(file_pattern,
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
-  dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
-
   # NOTE(mrry): We set `drop_remainder=True` when `num_epochs is None` to
   # improve the shape inference, because it makes the batch dimension static.
   # It is safe to do this because in that case we are repeating the input
