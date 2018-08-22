@@ -129,7 +129,7 @@ class UtilsTest(test.TestCase):
     return (weights, biases)
 
   def testFullyConnectedLayerParamsTupleToMat2d(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       layer_params = self._fully_connected_layer_params()
       output = utils.layer_params_to_mat2d(layer_params)
@@ -138,7 +138,7 @@ class UtilsTest(test.TestCase):
           sess.run(output), np.array([[1., 2.], [4., 3.], [1., 2.]]))
 
   def testFullyConnectedLayerParamsTensorToMat2d(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       layer_params = self._fully_connected_layer_params()
       output = utils.layer_params_to_mat2d(layer_params[0])
@@ -153,7 +153,7 @@ class UtilsTest(test.TestCase):
       self.assertListEqual([2 * 2 * 3 + 1, 4], output.get_shape().as_list())
 
   def testKron(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       mat1 = np.array([[1., 2.], [3., 4.]])
       mat2 = np.array([[5., 6.], [7., 8.]])
       mat1_tf = array_ops.constant(mat1)
@@ -163,7 +163,7 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(ans_tf, ans_np)
 
   def testMat2dToFullyConnectedLayerParamsTuple(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       vector_template = self._fully_connected_layer_params()
       mat2d = array_ops.constant([[5., 4.], [3., 2.], [1., 0.]])
@@ -177,7 +177,7 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(b, np.array([1., 0.]))
 
   def testMat2dToFullyConnectedLayerParamsTensor(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       vector_template = self._fully_connected_layer_params()[0]
       mat2d = array_ops.constant([[5., 4.], [3., 2.]])
@@ -187,7 +187,7 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(output, np.array([[5., 4.], [3., 2.]]))
 
   def testTensorsToColumn(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
 
       vector = array_ops.constant(np.array([[0., 1.], [2., 3.]]))
@@ -211,7 +211,7 @@ class UtilsTest(test.TestCase):
           np.array([1., 2., 4., 3., 1., 2., 6., 7., 8., 9.])[:, None])
 
   def testColumnToTensors(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
 
       vector_template = array_ops.constant(np.array([[0., 1.], [2., 3.]]))
@@ -241,7 +241,7 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(c, np.array([[6.], [7.], [8.], [9.]]))
 
   def testPosDefInvCholesky(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       npr.seed(0)
       square = lambda x: np.dot(x, x.T)
@@ -256,7 +256,7 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(sess.run(tf_inv), np_inv)
 
   def testPosDefInvMatrixInverse(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       random_seed.set_random_seed(200)
       npr.seed(0)
       square = lambda x: np.dot(x, x.T)
@@ -296,7 +296,7 @@ class UtilsTest(test.TestCase):
     def increment_var(var):
       return lambda: var.assign_add(1)
 
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       i = variable_scope.get_variable('i', initializer=0)
       accumulators = [
           variable_scope.get_variable('var%d' % j, initializer=0)
@@ -328,7 +328,7 @@ class UtilsTest(test.TestCase):
           values)
 
   def testExtractConvolutionPatches(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       batch_size = 10
       image_spatial_shape = [9, 10, 11]
       in_channels = out_channels = 32
@@ -373,7 +373,7 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(outputs_.flatten(), outputs_flat_.flatten())
 
   def testExtractPointwiseConv2dPatches(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       batch_size = 10
       image_height = image_width = 8
       in_channels = out_channels = 3

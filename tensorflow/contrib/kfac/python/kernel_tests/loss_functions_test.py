@@ -38,7 +38,7 @@ class InsertSliceInZerosTest(test.TestCase):
     input_tensor = constant_op.constant([[[1, 2]], [[3, 4]]])
     expected_output_array = [[[1, 2], [0, 0]], [[3, 4], [0, 0]]]
     op = loss_functions.insert_slice_in_zeros(input_tensor, 1, 2, 0)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_output_array = sess.run(op)
     self.assertAllEqual(expected_output_array, actual_output_array)
 
@@ -47,7 +47,7 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
 
   def testSample(self):
     """Ensure samples can be drawn."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.asarray([
           [0., 0., 0.],  #
           [1., -1., 0.]
@@ -60,7 +60,7 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
 
   def testEvaluateOnTargets(self):
     """Ensure log probability can be evaluated correctly."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.asarray([
           [0., 0., 0.],  #
           [1., -1., 0.]
@@ -83,7 +83,7 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
 
   def testEvaluateOnSample(self):
     """Ensure log probability of a sample can be drawn."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.asarray([
           [0., 0., 0.],  #
           [1., -1., 0.]
@@ -97,7 +97,7 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
       neg_log_prob = sess.run(neg_log_prob)
 
   def testMultiplyFisherSingleVector(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.array([1., 2., 3.])
       loss = loss_functions.CategoricalLogitsNegativeLogProbLoss(logits)
 
@@ -116,7 +116,7 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
         self.assertAllClose(expected_result, sess.run(result))
 
   def testMultiplyFisherBatch(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.array([[1., 2., 3.], [4., 6., 8.]])
       loss = loss_functions.CategoricalLogitsNegativeLogProbLoss(logits)
 
@@ -137,7 +137,7 @@ class OnehotCategoricalLogitsNegativeLogProbLossTest(test.TestCase):
 
   def testSample(self):
     """Ensure samples can be drawn."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.asarray([
           [0., 0., 0.],  #
           [1., -1., 0.]
@@ -150,7 +150,7 @@ class OnehotCategoricalLogitsNegativeLogProbLossTest(test.TestCase):
 
   def testEvaluateOnTargets(self):
     """Ensure log probability can be evaluated correctly."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.asarray([
           [0., 0., 0.],  #
           [1., -1., 0.]
@@ -173,7 +173,7 @@ class OnehotCategoricalLogitsNegativeLogProbLossTest(test.TestCase):
 
   def testEvaluateOnSample(self):
     """Ensure log probability of a sample can be drawn."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       logits = np.asarray([
           [0., 0., 0.],  #
           [1., -1., 0.]
