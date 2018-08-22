@@ -498,8 +498,7 @@ XLA_TEST_F(IntegerDivideOpTest, DivS32s) {
   TestDivRem<int32>(dividends, divisors, quotients, remainders);
 }
 
-XLA_TEST_F(IntegerDivideOpTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(SignedOverflow))) {
+XLA_TEST_F(IntegerDivideOpTest, SignedOverflow) {
   std::vector<int32> dividends = {5, INT32_MIN}, divisors = {0, -1},
                      quotients = {-1, INT32_MIN}, remainders = {5, 0};
 
@@ -529,8 +528,7 @@ XLA_TEST_F(IntegerDivideOpTest, DivU32s) {
   TestDivRem<uint32>(dividends, divisors, quotients, remainders);
 }
 
-XLA_TEST_F(IntegerDivideOpTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(UnsignedOverflow))) {
+XLA_TEST_F(IntegerDivideOpTest, UnsignedOverflow) {
   std::vector<int32> dividends = {5}, divisors = {0}, quotients = {-1},
                      remainders = {5};
 
