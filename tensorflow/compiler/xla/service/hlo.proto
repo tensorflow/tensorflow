@@ -46,6 +46,8 @@ message HloInstructionProto {
   reserved "control_predecessor_names";
   reserved 6;
   reserved "called_computation_names";
+  reserved 44;
+  reserved "replica_group_ids";
 
   string name = 1;
   string opcode = 2;
@@ -158,9 +160,6 @@ message HloInstructionProto {
   string backend_config = 43;
 
   // Cross replica op fields.
-  // TODO(b/112107579): remove replica_group_ids field and always use
-  // replica_groups.
-  repeated int64 replica_group_ids = 44;
   repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
   string cross_replica_sum_barrier = 46;

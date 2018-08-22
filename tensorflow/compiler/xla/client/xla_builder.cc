@@ -1881,7 +1881,7 @@ XlaOp XlaBuilder::BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
 
 XlaOp XlaBuilder::CrossReplicaSum(
     const XlaOp& operand,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids) {
+    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
     const Shape& scalar_shape = ShapeUtil::MakeShape(shape.element_type(), {});
@@ -1889,14 +1889,14 @@ XlaOp XlaBuilder::CrossReplicaSum(
     b->Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
            b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
-    return CrossReplicaSum(operand, computation, replica_group_ids,
+    return CrossReplicaSum(operand, computation, replica_groups,
                            /*channel_id=*/absl::nullopt);
   });
 }
 
 XlaOp XlaBuilder::CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups,
     const absl::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -1904,8 +1904,9 @@ XlaOp XlaBuilder::CrossReplicaSum(
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferCrossReplicaSumShape({&operand_shape}));
-    for (int64 replica_group_id : replica_group_ids) {
-      instr.add_replica_group_ids(replica_group_id);
+
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
     }
 
     if (channel_id.has_value()) {
@@ -2767,16 +2768,17 @@ XlaOp ReduceWindowWithGeneralPadding(
       padding);
 }
 
-XlaOp CrossReplicaSum(const XlaOp& operand,
-                      tensorflow::gtl::ArraySlice<int64> replica_group_ids) {
-  return operand.builder()->CrossReplicaSum(operand, replica_group_ids);
+XlaOp CrossReplicaSum(
+    const XlaOp& operand,
+    tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups) {
+  return operand.builder()->CrossReplicaSum(operand, replica_groups);
 }
 
 XlaOp CrossReplicaSum(const XlaOp& operand, const XlaComputation& computation,
-                      tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+                      tensorflow::gtl::ArraySlice<ReplicaGroup> replica_groups,
                       const absl::optional<ChannelHandle>& channel_id) {
   return operand.builder()->CrossReplicaSum(operand, computation,
-                                            replica_group_ids, channel_id);
+                                            replica_groups, channel_id);
 }
 
 XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,

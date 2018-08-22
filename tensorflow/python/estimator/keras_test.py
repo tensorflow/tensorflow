@@ -203,7 +203,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           optimizer='rmsprop',
           metrics=['mse', keras.metrics.categorical_accuracy])
 
-      with self.cached_session():
+      with self.test_session():
         est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model, config=self._config)
         before_eval_results = est_keras.evaluate(
@@ -228,7 +228,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           metrics=['mse', keras.metrics.categorical_accuracy])
 
       my_hook = MyHook()
-      with self.cached_session():
+      with self.test_session():
         est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model, config=self._config)
         before_eval_results = est_keras.evaluate(
@@ -252,7 +252,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
         metrics=['mse', keras.metrics.categorical_accuracy])
     my_hook = MyHook()
-    with self.cached_session():
+    with self.test_session():
       keras_model.fit(x_train, y_train, epochs=1)
 
       keras_est = keras_lib.model_to_estimator(
@@ -274,7 +274,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           optimizer=rmsprop.RMSPropOptimizer(1e-3),
           metrics=['mse', keras.metrics.categorical_accuracy])
 
-      with self.cached_session():
+      with self.test_session():
         est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model,
             config=self._config)
@@ -297,7 +297,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
         metrics=['mse', keras.metrics.categorical_accuracy])
 
-    with self.cached_session():
+    with self.test_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
@@ -316,7 +316,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
         metrics=['mse', keras.metrics.categorical_accuracy])
 
-    with self.cached_session():
+    with self.test_session():
       # Create state
       keras_model.train_on_batch(np.random.random((10,) + _INPUT_SIZE),
                                  np.random.random((10, _NUM_CLASS)))
@@ -343,7 +343,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         x_test, y_test), _, eval_input_fn = get_resource_for_simple_model(
             model_type='functional', is_evaluate=True)
 
-    with self.cached_session():
+    with self.test_session():
       metrics = [
           'binary_accuracy', 'binary_crossentropy', 'categorical_accuracy',
           'categorical_crossentropy', 'cosine_proximity', 'hinge',
@@ -357,7 +357,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.fit(x_train, y_train, epochs=1)
       keras_eval = keras_model.evaluate(x_test, y_test, batch_size=32)
 
-    with self.cached_session():
+    with self.test_session():
       keras_est = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_eval = keras_est.evaluate(input_fn=eval_input_fn)
@@ -385,7 +385,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         x_test, _), _, pred_input_fn = get_resource_for_simple_model(
             model_type='sequential', is_evaluate=False)
 
-    with self.cached_session():
+    with self.test_session():
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='adam',
@@ -393,7 +393,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.fit(x_train, y_train, epochs=1)
       keras_pred = [np.argmax(y) for y in keras_model.predict(x_test)]
 
-    with self.cached_session():
+    with self.test_session():
       keras_est = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_pred = [
@@ -439,7 +439,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       output_dict = {'dense_2': c_test, 'dense_3': d_test}
       return input_dict, output_dict
 
-    with self.cached_session():
+    with self.test_session():
       model = multi_inputs_multi_outputs_model()
       est_keras = keras_lib.model_to_estimator(
           keras_model=model, config=self._config)
@@ -456,7 +456,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         x_test, _), _, pred_input_fn = get_resource_for_simple_model(
             model_type='functional', is_evaluate=False)
 
-    with self.cached_session():
+    with self.test_session():
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
@@ -466,7 +466,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       fname = os.path.join(self._base_dir, 'keras_model.h5')
       keras.models.save_model(keras_model, fname)
 
-    with self.cached_session():
+    with self.test_session():
       keras_est = keras_lib.model_to_estimator(
           keras_model_path=fname, config=self._config)
       est_pred = [
@@ -479,19 +479,19 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, 'Either'):
       keras_lib.model_to_estimator()
 
-    with self.cached_session():
+    with self.test_session():
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'not both'):
         keras_lib.model_to_estimator(
             keras_model=keras_model,
             keras_model_path=tempfile.mkdtemp(dir=self._base_dir))
 
-    with self.cached_session():
+    with self.test_session():
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'compiled'):
         keras_lib.model_to_estimator(keras_model=keras_model)
 
-    with self.cached_session():
+    with self.test_session():
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'not a local path'):
         keras_lib.model_to_estimator(
@@ -516,10 +516,10 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     model = simple_functional_model()
     model.compile(
         loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
-    with self.cached_session():
+    with self.test_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=model, config=self._config)
-    with self.cached_session():
+    with self.test_session():
       with self.assertRaisesRegexp(KeyError,
                                    'Difference: .*invalid_input_name'):
         est_keras.train(input_fn=invald_input_name_input_fn, steps=100)
@@ -554,13 +554,13 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         num_epochs=None,
         batch_size=16)
     with self.assertRaisesRegexp(ValueError, 'relu6'):
-      with self.cached_session():
+      with self.test_session():
         est = keras_lib.model_to_estimator(
             keras_model=keras_model,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
         est.train(input_fn=train_input_fn, steps=1)
 
-    with self.cached_session():
+    with self.test_session():
       est = keras_lib.model_to_estimator(
           keras_model=keras_model,
           model_dir=tempfile.mkdtemp(dir=self._base_dir),
@@ -586,7 +586,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         }
     })
     with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
-      with self.cached_session():
+      with self.test_session():
         keras_lib.model_to_estimator(
             keras_model=keras_model,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
@@ -602,7 +602,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
       sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
       self._config._session_config = sess_config
-      with self.cached_session():
+      with self.test_session():
         keras_lib.model_to_estimator(
             keras_model=keras_model, config=self._config)
         self.assertEqual(
@@ -618,7 +618,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         optimizer='rmsprop',
         metrics=['mse', keras.metrics.categorical_accuracy])
 
-    with self.cached_session():
+    with self.test_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, model_dir=self._base_dir,
           config=run_config_lib.RunConfig())
@@ -629,7 +629,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       self.assertEqual(self._base_dir, est_keras._config.model_dir)
       self.assertEqual(self._base_dir, est_keras._model_dir)
 
-    with self.cached_session():
+    with self.test_session():
       est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, model_dir=self._base_dir,
           config=None)
@@ -648,7 +648,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         optimizer='rmsprop',
         metrics=['mse', keras.metrics.categorical_accuracy])
 
-    with self.cached_session():
+    with self.test_session():
       with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
         est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model,
@@ -663,7 +663,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         optimizer='rmsprop',
         metrics=['mse', keras.metrics.categorical_accuracy])
 
-    with self.cached_session():
+    with self.test_session():
       with self.assertRaisesRegexp(ValueError, '`model_dir` are set both in '
                                    'constructor and `RunConfig`'):
         keras_lib.model_to_estimator(
@@ -676,7 +676,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
         metrics=['mse', keras.metrics.categorical_accuracy])
-    with self.cached_session():
+    with self.test_session():
       keras_model.train_on_batch(
           np.random.random((10,) + _INPUT_SIZE),
           np.random.random((10, _NUM_CLASS)))
