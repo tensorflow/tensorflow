@@ -476,6 +476,10 @@ TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
   return kTfLiteOk;
 }
 
+void Interpreter::ReserveNodes(int count) {
+  nodes_and_registration_.reserve(count);
+}
+
 TfLiteStatus Interpreter::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
