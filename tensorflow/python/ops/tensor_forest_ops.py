@@ -31,20 +31,19 @@ class LeafModelType(object):
   @classmethod
   def get_type(cls, params):
     if params.is_regression:
-      return self.LEAF_TYPE['regression']
+      return cls.LEAF_TYPE['regression']
     else:
-      return self.LEAF_TYPE['classification']
+      return cls.LEAF_TYPE['classification']
 
 
-def predict(tree_handle, data, param):
+def predict(tree_handle, data, params):
     return gen_tensor_forest_ops.tree_predictions(tree_handle, data, num_output=params.num_output, leaf_model_type=LeafModelType.get_type(params))
 
 
 class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
-"""SaveableObject implementation for Variable."""
 
-  def __init__(self, leaf_model_type, num_output, config, resource_handle_func, create_op_func,
-               is_initialized_op_func, serialize_op_func, deserialize_op_func, name, type_name):
+  def __init__(self, leaf_model_type, num_output, config, name, container,  type_name, resource_handle_func, create_op_func,
+               is_initialized_op_func, serialize_op_func, deserialize_op_func):
 
     with ops.name_scope(name, type_name) as name:
       self._resource_handle = resource_handle_func(
@@ -91,9 +90,9 @@ class VariableSavable(saver.BaseSaverBuilder.SaveableObject):
           restored_tensors[0],
       )
 
-    @property
-    def resource(self):
-      return self._resource_hanlde
+  @property
+  def resource(self):
+    return self._resource_handle
 
 
 def tree_variable(leaf_model_type, num_output, tree_config, name, container=None):
@@ -105,18 +104,12 @@ def tree_variable(leaf_model_type, num_output, tree_config, name, container=None
                          "TreeVariable",
                          gen_tensor_forest_ops.decision_tree_resource_handle_op,
                          gen_tensor_forest_ops.create_tree_variable,
+                         gen_tensor_forest_ops.tree_is_initialized_op,
                          gen_tensor_forest_ops.tree_serialize,
-                         gen_tensor_forest_ops.tree_deserialize,
-                         gen_tensor_forest_ops.tree_is_initialized_op).resource
+                         gen_tensor_forest_ops.tree_deserialize).resource
 
 
 class DecisionTreeVariables(object):
-"""Stores tf.Variables for training a single desision tree.
-
-  Uses tf.get_variable to get tree-specific names so that this can be used
-  with a implementation (trains a model, saves it,
-  then relies on restoring that model to evaluate).
-  """
 
   def __init__(self, leaf_model_type, num_output, tree_num, tree_config='', tree_stat=''):
     self.stats = None
@@ -128,24 +121,15 @@ class DecisionTreeVariables(object):
 
 
 class ForestVariables(object):
-"""A container for a forests training data, consisting of multiple trees.
 
-  Instantiates a DesicionTreeVariables object for each tree. We override the
-  __getitem__ and __setitem__ function so that usage looks like this:
-
-    forest_variables = ForestVariables(params)
-
-    ... forest_variables.tree ...
-  """
-
-  def __init__(self, params
+  def __init__(self, params,
                tree_configs=None, tree_stats=None):
     self.variables = []
     # Set up some scalar variables to run through the device assigner, then
     # we can use those to colocate everything related
     # to a tree.
 
-    for i in range(params.num_trees):
+    for i in range(params.n_trees):
       kwargs = {}
       if tree_configs is not None:
         kwargs.update(dict(tree_config=tree_configs[i]))
