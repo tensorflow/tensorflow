@@ -682,6 +682,9 @@ ProgramShape HloComputation::ComputeProgramShape() const {
 }
 
 bool HloComputation::operator==(const HloComputation& other) const {
+  if (this == &other) {
+    return true;
+  }
   std::set<std::pair<const HloInstruction*, const HloInstruction*>> visited;
   std::function<bool(const HloInstruction*, const HloInstruction*)> eq =
       [&visited, &eq](const HloInstruction* a, const HloInstruction* b) {
