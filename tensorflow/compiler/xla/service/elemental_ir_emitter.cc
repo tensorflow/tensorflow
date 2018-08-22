@@ -1100,6 +1100,95 @@ static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
   return b->CreateSelect(shift_amt_in_range, shift_result, saturated_value);
 }
 
+llvm::Value* ElementalIrEmitter::GetOne(llvm::Type* type) const {
+  return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(type), 1);
+}
+
+llvm::Value* ElementalIrEmitter::GetZero(llvm::Type* type) const {
+  return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(type), 0);
+}
+
+llvm::Value* ElementalIrEmitter::GetIntSMin(llvm::Type* type) const {
+  auto* integer_type = llvm::cast<llvm::IntegerType>(type);
+  return llvm::ConstantInt::get(integer_type, llvm::APInt::getSignedMinValue(
+                                                  integer_type->getBitWidth()));
+}
+
+llvm::Value* ElementalIrEmitter::GetMinusOne(llvm::Type* type) const {
+  auto* integer_type = llvm::cast<llvm::IntegerType>(type);
+  return llvm::ConstantInt::get(
+      integer_type, llvm::APInt::getAllOnesValue(integer_type->getBitWidth()));
+}
+
+llvm::Value* ElementalIrEmitter::IsZero(llvm::Value* v) const {
+  return b_->CreateICmpEQ(v, llvm::ConstantInt::get(v->getType(), 0));
+}
+
+llvm::Value* ElementalIrEmitter::IsIntMinDivisionOverflow(
+    llvm::Value* lhs, llvm::Value* rhs) const {
+  return b_->CreateAnd(b_->CreateICmpEQ(lhs, GetIntSMin(lhs->getType())),
+                       b_->CreateICmpEQ(rhs, GetMinusOne(rhs->getType())));
+}
+
+llvm::Value* ElementalIrEmitter::Select(llvm::Value* cond, llvm::Value* if_true,
+                                        llvm::Value* if_false) const {
+  return b_->CreateSelect(cond, if_true, if_false);
+}
+
+llvm::Value* ElementalIrEmitter::EmitIntegerDivide(llvm::Value* lhs,
+                                                   llvm::Value* rhs,
+                                                   bool is_signed) const {
+  // Integer division overflow behavior:
+  //
+  // X / 0 == -1
+  // INT_SMIN /s -1 = INT_SMIN
+
+  if (!is_signed) {
+    llvm::Value* udiv_is_unsafe = IsZero(rhs);
+    llvm::Value* safe_rhs = Select(udiv_is_unsafe, GetOne(lhs->getType()), rhs);
+    llvm::Value* safe_div = b_->CreateUDiv(lhs, safe_rhs);
+    return Select(udiv_is_unsafe, GetMinusOne(lhs->getType()), safe_div);
+  }
+
+  llvm::Value* has_zero_divisor = IsZero(rhs);
+  llvm::Value* has_int_min_overflow = IsIntMinDivisionOverflow(lhs, rhs);
+  llvm::Value* sdiv_is_unsafe =
+      b_->CreateOr(has_int_min_overflow, has_zero_divisor);
+  llvm::Value* safe_rhs = Select(sdiv_is_unsafe, GetOne(lhs->getType()), rhs);
+  llvm::Value* safe_div = b_->CreateSDiv(lhs, safe_rhs);
+
+  return Select(
+      has_zero_divisor, GetMinusOne(lhs->getType()),
+      Select(has_int_min_overflow, GetIntSMin(lhs->getType()), safe_div));
+}
+
+llvm::Value* ElementalIrEmitter::EmitIntegerRemainder(llvm::Value* lhs,
+                                                      llvm::Value* rhs,
+                                                      bool is_signed) const {
+  // Integer remainder overflow behavior:
+  //
+  // X % 0 == X
+  // INT_SMIN %s -1 = 0
+
+  if (!is_signed) {
+    llvm::Value* urem_is_unsafe = IsZero(rhs);
+    llvm::Value* safe_rhs = Select(urem_is_unsafe, GetOne(lhs->getType()), rhs);
+    llvm::Value* safe_rem = b_->CreateURem(lhs, safe_rhs);
+    return Select(urem_is_unsafe, lhs, safe_rem);
+  }
+
+  llvm::Value* has_zero_divisor = IsZero(rhs);
+  llvm::Value* has_int_min_overflow = IsIntMinDivisionOverflow(lhs, rhs);
+  llvm::Value* srem_is_unsafe =
+      b_->CreateOr(has_int_min_overflow, has_zero_divisor);
+  llvm::Value* safe_rhs = Select(srem_is_unsafe, GetOne(lhs->getType()), rhs);
+  llvm::Value* safe_rem = b_->CreateSRem(lhs, safe_rhs);
+
+  return Select(
+      has_zero_divisor, lhs,
+      Select(has_int_min_overflow, GetZero(lhs->getType()), safe_rem));
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) const {
@@ -1112,11 +1201,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     case HloOpcode::kMultiply:
       return b_->CreateMul(lhs_value, rhs_value);
     case HloOpcode::kDivide:
-      return is_signed ? b_->CreateSDiv(lhs_value, rhs_value)
-                       : b_->CreateUDiv(lhs_value, rhs_value);
+      return EmitIntegerDivide(lhs_value, rhs_value, is_signed);
     case HloOpcode::kRemainder:
-      return is_signed ? b_->CreateSRem(lhs_value, rhs_value)
-                       : b_->CreateURem(lhs_value, rhs_value);
+      return EmitIntegerRemainder(lhs_value, rhs_value, is_signed);
     case HloOpcode::kEq:
       return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_EQ, lhs_value,
                                      rhs_value, b_);
