@@ -187,6 +187,19 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
+  // Multi-output loop fusions must have equal output shapes to be lowered.
+  if (instr1->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    Shape shape1 = instr1->IsMultiOutputFusion()
+                       ? instr1->shape().tuple_shapes(0)
+                       : instr1->shape();
+    Shape shape2 = instr2->IsMultiOutputFusion()
+                       ? instr2->shape().tuple_shapes(0)
+                       : instr2->shape();
+    if (!ShapeUtil::Equal(shape1, shape2)) {
+      return false;
+    }
+  }
+
   // Do this check last, as it may be expensive.
   return !GpuInstructionFusion::FusionWouldBeTooLarge(instr1, instr2);
 }
