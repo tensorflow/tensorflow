@@ -186,3 +186,7 @@ class CrossShardOptimizer(optimizer.Optimizer):
       A list of strings.
     """
     return self._opt.get_slot_names(*args, **kwargs)
+
+  def variables(self):
+    """Forwarding the variables from the underlying optimizer."""
+    return self._opt.variables()

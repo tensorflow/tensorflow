@@ -94,6 +94,14 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 # We assume our devices don't change henceforth.
 _LOCAL_DEVICES = None
 
+# This dictionary holds a mapping between a graph and variables to initialize
+# in the graph.
+_GRAPH_VARIABLES = {}
+
+# This dictionary holds a mapping between a graph and TF optimizers created in
+# the graph.
+_GRAPH_TF_OPTIMIZERS = {}
+
 
 @tf_export('keras.backend.backend')
 def backend():
@@ -309,6 +317,8 @@ def clear_session():
   """
   global _SESSION
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
+  global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
   ops.reset_default_graph()
   reset_uids()
   _SESSION = None
@@ -316,6 +326,8 @@ def clear_session():
       False, shape=(), name='keras_learning_phase')
   _GRAPH_LEARNING_PHASES = {}
   _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = phase
+  _GRAPH_VARIABLES.pop(ops.get_default_graph(), None)
+  _GRAPH_TF_OPTIMIZERS.pop(ops.get_default_graph(), None)
 
 
 @tf_export('keras.backend.manual_variable_initialization')
@@ -651,12 +663,43 @@ def variable(value, dtype=None, name=None, constraint=None):
   elif hasattr(value, 'shape'):
     v._keras_shape = int_shape(value)
   v._uses_learning_phase = False
+  track_variable(v)
   return v
 
 
-def _initialize_variables(session):
+def track_tf_optimizer(tf_optimizer):
+  """Tracks the given TF optimizer for initialization of its variables."""
+  if context.executing_eagerly():
+    return
+  graph = ops.get_default_graph()
+  if graph not in _GRAPH_TF_OPTIMIZERS:
+    _GRAPH_TF_OPTIMIZERS[graph] = set()
+  _GRAPH_TF_OPTIMIZERS[graph].add(tf_optimizer)
+
+
+def track_variable(v):
+  """Tracks the given variable for initialization."""
+  if context.executing_eagerly():
+    return
+  graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
+  if graph not in _GRAPH_VARIABLES:
+    _GRAPH_VARIABLES[graph] = set()
+  _GRAPH_VARIABLES[graph].add(v)
+
+
+def _get_variables(graph=None):
+  """Returns variables corresponding to the given graph for initialization."""
+  assert not context.executing_eagerly()
+  variables = _GRAPH_VARIABLES.get(graph, set())
+  for opt in _GRAPH_TF_OPTIMIZERS.get(graph, set()):
+    variables.update(opt.optimizer.variables())
+  return variables
+
+
+def _initialize_variables(session, variables=None):
   """Utility to initialize uninitialized variables on the fly."""
-  variables = variables_module.global_variables()
+  if variables is None:
+    variables = _get_variables(ops.get_default_graph())
   candidate_vars = []
   for v in variables:
     if not getattr(v, '_keras_initialized', False):
@@ -974,6 +1017,7 @@ def zeros(shape, dtype=None, name=None):
     v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
+    track_variable(v)
     return v
 
 
@@ -1008,6 +1052,7 @@ def ones(shape, dtype=None, name=None):
     v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
+    track_variable(v)
     return v
 
 

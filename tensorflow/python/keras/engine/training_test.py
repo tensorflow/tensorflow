@@ -37,6 +37,7 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
@@ -1488,9 +1489,10 @@ class TestTrainingWithDataTensors(test.TestCase):
       output_a_np = np.random.random((10, 4))
       output_b_np = np.random.random((10, 3))
 
-      a = keras.Input(
-          tensor=keras.backend.variables_module.Variable(input_a_np,
-                                                         dtype='float32'))
+      input_v = keras.backend.variables_module.Variable(
+          input_a_np, dtype='float32')
+      self.evaluate(variables_lib.variables_initializer([input_v]))
+      a = keras.Input(tensor=input_v)
       b = keras.Input(shape=(3,), name='input_b')
 
       a_2 = keras.layers.Dense(4, name='dense_1')(a)
@@ -1535,9 +1537,8 @@ class TestTrainingWithDataTensors(test.TestCase):
 
       # Now test a model with a single input
       # i.e. we don't pass any data to fit the model.
-      a = keras.Input(
-          tensor=keras.backend.variables_module.Variable(input_a_np,
-                                                         dtype='float32'))
+      self.evaluate(variables_lib.variables_initializer([input_v]))
+      a = keras.Input(tensor=input_v)
       a_2 = keras.layers.Dense(4, name='dense_1')(a)
       a_2 = keras.layers.Dropout(0.5, name='dropout')(a_2)
       model = keras.models.Model(a, a_2)
@@ -1575,9 +1576,8 @@ class TestTrainingWithDataTensors(test.TestCase):
 
       # Same, without learning phase
       # i.e. we don't pass any data to fit the model.
-      a = keras.Input(
-          tensor=keras.backend.variables_module.Variable(input_a_np,
-                                                         dtype='float32'))
+      self.evaluate(variables_lib.variables_initializer([input_v]))
+      a = keras.Input(tensor=input_v)
       a_2 = keras.layers.Dense(4, name='dense_1')(a)
       model = keras.models.Model(a, a_2)
       model.summary()
@@ -1700,9 +1700,10 @@ class TestTrainingWithDataTensors(test.TestCase):
       out = model.evaluate(input_a_np, None)
 
       # Test model with no external data at all.
-      a = keras.Input(
-          tensor=keras.backend.variables_module.Variable(input_a_np,
-                                                         dtype='float32'))
+      input_v = keras.backend.variables_module.Variable(
+          input_a_np, dtype='float32')
+      self.evaluate(variables_lib.variables_initializer([input_v]))
+      a = keras.Input(tensor=input_v)
       a_2 = keras.layers.Dense(4, name='dense_1')(a)
       a_2 = keras.layers.Dropout(0.5, name='dropout')(a_2)
       model = keras.models.Model(a, a_2)
@@ -1743,9 +1744,8 @@ class TestTrainingWithDataTensors(test.TestCase):
       self.assertEqual(out.shape, (10 * 3, 4))
 
       # Test multi-output model with no external data at all.
-      a = keras.Input(
-          tensor=keras.backend.variables_module.Variable(input_a_np,
-                                                         dtype='float32'))
+      self.evaluate(variables_lib.variables_initializer([input_v]))
+      a = keras.Input(tensor=input_v)
       a_1 = keras.layers.Dense(4, name='dense_1')(a)
       a_2 = keras.layers.Dropout(0.5, name='dropout')(a_1)
       model = keras.models.Model(a, [a_1, a_2])

@@ -570,6 +570,7 @@ class Layer(checkpointable.CheckpointableBase):
         use_resource=use_resource,
         synchronization=synchronization,
         aggregation=aggregation)
+    backend.track_variable(variable)
 
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the

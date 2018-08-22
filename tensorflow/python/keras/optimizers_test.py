@@ -142,6 +142,7 @@ class KerasOptimizersTest(test.TestCase):
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
     # This is possible
     model.compile(loss='mean_squared_error', optimizer=optimizer)
+    keras.backend.track_tf_optimizer(optimizer)
     model.fit(np.random.random((5, 3)),
               np.random.random((5, 2)),
               epochs=1,
@@ -163,6 +164,7 @@ class KerasOptimizersTest(test.TestCase):
       model.add(keras.layers.Dense(
           2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
       model.compile(loss='mean_squared_error', optimizer=optimizer)
+      keras.backend.track_tf_optimizer(optimizer)
       self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 0)
 
       model.fit(np.random.random((55, 3)),
