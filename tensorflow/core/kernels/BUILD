@@ -6360,6 +6360,13 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "tensor_forest_ops",
+    deps = [
+        "//tensorflow/core/kernels/tensor_forest:tensor_forest_ops",
+    ],
+)
+
 cc_library(
     name = "captured_function",
     hdrs = ["captured_function.h"],
