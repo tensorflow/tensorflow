@@ -813,7 +813,9 @@ def get(identifier):
   """
   # Wrap TF optimizer instances
   if isinstance(identifier, tf_optimizer_module.Optimizer):
-    return TFOptimizer(identifier)
+    opt = TFOptimizer(identifier)
+    K.track_tf_optimizer(opt)
+    return opt
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
