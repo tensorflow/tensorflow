@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -104,7 +104,7 @@ class HloModuleConfig {
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
+  absl::optional<ComputationLayout> entry_computation_layout_;
 
   // Whether this is a 'host module'.
   bool is_host_module_ = false;

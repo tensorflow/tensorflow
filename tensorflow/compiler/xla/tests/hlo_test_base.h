@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -139,7 +139,7 @@ class HloTestBase : public ::testing::Test {
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -148,22 +148,20 @@ class HloTestBase : public ::testing::Test {
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Executes an hlo module with fake inputs and compares the results.
   ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -172,22 +170,22 @@ class HloTestBase : public ::testing::Test {
   // or loaded from a file.
   ::testing::AssertionResult RunAndCompare(
       const tensorflow::StringPiece hlo_string,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult Run(const tensorflow::StringPiece hlo_string)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
-      const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+      const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       const tensorflow::StringPiece hlo_string,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
-      const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+      const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -264,7 +262,7 @@ class HloTestBase : public ::testing::Test {
   StatusOr<::testing::AssertionResult> RunAndCompareInternal(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error, bool run_hlo_passes,
+      const absl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
 };
 

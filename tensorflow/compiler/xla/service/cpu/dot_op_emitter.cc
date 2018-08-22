@@ -1620,7 +1620,7 @@ bool PotentiallyImplementedAsEigenDot(
 
 // For vector-matrix dot products, it is always profitable to make the Rhs
 // column major.
-tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() == 2 &&
       hlo.shape().dimensions(0) == 1) {

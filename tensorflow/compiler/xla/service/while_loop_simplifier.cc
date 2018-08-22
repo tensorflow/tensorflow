@@ -14,17 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
+using absl::optional;
 
 // Determines whether the given instruction is a send/recv node, or has a
 // subcomputation which contains a send/recv node.

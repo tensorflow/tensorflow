@@ -73,7 +73,7 @@ namespace {
 // If the parameter number is invalid for this computation, nullopt is
 // returned. When the return value has_value(), nullptr will never be
 // the held value.
-tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
+absl::optional<const OpMetadata*> ParameterMetadata(
     const XlaComputation& computation, int parameter_number) {
   for (const HloComputationProto& comp : computation.proto().computations()) {
     if (comp.id() == computation.proto().entry_computation_id()) {
@@ -81,14 +81,14 @@ tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
         if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
             instr.parameter_number() == parameter_number) {
           if (!instr.has_metadata()) {
-            return tensorflow::gtl::nullopt;
+            return absl::nullopt;
           }
           return &instr.metadata();
         }
       }
     }
   }
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 ExecutionOptions CreateExecutionOptions(
@@ -158,7 +158,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
-      tensorflow::gtl::optional<const OpMetadata*> metadata =
+      absl::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
       auto metadata_string = [&metadata]() -> string {
         if (!metadata.has_value()) {

@@ -38,7 +38,7 @@ bool PotentiallyImplementedAsEigenDot(
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
-tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
 // Returns true to indicate that we can generate a tiled LLVM IR implementation

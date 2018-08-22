@@ -449,7 +449,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& all_reduce_id);
 
   // This op handles the communication of an Alltoall operation. On each core,
   // the operands are N ops in the same shape, where N is the number of cores
@@ -1038,9 +1038,9 @@ class HloInstruction {
     return sharding_ ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
-  tensorflow::gtl::optional<int64> sharding_unique_device() const {
+  absl::optional<int64> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return tensorflow::gtl::optional<int64>();
+      return absl::optional<int64>();
     }
     return sharding_->UniqueDevice();
   }
@@ -1427,7 +1427,7 @@ class HloInstruction {
   void set_cross_replica_sum_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
-  tensorflow::gtl::optional<int64> all_reduce_id() const;
+  absl::optional<int64> all_reduce_id() const;
 
   // Returns data on the window in a windowed operation such as
   // convolution.
@@ -1557,7 +1557,7 @@ class HloInstruction {
   // NOTE: For all instructions other than kFusion, being elementwise on one of
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
-      const tensorflow::gtl::optional<int64>& operand_idx) const;
+      const absl::optional<int64>& operand_idx) const;
   // Prints an instruction to a string.
   //
   // The canonical string representation needs to name operands and instruction

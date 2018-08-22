@@ -1449,7 +1449,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
@@ -1468,7 +1468,7 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
@@ -1487,7 +1487,7 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
 }  // namespace

@@ -186,6 +186,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -346,6 +347,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -382,6 +384,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -684,6 +687,7 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
         "@llvm//:core",
     ],
     alwayslink = True,  # Contains compiler registration

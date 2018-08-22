@@ -160,7 +160,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   // concurrent infeed occur via the fake_infeed_shape, or when
   // --generate_fake_infeed is passed and there exists an infeed operation in
   // the HloSnapshot.
-  tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+  absl::optional<tensorflow::thread::ThreadPool> pool;
   std::unique_ptr<Literal> data;
   if (provide_infeed) {
     data = std::move(MakeFakeLiteral(infeed_shape)).ValueOrDie();
@@ -196,7 +196,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  tensorflow::gtl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.

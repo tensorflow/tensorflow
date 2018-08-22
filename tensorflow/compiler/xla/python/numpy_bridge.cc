@@ -281,15 +281,15 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
 
 // Helper that retrieves the member with attr_name, stringifies it if is not
 // None, and returns it as a C++ string.
-static tensorflow::gtl::optional<string> GetAttrAsString(
-    PyObject* o, const string& attr_name) {
+static absl::optional<string> GetAttrAsString(PyObject* o,
+                                              const string& attr_name) {
   if (!PyObject_HasAttrString(o, attr_name.c_str())) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   PyObject* attr = PyObject_GetAttrString(o, attr_name.c_str());
   if (attr == Py_None) {
     Py_DECREF(attr);
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   string result = PyObjectCppStr(attr);
   Py_DECREF(attr);
@@ -298,48 +298,46 @@ static tensorflow::gtl::optional<string> GetAttrAsString(
 
 // Helper that retrieves the member with attr_name, checks that it is an integer
 // if it is not None, and returns it as an int32 value.
-static tensorflow::gtl::optional<int32> GetAttrAsInt32(
-    PyObject* o, const string& attr_name) {
+static absl::optional<int32> GetAttrAsInt32(PyObject* o,
+                                            const string& attr_name) {
   if (!PyObject_HasAttrString(o, attr_name.c_str())) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   PyObject* attr = PyObject_GetAttrString(o, attr_name.c_str());
   if (attr == Py_None) {
     Py_DECREF(attr);
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   if (!CheckPyIntOrLong(attr)) {
     Py_DECREF(attr);
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   long value = PyIntOrPyLongToLong(attr);  // NOLINT
   Py_DECREF(attr);
   if (value == -1 && PyErr_Occurred() != nullptr) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   if (static_cast<int32>(value) != value) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   return value;
 }
 
 StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   OpMetadata result;
-  tensorflow::gtl::optional<string> op_type = GetAttrAsString(o, "op_type");
+  absl::optional<string> op_type = GetAttrAsString(o, "op_type");
   if (op_type.has_value()) {
     result.set_op_type(op_type.value());
   }
-  tensorflow::gtl::optional<string> op_name = GetAttrAsString(o, "op_name");
+  absl::optional<string> op_name = GetAttrAsString(o, "op_name");
   if (op_name.has_value()) {
     result.set_op_name(op_name.value());
   }
-  tensorflow::gtl::optional<string> source_file =
-      GetAttrAsString(o, "source_file");
+  absl::optional<string> source_file = GetAttrAsString(o, "source_file");
   if (source_file.has_value()) {
     result.set_source_file(source_file.value());
   }
-  tensorflow::gtl::optional<int32> source_line =
-      GetAttrAsInt32(o, "source_line");
+  absl::optional<int32> source_line = GetAttrAsInt32(o, "source_line");
   if (source_line.has_value()) {
     result.set_source_line(source_line.value());
   }

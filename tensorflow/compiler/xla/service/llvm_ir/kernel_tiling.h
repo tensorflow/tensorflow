@@ -36,8 +36,8 @@ namespace llvm_ir {
 
 // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
 // reduced shape of `b` or the 0-2-1 shape.
-tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
-                                                                const Shape& b);
+absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
+                                                     const Shape& b);
 
 // Return the unreduced output index corresponding to the given reduced output
 // index.

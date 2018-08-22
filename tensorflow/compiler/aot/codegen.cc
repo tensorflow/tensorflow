@@ -619,6 +619,7 @@ Status GenerateMetadata(const CodegenOpts& opts,
   if (opts.gen_program_shape) {
     program_shape =
         absl::make_unique<xla::ProgramShape>(compile_result.program_shape);
+
     // The parameter names are currently meaningless, and redundant with the
     // rest of our metadata, so clear them out to avoid confusion and save
     // space.

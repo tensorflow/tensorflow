@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 using xla::StatusOr;
 
@@ -863,7 +863,7 @@ CondStateMap::ContainsResult CondStateMap::LhsHoldsWhereverRhsHolds(
 
 BranchType CondStateMap::FindBranchOf(CondId id, OutputTensor predicate) const {
   if (IsEmpty(id)) return BranchType::kNeither;
-  gtl::optional<BranchType> b;
+  absl::optional<BranchType> b;
   const CondState& nodes = *id;
   for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
     if (it->type == CondStateMap::CondNode::Type::kSwitch &&

@@ -19,11 +19,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -1672,8 +1672,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       // 2. Using the selected index, scatter value from `source` to result. We
       // do this by iterating through the window, and compare each index with
       // the selected index.
-      tensorflow::gtl::optional<ReturnT> selected_val;
-      tensorflow::gtl::optional<std::vector<int64>> selected_index;
+      absl::optional<ReturnT> selected_val;
+      absl::optional<std::vector<int64>> selected_index;
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,
