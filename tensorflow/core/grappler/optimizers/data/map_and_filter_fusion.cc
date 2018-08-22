@@ -128,10 +128,8 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const NodeDef* filter_node = get_filter_node(node);
     if (!filter_node) continue;
 
-    GraphView::InputPort input_port =
-        graph.GetInputPort(filter_node->name(), 0);
     const NodeDef* map_node =
-        get_map_node(*graph.GetRegularFanin(input_port).node);
+        get_map_node(*graph_utils::GetInputNode(*filter_node, graph));
     if (!map_node) continue;
 
     const auto* fused_function = make_fused_function(map_node, filter_node);
