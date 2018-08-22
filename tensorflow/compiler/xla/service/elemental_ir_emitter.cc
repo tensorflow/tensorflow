@@ -293,10 +293,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       if (is_signed) {
         auto type =
             llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
-        auto zero = llvm::ConstantInt::get(type, 0);
-        auto cmp = b_->CreateICmpSGE(operand_value, zero);
-        return b_->CreateSelect(cmp, operand_value,
-                                b_->CreateNeg(operand_value));
+        auto cmp = b_->CreateICmpSGE(operand_value, GetZero(type));
+        return Select(cmp, operand_value, b_->CreateNeg(operand_value));
       } else {
         return operand_value;
       }
@@ -312,14 +310,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
           primitive_util::IsSignedIntegralType(op->shape().element_type());
       auto type =
           llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(), module_);
-      auto zero = llvm::ConstantInt::get(type, 0);
-      auto cmp = b_->CreateICmpEQ(operand_value, zero);
+      auto cmp = b_->CreateICmpEQ(operand_value, GetZero(type));
       if (is_signed) {
         auto ashr =
             b_->CreateAShr(operand_value, type->getIntegerBitWidth() - 1);
-        return b_->CreateSelect(cmp, zero, b_->CreateOr(ashr, 1));
+        return Select(cmp, GetZero(type), b_->CreateOr(ashr, 1));
       } else {
-        return b_->CreateSelect(cmp, zero, llvm::ConstantInt::get(type, 1));
+        return Select(cmp, GetZero(type), GetOne(type));
       }
     }
     case HloOpcode::kNegate:
@@ -456,9 +453,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = b_->CreateFCmpOEQ(operand_value, zero);
       auto olt = b_->CreateFCmpOLT(operand_value, zero);
-      return b_->CreateSelect(
-          oeq, zero,
-          b_->CreateSelect(olt, llvm::ConstantFP::get(type, -1.0),
+      return Select(oeq, zero,
+                    Select(olt, llvm::ConstantFP::get(type, -1.0),
                            llvm::ConstantFP::get(type, 1.0)));
     }
     case HloOpcode::kIsFinite: {
@@ -676,7 +672,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = b_->CreateFCmpOEQ(cplx_abs, zero);
-      return b_->CreateSelect(
+      return Select(
           oeq, EmitComposeComplex(op, zero, zero),
           EmitComposeComplex(
               op, b_->CreateFDiv(EmitExtractReal(operand_value), cplx_abs),
@@ -808,7 +804,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto oeq = b_->CreateFCmpOEQ(rhs_sum_sq, zero);
       auto real_inf_or_nan = b_->CreateFDiv(EmitExtractReal(lhs_value), zero);
       auto imag_inf_or_nan = b_->CreateFDiv(EmitExtractImag(lhs_value), zero);
-      return b_->CreateSelect(
+      return Select(
           oeq, EmitComposeComplex(op, real_inf_or_nan, imag_inf_or_nan),
           EmitComposeComplex(
               op,
@@ -1006,7 +1002,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small = b_->CreateFCmpOLT(
       abs_x, llvm::ConstantFP::get(type, kAntilogarithmIsSmallThreshold));
-  return b_->CreateSelect(x_is_small, for_small_x, for_large_x);
+  return Select(x_is_small, for_small_x, for_large_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitSin(PrimitiveType prim_type,
@@ -1047,7 +1043,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small = b_->CreateFCmpOLT(
       abs_x, llvm::ConstantFP::get(type, kExponentIsSmallThreshold));
-  return b_->CreateSelect(x_is_small, for_small_x, for_large_x);
+  return Select(x_is_small, for_small_x, for_large_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
@@ -1263,19 +1259,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
 llvm::Value* ElementalIrEmitter::EmitIntegralMax(llvm::Value* lhs_value,
                                                  llvm::Value* rhs_value,
                                                  bool is_signed) const {
-  return b_->CreateSelect(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
-                                                   : llvm::ICmpInst::ICMP_UGE,
-                                         lhs_value, rhs_value),
-                          lhs_value, rhs_value);
+  return Select(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
+                                         : llvm::ICmpInst::ICMP_UGE,
+                               lhs_value, rhs_value),
+                lhs_value, rhs_value);
 }
 
 llvm::Value* ElementalIrEmitter::EmitIntegralMin(llvm::Value* lhs_value,
                                                  llvm::Value* rhs_value,
                                                  bool is_signed) const {
-  return b_->CreateSelect(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
-                                                   : llvm::ICmpInst::ICMP_ULE,
-                                         lhs_value, rhs_value),
-                          lhs_value, rhs_value);
+  return Select(b_->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
+                                         : llvm::ICmpInst::ICMP_ULE,
+                               lhs_value, rhs_value),
+                lhs_value, rhs_value);
 }
 
 llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
@@ -1593,8 +1589,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalSelect(
   TF_ASSIGN_OR_RETURN(llvm::Value * on_false_value,
                       operand_to_generator.at(hlo->operand(2))(
                           ElementwiseSourceIndex(index, *hlo, 2)));
-  return b_->CreateSelect(b_->CreateTrunc(pred_value, b_->getInt1Ty()),
-                          on_true_value, on_false_value);
+  return Select(b_->CreateTrunc(pred_value, b_->getInt1Ty()), on_true_value,
+                on_false_value);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
