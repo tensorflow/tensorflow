@@ -90,10 +90,8 @@ XlaOp ComputeSums(XlaOp operand, XlaOp init_value,
 // Creates a padding configuration out of spatial padding values.
 PaddingConfig MakeSpatialPaddingConfig(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> spatial_padding,
-    tensorflow::gtl::ArraySlice<int64> kernel_size,
-    tensorflow::gtl::ArraySlice<int64> stride,
+    int num_spatial_dims, tensorflow::gtl::ArraySlice<int64> stride,
     const TensorFormat& data_format) {
-  const int num_spatial_dims = kernel_size.size() - 2;
   PaddingConfig padding_config;
   for (int i = 0; i < 2 + num_spatial_dims; ++i) {
     padding_config.add_dimensions();
@@ -161,8 +159,10 @@ XlaOp AvgPool(XlaOp operand, tensorflow::gtl::ArraySlice<int64> kernel_size,
     auto init_value = Zero(b, dtype);
     std::vector<int64> input_size(operand_shape.dimensions().begin(),
                                   operand_shape.dimensions().end());
-    auto padding_config =
-        MakeSpatialPaddingConfig(padding, kernel_size, stride, data_format);
+    const int num_dims = kernel_size.size();
+    const int num_spatial_dims = num_dims - 2;
+    auto padding_config = MakeSpatialPaddingConfig(padding, num_spatial_dims,
+                                                   stride, data_format);
     auto padded_operand = Pad(operand, Zero(b, dtype), padding_config);
     auto pooled = ComputeSums(padded_operand, init_value, kernel_size, stride,
                               data_format);
@@ -193,11 +193,12 @@ std::vector<std::pair<int64, int64>> MakeSpatialPadding(
                      stride_spatial_dimensions, padding);
 }
 
-XlaOp AvgPoolGrad(XlaOp out_backprop,
-                  tensorflow::gtl::ArraySlice<int64> gradients_size,
-                  tensorflow::gtl::ArraySlice<int64> kernel_size,
-                  tensorflow::gtl::ArraySlice<int64> stride, Padding padding,
-                  const TensorFormat& data_format) {
+XlaOp AvgPoolGrad(
+    XlaOp out_backprop, tensorflow::gtl::ArraySlice<int64> gradients_size,
+    tensorflow::gtl::ArraySlice<int64> kernel_size,
+    tensorflow::gtl::ArraySlice<int64> stride,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> spatial_padding,
+    const TensorFormat& data_format, const bool counts_include_padding) {
   XlaBuilder* b = out_backprop.builder();
   return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     const int num_dims = kernel_size.size();
@@ -228,8 +229,6 @@ XlaOp AvgPoolGrad(XlaOp out_backprop,
     // in third_party/tensorflow/core/kernels/conv_grad_ops.h
 
     // TF filter shape is [ H, W, ..., inC, outC ]
-    auto spatial_padding = MakeSpatialPadding(gradients_size, kernel_size,
-                                              stride, padding, data_format);
 
     // The input gradients are computed by a convolution of the output gradients
     // and the filter, with some appropriate padding. See the comment at the top
@@ -237,22 +236,32 @@ XlaOp AvgPoolGrad(XlaOp out_backprop,
     PrimitiveType dtype = out_backprop_xla_shape.element_type();
     auto out_backprop_div = AvgPoolDivideByCount(
         out_backprop, gradients_size, kernel_size, stride, spatial_padding,
-        dtype, data_format, padding == Padding::kValid);
+        dtype, data_format, counts_include_padding);
 
     // Pad the gradients in the spatial dimensions. We use the same padding
     // as Conv2DBackpropInput.
     PaddingConfig padding_config = MakeNoPaddingConfig(num_dims);
+    std::vector<int64> padded_gradients_size(gradients_size.begin(),
+                                             gradients_size.end());
+    // First, pad the output gradients the same way as the input. The additional
+    // padding will be removed as a last step before returning the input
+    // gradients.
     const int num_spatial_dims = num_dims - 2;
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      int dim = data_format.spatial_dimension(i);
+      padded_gradients_size[dim] +=
+          (spatial_padding[i].first + spatial_padding[i].second);
+    }
     for (int i = 0; i < num_spatial_dims; ++i) {
       int dim = data_format.spatial_dimension(i);
       TF_ASSIGN_OR_RETURN(
           SpatialDimensionOutputSizeAndPadding conv_backprop_spatial_dim,
           ConvGradExtractAndVerifyDimension(
-              /*input_size=*/gradients_size[dim],
+              /*input_size=*/padded_gradients_size[dim],
               /*filter_size=*/kernel_size[dim],
               /*output_size=*/out_backprop_xla_shape.dimensions(dim),
               /*dilation=*/1,
-              /*stride=*/stride[dim], /*padding=*/padding));
+              /*stride=*/stride[dim], /*padding=*/Padding::kValid));
       auto* padding = padding_config.mutable_dimensions(dim);
       padding->set_edge_padding_low(conv_backprop_spatial_dim.pad_before);
       padding->set_edge_padding_high(conv_backprop_spatial_dim.pad_after);
@@ -264,9 +273,20 @@ XlaOp AvgPoolGrad(XlaOp out_backprop,
 
     // in_backprop = padded_gradients <conv> ones
     std::vector<int64> ones(num_dims, 1LL);
-    return ReduceWindow(padded_gradients, zero,
-                        CreateScalarAddComputation(dtype, b), kernel_size,
-                        /*window_strides=*/ones, Padding::kValid);
+    auto in_backprop =
+        ReduceWindow(padded_gradients, Zero(b, dtype),
+                     CreateScalarAddComputation(dtype, b), kernel_size,
+                     /*window_strides=*/ones, Padding::kValid);
+    // The input padding doesn't contribute to the gradient, remove it.
+    std::vector<std::pair<int64, int64>> neg_spatial_padding;
+    neg_spatial_padding.reserve(spatial_padding.size());
+    for (const std::pair<int64, int64>& spatial_padding_dim : spatial_padding) {
+      neg_spatial_padding.emplace_back(-spatial_padding_dim.first,
+                                       -spatial_padding_dim.second);
+    }
+    auto remove_padding_config = MakeSpatialPaddingConfig(
+        neg_spatial_padding, num_spatial_dims, stride, data_format);
+    return Pad(in_backprop, zero, remove_padding_config);
   });
 }
 
