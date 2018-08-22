@@ -124,11 +124,11 @@ void XlaTransferManager::TransferLiteralFromDevice(
   TensorReference ref(device_tensor);
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream_.get(), shaped_buffer, literal,
-      [=, &shaped_buffer, &literal](xla::Status status) {
+      [=, &shaped_buffer](xla::Status status) {
         ref.Unref();
         done([&]() -> Status {
-          VLOG(1) << "Transfer from device as literal: " << literal.ToString()
-                  << " " << shaped_buffer.ToString();
+          VLOG(1) << "Transfer from device as literal: "
+                  << shaped_buffer.ToString();
           return status;
         }());
       });
