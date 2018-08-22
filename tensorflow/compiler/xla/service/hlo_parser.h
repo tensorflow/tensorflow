@@ -34,6 +34,11 @@ namespace xla {
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(
     tensorflow::StringPiece str, const HloModuleConfig& config);
 
+// Parses the text for a single HLO operation into an HLO module with a function
+// that runs that operation (with the same parameters) as its entry computation.
+StatusOr<std::unique_ptr<HloModule>> ParseHloOpToModule(
+    tensorflow::StringPiece str, tensorflow::StringPiece name = "single_op");
+
 // The api of the hlo parser. Given a string in the HloModule::ToString()
 // format, parses the string and creates a HloModule with default config.
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(

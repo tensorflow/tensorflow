@@ -365,6 +365,7 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
     line_no = line_no_cache_.line_no_of_query;
   }
   for (; ptr != location; ptr++) {
+    CHECK_LT(ptr, buf_.end());
     if (*ptr == '\n') {
       line_no++;
     }
