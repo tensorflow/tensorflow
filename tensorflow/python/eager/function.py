@@ -214,18 +214,15 @@ class FuncGraph(CapturingGraph):
     self.structured_outputs = None
     self.variables = []
 
+    graph = ops.get_default_graph()
+
     if context.executing_eagerly():
       self.seed = context.global_seed()
       self._xla_compile = (context.context().device_spec.device_type == "TPU")
     else:
-      graph = ops.get_default_graph()
-      # Inherit the graph key, since this is used for matching variables in
-      # optimizers.
-      self._graph_key = graph._graph_key  # pylint: disable=protected-access
       self.seed = graph.seed
       self._xla_compile = getattr(graph, "_xla_compile", False)
 
-    graph = ops.get_default_graph()
     # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
     # from the default graph even in eager mode. It'd be nice to not have a
     # default graph with eager execution, so hopefully this will go away when we
@@ -236,6 +233,9 @@ class FuncGraph(CapturingGraph):
     # from the default graph even in eager mode. Maybe it should be part of the
     # eager context?
     self._distribution_strategy_stack = graph._distribution_strategy_stack
+    # Inherit the graph key, since this is used for matching variables in
+    # optimizers.
+    self._graph_key = graph._graph_key
     # pylint: enable=protected-access
 
   def capture(self, tensor, name=None):
