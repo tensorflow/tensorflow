@@ -63,6 +63,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -396,6 +397,53 @@ def with_c_shapes(cls):
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
       setattr(cls, name + "WithCShapes", enable_c_shapes(value))
+  return cls
+
+
+def enable_cond_v2(fn):
+  """Decorator for enabling CondV2 on a test.
+
+  Note this enables using CondV2 after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  # pylint: disable=protected-access
+  def wrapper(*args, **kwargs):
+    prev_value = control_flow_ops._ENABLE_COND_V2
+    control_flow_ops._ENABLE_COND_V2 = True
+    try:
+      fn(*args, **kwargs)
+    finally:
+      control_flow_ops._ENABLE_COND_V2 = prev_value
+  # pylint: enable=protected-access
+
+  return wrapper
+
+
+def with_cond_v2(cls):
+  """Adds methods that call original methods but with CondV2 enabled.
+
+  Note this enables CondV2 in new methods after running the test class's
+  setup method.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  if control_flow_ops._ENABLE_COND_V2:
+    return cls
+
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCondV2", enable_cond_v2(value))
   return cls
 
 
