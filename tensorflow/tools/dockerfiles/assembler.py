@@ -1,3 +1,18 @@
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Assemble common TF Dockerfiles from many parts.
 
 This script constructs TF's Dockerfiles by aggregating partial
@@ -34,8 +49,8 @@ flags.DEFINE_string(
 
 flags.DEFINE_string(
     'output_dir',
-    'dockerfiles', ('Path to an output directory for Dockerfiles. '
-                    'Will be created if it doesn\'t exist.'),
+    './dockerfiles', ('Path to an output directory for Dockerfiles. '
+                      'Will be created if it doesn\'t exist.'),
     short_name='o')
 
 flags.DEFINE_string(
@@ -178,6 +193,7 @@ class TfDockerValidator(cerberus.Validator):
       for partial in self.root_document.get('partials', dict()).values():
         if value in partial.get('args', tuple()):
           return
+
       self._error(field, '{} is not an arg used in any partial.'.format(value))
 
 
@@ -209,7 +225,6 @@ def build_partial_description(partial_spec):
 
   # Document each arg
   for arg, arg_data in partial_spec.get('args', dict()).items():
-
     # Wrap arg description with comment lines
     desc = arg_data.get('desc', '( no description )')
     desc = textwrap.fill(
@@ -230,6 +245,7 @@ def build_partial_description(partial_spec):
                                              arg_data.get('default', '(unset)'),
                                              arg_options)
     lines.extend([arg_use, desc])
+
   return '\n'.join(lines)
 
 
@@ -252,7 +268,6 @@ def construct_contents(partial_specs, image_spec):
   """
   processed_partial_strings = []
   for partial_name in image_spec['partials']:
-
     # Apply image arg-defaults to existing arg defaults
     partial_spec = copy.deepcopy(partial_specs[partial_name])
     args = partial_spec.get('args', dict())
@@ -316,7 +331,6 @@ def construct_documentation(header, partial_specs, image_spec):
 
   # Build documentation for each partial in the image
   for partial in image_spec['partials']:
-
     # Copy partial data for default args unique to this image
     partial_spec = copy.deepcopy(partial_specs[partial])
     args = partial_spec.get('args', dict())
@@ -365,6 +379,7 @@ def normalize_partial_args(partial_specs):
       if not isinstance(value, dict):
         new_value = {'default': value}
         args[arg] = new_value
+
   return partial_specs
 
 
@@ -410,8 +425,10 @@ def flatten_args_references(image_specs):
           new_args.extend(image_specs[arg]['arg-defaults'])
         else:
           new_args.append(arg)
+
       image_spec['arg-defaults'] = new_args
       too_deep += 1
+
   return image_specs
 
 
@@ -458,8 +475,10 @@ def flatten_partial_references(image_specs):
           new_partials.append(partial)
         else:
           new_partials.extend(image_specs[partial['image']]['partials'])
+
       image_spec['partials'] = new_partials
       too_deep += 1
+
   return image_specs
 
 
@@ -486,6 +505,7 @@ def construct_dockerfiles(tf_spec):
                                             image_spec)
     contents = construct_contents(partial_specs, image_spec)
     names_to_contents[name] = '\n'.join([documentation, contents])
+
   return names_to_contents
 
 
