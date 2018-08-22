@@ -112,8 +112,6 @@ class SparseTensor(_TensorLike):
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
 
-    Returns:
-      A `SparseTensor`.
     """
     with ops.name_scope(None, "SparseTensor",
                         [indices, values, dense_shape]):
