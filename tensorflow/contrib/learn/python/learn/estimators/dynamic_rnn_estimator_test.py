@@ -155,7 +155,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
         self.GetColumnsToTensors(), self.sequence_feature_columns,
         self.context_feature_columns)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       sequence_input_val = sess.run(sequence_input)
@@ -330,7 +330,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     actual_state = dynamic_rnn_estimator.dict_to_state_tuple(state_dict, cell)
     flattened_state = dynamic_rnn_estimator.state_tuple_to_dict(actual_state)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       (state_dict_val, actual_state_val, flattened_state_val) = sess.run(
           [state_dict, actual_state, flattened_state])
 
