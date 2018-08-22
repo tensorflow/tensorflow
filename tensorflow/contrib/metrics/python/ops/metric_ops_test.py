@@ -3963,7 +3963,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                             expected,
                                             class_id=None,
                                             weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_precision_at_k(
@@ -3992,7 +3992,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                                 expected,
                                                 class_id=None,
                                                 weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_precision_at_top_k(
@@ -4021,7 +4021,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                                     k,
                                                     expected,
                                                     weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       predictions = constant_op.constant(predictions, dtypes_lib.float32)
@@ -4047,7 +4047,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
                                                         labels,
                                                         expected,
                                                         weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_average_precision_at_top_k(
@@ -4635,7 +4635,7 @@ class StreamingSparseRecallTest(test.TestCase):
                                          expected,
                                          class_id=None,
                                          weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metrics.streaming_sparse_recall_at_k(
@@ -4664,7 +4664,7 @@ class StreamingSparseRecallTest(test.TestCase):
                                    expected,
                                    class_id=None,
                                    weights=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       if weights is not None:
         weights = constant_op.constant(weights, dtypes_lib.float32)
       metric, update = metric_ops.sparse_recall_at_top_k(

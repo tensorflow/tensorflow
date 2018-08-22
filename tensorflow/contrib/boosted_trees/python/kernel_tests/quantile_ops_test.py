@@ -338,7 +338,7 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = quantile_ops.QuantileAccumulator(
           init_stamp_token=0, num_quantiles=3, epsilon=0.33, name="q0")
 
@@ -366,7 +366,7 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(True, are_ready_flush)
       self.assertAllEqual([2, 4, 6.], buckets)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = quantile_ops.QuantileAccumulator(
           init_stamp_token=0, num_quantiles=3, epsilon=0.33, name="q0")
       save = saver.Saver()
@@ -389,7 +389,7 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = quantile_ops.QuantileAccumulator(
           init_stamp_token=0, num_quantiles=3, epsilon=0.33, name="q0")
 
@@ -413,7 +413,7 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([1, 3, 5], buckets)
       save.save(sess, save_path)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = quantile_ops.QuantileAccumulator(
           init_stamp_token=0, num_quantiles=3, epsilon=0.33, name="q0")
       save = saver.Saver()

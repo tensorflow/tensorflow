@@ -493,7 +493,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       y.op._add_control_input(z.op)  # pylint: disable=protected-access
       y.op._add_control_input(x.op)  # pylint: disable=protected-access
       x.op._add_control_input(y.op)  # pylint: disable=protected-access
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "Graph is invalid, contains a cycle with 2 nodes"):
@@ -2486,7 +2486,7 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
     """Test that the graphdef version is plumbed through to kernels."""
     with ops.Graph().as_default() as g:
       version = g.graph_def_versions.producer
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         v = test_ops.graph_def_version().eval()
         self.assertEqual(version, v)
 
@@ -2784,7 +2784,7 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       test_util.set_producer_version(g, 7)
       old = test_ops.old()
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         old.run()
 
   def _error(self):

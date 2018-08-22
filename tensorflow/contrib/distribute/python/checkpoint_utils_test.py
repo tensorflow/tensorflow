@@ -62,7 +62,7 @@ class CheckpointUtilsWithDistributionStrategyTest(
           "var1": "new_var1",
           "var2": "new_var2"
       })
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(v1_value, self.evaluate(v1))
         self.assertAllEqual(v2_value, self.evaluate(v2))

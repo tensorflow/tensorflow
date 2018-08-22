@@ -46,7 +46,7 @@ class MovingAverageOptimizerTest(test.TestCase):
   def _helpTestRun(self, use_resource=False):
     for sequential_update in [True, False]:
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        with self.test_session(graph=ops.Graph()) as sess:
+        with self.session(graph=ops.Graph()) as sess:
           orig_val0 = [1.0, 2.0]
           orig_val1 = [3.0, 4.0]
           var0 = variable_scope.get_variable(

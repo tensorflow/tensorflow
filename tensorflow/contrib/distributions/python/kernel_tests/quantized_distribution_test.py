@@ -335,7 +335,7 @@ class QuantizedDistributionTest(test.TestCase):
         x = np.arange(-100, 100, 2).astype(dtype)
         proba = qdist.log_prob(x)
         grads = gradients_impl.gradients(proba, [mu, sigma])
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           variables.global_variables_initializer().run()
           self._assert_all_finite(proba.eval())
           self._assert_all_finite(grads[0].eval())

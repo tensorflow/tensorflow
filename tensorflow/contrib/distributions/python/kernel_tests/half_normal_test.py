@@ -191,7 +191,7 @@ class HalfNormalTest(test.TestCase):
           print(func.__name__)
           value = func(x)
           grads = gradients_impl.gradients(value, [scale])
-          with self.test_session(graph=g):
+          with self.session(graph=g):
             variables.global_variables_initializer().run()
             self.assertAllFinite(value)
             self.assertAllFinite(grads[0])
