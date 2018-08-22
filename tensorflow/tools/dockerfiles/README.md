@@ -30,7 +30,7 @@ machine. If you are confused, check out the [Docker run
 documentation](https://docs.docker.com/engine/reference/run/).
 
 ```bash
-# A volume mount (-v) is optional but highly recommended, especially for Jupyter
+# Volume mount (-v) is optional but highly recommended, especially for Jupyter.
 # User permissions (-u) are required if you use (-v).
 
 # CPU-based images
@@ -63,5 +63,5 @@ $ docker build -t tf-assembler .
 $ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-assembler bash 
 
 # In the container...
-/tf $ python3 ./assembler.py -o dockerfiles -s spec.yml --validate
+/tf $ python3 ./assembler.py -o dockerfiles -s spec.yml
 ```
