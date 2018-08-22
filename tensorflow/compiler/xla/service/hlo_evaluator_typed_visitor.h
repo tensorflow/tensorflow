@@ -551,13 +551,57 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleDivide(HloInstruction* divide) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<std::is_floating_point<NativeT>::value ||
+                              is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleDivide(HloInstruction* divide) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[divide],
                         ElementWiseBinaryOp(divide, [](ElementwiseT lhs_elem,
                                                        ElementwiseT rhs_elem) {
                           return lhs_elem / rhs_elem;
                         }));
     return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<std::is_signed<NativeT>::value &&
+                                    std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  Status HandleDivide(HloInstruction* divide) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[divide],
+        ElementWiseBinaryOp(
+            divide,
+            [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) -> ElementwiseT {
+              if (rhs_elem == 0) {
+                return static_cast<ElementwiseT>(-1);
+              }
+              if (rhs_elem == -1 &&
+                  lhs_elem == std::numeric_limits<ElementwiseT>::min()) {
+                return lhs_elem;
+              }
+              return lhs_elem / rhs_elem;
+            }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<std::is_unsigned<NativeT>::value>::type* =
+                nullptr>
+  Status HandleDivide(HloInstruction* divide) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[divide],
+                        ElementWiseBinaryOp(divide, [](ElementwiseT lhs_elem,
+                                                       ElementwiseT rhs_elem) {
+                          return rhs_elem == 0
+                                     ? std::numeric_limits<ElementwiseT>::max()
+                                     : (lhs_elem / rhs_elem);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleDivide(HloInstruction* divide) {
+    return HandleDivide<ElementwiseT>(divide);
   }
 
   template <typename NativeT,
@@ -646,15 +690,48 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
   Status HandleRemainder(HloInstruction* remainder) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[remainder],
                         ElementWiseBinaryOp(remainder, [](ElementwiseT lhs_el,
                                                           ElementwiseT rhs_el) {
                           return std::fmod(lhs_el, rhs_el);
                         }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<std::is_unsigned<NativeT>::value>::type* =
+                nullptr>
+  Status HandleRemainder(HloInstruction* remainder) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[remainder],
+                        ElementWiseBinaryOp(remainder, [](ElementwiseT lhs_el,
+                                                          ElementwiseT rhs_el) {
+                          return rhs_el == 0 ? lhs_el : (lhs_el % rhs_el);
+                        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<std::is_signed<NativeT>::value &&
+                                    std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  Status HandleRemainder(HloInstruction* remainder) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[remainder],
+        ElementWiseBinaryOp(
+            remainder,
+            [](ElementwiseT lhs_el, ElementwiseT rhs_el) -> ElementwiseT {
+              if (rhs_el == 0) {
+                return lhs_el;
+              }
+              if (rhs_el == -1 &&
+                  lhs_el == std::numeric_limits<ElementwiseT>::min()) {
+                return 0;
+              }
+              return lhs_el % rhs_el;
+            }));
     return Status::OK();
   }
 

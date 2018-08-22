@@ -35,10 +35,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
+
+using tensorflow::gtl::ArraySlice;
 
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
@@ -411,7 +414,64 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, DivS32s) {
+class IntegerDivideOpTest : public ArrayElementwiseOpTest {
+ protected:
+  template <typename T>
+  void TestDivRem(ArraySlice<T> dividends, ArraySlice<T> divisors,
+                  ArraySlice<T> quotients, ArraySlice<T> remainders) {
+    {
+      XlaBuilder builder(TestName());
+      XlaOp dividend;
+      XlaOp divisor;
+      auto dividend_data =
+          CreateR1Parameter<T>(dividends, 0, "dividend", &builder, &dividend);
+      auto divisor_data =
+          CreateR1Parameter<T>(divisors, 1, "divisor", &builder, &divisor);
+      Div(dividend, divisor);
+
+      ComputeAndCompareR1<T>(&builder, quotients,
+                             {dividend_data.get(), divisor_data.get()});
+    }
+
+    // Test with a compile-time constant divisor.
+    {
+      XlaBuilder builder(TestName());
+      XlaOp dividend;
+      auto dividend_data =
+          CreateR1Parameter<T>(dividends, 0, "dividend", &builder, &dividend);
+      Div(dividend, ConstantR1<T>(&builder, divisors));
+
+      ComputeAndCompareR1<T>(&builder, quotients, {dividend_data.get()});
+    }
+
+    {
+      XlaBuilder builder(TestName());
+      XlaOp dividend;
+      XlaOp divisor;
+      auto dividend_data =
+          CreateR1Parameter<T>(dividends, 0, "dividend", &builder, &dividend);
+      auto divisor_data =
+          CreateR1Parameter<T>(divisors, 1, "divisor", &builder, &divisor);
+      Rem(dividend, divisor);
+
+      ComputeAndCompareR1<T>(&builder, remainders,
+                             {dividend_data.get(), divisor_data.get()});
+    }
+
+    // Test with a compile-time constant divisor.
+    {
+      XlaBuilder builder(TestName());
+      XlaOp dividend;
+      auto dividend_data =
+          CreateR1Parameter<T>(dividends, 0, "dividend", &builder, &dividend);
+      Rem(dividend, ConstantR1<T>(&builder, divisors));
+
+      ComputeAndCompareR1<T>(&builder, remainders, {dividend_data.get()});
+    }
+  }
+};
+
+XLA_TEST_F(IntegerDivideOpTest, DivS32s) {
   // clang-format off
   // Some interesting values to test.
   std::vector<int32> vals = {
@@ -435,58 +495,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivS32s) {
     }
   }
 
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    XlaOp divisor;
-    auto dividend_data =
-        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
-    auto divisor_data =
-        CreateR1Parameter<int32>(divisors, 1, "divisor", &builder, &divisor);
-    Div(dividend, divisor);
-
-    ComputeAndCompareR1<int32>(&builder, quotients,
-                               {dividend_data.get(), divisor_data.get()});
-  }
-
-  // Test with a compile-time constant divisor.
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    auto dividend_data =
-        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
-    Div(dividend, ConstantR1<int32>(&builder, divisors));
-
-    ComputeAndCompareR1<int32>(&builder, quotients, {dividend_data.get()});
-  }
-
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    XlaOp divisor;
-    auto dividend_data =
-        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
-    auto divisor_data =
-        CreateR1Parameter<int32>(divisors, 1, "divisor", &builder, &divisor);
-    Rem(dividend, divisor);
-
-    ComputeAndCompareR1<int32>(&builder, remainders,
-                               {dividend_data.get(), divisor_data.get()});
-  }
-
-  // Test with a compile-time constant divisor.
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    auto dividend_data =
-        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
-    Rem(dividend, ConstantR1<int32>(&builder, divisors));
-
-    ComputeAndCompareR1<int32>(&builder, remainders, {dividend_data.get()});
-  }
+  TestDivRem<int32>(dividends, divisors, quotients, remainders);
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, DivU32s) {
+XLA_TEST_F(IntegerDivideOpTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(SignedOverflow))) {
+  std::vector<int32> dividends = {5, INT32_MIN}, divisors = {0, -1},
+                     quotients = {-1, INT32_MIN}, remainders = {5, 0};
+
+  TestDivRem<int32>(dividends, divisors, quotients, remainders);
+}
+
+XLA_TEST_F(IntegerDivideOpTest, DivU32s) {
   // clang-format off
   // Some interesting values to test.
   std::vector<uint32> vals = {
@@ -506,53 +526,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivU32s) {
     }
   }
 
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    XlaOp divisor;
-    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
-                                                   &builder, &dividend);
-    auto divisor_data =
-        CreateR1Parameter<uint32>(divisors, 1, "divisor", &builder, &divisor);
-    Div(dividend, divisor);
+  TestDivRem<uint32>(dividends, divisors, quotients, remainders);
+}
 
-    ComputeAndCompareR1<uint32>(&builder, quotients,
-                                {dividend_data.get(), divisor_data.get()});
-  }
+XLA_TEST_F(IntegerDivideOpTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(UnsignedOverflow))) {
+  std::vector<int32> dividends = {5}, divisors = {0}, quotients = {-1},
+                     remainders = {5};
 
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
-                                                   &builder, &dividend);
-    Div(dividend, ConstantR1<uint32>(&builder, divisors));
-
-    ComputeAndCompareR1<uint32>(&builder, quotients, {dividend_data.get()});
-  }
-
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    XlaOp divisor;
-    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
-                                                   &builder, &dividend);
-    auto divisor_data =
-        CreateR1Parameter<uint32>(divisors, 1, "divisor", &builder, &divisor);
-    Rem(dividend, divisor);
-
-    ComputeAndCompareR1<uint32>(&builder, remainders,
-                                {dividend_data.get(), divisor_data.get()});
-  }
-
-  {
-    XlaBuilder builder(TestName());
-    XlaOp dividend;
-    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
-                                                   &builder, &dividend);
-    Rem(dividend, ConstantR1<uint32>(&builder, divisors));
-
-    ComputeAndCompareR1<uint32>(&builder, remainders, {dividend_data.get()});
-  }
+  TestDivRem<int32>(dividends, divisors, quotients, remainders);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantC64s) {
