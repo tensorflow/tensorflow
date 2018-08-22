@@ -163,6 +163,29 @@ class ServingInputReceiverTest(test_util.TensorFlowTestCase):
       _ = export.ServingInputReceiver(feature, receiver_tensor)
 
 
+class UnsupervisedInputReceiverTest(test_util.TensorFlowTestCase):
+
+  # Since this is basically a wrapper around ServingInputReceiver, we only
+  # have a simple sanity check to ensure that it works.
+
+  def test_unsupervised_input_receiver_constructor(self):
+    """Tests that no errors are raised when input is expected."""
+    features = {
+        "feature0":
+            constant_op.constant([0]),
+        u"feature1":
+            constant_op.constant([1]),
+        "feature2":
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+    }
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+    export.UnsupervisedInputReceiver(features, receiver_tensors)
+
+
 class SupervisedInputReceiverTest(test_util.TensorFlowTestCase):
 
   def test_input_receiver_constructor(self):
