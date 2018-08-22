@@ -3765,7 +3765,7 @@ tf_kernel_library(
         "spacetobatch_functor.h",
         "spacetobatch_functor_gpu.cu.cc",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
