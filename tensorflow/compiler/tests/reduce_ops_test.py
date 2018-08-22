@@ -42,7 +42,7 @@ class ReduceOpsTest(xla_test.XLATestCase):
     """Tests that the output of 'tf_reduce_fn' matches numpy's output."""
 
     for test_input in test_inputs:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(dtypes.int32)
@@ -178,7 +178,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
     """
 
     for test_input in test_inputs:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(dtypes.int32)
