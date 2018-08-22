@@ -373,7 +373,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testFloorModInt(self):
     nums, divs = self.intTestData()
-    with self.test_session():
+    with self.cached_session():
       # TODO(aselle): Change test to use % after switch
       # tf_result = math_ops.floor_mod(nums, divs).eval()
       tf_result = math_ops.floormod(nums, divs).eval()
@@ -382,7 +382,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testFloorModFloat(self):
     nums, divs = self.floatTestData()
-    with self.test_session():
+    with self.cached_session():
       tf_result = math_ops.floormod(nums, divs).eval()
       np_result = nums % divs
       self.assertAllEqual(tf_result, np_result)
@@ -393,21 +393,21 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
-    with self.test_session():
+    with self.cached_session():
       tf_result = math_ops.truncatemod(nums, divs).eval()
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
   def testTruncateModFloat(self):
     nums, divs = self.floatTestData()
-    with self.test_session():
+    with self.cached_session():
       tf_result = math_ops.truncatemod(nums, divs).eval()
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
   def testDivideInt(self):
     nums, divs = self.intTestData()
-    with self.test_session():
+    with self.cached_session():
       tf_result = math_ops.floor_div(nums, divs).eval()
       np_result = nums // divs
       self.assertAllEqual(tf_result, np_result)
@@ -417,29 +417,29 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       # self.assertAllEqual(tf2_result, tf_result)
 
   def testDivideName(self):
-    with self.test_session():
+    with self.cached_session():
       op = math_ops.divide(
           array_ops.constant(3), array_ops.constant(4), name="my_cool_divide")
       self.assertEqual(op.name, "my_cool_divide:0")
 
   def testRealDiv(self):
     nums, divs = self.floatTestData()
-    with self.test_session():
+    with self.cached_session():
       tf_result = math_ops.realdiv(nums, divs).eval()
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
-    with self.test_session():
+    with self.cached_session():
       _ = math_ops.divide(foo, 1.).eval()
       _ = math_ops.div(foo, 2.).eval()
 
   def testFloorDivGrad(self):
-    with self.test_session():
+    with self.cached_session():
       a = variables.Variable(2.)
       b = variables.Variable(4.)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
         c_grad = gradients.gradients(math_ops.divide(a, b), [a, b])
         self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
@@ -451,7 +451,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testConsistent(self):
     nums, divs = self.intTestData()
-    with self.test_session():
+    with self.cached_session():
       tf_result = (math_ops.floor_div(nums, divs) * divs + math_ops.floormod(
           nums, divs)).eval()
       tf_nums = array_ops.constant(nums)
@@ -483,7 +483,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
       np_result = np.true_divide(nums, divs)
       np_result[:, divs[0] == 0] = 0
 
-      with self.test_session():
+      with self.cached_session():
         tf_result = math_ops.div_no_nan(nums, divs).eval()
         self.assertAllEqual(tf_result, np_result)
 
