@@ -57,7 +57,7 @@ You can use the `Dockerfile` in this directory to build an editing environment
 that has all of the Python dependencies you'll need:
 
 ```bash
-$ docker build -t tf-assembler .
+$ docker build -t tf-assembler -f assembler.Dockerfile .
 
 # Set --user to set correct permissions on generated files
 $ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-assembler bash 
