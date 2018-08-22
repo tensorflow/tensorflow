@@ -1959,7 +1959,9 @@ Stream *Stream::GetOrCreateSubStream() {
                             false);
   Stream *sub_stream = sub_streams_.back().first.get();
   sub_stream->Init();
-  CHECK(ok_) << "sub-stream failed to be initialized";
+  if (!sub_stream->ok_) {
+    LOG(ERROR) << "sub-stream failed to be initialized";
+  }
   VLOG(1) << DebugStreamPointers() << " created new sub_stream "
           << sub_stream->DebugStreamPointers();
 
