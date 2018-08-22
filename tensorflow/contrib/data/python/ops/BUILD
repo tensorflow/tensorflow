@@ -80,6 +80,7 @@ py_library(
         ":batching",
         ":gen_dataset_ops",
         ":interleave_ops",
+        ":parsing_ops",
         ":shuffle_ops",
         ":stats_ops",
         "//tensorflow/python:constant_op",
@@ -87,10 +88,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -207,6 +205,22 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "parsing_ops",
+    srcs = ["parsing_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
     ],
 )
 

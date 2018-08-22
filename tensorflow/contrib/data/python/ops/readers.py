@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import parsing_ops
 from tensorflow.contrib.data.python.ops import shuffle_ops
 from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -37,7 +38,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
@@ -788,9 +788,9 @@ def make_batched_features_dataset(file_pattern,
       batch_size, drop_remainder=drop_final_batch or num_epochs is None)
 
   # Parse `Example` tensors to a dictionary of `Feature` tensors.
-  dataset = dataset.map(
-      lambda x: parsing_ops.parse_example(x, features),
-      num_parallel_calls=parser_num_threads)
+  dataset = dataset.apply(
+      parsing_ops.parse_example_dataset(
+          features, num_parallel_calls=parser_num_threads))
 
   # TODO(rachelim): Add an optional label_name argument for extracting the label
   # from the features dictionary, to comply with the type expected by the
