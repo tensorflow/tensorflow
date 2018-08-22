@@ -607,7 +607,8 @@ def weighted_masked_objective(fn):
       score_array = math_ops.multiply(score_array, weights)
       score_array = math_ops.reduce_sum(score_array)
       weights = math_ops.reduce_sum(weights)
-      score_array = metrics_module.safe_div(score_array, weights)
+      score_array = math_ops.div_no_nan(score_array, weights,
+                                        negative_to_zero=True)
     return K.mean(score_array)
 
   return weighted
