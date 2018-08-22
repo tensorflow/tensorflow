@@ -582,6 +582,7 @@ def categorical_accuracy(y_true, y_pred):
       K.floatx())
 
 
+@tf_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
   return math_ops.cast(
       math_ops.equal(
