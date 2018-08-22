@@ -491,13 +491,14 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     components_mean = {}
 
     def model_fn(device_id):
-      tower_context = distribute_lib.get_tower_context()
-      with tower_context.tower_local_var_scope(
-          variable_scope.VariableAggregation.SUM):
-        v_sum = variable_scope.variable(1.0)
-      with tower_context.tower_local_var_scope(
-          variable_scope.VariableAggregation.MEAN):
-        v_mean = variable_scope.variable(4.0)
+      v_sum = variable_scope.variable(
+          1.0,
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          aggregation=variable_scope.VariableAggregation.SUM)
+      v_mean = variable_scope.variable(
+          4.0,
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          aggregation=variable_scope.VariableAggregation.MEAN)
       self.assertTrue(isinstance(v_sum, values.TowerLocalVariable))
       self.assertTrue(isinstance(v_mean, values.TowerLocalVariable))
       updates = [v_sum.assign_add(2.0 + device_id),
@@ -700,10 +701,10 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     with context.graph_mode():
 
       def model_fn():
-        tower_context = distribute_lib.get_tower_context()
-        with tower_context.tower_local_var_scope(
-            variable_scope.VariableAggregation.SUM):
-          v_sum = variable_scope.variable(1.0)
+        v_sum = variable_scope.variable(
+            1.0,
+            synchronization=variable_scope.VariableSynchronization.ON_READ,
+            aggregation=variable_scope.VariableAggregation.SUM)
         self.assertTrue(isinstance(v_sum, values.TowerLocalVariable))
         return v_sum
 
@@ -949,10 +950,10 @@ class MirroredAndTowerLocalVariableInitializerTest(test.TestCase):
     # upon construction instead of once the initialization op is run.
     with context.graph_mode():
       def model_fn():
-        tower_context = distribute_lib.get_tower_context()
-        with tower_context.tower_local_var_scope(
-            variable_scope.VariableAggregation.SUM):
-          v_sum = variable_scope.variable(1.0)
+        v_sum = variable_scope.variable(
+            1.0,
+            synchronization=variable_scope.VariableSynchronization.ON_READ,
+            aggregation=variable_scope.VariableAggregation.SUM)
         self.assertTrue(isinstance(v_sum, values.TowerLocalVariable))
         return v_sum
 

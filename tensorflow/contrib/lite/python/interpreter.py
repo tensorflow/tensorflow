@@ -56,9 +56,6 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
               model_content))
-      if not self._interpreter:
-        raise ValueError(
-            'Failed to create model from {} bytes'.format(len(model_content)))
     elif not model_path and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
@@ -66,8 +63,7 @@ class Interpreter(object):
 
   def allocate_tensors(self):
     self._ensure_safe()
-    if not self._interpreter.AllocateTensors():
-      raise ValueError('Failed to allocate tensors')
+    return self._interpreter.AllocateTensors()
 
   def _safe_to_run(self):
     """Returns true if there exist no numpy array buffers.
@@ -152,8 +148,7 @@ class Interpreter(object):
     Raises:
       ValueError: If the interpreter could not set the tensor.
     """
-    if not self._interpreter.SetTensor(tensor_index, value):
-      raise ValueError('Failed to set tensor')
+    self._interpreter.SetTensor(tensor_index, value)
 
   def resize_tensor_input(self, input_index, tensor_size):
     """Resizes an input tensor.
@@ -167,8 +162,7 @@ class Interpreter(object):
       ValueError: If the interpreter could not resize the input tensor.
     """
     self._ensure_safe()
-    if not self._interpreter.ResizeInputTensor(input_index, tensor_size):
-      raise ValueError('Failed to resize input')
+    self._interpreter.ResizeInputTensor(input_index, tensor_size)
 
   def get_output_details(self):
     """Gets model output details.
@@ -181,7 +175,9 @@ class Interpreter(object):
     ]
 
   def get_tensor(self, tensor_index):
-    """Gets the value of the input tensor. Note this makes a copy so prefer `tensor()`.
+    """Gets the value of the input tensor (get a copy).
+
+    If you wish to avoid the copy, use `tensor()`.
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
@@ -247,5 +243,7 @@ class Interpreter(object):
       ValueError: When the underlying interpreter fails raise ValueError.
     """
     self._ensure_safe()
-    if not self._interpreter.Invoke():
-      raise ValueError('Failed to invoke TFLite model')
+    self._interpreter.Invoke()
+
+  def reset_all_variables_to_zero(self):
+    return self._interpreter.ResetVariableTensorsToZero()

@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "logical_and"
-    deprecation_message: "tf.logical_and is deprecated, please use tf.math.logical_and instead."
+    deprecated: true
   }
 }

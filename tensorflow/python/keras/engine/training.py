@@ -599,7 +599,7 @@ class Model(Network):
         # Unconditional updates
         updates += self.get_updates_for(None)
         # Conditional updates relevant to this model
-        updates += self.get_updates_for(self._feed_inputs)
+        updates += self.get_updates_for(self.inputs)
         # Stateful metrics updates
         updates += self.metrics_updates
         # Gets loss and metrics. Updates weights at each call.

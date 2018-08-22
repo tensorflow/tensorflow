@@ -421,7 +421,7 @@ class Model(tf.keras.Model):
     super(Model, self).__init__()
     self.W = tfe.Variable(5., name='weight')
     self.B = tfe.Variable(10., name='bias')
-  def predict(self, inputs):
+  def call(self, inputs):
     return inputs * self.W + self.B
 
 # A toy dataset of points around 3 * x + 2
@@ -432,7 +432,7 @@ training_outputs = training_inputs * 3 + 2 + noise
 
 # The loss function to be optimized
 def loss(model, inputs, targets):
-  error = model.predict(inputs) - targets
+  error = model(inputs) - targets
   return tf.reduce_mean(tf.square(error))
 
 def grad(model, inputs, targets):

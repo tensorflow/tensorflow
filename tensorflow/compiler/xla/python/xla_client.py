@@ -461,14 +461,16 @@ class LocalComputation(object):
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
 
+    result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
-      result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
       result_shape = result_shape.map_leaves(layout_fn)
-      compile_options = compile_options or CompileOptions()
-      compile_options.result_shape = result_shape
+
+    compile_options = compile_options or CompileOptions()
+    compile_options.result_shape = result_shape
     return LocalComputation(
         self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)

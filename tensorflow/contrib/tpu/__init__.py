@@ -45,6 +45,8 @@
 @@RunConfig
 @@InputPipelineConfig
 @@TPUConfig
+
+@@bfloat16_scope
 """
 
 from __future__ import absolute_import

@@ -67,6 +67,28 @@ cc_library(
 )
 
 cc_library(
+    name = "qr",
+    srcs = ["qr.cc"],
+    hdrs = ["qr.h"],
+    deps = [
+        ":batch_dot",
+        ":util",
+        ":while_loop",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "scatter",
     srcs = ["scatter.cc"],
     hdrs = ["scatter.h"],

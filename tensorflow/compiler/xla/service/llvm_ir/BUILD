@@ -21,6 +21,11 @@ filegroup(
     ]),
 )
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 cc_library(
     name = "alias_analysis",
     srcs = ["alias_analysis.cc"],
@@ -34,6 +39,19 @@ cc_library(
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/core:lib",
         "@llvm//:core",
+    ],
+)
+
+tf_cc_test(
+    name = "alias_analysis_test",
+    srcs = ["alias_analysis_test.cc"],
+    deps = [
+        ":alias_analysis",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/core:test",
     ],
 )
 

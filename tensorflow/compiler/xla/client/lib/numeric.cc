@@ -68,4 +68,12 @@ XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
   }
 }
 
+XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
+                     int64 n) {
+  auto a = Iota(builder, type, m);
+  auto b = Iota(builder, type, n);
+  auto indicator = Eq(a, Broadcast(b, {m}), /*broadcast_dimensions=*/{0});
+  return ConvertElementType(indicator, type);
+}
+
 }  // namespace xla

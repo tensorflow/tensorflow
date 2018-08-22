@@ -840,7 +840,7 @@ R"(HloModule sort
 
 ENTRY Sort {
   x = f32[1024]{0} parameter(0)
-  ROOT sorted = f32[1024]{0} sort(x)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
 }
 
 )"
@@ -853,7 +853,32 @@ R"(HloModule sort
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values)
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key)
+{
+"SortKeyR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  x = f32[1024,16]{0,1} parameter(0)
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key, Value)
+{
+"SortKeyValueR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024,16]{0,1} parameter(0)
+  values = s32[1024,16]{0,1} parameter(1)
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
 }
 
 )"

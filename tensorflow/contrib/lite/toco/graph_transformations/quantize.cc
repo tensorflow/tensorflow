@@ -212,13 +212,15 @@ bool ChooseQuantizationForOperatorInput(
   if (op.type == OperatorType::kLstmCell) {
     if (input_index == LstmCellOperator::PREV_STATE_INPUT) {
       *quantized_data_type = ArrayDataType::kInt16;
-      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType(
+          array, *quantized_data_type, quantization_params);
       return true;
     }
   }
 
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
-  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
+  ChooseQuantizationParamsForArrayAndQuantizedDataType(
+      array, *quantized_data_type, quantization_params);
   transformation->AddMessageF(
       "For input array %s with min=%g, max=%g, chose to quantize as %s (f=%s) "
       "with zero_point=%d, scale=%g",
@@ -358,12 +360,14 @@ bool ChooseQuantizationForOperatorOutput(
     if (output_index == LstmCellOperator::STATE_OUTPUT ||
         output_index == LstmCellOperator::ACTIV_TEMP) {
       *quantized_data_type = ArrayDataType::kInt16;
-      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType(
+          array, *quantized_data_type, quantization_params);
       return true;
     }
   }
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
-  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
+  ChooseQuantizationParamsForArrayAndQuantizedDataType(
+      array, *quantized_data_type, quantization_params);
   transformation->AddMessageF(
       "For output array %s with min=%g, max=%g"
       ", chose to quantize as %s with zero_point=%d"

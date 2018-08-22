@@ -79,6 +79,16 @@ REGISTER_OP("BigtableSampleKeysDataset")
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("BigtableSampleKeyPairsDataset")
+    .Input("table: resource")
+    .Input("prefix: string")
+    .Input("start_key: string")
+    .Input("end_key: string")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape);
+
 // TODO(saeta): Support continuing despite bad data (e.g. empty string, or
 // skip incomplete row.)
 REGISTER_OP("BigtableScanDataset")

@@ -90,6 +90,9 @@ class XlaAssignVariableOp : public AsyncOpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("DestroyResourceOp").Device(DEVICE).HostMemory("resource"),         \
+      DestroyResourceOp);                                                      \
   REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \

@@ -576,7 +576,9 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_estimator_api_names', '_estimator_api_constants',
+        '_tf_api_names', '_tf_api_names_v1', '_estimator_api_names',
+        '_estimator_api_names_v1', '_estimator_api_constants',
+        '_estimator_api_constants_v1',
         '_validate_features_in_predict_input',
         '_call_model_fn', '_add_meta_graph_for_mode'
     ])

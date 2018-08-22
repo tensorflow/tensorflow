@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite LSTM op.
+//
+// TODO(alanchiao): add unit test with invalid input dimensions for this and its
+// variants.
 
 #include <memory>
 #include <vector>

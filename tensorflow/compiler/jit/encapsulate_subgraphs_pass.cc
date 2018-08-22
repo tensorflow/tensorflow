@@ -60,9 +60,9 @@ const char* const kXlaHostTransferSequencerAttr =
 
 namespace {
 
-bool AreAllParentsConst(const Node& n,
-                        const gtl::FlatSet<const Node*>& runtime_const_nodes) {
-  if (n.type_string() == "GuaranteeConst" || n.type_string() == "Const") {
+bool AreAllParentsGuaranteedConst(
+    const Node& n, const gtl::FlatSet<const Node*>& runtime_const_nodes) {
+  if (n.type_string() == "GuaranteeConst") {
     // If the current node is itself a cast-to-const, no need
     // to look at the incoming edges.
     return true;
@@ -93,7 +93,8 @@ void MarkGuaranteedConstants(
   ReverseDFSFrom(graph, srcs, /*enter=*/nullptr,
                  /*leave=*/[&guaranteed_const_nodes](const Node* n) {
                    // TODO(vinuraja): Doesn't work in the presence of loops.
-                   if (AreAllParentsConst(*n, guaranteed_const_nodes)) {
+                   if (AreAllParentsGuaranteedConst(*n,
+                                                    guaranteed_const_nodes)) {
                      guaranteed_const_nodes.insert(n);
                    }
                  });

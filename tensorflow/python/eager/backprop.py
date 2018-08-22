@@ -713,10 +713,15 @@ class GradientTape(object):
     if self._recording:
       self._pop_tape()
 
-  def _push_tape(self):
+  def _push_tape(self, existing_tape=False):
     if self._recording:
       raise ValueError("Tape is already recording.")
-    self._tape = tape.push_new_tape(persistent=self._persistent)
+    if existing_tape:
+      if self._tape is None:
+        raise ValueError("There is no existing tape.")
+      tape.push_tape(self._tape)
+    else:
+      self._tape = tape.push_new_tape(persistent=self._persistent)
     self._recording = True
 
   def _pop_tape(self):
@@ -764,7 +769,7 @@ class GradientTape(object):
     try:
       yield
     finally:
-      self._push_tape()
+      self._push_tape(existing_tape=True)
 
   def reset(self):
     """Clears all information stored in this tape.

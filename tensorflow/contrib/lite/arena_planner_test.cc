@@ -156,7 +156,7 @@ class ArenaPlannerTest : public ::testing::Test {
     context_.ReportError = ReportError;
     planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
-        preserve_inputs));
+        preserve_inputs, /*preserve intermediates*/ false));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }

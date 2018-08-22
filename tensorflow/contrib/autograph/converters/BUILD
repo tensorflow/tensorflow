@@ -24,6 +24,7 @@ py_library(
         "continue_statements.py",
         "control_flow.py",
         "decorators.py",
+        "error_handlers.py",
         "ifexp.py",
         "list_comprehension.py",
         "lists.py",
@@ -206,6 +207,18 @@ py_test(
 py_test(
     name = "ifexp_test",
     srcs = ["ifexp_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":converters",
+        "//tensorflow/contrib/autograph/core:test_lib",
+        "//tensorflow/contrib/autograph/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "error_handlers_test",
+    srcs = ["error_handlers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":converters",

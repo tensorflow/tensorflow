@@ -36,12 +36,13 @@ struct AllocationInfo {
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_inputs)
+                           bool preserve_inputs, bool preserve_intermediates)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
       persistent_arena_(kDefaultArenaAlignment),
-      preserve_inputs_(preserve_inputs) {}
+      preserve_inputs_(preserve_inputs),
+      preserve_intermediates_(preserve_intermediates) {}
 ArenaPlanner::~ArenaPlanner() {}
 
 int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
@@ -164,13 +165,15 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
     // them for deallocation.
-    TfLiteIntArray* node_inputs = node.inputs;
-    for (int j = 0; j < node_inputs->size; ++j) {
-      int tensor_index = node_inputs->data[j];
-      if (tensor_index != kOptionalTensor) {
-        refcounts[tensor_index]--;
-        if (refcounts[tensor_index] == 0) {
-          TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
+    if (!preserve_intermediates_) {
+      TfLiteIntArray* node_inputs = node.inputs;
+      for (int j = 0; j < node_inputs->size; ++j) {
+        int tensor_index = node_inputs->data[j];
+        if (tensor_index != kOptionalTensor) {
+          refcounts[tensor_index]--;
+          if (refcounts[tensor_index] == 0) {
+            TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
+          }
         }
       }
     }

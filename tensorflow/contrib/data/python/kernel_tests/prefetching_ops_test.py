@@ -758,7 +758,7 @@ class CopyToDeviceTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
-      self.assertAllEqual(["a", "b", "c"], sess.run(next_element))
+      self.assertAllEqual([b"a", b"b", b"c"], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -776,7 +776,7 @@ class CopyToDeviceTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
-      self.assertAllEqual(["a", "b", "c"], sess.run(next_element))
+      self.assertAllEqual([b"a", b"b", b"c"], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 

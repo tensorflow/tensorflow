@@ -146,6 +146,8 @@ class HloVerifier : public HloPassInterface {
 
   Status CheckWhileInstruction(HloInstruction* instruction);
 
+  Status CheckConditionalInstruction(HloInstruction* instruction);
+
   // Checks that the non-scalar operand shapes are compatible to the output
   // shape, i.e., that there are no implicit broadcasts of size-one dimensions.
   Status CheckElementwiseInstruction(HloInstruction* instruction);

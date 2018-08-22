@@ -548,6 +548,18 @@ TfLiteStatus AddOpsAndParams(
         add_squeeze_params(node.builtin_data);
         nn_op_type = ANEURALNETWORKS_SQUEEZE;
         break;
+      case tflite::BuiltinOperator_TRANSPOSE:
+        // The permutation input tensor value dictates the output dimensions.
+        // TODO(b/110888333): Support dynamically-sized tensors in delegates.
+        if ((node.inputs->size > 1) &&
+            (interpreter->tensor(node.inputs->data[1])->allocation_type !=
+             kTfLiteMmapRo)) {
+          logError("NNAPI does not yet support dynamic tensors.");
+          return kTfLiteError;
+        }
+        nnapi_version = 11;  // require NNAPI 1.1
+        nn_op_type = ANEURALNETWORKS_TRANSPOSE;
+        break;
       case tflite::BuiltinOperator_CONCAT_EMBEDDINGS:
       case tflite::BuiltinOperator_LSH_PROJECTION:
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
@@ -567,7 +579,6 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_SPACE_TO_BATCH_ND:
       case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
       case tflite::BuiltinOperator_TOPK_V2:
-      case tflite::BuiltinOperator_TRANSPOSE:
       case tflite::BuiltinOperator_SPLIT:
       case tflite::BuiltinOperator_STRIDED_SLICE:
       case tflite::BuiltinOperator_EXP:
@@ -579,6 +590,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_MAXIMUM:
       case tflite::BuiltinOperator_MINIMUM:
       case tflite::BuiltinOperator_ARG_MAX:
+      case tflite::BuiltinOperator_ARG_MIN:
       case tflite::BuiltinOperator_GREATER:
       case tflite::BuiltinOperator_GREATER_EQUAL:
       case tflite::BuiltinOperator_LESS:
@@ -599,6 +611,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_RSQRT:
       case tflite::BuiltinOperator_SHAPE:
       case tflite::BuiltinOperator_POW:
+      case tflite::BuiltinOperator_FAKE_QUANT:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;

@@ -23,6 +23,7 @@ import collections
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
+from tensorflow.python.framework import ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
@@ -153,8 +154,9 @@ class CrossShardOptimizer(optimizer.Optimizer):
       if grad is None:
         summed_grads_and_vars.append((grad, var))
       else:
-        summed_grads_and_vars.append((tpu_ops.cross_replica_sum(
-            grad, self._group_assignment), var))
+        with ops.colocate_with(grad):
+          summed_grads_and_vars.append((tpu_ops.cross_replica_sum(
+              grad, self._group_assignment), var))
     return self._opt.apply_gradients(summed_grads_and_vars, global_step, name)
 
   def get_slot(self, *args, **kwargs):

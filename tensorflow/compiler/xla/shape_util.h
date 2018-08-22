@@ -110,31 +110,33 @@ class ShapeIndex {
 class ShapeIndexView {
  public:
   ShapeIndexView(const ShapeIndex& shape_index, int64 offset = 0)
-      : ShapeIndexView(shape_index.data() + offset,
-                       shape_index.data() + shape_index.size()) {
+      : indices_(shape_index.data() + offset, shape_index.size() - offset) {
     CHECK_LE(offset, shape_index.size());
   }
-  ShapeIndexView(std::initializer_list<int64> indices)
-      : ShapeIndexView(indices.begin(), indices.end()) {}
+  ShapeIndexView(std::initializer_list<int64> indices) : indices_(indices) {}
   ShapeIndexView(const ShapeIndexView& other) = default;
 
   using iterator = const int64*;
 
-  iterator begin() const { return begin_; }
-  iterator end() const { return end_; }
-  int64 size() const { return std::distance(begin_, end_); }
-  bool empty() const { return begin_ == end_; }
+  iterator begin() const { return indices_.begin(); }
+  iterator end() const { return indices_.end(); }
+  int64 size() const { return indices_.size(); }
+  bool empty() const { return indices_.empty(); }
   int64 front() const {
     CHECK(!empty());
-    return *begin_;
+    return indices_.front();
   }
   ShapeIndexView ConsumeFront() const {
-    CHECK(!empty());
-    auto new_begin = begin_;
-    ++new_begin;
-    return ShapeIndexView(new_begin, end_);
+    ShapeIndexView result = *this;
+    result.indices_.pop_front();
+    return result;
   }
-  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin_, end_); }
+  ShapeIndexView ConsumeBack() const {
+    ShapeIndexView result = *this;
+    result.indices_.pop_back();
+    return result;
+  }
+  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }
 
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
@@ -142,10 +144,7 @@ class ShapeIndexView {
   string ToString() const;
 
  private:
-  ShapeIndexView(iterator begin, iterator end) : begin_(begin), end_(end) {}
-
-  iterator begin_;
-  iterator end_;
+  tensorflow::gtl::ArraySlice<int64> indices_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);

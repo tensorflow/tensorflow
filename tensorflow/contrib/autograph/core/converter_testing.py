@@ -25,6 +25,7 @@ from tensorflow.contrib.autograph import operators
 from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.core import converter
+from tensorflow.contrib.autograph.core import errors
 from tensorflow.contrib.autograph.pyct import compiler
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import pretty_printer
@@ -89,6 +90,8 @@ class TestCase(test.TestCase):
       fake_ag = self.make_fake_mod('fake_ag', converted_call)
       fake_ag.__dict__.update(operators.__dict__)
       fake_ag.__dict__['utils'] = utils
+      fake_ag.__dict__['rewrite_graph_construction_error'] = (
+          errors.rewrite_graph_construction_error)
       result.__dict__['ag__'] = fake_ag
       yield result
     except Exception:  # pylint:disable=broad-except

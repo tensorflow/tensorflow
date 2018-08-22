@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         libcudnn7=7.1.4.18-1+cuda9.0 \
         libcudnn7-dev=7.1.4.18-1+cuda9.0 \
+        libnccl2=2.2.13-1+cuda9.0 \
+        libnccl-dev=2.2.13-1+cuda9.0 \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
@@ -72,7 +74,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.11.0
+ENV BAZEL_VERSION 0.14.1
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \

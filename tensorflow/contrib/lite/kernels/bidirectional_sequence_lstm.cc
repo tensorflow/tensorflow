@@ -276,27 +276,33 @@ TfLiteStatus CheckLstmTensorDimensions(
 TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         TfLiteNode* node, int n_input,
                                         int n_output, int n_cell) {
-  CheckLstmTensorDimensions(
-      context, node, n_input, n_output, n_cell, kFwInputToInputWeightsTensor,
-      kFwInputToForgetWeightsTensor, kFwInputToCellWeightsTensor,
-      kFwInputToOutputWeightsTensor, kFwRecurrentToInputWeightsTensor,
-      kFwRecurrentToForgetWeightsTensor, kFwRecurrentToCellWeightsTensor,
-      kFwRecurrentToOutputWeightsTensor, kFwCellToInputWeightsTensor,
-      kFwCellToForgetWeightsTensor, kFwCellToOutputWeightsTensor,
-      kFwInputGateBiasTensor, kFwForgetGateBiasTensor, kFwCellGateBiasTensor,
-      kFwOutputGateBiasTensor, kFwProjectionWeightsTensor,
-      kFwProjectionBiasTensor);
+  TF_LITE_ENSURE_OK(
+      context,
+      CheckLstmTensorDimensions(
+          context, node, n_input, n_output, n_cell,
+          kFwInputToInputWeightsTensor, kFwInputToForgetWeightsTensor,
+          kFwInputToCellWeightsTensor, kFwInputToOutputWeightsTensor,
+          kFwRecurrentToInputWeightsTensor, kFwRecurrentToForgetWeightsTensor,
+          kFwRecurrentToCellWeightsTensor, kFwRecurrentToOutputWeightsTensor,
+          kFwCellToInputWeightsTensor, kFwCellToForgetWeightsTensor,
+          kFwCellToOutputWeightsTensor, kFwInputGateBiasTensor,
+          kFwForgetGateBiasTensor, kFwCellGateBiasTensor,
+          kFwOutputGateBiasTensor, kFwProjectionWeightsTensor,
+          kFwProjectionBiasTensor));
 
-  CheckLstmTensorDimensions(
-      context, node, n_input, n_output, n_cell, kBwInputToInputWeightsTensor,
-      kBwInputToForgetWeightsTensor, kBwInputToCellWeightsTensor,
-      kBwInputToOutputWeightsTensor, kBwRecurrentToInputWeightsTensor,
-      kBwRecurrentToForgetWeightsTensor, kBwRecurrentToCellWeightsTensor,
-      kBwRecurrentToOutputWeightsTensor, kBwCellToInputWeightsTensor,
-      kBwCellToForgetWeightsTensor, kBwCellToOutputWeightsTensor,
-      kBwInputGateBiasTensor, kBwForgetGateBiasTensor, kBwCellGateBiasTensor,
-      kBwOutputGateBiasTensor, kBwProjectionWeightsTensor,
-      kBwProjectionBiasTensor);
+  TF_LITE_ENSURE_OK(
+      context,
+      CheckLstmTensorDimensions(
+          context, node, n_input, n_output, n_cell,
+          kBwInputToInputWeightsTensor, kBwInputToForgetWeightsTensor,
+          kBwInputToCellWeightsTensor, kBwInputToOutputWeightsTensor,
+          kBwRecurrentToInputWeightsTensor, kBwRecurrentToForgetWeightsTensor,
+          kBwRecurrentToCellWeightsTensor, kBwRecurrentToOutputWeightsTensor,
+          kBwCellToInputWeightsTensor, kBwCellToForgetWeightsTensor,
+          kBwCellToOutputWeightsTensor, kBwInputGateBiasTensor,
+          kBwForgetGateBiasTensor, kBwCellGateBiasTensor,
+          kBwOutputGateBiasTensor, kBwProjectionWeightsTensor,
+          kBwProjectionBiasTensor));
 
   // Check if Forward and Backward tensors match along required dimensions.
   return kTfLiteOk;
@@ -334,7 +340,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_fw_output = fw_recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  CheckInputTensorDimensions(context, node, n_input, n_fw_output, n_fw_cell);
+  TF_LITE_ENSURE_OK(
+      context, CheckInputTensorDimensions(context, node, n_input, n_fw_output,
+                                          n_fw_cell));
 
   // Get the pointer to output, state and scratch buffer tensors.
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
@@ -404,7 +412,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_bw_output = bw_recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  CheckInputTensorDimensions(context, node, n_input, n_bw_output, n_bw_cell);
+  TF_LITE_ENSURE_OK(
+      context, CheckInputTensorDimensions(context, node, n_input, n_bw_output,
+                                          n_bw_cell));
 
   // Get the pointer to output, output_state and cell_state buffer tensors.
   TfLiteTensor* bw_output = GetOutput(context, node, kBwOutputTensor);

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -513,6 +514,17 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
+
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForMap(
+      HloMapInstruction* map, const llvm_ir::IrArray::Index& index);
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduceWindow(
+      HloReduceWindowInstruction* reduce_window,
+      const llvm_ir::IrArray::Index& index);
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForConvolution(
+      HloConvolutionInstruction* convolution,
+      const llvm_ir::IrArray::Index& index);
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduce(
+      HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index);
 
   enum class XfeedKind {
     kInfeed,

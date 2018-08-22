@@ -23,6 +23,7 @@ from tensorflow.contrib.estimator.python.estimator.baseline import *
 from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
 from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
+from tensorflow.contrib.estimator.python.estimator.early_stopping import *
 from tensorflow.contrib.estimator.python.estimator.export import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
@@ -63,6 +64,12 @@ _allowed_symbols = [
     'RNNEstimator',
     'export_saved_model_for_mode',
     'export_all_saved_models',
+    'make_early_stopping_hook',
+    'read_eval_metrics',
+    'stop_if_lower_hook',
+    'stop_if_higher_hook',
+    'stop_if_no_increase_hook',
+    'stop_if_no_decrease_hook',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

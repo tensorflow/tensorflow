@@ -31,6 +31,15 @@ namespace {
 
 using ::testing::ElementsAre;
 
+TEST(ShapeUtilTest, ShapeIndexViewTest) {
+  ShapeIndex index = {1, 2, 3, 4};
+  ShapeIndexView index_view(index, 1);
+  EXPECT_EQ(3, index_view.size());
+  EXPECT_EQ(ShapeIndexView({2, 3, 4}), index_view);
+  EXPECT_EQ(ShapeIndexView({3, 4}), index_view.ConsumeFront());
+  EXPECT_EQ(ShapeIndexView({2, 3}), index_view.ConsumeBack());
+}
+
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
   EXPECT_EQ(3, ShapeUtil::GetDimension(matrix, -1));

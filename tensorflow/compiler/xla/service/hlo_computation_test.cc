@@ -375,7 +375,7 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   // Test that DeepCopyInstruction properly handles tokens which should not be
   // copied.
   auto builder = HloComputation::Builder(TestName());
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
@@ -388,7 +388,7 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
   // Test that DeepCopyInstruction properly handles tokens which should not be
   // copied.
   auto builder = HloComputation::Builder(TestName());
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple =
@@ -607,13 +607,14 @@ TEST_F(HloComputationTest, Stringification) {
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  EXPECT_EQ(computation->ToString(options),
-            R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
+  const string expected_computation =
+      R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})");
+})";
+  EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
 TEST_F(HloComputationTest, StringificationIndent) {
@@ -639,13 +640,14 @@ TEST_F(HloComputationTest, StringificationIndent) {
 
   auto options =
       HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
-  EXPECT_EQ(computation->ToString(options),
-            R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
+  const string expected_computation =
+      R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
       %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
       ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })");
+    })";
+  EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
 TEST_F(HloComputationTest, StringificationCanonical) {
@@ -670,21 +672,23 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  EXPECT_EQ(computation->ToString(options),
-            R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
+  const string expected_computation1 =
+      R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})");
+})";
+  EXPECT_EQ(computation->ToString(options), expected_computation1);
 
   options = HloPrintOptions().Canonical();
-  EXPECT_EQ(computation->ToString(options), R"(TransposeDot {
+  const string expected_computation2 = R"(TransposeDot {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})");
+})";
+  EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
 }  // namespace

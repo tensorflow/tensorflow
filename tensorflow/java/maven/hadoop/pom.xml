@@ -5,7 +5,7 @@
     <groupId>org.tensorflow</groupId>
     <artifactId>hadoop</artifactId>
     <packaging>jar</packaging>
-    <version>1.9.0-rc2</version>
+    <version>1.9.0</version>
     <name>tensorflow-hadoop</name>
     <url>https://www.tensorflow.org</url>
     <description>TensorFlow TFRecord InputFormat/OutputFormat for Apache Hadoop</description>
@@ -51,6 +51,34 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>2.2.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>2.9.1</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
     </build>
 
     <dependencies>

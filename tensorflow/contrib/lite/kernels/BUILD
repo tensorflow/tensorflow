@@ -155,6 +155,7 @@ cc_library(
         "embedding_lookup_sparse.cc",
         "exp.cc",
         "expand_dims.cc",
+        "fake_quant.cc",
         "floor.cc",
         "fully_connected.cc",
         "gather.cc",
@@ -554,6 +555,19 @@ tf_cc_test(
     name = "exp_test",
     size = "small",
     srcs = ["exp_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_quant_test",
+    size = "small",
+    srcs = ["fake_quant_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
@@ -970,7 +984,6 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

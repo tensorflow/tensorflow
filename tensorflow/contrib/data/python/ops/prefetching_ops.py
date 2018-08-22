@@ -371,7 +371,7 @@ def copy_to_device(target_device, source_device="/cpu:0"):
 
 
 # TODO(rohanj): Use the _input_hostmem attr on the RemoteCall ops to indicate
-# all inputs to the Op are in host memory, thereby avoiding some unecessary
+# all inputs to the Op are in host memory, thereby avoiding some unnecessary
 # Sends and Recvs.
 class _CopyToDeviceDataset(dataset_ops.Dataset):
   """A `Dataset` that copies elements to another device."""

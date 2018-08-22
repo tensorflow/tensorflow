@@ -57,6 +57,22 @@ TEST(BasicInterpreter, InvokeInvalidModel) {
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
 }
 
+TEST(BasicInterpreter, TestAllocateTensorsResetVariableTensors) {
+  Interpreter interpreter;
+  int tensor_index;
+  ASSERT_EQ(interpreter.AddTensors(1, &tensor_index), kTfLiteOk);
+  constexpr int kTensorSize = 16;
+  interpreter.SetTensorParametersReadWrite(tensor_index, kTfLiteFloat32, "",
+                                           {kTensorSize}, {}, true);
+  interpreter.SetVariables({tensor_index});
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  TfLiteTensor* tensor = interpreter.tensor(tensor_index);
+  // Ensure that variable tensors are reset to zero.
+  for (int i = 0; i < kTensorSize; ++i) {
+    ASSERT_EQ(tensor->data.f[i], 0.0f);
+  }
+}
+
 // Test size accessor functions.
 TEST(BasicInterpreter, TestSizeFunctions) {
   Interpreter interpreter;

@@ -161,9 +161,8 @@ Status GraphCompiler::Compile() {
     outputs.resize(n->num_outputs());
     for (int o = 0; o < n->num_outputs(); ++o) {
       outputs[o] = op_context.release_output(o);
-      if (*op_context.is_output_dead() || outputs[o].tensor == nullptr) {
+      if (outputs[o].tensor == nullptr) {
         return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                (*op_context.is_output_dead() ? "(dead)" : ""),
                                 SummarizeNode(*n));
       }
     }

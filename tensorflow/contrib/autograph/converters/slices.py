@@ -56,8 +56,7 @@ class SliceTransformer(converter.Base):
   def visit_Subscript(self, node):
     node = self.generic_visit(node)
     if not isinstance(node.slice, gast.Index):
-      # TODO(mdan): It might make more sense to wave them through.
-      raise NotImplementedError('non-index slice')
+      return node
 
     if not isinstance(node.ctx, gast.Load):
       # Index writes are handled at a higher level, one at which the rvalue is

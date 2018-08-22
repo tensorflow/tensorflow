@@ -14,6 +14,7 @@ py_binary(
     srcs = ["visualize.py"],
     data = [
         "//tensorflow/contrib/lite/schema:schema.fbs",
+        "//tensorflow/python:platform",
         "@flatbuffers//:flatc",
     ],
     srcs_version = "PY2AND3",

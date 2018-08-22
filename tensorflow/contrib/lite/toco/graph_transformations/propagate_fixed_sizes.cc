@@ -1404,7 +1404,8 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
   }
 }
 
-void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
+template <typename Op>
+void ProcessArgMinMaxOperator(Model* model, Op* op) {
   CHECK_EQ(op->inputs.size(), 2);
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1696,7 +1697,12 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
                                   static_cast<StridedSliceOperator*>(op));
       break;
     case OperatorType::kArgMax:
-      ProcessArgMaxOperator(model, static_cast<ArgMaxOperator*>(op));
+      ProcessArgMinMaxOperator<ArgMaxOperator>(
+          model, static_cast<ArgMaxOperator*>(op));
+      break;
+    case OperatorType::kArgMin:
+      ProcessArgMinMaxOperator<ArgMinOperator>(
+          model, static_cast<ArgMinOperator*>(op));
       break;
     case OperatorType::kUnsupported:
       break;

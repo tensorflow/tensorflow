@@ -336,6 +336,7 @@ filegroup(
         "platform/init_main.h",
         "platform/mem.h",
         "platform/mutex.h",
+        "platform/numa.h",
         "platform/thread_annotations.h",
     ],
     visibility = ["//visibility:private"],
@@ -1934,7 +1935,6 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
     protodeps = [":master_proto"],
     visibility = [
@@ -1964,8 +1964,10 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "**/*test*",
         "lib/gif/**/*",
         "lib/jpeg/**/*",
+        "lib/png/**/*",
         "platform/gif.h",
         "platform/jpeg.h",
+        "platform/png.h",
         "platform/**/cuda.h",
         "platform/**/stream_executor.h",
     ],
@@ -2060,6 +2062,7 @@ cc_library(
             "lib/hash/crc32c_accelerate.cc",
             "lib/gif/**/*",
             "lib/jpeg/**/*",
+            "lib/png/**/*",
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/rocm_rocdl_path.cc",
@@ -2155,6 +2158,39 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:jpeg",
+    ],
+)
+
+cc_library(
+    name = "png_internal",
+    srcs = ["lib/png/png_io.cc"],
+    hdrs = [
+        "lib/bfloat16/bfloat16.h",
+        "lib/core/casts.h",
+        "lib/core/stringpiece.h",
+        "lib/png/png_io.h",
+        "platform/byte_order.h",
+        "platform/cpu_info.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/png.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//conditions:default": ["-ldl"],
+    }),
+    deps = [
+        ":lib",
+        ":lib_internal",
+        "//tensorflow/core/platform/default/build_config:png",
+        "@zlib_archive//:zlib",
     ],
 )
 
@@ -2443,6 +2479,7 @@ tf_gpu_library(
             "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/stats_calculator.*",
             "util/version_info.cc",
         ],
     ) + select({
@@ -2469,6 +2506,7 @@ tf_gpu_library(
         ":protos_all_proto_text",
         ":error_codes_proto_text",
         ":protos_all_cc",
+        ":stats_calculator_portable",
         ":version_lib",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
@@ -3252,6 +3290,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "platform_numa_test",
+    size = "small",
+    srcs = ["platform/numa_test.cc"],
+    tags = [
+        # This test will not pass unless it has access to all NUMA nodes
+        # on the executing machine.
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":framework",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "platform_setround_test",
     size = "small",
     srcs = ["platform/setround_test.cc"],
@@ -3615,6 +3675,7 @@ tf_cc_test_mkl(
     deps = [
         ":core",
         ":core_cpu",
+        ":core_cpu_internal",
         ":framework",
         ":framework_internal",
         ":test",

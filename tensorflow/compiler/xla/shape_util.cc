@@ -46,28 +46,14 @@ namespace xla {
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-string ShapeIndex::ToString() const {
+string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
+
+string ShapeIndexView::ToString() const {
   return StrCat("{", tensorflow::str_util::Join(indices_, ","), "}");
 }
 
-string ShapeIndexView::ToString() const {
-  return StrCat("{",
-                tensorflow::str_util::Join(
-                    tensorflow::gtl::make_range(begin_, end_), ","),
-                "}");
-}
-
 bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
-  if (size() != other.size()) {
-    return false;
-  }
-  for (auto it = begin(), other_it = other.begin(); it != end();
-       ++it, ++other_it) {
-    if (*it != *other_it) {
-      return false;
-    }
-  }
-  return true;
+  return indices_ == other.indices_;
 }
 
 bool ShapeIndexView::operator!=(const ShapeIndexView& other) const {

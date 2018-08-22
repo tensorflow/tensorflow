@@ -79,7 +79,9 @@ struct ParsedProfileOutputLine {
 
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
-    gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results) {
+    gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results,
+    tensorflow::gtl::ArraySlice<tensorflow::StringPiece> opcodes_to_ignore =
+        {}) {
   string separator = "[^:]*:: +";
   string match_percentage = "\\d+\\.\\d\\d%";
   string match_cycles = "(\\d+) cycles +\\( *(" + match_percentage + ")\\)";
@@ -113,7 +115,9 @@ Status ParseOneProfileOutputLine(
         ", Regexp: ", regexp_pattern);
   }
 
-  InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
+  if (!c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
+    InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
+  }
 
   return Status::OK();
 }
@@ -266,7 +270,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
     auto matrix = GetTupleElement(state, 1);
     auto next_iteration =
         Add(GetTupleElement(state, 0), ConstantR0<int32>(&builder, 1));
-    Tuple(&builder, {next_iteration, Add(matrix, matrix)});
+    Tuple(&builder, {next_iteration, Mul(matrix, matrix)});
     TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
@@ -288,36 +292,50 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
       tensorflow::str_util::Split(profile_output, '\n');
 
   auto while_body_profile_start =
-      std::find_if(profile_output_lines.begin(), profile_output_lines.end(),
+      c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
+        return tensorflow::str_util::StartsWith(s,
+                                                "Execution profile for body");
+      });
+
+  ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
+
+  auto while_body_profile_end =
+      std::find_if(while_body_profile_start, profile_output_lines.end(),
                    [](tensorflow::StringPiece s) {
                      return tensorflow::str_util::StartsWith(
-                         s, "Execution profile for body");
+                         s, "********** microseconds report **********");
                    });
 
-  ASSERT_NE(while_body_profile_start, profile_output_lines.end());
+  // We emit a blank line before the "********** microseconds report **********"
+  // line.
+  while_body_profile_end--;
+
+  ASSERT_NE(while_body_profile_end, profile_output_lines.end());
 
   gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
 
-  TF_ASSERT_OK(
-      ParseOneProfileOutputLine(*std::next(while_body_profile_start, 1),
-                                /*expect_hlo=*/false, &parsed_profile_lines));
-
-  TF_ASSERT_OK(
-      ParseOneProfileOutputLine(*std::next(while_body_profile_start, 2),
-                                /*expect_hlo=*/true, &parsed_profile_lines));
+  for (auto while_body_profile_i = while_body_profile_start + 1;
+       while_body_profile_i != while_body_profile_end; while_body_profile_i++) {
+    // There are multiple "get-tuple-element" instructions in the while body so
+    // we ignore them -- we don't want parsed_profile_lines to be a multi-map.
+    TF_ASSERT_OK(ParseOneProfileOutputLine(
+        *while_body_profile_i,
+        /*expect_hlo=*/while_body_profile_i != (while_body_profile_start + 1),
+        &parsed_profile_lines, {"get-tuple-element"}));
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine total_while_body_profile,
                           MaybeFind(parsed_profile_lines, "[total]"));
-  TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine dot_profile,
-                          MaybeFind(parsed_profile_lines, "add"));
+  TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine multiply_profile,
+                          MaybeFind(parsed_profile_lines, "multiply"));
 
   EXPECT_GT(total_while_body_profile.cycles, 0);
   EXPECT_EQ(total_while_body_profile.opcode, "[total]");
   EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.00%");
 
-  EXPECT_GT(total_while_body_profile.cycles, dot_profile.cycles);
-  EXPECT_NE(dot_profile.cycles_percentage, "0.00%");
-  EXPECT_NE(dot_profile.cycles_percentage, "100.00%");
+  EXPECT_GT(total_while_body_profile.cycles, multiply_profile.cycles);
+  EXPECT_NE(multiply_profile.cycles_percentage, "0.00%");
+  EXPECT_NE(multiply_profile.cycles_percentage, "100.00%");
 }
 }  // namespace
 }  // namespace xla

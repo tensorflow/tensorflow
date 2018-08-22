@@ -78,19 +78,6 @@ PlatformUtil::GetSupportedPlatforms() {
     auto* platform = platform_pair.second;
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
-      if (platform->VisibleDeviceCount() > 0) {
-        LOG(INFO) << "platform " << platform->Name() << " present with "
-                  << platform->VisibleDeviceCount() << " visible devices";
-      } else {
-        LOG(WARNING) << "platform " << platform->Name() << " present but no "
-                     << "visible devices found";
-      }
-      // Note: currently we call zero device platforms "supported" on the basis
-      // that, if the platform support was linked in, it was probably intended
-      // to be used for execution, and this way we can flag an error.
-      //
-      // TODO(b/33730287) If we want an alternative version of this behavior we
-      // could add an --xla_fallback_to_host flag.
       platforms.push_back(platform);
     } else {
       LOG(INFO) << "platform " << platform->Name() << " present but no "

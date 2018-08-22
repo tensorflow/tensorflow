@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_inspect
 
 
 class DeprecatedAliasTest(test.TestCase):
@@ -72,6 +73,11 @@ class DeprecatedAliasTest(test.TestCase):
 
     self.assertEqual(["test", "deprecated", "deprecated again"],
                      MyClass.init_args)
+
+    # Check __init__ signature matches for doc generation.
+    self.assertEqual(
+        tf_inspect.getfullargspec(MyClass.__init__),
+        tf_inspect.getfullargspec(deprecated_cls.__init__))
 
 
 class DeprecationTest(test.TestCase):

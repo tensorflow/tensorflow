@@ -35,9 +35,10 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     llvm_ir::IrArray* array,
                                                     const ShapeIndex& index) {
   BufferAllocation::Slice buffer_slice;
-  if (hlo.opcode() == HloOpcode::kParameter) {
-    // Parameters may alias with each other but may not alias with our temporary
-    // buffers.
+  if (hlo.opcode() == HloOpcode::kParameter &&
+      hlo.parent() == hlo.parent()->parent()->entry_computation()) {
+    // Entry computation parameters may alias with each other but may not alias
+    // with our temporary buffers.
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
   } else {
     const std::set<BufferAllocation::Slice> slices =

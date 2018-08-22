@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "rsqrt"
-    deprecation_message: "tf.rsqrt is deprecated, please use tf.math.rsqrt instead."
+    deprecated: true
   }
 }

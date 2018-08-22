@@ -197,7 +197,7 @@ gpu_py_test(
 
 gpu_py_test(
     name = "linear_operator_low_rank_update_test",
-    size = "medium",
+    size = "large",
     srcs = ["linear_operator_low_rank_update_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/linalg",

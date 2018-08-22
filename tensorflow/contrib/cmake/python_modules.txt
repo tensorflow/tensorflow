@@ -62,6 +62,8 @@ tensorflow/python/saved_model
 tensorflow/python/summary
 tensorflow/python/summary/writer
 tensorflow/python/tools
+tensorflow/python/tools/api
+tensorflow/python/tools/api/generator
 tensorflow/python/training
 tensorflow/python/training/checkpointable
 tensorflow/python/user_ops
@@ -69,7 +71,6 @@ tensorflow/python/util
 tensorflow/python/util/protobuf
 tensorflow/tools
 tensorflow/tools/api
-tensorflow/tools/api/generator
 tensorflow/tools/graph_transforms
 tensorflow/contrib
 tensorflow/contrib/all_reduce

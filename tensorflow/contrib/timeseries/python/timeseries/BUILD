@@ -157,6 +157,7 @@ py_library(
 
 py_test(
     name = "head_test",
+    size = "large",
     srcs = [
         "head_test.py",
     ],

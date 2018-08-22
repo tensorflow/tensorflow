@@ -64,12 +64,6 @@ message ApiDef {
     // to use a non-deprecated endpoint instead will be printed. If all
     // endpoints are deprecated, set deprecation_message in ApiDef instead.
     bool deprecated = 3;
-    // Deprecated: set deprecated to "true" instead. We can auto-generate
-    // the message.
-    // If this endpoint is deprecated, set deprecation_message to a
-    // message that should be logged when the endpoint is used.
-    // The message should indicate alternative endpoint to use, if any.
-    string deprecation_message = 2;
   }
   repeated Endpoint endpoint = 3;
 

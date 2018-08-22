@@ -63,6 +63,10 @@ template <>
 constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
   return kTfLiteComplex64;
 }
+template <>
+constexpr TfLiteType typeToTfLiteType<string>() {
+  return kTfLiteString;
+}
 
 // Forward declare since NNAPIDelegate uses Interpreter.
 class NNAPIDelegate;

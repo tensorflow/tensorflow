@@ -452,6 +452,22 @@ class NNAPIDelegateKernel {
         } else {
           return nullptr;
         }
+      case kTfLiteBuiltinTranspose:
+        // Transpose requires NNAPI1.1. Also note that the permutation input
+        // tensor value dictates the output dimensions.
+        // TODO(b/110888333): Support dynamically-sized tensors in delegates.
+        if ((version == 1) &&
+            (kAndroidSdkVersion >= kMinSdkVersionForNNAPI11) &&
+            (node->inputs->size > 1) &&
+            (context->tensors[node->inputs->data[1]].allocation_type ==
+             kTfLiteMmapRo)) {
+          return [](TfLiteContext* context, NNAPIOpBuilder* builder,
+                    TfLiteNode* node) -> ANeuralNetworksOperationType {
+            return ANEURALNETWORKS_TRANSPOSE;
+          };
+        } else {
+          return nullptr;
+        }
         break;
       default:
         return nullptr;

@@ -1157,7 +1157,7 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto send = builder.AddInstruction(
       HloInstruction::CreateSend(param, token, /*channel_id=*/0));
   auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
@@ -1182,7 +1182,7 @@ TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   // Test that a RecvDone forwards its operand tuple element at {0} to element
   // {0} of the output.
   auto builder = HloComputation::Builder(TestName());
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto recv = builder.AddInstruction(
       HloInstruction::CreateRecv(scalar_shape_, token, /*channel_id=*/0));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));

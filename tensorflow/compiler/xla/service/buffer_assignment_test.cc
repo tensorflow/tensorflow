@@ -1876,7 +1876,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder("entry");
 
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto infeed =
       builder.AddInstruction(HloInstruction::CreateInfeed(r0s32, token, ""));
   auto infeed_data = builder.AddInstruction(

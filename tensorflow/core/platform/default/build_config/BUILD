@@ -157,7 +157,6 @@ cc_library(
         "@farmhash_archive//:farmhash",
         "@fft2d",
         "@highwayhash//:sip_hash",
-        "@png_archive//:png",
     ],
 )
 
@@ -172,7 +171,7 @@ cc_library(
         "@farmhash_archive//:farmhash",
         "@fft2d",
         "@highwayhash//:sip_hash",
-        "@png_archive//:png",
+        "@zlib_archive//:zlib",
     ],
 )
 
@@ -194,6 +193,15 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "@jpeg",
+    ],
+)
+
+cc_library(
+    name = "png",
+    copts = tf_copts(),
+    deps = [
+        "@png_archive//:png",
+        "@zlib_archive//:zlib",
     ],
 )
 

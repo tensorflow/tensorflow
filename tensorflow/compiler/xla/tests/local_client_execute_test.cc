@@ -866,9 +866,7 @@ XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
 }
 
-// TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
-// 2017-10-18.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {
+XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);

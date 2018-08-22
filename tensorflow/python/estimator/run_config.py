@@ -485,7 +485,16 @@ class RunConfig(object):
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
-    # Get session_config only for distributed mode (cluster_spec is present).
+    self._maybe_overwrite_session_config_for_distributed_training()
+
+  def _maybe_overwrite_session_config_for_distributed_training(self):
+    """Overwrites the session_config for distributed training.
+
+    The default overwrite is optimized for between-graph training. Subclass
+    should override this method if necessary.
+    """
+    # Get session_config only for between-graph distributed mode (cluster_spec
+    # is present).
     if not self._session_config and self._cluster_spec:
       RunConfig._replace(
           self,

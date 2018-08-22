@@ -224,11 +224,6 @@ class DetectReturnInUnsupportedControlFlow(gast.NodeVisitor):
     self.generic_visit(node)
     self.cant_return = False
 
-  def visit_Try(self, node):
-    self.cant_return = True
-    self.generic_visit(node)
-    self.cant_return = False
-
   def visit_Return(self, node):
     if self.cant_return:
       raise ValueError(

@@ -75,7 +75,7 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   builder.AddInstruction(
       HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
@@ -235,8 +235,7 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
   {
     auto param = body_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
-    auto token =
-        body_builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+    auto token = body_builder.AddInstruction(HloInstruction::CreateToken());
     auto infeed = body_builder.AddInstruction(
         HloInstruction::CreateInfeed(shape, token, ""));
     body_builder.AddInstruction(
@@ -280,8 +279,8 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   {
     auto param = nested_callee_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
-    auto token = nested_callee_builder.AddInstruction(
-        HloInstruction::CreateAfterAll({}));
+    auto token =
+        nested_callee_builder.AddInstruction(HloInstruction::CreateToken());
     nested_callee_builder.AddInstruction(
         HloInstruction::CreateOutfeed(shape, param, token, ""));
   }

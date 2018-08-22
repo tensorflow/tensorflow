@@ -3054,6 +3054,20 @@ void Mul(const float* input1_data, const Dims<4>& input1_dims,
       output_activation_max, output_data, output_dims);
 }
 
+inline void Mul(const int32* input1_data, const Dims<4>& input1_dims,
+                const int32* input2_data, const Dims<4>& input2_dims,
+                int32 output_activation_min, int32 output_activation_max,
+                int32* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Mul/int32");
+
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] * input2_data[i], output_activation_min,
+        output_activation_max);
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 void Mul(const int32* input1_data, const Dims<4>& input1_dims,
          const int32* input2_data, const Dims<4>& input2_dims,

@@ -93,6 +93,83 @@ class TransformerTest(test.TestCase):
                       inner_function, lambda_node),
                      anno.getanno(lambda_expr, 'enclosing_entities'))
 
+  def assertSameAnno(self, first, second, key):
+    self.assertIs(anno.getanno(first, key), anno.getanno(second, key))
+
+  def assertDifferentAnno(self, first, second, key):
+    self.assertIsNot(anno.getanno(first, key), anno.getanno(second, key))
+
+  def test_state_tracking(self):
+
+    class LoopState(object):
+      pass
+
+    class CondState(object):
+      pass
+
+    class TestTransformer(transformer.Base):
+
+      def visit(self, node):
+        anno.setanno(node, 'loop_state', self.state[LoopState].value)
+        anno.setanno(node, 'cond_state', self.state[CondState].value)
+        return super(TestTransformer, self).visit(node)
+
+      def visit_While(self, node):
+        self.state[LoopState].enter()
+        node = self.generic_visit(node)
+        self.state[LoopState].exit()
+        return node
+
+      def visit_If(self, node):
+        self.state[CondState].enter()
+        node = self.generic_visit(node)
+        self.state[CondState].exit()
+        return node
+
+    tr = TestTransformer(self._simple_source_info())
+
+    def test_function(a):
+      a = 1
+      while a:
+        _ = 'a'
+        if a > 2:
+          _ = 'b'
+          while True:
+            raise '1'
+        if a > 3:
+          _ = 'c'
+          while True:
+            raise '1'
+
+    node, _ = parser.parse_entity(test_function)
+    node = tr.visit(node)
+
+    fn_body = node.body[0].body
+    outer_while_body = fn_body[1].body
+    self.assertSameAnno(fn_body[0], outer_while_body[0], 'cond_state')
+    self.assertDifferentAnno(fn_body[0], outer_while_body[0], 'loop_state')
+
+    first_if_body = outer_while_body[1].body
+    self.assertDifferentAnno(outer_while_body[0], first_if_body[0],
+                             'cond_state')
+    self.assertSameAnno(outer_while_body[0], first_if_body[0], 'loop_state')
+
+    first_inner_while_body = first_if_body[1].body
+    self.assertSameAnno(first_if_body[0], first_inner_while_body[0],
+                        'cond_state')
+    self.assertDifferentAnno(first_if_body[0], first_inner_while_body[0],
+                             'loop_state')
+
+    second_if_body = outer_while_body[2].body
+    self.assertDifferentAnno(first_if_body[0], second_if_body[0], 'cond_state')
+    self.assertSameAnno(first_if_body[0], second_if_body[0], 'loop_state')
+
+    second_inner_while_body = second_if_body[1].body
+    self.assertDifferentAnno(first_inner_while_body[0],
+                             second_inner_while_body[0], 'cond_state')
+    self.assertDifferentAnno(first_inner_while_body[0],
+                             second_inner_while_body[0], 'loop_state')
+
   def test_local_scope_info_stack(self):
 
     class TestTransformer(transformer.Base):

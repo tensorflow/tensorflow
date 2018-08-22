@@ -59,7 +59,6 @@ namespace xla {
 // anonymous namespace, instead of three or four spread all over this file.
 namespace {
 
-
 }  // namespace
 
 std::ostream& operator<<(std::ostream& out,
@@ -113,14 +112,18 @@ LayoutConstraints::LayoutConstraints(
     HloComputation* computation)
     : points_to_analysis_(points_to_analysis), computation_(computation) {
   // Gather all array-shaped logical buffers into unconstrained_buffer_ids.
-  for (LogicalBuffer::Id id = 0; id < points_to_analysis_.num_logical_buffers();
-       id++) {
-    auto& buffer = points_to_analysis_.logical_buffer(id);
-    // The points to analysis is computed per module, restrict constraints to
-    // array buffers in this computation.
-    if (buffer.IsArray() && buffer.instruction()->parent() == computation) {
-      unconstrained_buffer_ids_.insert(buffer.id());
-    }
+  for (HloInstruction* inst : computation_->instructions()) {
+    points_to_analysis_.GetPointsToSet(inst).ForEachElement(
+        [&](const ShapeIndex&, const PointsToSet::BufferList& buffers) {
+          for (const LogicalBuffer* buffer : buffers) {
+            // The points to analysis is computed per module, restrict
+            // constraints to array buffers in this computation.
+            if (buffer->IsArray() &&
+                buffer->instruction()->parent() == computation) {
+              unconstrained_buffer_ids_.insert(buffer->id());
+            }
+          }
+        });
   }
 }
 
