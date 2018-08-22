@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.tensorflow</groupId>
-    <artifactId>spark-connector_2.11</artifactId>
+    <artifactId>spark-tensorflow-connector_2.11</artifactId>
     <packaging>jar</packaging>
     <version>1.10.0</version>
     <name>spark-tensorflow-connector</name>
@@ -120,7 +120,7 @@
                                 <artifactSet>
                                     <includes>
                                         <include>com.google.protobuf:protobuf-java</include>
-                                        <include>org.tensorflow:hadoop</include>
+                                        <include>org.tensorflow:tensorflow-hadoop</include>
                                         <include>org.tensorflow:proto</include>
                                     </includes>
                                 </artifactSet>
@@ -305,7 +305,7 @@
     <dependencies>
         <dependency>
             <groupId>org.tensorflow</groupId>
-            <artifactId>hadoop</artifactId>
+            <artifactId>tensorflow-hadoop</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
