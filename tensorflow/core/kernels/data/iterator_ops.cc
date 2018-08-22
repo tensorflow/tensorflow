@@ -261,7 +261,7 @@ class VariantTensorDataReader : public IteratorStateReader {
   }
 
   bool Contains(StringPiece key) override {
-    return map_.find(key.ToString()) != map_.end();
+    return map_.find(string(key)) != map_.end();
   }
 
  private:
@@ -282,18 +282,18 @@ class VariantTensorDataReader : public IteratorStateReader {
 
   template <typename T>
   Status ReadScalarInternal(StringPiece key, T* val) {
-    if (map_.find(key.ToString()) == map_.end()) {
+    if (map_.find(string(key)) == map_.end()) {
       return errors::NotFound(key);
     }
-    *val = data_->tensors(map_[key.ToString()]).scalar<T>()();
+    *val = data_->tensors(map_[string(key)]).scalar<T>()();
     return Status::OK();
   }
 
   Status ReadTensorInternal(StringPiece key, Tensor* val) {
-    if (map_.find(key.ToString()) == map_.end()) {
+    if (map_.find(string(key)) == map_.end()) {
       return errors::NotFound(key);
     }
-    *val = data_->tensors(map_[key.ToString()]);
+    *val = data_->tensors(map_[string(key)]);
     return Status::OK();
   }
 
@@ -342,7 +342,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
     // Write key to the metadata proto. This gets written to `data_`
     // when `Flush()` is called. We do this lazily to avoid multiple
     // serialization calls.
-    metadata_proto_.add_keys(key.ToString());
+    metadata_proto_.add_keys(string(key));
 
     // Update tensors.
     *(data_->add_tensors()) = val;
