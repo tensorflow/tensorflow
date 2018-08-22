@@ -33,8 +33,8 @@ namespace xla {
 
 namespace {
 
+using ::absl::optional;
 using ::tensorflow::StringPiece;
-using ::tensorflow::gtl::optional;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::str_util::Split;
 using ::tensorflow::str_util::SplitAndParseAsInts;

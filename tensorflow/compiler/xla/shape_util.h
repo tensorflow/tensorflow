@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -597,8 +597,8 @@ class ShapeUtil {
   // layout). The layout of 'input_shape' is kept fixed. Returns
   // 'output_shape_with_layout' if such a layout can be found, and an error
   // otherwise.
-  static tensorflow::gtl::optional<Shape> AlignLayouts(
-      const Shape& input_shape, const Shape& output_shape);
+  static absl::optional<Shape> AlignLayouts(const Shape& input_shape,
+                                            const Shape& output_shape);
 
   // Returns a shape with the given dimension deleted.
   // For example:
@@ -737,13 +737,13 @@ class ShapeUtil {
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
     const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
-    tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+    absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
     while (n < rank) {
-      if (pool != tensorflow::gtl::nullopt) {
+      if (pool != absl::nullopt) {
         pool->Schedule(
             [indexes, &visitor_function] { visitor_function(indexes); });
       } else {

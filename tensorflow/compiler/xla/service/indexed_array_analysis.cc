@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
@@ -971,15 +972,15 @@ namespace {
 
 // Returns the non-contracting non-batch dimension (as per `contracting_dims`
 // and `batch_dims`) if there is exactly one, otherwise returns nullopt.
-gtl::optional<int64> GetOnlyNonContractingNonBatchDim(
+absl::optional<int64> GetOnlyNonContractingNonBatchDim(
     int64 rank, ArraySlice<int64> contracting_dims,
     ArraySlice<int64> batch_dims) {
-  gtl::optional<int64> result;
+  absl::optional<int64> result;
   for (int64 dim = 0; dim < rank; dim++) {
     if (!ArrayContains(contracting_dims, dim) &&
         !ArrayContains(batch_dims, dim)) {
       if (result.has_value()) {
-        return gtl::nullopt;
+        return absl::nullopt;
       }
       result = dim;
     }
@@ -999,7 +1000,7 @@ bool CanFoldDotIntoIndexedArray(
     tensorflow::StringPiece tag,
     Analysis::ScalarIndexedConstantArray* indexed_array,
     ArraySlice<int64> contracting_dims, ArraySlice<int64> batch_dims) {
-  gtl::optional<int64> non_contracting_non_batch_dim =
+  absl::optional<int64> non_contracting_non_batch_dim =
       GetOnlyNonContractingNonBatchDim(ShapeUtil::Rank(indexed_array->shape()),
                                        contracting_dims, batch_dims);
   if (!non_contracting_non_batch_dim.has_value()) {

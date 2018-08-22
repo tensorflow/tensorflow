@@ -296,7 +296,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "CrossReplicaSum should have 1 called computation but sees "
           << proto.called_computation_ids_size();
-      tensorflow::gtl::optional<int64> all_reduce_id;
+      absl::optional<int64> all_reduce_id;
       if (proto.all_reduce_id() > 0) {
         all_reduce_id = proto.all_reduce_id();
       }
@@ -666,7 +666,7 @@ HloInstruction::CreateCrossReplicaSum(
     HloComputation* reduce_computation,
     tensorflow::gtl::ArraySlice<int64> replica_group_ids,
     tensorflow::StringPiece barrier,
-    const tensorflow::gtl::optional<int64>& all_reduce_id) {
+    const absl::optional<int64>& all_reduce_id) {
   return absl::make_unique<HloAllReduceInstruction>(
       shape, operands, reduce_computation, replica_group_ids, barrier,
       all_reduce_id);
@@ -1836,7 +1836,7 @@ string HloInstruction::ToString(const HloPrintOptions& options) const {
 }
 
 bool HloInstruction::IsElementwiseImpl(
-    const tensorflow::gtl::optional<int64>& operand_idx) const {
+    const absl::optional<int64>& operand_idx) const {
   switch (opcode_) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
@@ -2623,7 +2623,7 @@ bool HloInstruction::IsElementwiseBinary() const {
 }
 
 bool HloInstruction::IsElementwise() const {
-  return IsElementwiseImpl(tensorflow::gtl::nullopt);
+  return IsElementwiseImpl(absl::nullopt);
 }
 
 bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
@@ -3156,7 +3156,7 @@ void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
       barrier);
 }
 
-tensorflow::gtl::optional<int64> HloInstruction::all_reduce_id() const {
+absl::optional<int64> HloInstruction::all_reduce_id() const {
   return Cast<HloAllReduceInstruction>(this)->all_reduce_id();
 }
 

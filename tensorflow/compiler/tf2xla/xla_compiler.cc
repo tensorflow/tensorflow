@@ -414,7 +414,7 @@ Status BuildComputation(
 
       // Request that the value be returned on a specific core.
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
 
       xla::XlaOp handle;
@@ -571,7 +571,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
@@ -579,7 +579,7 @@ Status XlaCompiler::BuildArguments(
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+          builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
                                       strings::StrCat("arg", i));

@@ -225,7 +225,7 @@ class HloAllReduceInstruction : public HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& all_reduce_id);
 
   // Returns the group ids of each replica for CrossReplicaSum op.
   const std::vector<int64>& replica_group_ids() const {
@@ -241,9 +241,7 @@ class HloAllReduceInstruction : public HloInstruction {
     cross_replica_sum_barrier_ = barrier;
   }
 
-  tensorflow::gtl::optional<int64> all_reduce_id() const {
-    return all_reduce_id_;
-  }
+  absl::optional<int64> all_reduce_id() const { return all_reduce_id_; }
 
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -271,7 +269,7 @@ class HloAllReduceInstruction : public HloInstruction {
   // For Allreduce nodes from different modules, if they have the same
   // all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will not be
   // applied cross modules.
-  tensorflow::gtl::optional<int64> all_reduce_id_;
+  absl::optional<int64> all_reduce_id_;
 };
 
 class HloAllToAllInstruction : public HloInstruction {
@@ -508,7 +506,7 @@ class HloMapInstruction : public HloInstruction {
 
  private:
   bool IsElementwiseImpl(
-      const tensorflow::gtl::optional<int64>& operand_idx) const override;
+      const absl::optional<int64>& operand_idx) const override;
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
@@ -601,7 +599,7 @@ class HloConstantInstruction : public HloInstruction {
 
  private:
   bool IsElementwiseImpl(
-      const tensorflow::gtl::optional<int64>& operand_idx) const override;
+      const absl::optional<int64>& operand_idx) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -752,7 +750,7 @@ class HloFusionInstruction : public HloInstruction {
                                        bool add_output = false);
 
   bool IsElementwiseImpl(
-      const tensorflow::gtl::optional<int64>& operand_idx) const override;
+      const absl::optional<int64>& operand_idx) const override;
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
@@ -781,7 +779,7 @@ class HloRngInstruction : public HloInstruction {
 
  private:
   bool IsElementwiseImpl(
-      const tensorflow::gtl::optional<int64>& operand_idx) const override;
+      const absl::optional<int64>& operand_idx) const override;
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(

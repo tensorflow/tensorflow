@@ -154,12 +154,10 @@ class XlaBuilder {
 
   // Clears the sharding. Ops will be sharded according to the default placement
   // policy.
-  void ClearSharding() { sharding_ = tensorflow::gtl::nullopt; }
+  void ClearSharding() { sharding_ = absl::nullopt; }
 
   // Returns the OpSharding that will be attached to all instructions.
-  const tensorflow::gtl::optional<OpSharding>& sharding() const {
-    return sharding_;
-  }
+  const absl::optional<OpSharding>& sharding() const { return sharding_; }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -701,8 +699,7 @@ class XlaBuilder {
   XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
-      const tensorflow::gtl::optional<ChannelHandle>& channel_id =
-          tensorflow::gtl::nullopt);
+      const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
   // Enqueues an operation that do an Alltoall of the operand cross cores.
   //
@@ -831,8 +828,7 @@ class XlaBuilder {
   // * The result is a tuple that consists of a sorted tensor of keys (along the
   // provided dimension, as above) as the first element, and a tensor with their
   // corresponding values as the second element.
-  XlaOp Sort(XlaOp keys,
-             tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt,
+  XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
              int64 dimension = -1);
 
   // Enqueues a clamp instruction onto the computation.
@@ -1039,7 +1035,7 @@ class XlaBuilder {
 
   // Sharding for this operator. This is structured as a "model"-like operation,
   // in order to simplify client code, similar to metadata_.
-  tensorflow::gtl::optional<OpSharding> sharding_;
+  absl::optional<OpSharding> sharding_;
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_ = false;
@@ -1246,7 +1242,7 @@ class XlaBuilder {
   friend XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
-      const tensorflow::gtl::optional<ChannelHandle>& channel_id);
+      const absl::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAll(const XlaOp& operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
@@ -1295,8 +1291,7 @@ class XlaBuilder {
                          tensorflow::gtl::ArraySlice<int64> permutation);
   friend XlaOp Rev(const XlaOp& operand,
                    tensorflow::gtl::ArraySlice<int64> dimensions);
-  friend XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
-                    int64 dimension);
+  friend XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values, int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder,
                    tensorflow::gtl::ArraySlice<XlaOp> operands,
@@ -1359,7 +1354,7 @@ class XlaBuilder {
 class XlaScopedShardingAssignment {
  public:
   XlaScopedShardingAssignment(xla::XlaBuilder* builder,
-                              tensorflow::gtl::optional<OpSharding> sharding)
+                              absl::optional<OpSharding> sharding)
       : builder_(builder), prev_sharding_(builder->sharding()) {
     SetSharding(sharding);
   }
@@ -1371,7 +1366,7 @@ class XlaScopedShardingAssignment {
   ~XlaScopedShardingAssignment() { SetSharding(prev_sharding_); }
 
  private:
-  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+  void SetSharding(const absl::optional<OpSharding>& sharding) {
     if (sharding.has_value()) {
       builder_->SetSharding(sharding.value());
     } else {
@@ -1380,7 +1375,7 @@ class XlaScopedShardingAssignment {
   }
 
   xla::XlaBuilder* const builder_;
-  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+  absl::optional<OpSharding> prev_sharding_;
 };
 
 // Free functions for building XlaOps. The intention is that these will
@@ -1835,10 +1830,10 @@ XlaOp CrossReplicaSum(
 // applied cross modules.
 //
 // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
-XlaOp CrossReplicaSum(const XlaOp& operand, const XlaComputation& computation,
-                      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
-                      const tensorflow::gtl::optional<ChannelHandle>&
-                          channel_id = tensorflow::gtl::nullopt);
+XlaOp CrossReplicaSum(
+    const XlaOp& operand, const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+    const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
 //
@@ -1963,8 +1958,7 @@ XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions);
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and a tensor with their
 // corresponding values as the second element.
-XlaOp Sort(XlaOp keys,
-           tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt,
+XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
            int64 dimension = -1);
 
 // Enqueues a clamp instruction onto the computation.

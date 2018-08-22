@@ -565,7 +565,7 @@ static void VLogClusteringSummary(const Graph& g) {
   int clustered_node_count = 0;
 
   for (Node* n : g.nodes()) {
-    gtl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
+    absl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
     if (cluster_name) {
       clustered_node_count++;
       cluster_name_to_size[*cluster_name]++;

@@ -42,9 +42,9 @@ namespace xla {
 
 namespace {
 
+using absl::optional;
 using tensorflow::StringPiece;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::optional;
 
 constexpr char kInterpreter[] = "interpreter";
 
@@ -239,8 +239,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    const StringPiece hlo_string,
-    const tensorflow::gtl::optional<ErrorSpec>& error,
+    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -277,7 +276,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
-    const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+    const string& filename, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
@@ -290,8 +289,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    const StringPiece hlo_string,
-    const tensorflow::gtl::optional<ErrorSpec>& error,
+    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -305,7 +303,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
-    const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+    const string& filename, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
