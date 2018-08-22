@@ -565,8 +565,7 @@ class CorrectnessWithDistributionStrategyTest(test.TestCase):
       dataset_with = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       dataset_with = dataset_with.batch(32)
       strategy = mirrored_strategy.MirroredStrategy(devices=['/device:CPU:0',
-                                                             '/device:GPU:0'],
-                                                    prefetch_on_device=False)
+                                                             '/device:GPU:0'])
 
       model.compile(loss=keras.losses.mean_squared_error,
                     optimizer=gradient_descent.GradientDescentOptimizer(0.5),
