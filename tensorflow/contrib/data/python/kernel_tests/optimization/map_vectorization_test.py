@@ -17,16 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import test_utils
 from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -147,6 +153,67 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
         base_dataset, map_fn, expect_optimized=False)
     self._assert_datasets_raise_same_error(unoptimized, optimized,
                                            errors.InvalidArgumentError)
+
+
+class MapVectorizationBenchmark(test.Benchmark):
+  # TODO(rachelim): Add a benchmark for more expensive transformations, such as
+  # vgg_preprocessing.
+
+  def _run(self, x, num_iters=100, name=None):
+    deltas = []
+    with session.Session() as sess:
+      for _ in range(5):
+        # Warm up session...
+        sess.run(x)
+      for _ in range(num_iters):
+        start = time.time()
+        sess.run(x)
+        end = time.time()
+        deltas.append(end - start)
+    median_time = np.median(deltas)
+    self.report_benchmark(iters=num_iters, wall_time=median_time, name=name)
+    return median_time
+
+  def benchmark_CheapFns(self):
+
+    input_sizes = [(10, 10, 3), (10, 100, 300)]
+    batch_size = 1000
+    for input_size in input_sizes:
+      input_dataset = dataset_ops.Dataset.from_tensor_slices(
+          (np.random.rand(*input_size), np.random.rand(*input_size))).repeat()
+      for map_fn, str_id in self._get_known_cheap_fns():
+        self._compare(input_dataset, map_fn, batch_size, input_size, str_id)
+
+  def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
+    num_elems = np.prod(input_size)
+    name_template = "{}__batch_size_{}_input_size_{}_{}"
+    unoptimized = input_dataset.map(map_fn).batch(batch_size)
+    unoptimized_op = unoptimized.make_one_shot_iterator().get_next()
+
+    optimized = unoptimized.apply(optimization.optimize(["map_vectorization"]))
+    optimized_op = optimized.make_one_shot_iterator().get_next()
+
+    unoptimized_time = self._run(
+        unoptimized_op,
+        name=name_template.format(str_id, batch_size, num_elems, "unoptimized"))
+    optimized_time = self._run(
+        optimized_op,
+        name=name_template.format(str_id, batch_size, num_elems, "optimized"))
+
+    print("Batch size: {}\n"
+          "Input size: {}\n"
+          "Transformation: {}\n"
+          "Speedup: {}\n".format(batch_size, input_size, str_id,
+                                 (unoptimized_time / optimized_time)))
+
+  def _get_known_cheap_fns(self):
+    return [
+        (lambda *args: [array_ops.identity(x) for x in args], "identity"),
+        (lambda *args: [x + 1 for x in args], "add_const"),
+        (lambda *args: args[0], "select"),
+        (lambda *args: [math_ops.cast(x, dtypes.float64) for x in args],
+         "cast"),
+    ]
 
 
 if __name__ == "__main__":
