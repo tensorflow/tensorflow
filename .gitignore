@@ -30,6 +30,7 @@ Podfile.lock
 xcuserdata/**
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt
+*.whl
 
 # Android
 .gradle
