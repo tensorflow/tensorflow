@@ -19,11 +19,11 @@ limitations under the License.
 #include <sys/types.h>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
@@ -2484,36 +2484,6 @@ void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
 
   TensorFlowSplit(input_data, input_dims, /*axis=*/0, outputs_count,
                   output_data, output_dims);
-}
-
-// TODO(benoitjacob) make this a proper reference impl without Eigen!
-template <typename Scalar>
-using MatrixMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
-
-template <typename Scalar, int N>
-MatrixMap<Scalar> MapAsMatrixWithFirstDimAsRows(Scalar* data,
-                                                const Dims<N>& dims) {
-  const int rows = dims.sizes[0];
-  int cols = 1;
-  for (int d = 1; d < N; d++) {
-    cols *= dims.sizes[d];
-  }
-  return MatrixMap<Scalar>(data, rows, cols);
-}
-
-template <typename Scalar, int N>
-MatrixMap<Scalar> MapAsMatrixWithLastDimAsCols(Scalar* data,
-                                               const Dims<N>& dims) {
-  const int cols = dims.sizes[N - 1];
-  int rows = 1;
-  for (int d = 0; d < N - 1; d++) {
-    rows *= dims.sizes[d];
-  }
-  return MatrixMap<Scalar>(data, rows, cols);
 }
 
 inline int NodeOffset(int b, int h, int w, int height, int width) {
