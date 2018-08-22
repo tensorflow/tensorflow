@@ -275,19 +275,10 @@ class HloAllToAllInstruction : public HloInstruction {
  public:
   explicit HloAllToAllInstruction(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operand,
-      const std::vector<ReplicaGroup>& replica_groups,
-      tensorflow::StringPiece barrier);
+      const std::vector<ReplicaGroup>& replica_groups);
 
   const std::vector<ReplicaGroup>& replica_groups() const {
     return replica_groups_;
-  }
-
-  // TODO(b/110096724): rename this.
-  void set_cross_replica_sum_barrier(string barrier) {
-    cross_replica_sum_barrier_ = barrier;
-  }
-  string cross_replica_sum_barrier() const {
-    return cross_replica_sum_barrier_;
   }
 
   HloInstructionProto ToProto() const override;
@@ -307,9 +298,6 @@ class HloAllToAllInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::vector<ReplicaGroup> replica_groups_;
-
-  // The string representation of the barrier config.
-  string cross_replica_sum_barrier_;
 };
 
 class HloReverseInstruction : public HloInstruction {

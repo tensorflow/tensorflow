@@ -314,8 +314,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.shape(), all_operands(),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
-                                    proto.replica_groups().end()),
-          /*barrier=*/proto.cross_replica_sum_barrier());
+                                    proto.replica_groups().end()));
       break;
     }
     case HloOpcode::kConvolution:
@@ -675,10 +674,9 @@ HloInstruction::CreateCrossReplicaSum(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    const std::vector<ReplicaGroup>& replica_groups,
-    tensorflow::StringPiece barrier) {
+    const std::vector<ReplicaGroup>& replica_groups) {
   return absl::make_unique<HloAllToAllInstruction>(shape, operands,
-                                                   replica_groups, barrier);
+                                                   replica_groups);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
