@@ -87,7 +87,7 @@ class LocallyConnectedLayersTest(test.TestCase):
                               keras.layers.LocallyConnected1D,
                               **kwargs)
           else:
-            with self.test_session():
+            with self.cached_session():
               layer = keras.layers.LocallyConnected1D(**kwargs)
               layer.build((num_samples, num_steps, input_dim))
               self.assertEqual(len(layer.losses), 2)
@@ -105,7 +105,7 @@ class LocallyConnectedLayersTest(test.TestCase):
                 'kernel_constraint': k_constraint,
                 'bias_constraint': b_constraint,
             }
-            with self.test_session():
+            with self.cached_session():
               layer = keras.layers.LocallyConnected1D(**kwargs)
               layer.build((num_samples, num_steps, input_dim))
               self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -197,7 +197,7 @@ class LocallyConnectedLayersTest(test.TestCase):
                             keras.layers.LocallyConnected2D,
                             **kwargs)
         else:
-          with self.test_session():
+          with self.cached_session():
             layer = keras.layers.LocallyConnected2D(**kwargs)
             layer.build((num_samples, num_row, num_col, stack_size))
             self.assertEqual(len(layer.losses), 2)
@@ -214,7 +214,7 @@ class LocallyConnectedLayersTest(test.TestCase):
               'kernel_constraint': k_constraint,
               'bias_constraint': b_constraint,
           }
-          with self.test_session():
+          with self.cached_session():
             layer = keras.layers.LocallyConnected2D(**kwargs)
             layer.build((num_samples, num_row, num_col, stack_size))
             self.assertEqual(layer.kernel.constraint, k_constraint)
