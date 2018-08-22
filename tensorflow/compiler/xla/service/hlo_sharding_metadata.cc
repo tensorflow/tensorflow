@@ -284,18 +284,19 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
 // The kDomain instruction will be created only if the sharding differ between
 // the instruction and the operand.
 std::unique_ptr<HloInstruction> CreateDomain(HloInstruction* instruction,
+                                             HloInstruction* root,
                                              HloInstruction* operand) {
   const HloSharding* instruction_sharding =
       instruction->has_sharding() ? &instruction->sharding() : nullptr;
-  const HloSharding* operand_sharding =
-      operand->has_sharding() ? &operand->sharding() : nullptr;
+  const HloSharding* root_sharding =
+      root->has_sharding() ? &root->sharding() : nullptr;
   // No need for domain if they both have no sharding.
-  if (instruction_sharding == nullptr && operand_sharding == nullptr) {
+  if (instruction_sharding == nullptr && root_sharding == nullptr) {
     return nullptr;
   }
   // No need for domain if they match.
-  if (instruction_sharding != nullptr && operand_sharding != nullptr &&
-      ShardingMatches(*instruction_sharding, *operand_sharding)) {
+  if (instruction_sharding != nullptr && root_sharding != nullptr &&
+      ShardingMatches(*instruction_sharding, *root_sharding)) {
     return nullptr;
   }
   std::unique_ptr<HloSharding> real_instruction_sharding;
@@ -303,8 +304,8 @@ std::unique_ptr<HloInstruction> CreateDomain(HloInstruction* instruction,
   if (instruction_sharding != nullptr) {
     real_instruction_sharding = CloneShardingForDomain(*instruction_sharding);
   }
-  if (operand_sharding != nullptr) {
-    real_operand_sharding = CloneShardingForDomain(*operand_sharding);
+  if (root_sharding != nullptr) {
+    real_operand_sharding = CloneShardingForDomain(*root_sharding);
   }
   VLOG(3) << "Creating domain:";
   VLOG(3) << "  Instruction: " << instruction->name();
@@ -417,8 +418,9 @@ Status ShardingMetadata::NormalizeShardingDomain(
 }
 
 std::unique_ptr<HloInstruction> CreateShardingDomain(
-    HloInstruction* instruction, HloInstruction* operand) {
-  return CreateDomain(instruction, operand);
+    HloInstruction* instruction, HloInstruction* root,
+    HloInstruction* operand) {
+  return CreateDomain(instruction, root, operand);
 }
 
 }  // namespace xla

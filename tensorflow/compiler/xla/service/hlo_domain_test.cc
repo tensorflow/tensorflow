@@ -106,12 +106,13 @@ class OpNameMetadata : public DomainMetadata {
 
 // Creator function for OpNameMetadata domains.
 std::unique_ptr<HloInstruction> OpNameDomainCreator(HloInstruction* instruction,
+                                                    HloInstruction* root,
                                                     HloInstruction* operand) {
-  if (instruction->metadata().op_name() == operand->metadata().op_name()) {
+  if (instruction->metadata().op_name() == root->metadata().op_name()) {
     return nullptr;
   }
   std::unique_ptr<DomainMetadata> operand_side_metadata =
-      absl::make_unique<OpNameMetadata>(operand->metadata().op_name());
+      absl::make_unique<OpNameMetadata>(root->metadata().op_name());
   std::unique_ptr<DomainMetadata> user_side_metadata =
       absl::make_unique<OpNameMetadata>(instruction->metadata().op_name());
   return HloInstruction::CreateDomain(operand->shape(), operand,
@@ -522,6 +523,65 @@ ENTRY entry {
   EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::AssignDevice(1),
                                               HloSharding::AssignDevice(0)}),
             tpl->sharding());
+}
+
+TEST_F(HloDomainTest, MultiDomainMultiUser) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+ENTRY %entry (p0: (f32[4], f32[4])) -> (f32[4], f32[4], f32[4]) {
+  %p0 = (f32[4], f32[4]) parameter(0)
+  %a = f32[4]{0} get-tuple-element(%p0), index=0
+  %domain = f32[4] domain(%a),
+    domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  %b = f32[4] get-tuple-element(%p0), index=1
+  %domain.1 = f32[4] domain(%b),
+    domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  %c = f32[4] add(%domain, %domain.1), sharding={maximal device=1}
+  %domain.2 = f32[4] domain(%c),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  %d = f32[4] subtract(%domain, %c),
+    sharding={maximal device=1}, metadata={op_name="D"}
+  %domain.3 = f32[4] domain(%d),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  %e = f32[4] multiply(%c, %d),
+    sharding={maximal device=1}, metadata={op_name="D"}
+  %f = f32[4] add(f32[4]{0} %e, f32[4]{0} %c), sharding={maximal device=1}
+  %domain.4 = f32[4]{0} domain(%f),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  ROOT %g = (f32[4], f32[4], f32[4]) tuple(%domain.2, %domain.3, %domain.4)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  HloDomainIsolator opname_isolator(OpNameDomainCreator);
+  TF_ASSERT_OK_AND_ASSIGN(bool opname_isolator_changed,
+                          opname_isolator.Run(module));
+  EXPECT_TRUE(opname_isolator_changed);
+
+  EXPECT_TRUE(HasDomainEdge(module, "c", "a"));
+  EXPECT_TRUE(HasDomainEdge(module, "c", "b"));
+  EXPECT_TRUE(HasDomainEdge(module, "d", "a"));
+  EXPECT_TRUE(HasDomainEdge(module, "d", "c"));
+  EXPECT_FALSE(HasDomainEdge(module, "e", "d"));
+
+  HloDomainRemover sharding_remover(ShardingMetadata::KindName(),
+                                    ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
+                          sharding_remover.Run(module));
+  EXPECT_TRUE(sharding_remover_changed);
+
+  HloDomainRemover opname_remover(OpNameMetadata::KindName(),
+                                  OpNameDomainNormalizer);
+  TF_ASSERT_OK_AND_ASSIGN(bool opname_remover_changed,
+                          opname_remover.Run(module));
+  EXPECT_TRUE(opname_remover_changed);
+
+  EXPECT_FALSE(HasDomainEdge(module, "c", "a"));
+  EXPECT_FALSE(HasDomainEdge(module, "c", "b"));
+  EXPECT_FALSE(HasDomainEdge(module, "d", "a"));
+  EXPECT_FALSE(HasDomainEdge(module, "d", "c"));
 }
 
 }  // namespace
