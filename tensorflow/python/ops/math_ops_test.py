@@ -483,7 +483,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
       np_result = np.true_divide(nums, divs)
       np_result[:, divs[0] == 0] = 0
 
-      with self.cached_session():
+      with self.cached_session(use_gpu=True):
         tf_result = math_ops.div_no_nan(nums, divs).eval()
         self.assertAllEqual(tf_result, np_result)
 
