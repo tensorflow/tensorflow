@@ -129,6 +129,10 @@ $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*test*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*test*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*test*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*benchmark*.cc) \
 tensorflow/contrib/makefile/downloads/absl/absl/synchronization/internal/mutex_nonprod.cc
 
 ABSL_CC_SRCS := $(filter-out $(ABSL_CC_EXCLUDE_SRCS), $(ABSL_CC_ALL_SRCS))
