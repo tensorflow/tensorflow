@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -75,18 +76,61 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
 }
 
+bool HasResourceOutput(const Node& node) {
+  return std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
+}
+
+bool HasResourceInput(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end();
+}
+
+gtl::FlatSet<StringPiece>* GetNonResourceVarResourceOpSet() {
+  gtl::FlatSet<StringPiece>* result = new gtl::FlatSet<StringPiece>;
+
+  result->insert("StackCloseV2");
+  result->insert("StackPopV2");
+  result->insert("StackPushV2");
+  result->insert("TensorArrayConcatV3");
+  result->insert("TensorArrayGatherV3");
+  result->insert("TensorArrayScatterV3");
+  result->insert("TensorArrayGradV3");
+  result->insert("TensorArrayCloseV3");
+  result->insert("TensorArrayReadV3");
+  result->insert("TensorArraySizeV3");
+  result->insert("TensorArraySplitV3");
+  result->insert("TensorArrayWriteV3");
+
+  return result;
+}
+
+// Returns true if `node` is a resource operation recognized by tf2xla that
+// operates on something other than resource variables.
+bool IsNonResourceVarResourceOp(const Node& node) {
+  // TODO(b/112837194): We can't cluster these because we only support
+  // snapshotting resource variables (and we can't e.g. snapshot stacks).  This
+  // limitation may be fixable with some work.
+  static gtl::FlatSet<StringPiece>* non_resource_var_resource_op =
+      GetNonResourceVarResourceOpSet();
+
+  return non_resource_var_resource_op->count(node.type_string());
+}
+
 // Make sure we don't recurse infinitely on recursive functions.
 const int kMaxRecursionDepth = 10;
 
 bool IsCompilableCall(const NodeDef& call_def,
-                      const DeviceType& jit_device_type, int depth,
+                      const DeviceType& jit_device_type,
+                      bool allow_resource_ops, int depth,
                       FunctionLibraryRuntime* lib_runtime);
 
 // Tests whether 'while_node' is a completely compilable loop.
 // Every operator in the condition and body functions must be compilable for a
 // while loop to be compilable.
 bool IsCompilableWhile(const Node& while_node,
-                       const DeviceType& jit_device_type, int depth,
+                       const DeviceType& jit_device_type,
+                       bool allow_resource_ops, int depth,
                        FunctionLibraryRuntime* lib_runtime) {
   const NameAttrList* name_attr;
   NodeDef call;
@@ -101,7 +145,8 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_cond");
   call.set_op(cond_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, depth + 1, lib_runtime)) {
+  if (!IsCompilableCall(call, jit_device_type, allow_resource_ops, depth + 1,
+                        lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop condition: " << cond_func;
     return false;
@@ -116,7 +161,8 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_body");
   call.set_op(body_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, depth + 1, lib_runtime)) {
+  if (!IsCompilableCall(call, jit_device_type, allow_resource_ops, depth + 1,
+                        lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop body: " << body_func;
     return false;
@@ -128,7 +174,8 @@ bool IsCompilableWhile(const Node& while_node,
 // Every operator in the function must be compilable for a function to be
 // compilable.
 bool IsCompilableCall(const NodeDef& call_def,
-                      const DeviceType& jit_device_type, int depth,
+                      const DeviceType& jit_device_type,
+                      bool allow_resource_ops, int depth,
                       FunctionLibraryRuntime* lib_runtime) {
   if (depth > kMaxRecursionDepth) {
     VLOG(2) << "Rejecting " << call_def.op()
@@ -168,12 +215,17 @@ bool IsCompilableCall(const NodeDef& call_def,
     if (node->type_string() == "_Arg" || node->type_string() == "_Retval")
       continue;
     if (node->type_string() == "While") {
-      // Handle functional While loop (not in open source build).
-      return IsCompilableWhile(*node, jit_device_type, depth + 1, lib_runtime);
+      // Handle functional While loop.
+      return IsCompilableWhile(*node, jit_device_type, allow_resource_ops,
+                               depth + 1, lib_runtime);
+    }
+    if (!allow_resource_ops &&
+        (HasResourceInput(*node) || HasResourceOutput(*node))) {
+      return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, depth + 1,
-                          lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type, allow_resource_ops,
+                          depth + 1, lib_runtime)) {
       VLOG(2) << "Rejecting " << call_def.op() << ": unsupported op "
               << node->name() << ": " << node->def().ShortDebugString();
       return false;
@@ -391,14 +443,20 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type,
+                          registration->compile_resource_ops, 0, lib_runtime)) {
       VLOG(2) << "Rejecting " << node->name() << ": unsupported op "
               << node->type_string();
       continue;
     }
     if (!registration->compile_resource_ops &&
-        HasResourceInputOrOutput(*node)) {
-      VLOG(2) << "Rejecting: " << node->name() << ": resource input/output "
+        (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
+      // We don't have a way of returning values of type DT_RESOURCE from XLA
+      // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
+      // XlaLaunchOp also cannot snapshot resources that are not resource
+      // variables so we avoid clustering resource operations that operate on
+      // non-resource variables.
+      VLOG(2) << "Rejecting: " << node->name() << ": resource output "
               << node->type_string();
       continue;
     }
@@ -417,8 +475,14 @@ Status FindCompilationCandidates(
         continue;
       }
     }
+    // We don't auto-cluster functional control flow nodes containing resource
+    // operations because safety checks are trickier in this case.
+    // registration->compile_resource_ops is true for XLA_CPU/XLA_GPU but not
+    // for CPU/GPU.
     if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
+        !IsCompilableWhile(*node, jit_device_type,
+                           registration->compile_resource_ops, 0,
+                           lib_runtime)) {
       continue;
     }
     // _Arg nodes in a top-level function represent feeds.
@@ -477,7 +541,11 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
                                             &registration));
   DeviceType jit_device_type(registration->compilation_device_name);
-  return IsCompilableCall(ndef, jit_device_type, 0, flr);
+
+  // We can always *compile* resource operations, even if we are sometimes
+  // unable to auto-cluster them.
+  const bool compile_resource_ops = true;
+  return IsCompilableCall(ndef, jit_device_type, compile_resource_ops, 0, flr);
 }
 
 Status MarkForCompilationPass::Run(
@@ -629,6 +697,43 @@ static bool IsShapeConsumerOp(const Node& node) {
          node.type_string() == "Size";
 }
 
+static Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
+  // If a resource operation is assigned to XLA_CPU or XLA_GPU explicitly then
+  // ignore it during resource operation safety analysis.  We need this hack
+  // because of two reasons:
+  //
+  //  1. Operations assigned to XLA_CPU and XLA_GPU have to always be compiled.
+  //  2. We don't support live-out values of type DT_RESOURCE and live-in values
+  //     of type DT_RESOURCE that are not resource variables.
+  //
+  // Together these imply we cannot let resource variable safety analysis
+  // constrain e.g. a TensorArrayV3->TensorArrayAssignV3 edge to be in different
+  // clusters: both of them will have to be clustered because of (1) and we
+  // won't be able to keep the edge between the two as neither the input to the
+  // second XLA cluster nor the output from the first XLA cluster are supported
+  // because of (2).
+  //
+  // TODO(b/113100872): This can be fixed if the TensorFlow representation for
+  // TensorArray and Stack on the XLA_{C|G}PU devices were the same in XLA; then
+  // (2) would no longer hold.
+
+  if (n.assigned_device_name().empty()) {
+    *ignore = false;
+    return Status::OK();
+  }
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(
+      DeviceToDeviceType(n.assigned_device_name(), &device_type));
+
+  const XlaOpRegistry::DeviceRegistration* registration;
+  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
+    *ignore = true;
+  } else {
+    *ignore = registration->compile_resource_ops;
+  }
+  return Status::OK();
+}
+
 // Sequence number generator to ensure clusters have unique names.
 static std::atomic<int64> cluster_sequence_num;
 
@@ -657,6 +762,8 @@ Status MarkForCompilationPass::RunImpl(
 
   GraphCycles cycles;
   TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(graph, &cycles));
+  TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
+      graph, options.flib_def, IgnoreResourceOpForSafetyAnalysis, &cycles));
 
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative
@@ -695,7 +802,7 @@ Status MarkForCompilationPass::RunImpl(
     string to_scope;
     for (int to : cycles.Successors(from)) {
       if (to >= graph->num_node_ids()) {
-        // Node is a "frame" node that is present only in the cycle detection
+        // Node is a fictitious node that is present only in the cycle detection
         // graph. No clustering is possible.
         continue;
       }

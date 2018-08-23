@@ -311,6 +311,46 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "resource_operation_safety_analysis",
+    srcs = ["resource_operation_safety_analysis.cc"],
+    hdrs = ["resource_operation_safety_analysis.h"],
+    deps = [
+        "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "resource_operation_safety_analysis_test",
+    srcs = ["resource_operation_safety_analysis_test.cc"],
+    deps = [
+        ":common",
+        ":resource_operation_safety_analysis",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
@@ -359,6 +399,7 @@ cc_library(
     srcs = ["xla_cluster_util.cc"],
     hdrs = ["xla_cluster_util.h"],
     deps = [
+        ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -437,6 +478,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -528,6 +570,9 @@ tf_cuda_cc_test(
         ":common",
         ":xla_cluster_util",
         ":xla_fusion_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/core:graph",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
