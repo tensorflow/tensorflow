@@ -92,8 +92,8 @@ RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter
 
-RUN mkdir /notebooks && chmod 777 /notebooks
-RUN mkdir /.local && chmod 777 /.local
+RUN mkdir /notebooks && chmod a+rwx /notebooks
+RUN mkdir /.local && chmod a+rwx /.local
 WORKDIR /notebooks
 EXPOSE 8888
 
