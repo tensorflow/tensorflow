@@ -883,17 +883,30 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
-                  const RuntimeShape& input_shape, uint8* output_data,
-                  const RuntimeShape& output_shape) {
+inline void ReluX(const tflite::ActivationParams& params,
+                  const RuntimeShape& input_shape, const uint8* input_data,
+
+                  const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const uint8 max_value = params.quantized_activation_max;
+  const uint8 min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
     const uint8 val = input_data[i];
     const uint8 clamped =
         val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }
+}
+
+// Legacy.
+inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
+                  const RuntimeShape& input_shape, uint8* output_data,
+                  const RuntimeShape& output_shape) {
+  tflite::ActivationParams params;
+  params.quantized_activation_max = max_value;
+  params.quantized_activation_min = min_value;
+  ReluX(params, input_shape, input_data, output_shape, output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -3320,14 +3333,21 @@ inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void Floor(const float* input_data, const Dims<4>& input_dims,
-                  float* output_data, const Dims<4>& output_dims) {
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+inline void Floor(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     output_data[offset] = std::floor(input_data[offset]);
   }
+}
+
+// Legacy Dims<4> version.
+inline void Floor(const float* input_data, const Dims<4>& input_dims,
+                  float* output_data, const Dims<4>& output_dims) {
+  Floor(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+        output_data);
 }
 
 template <typename T>
@@ -3349,27 +3369,41 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& unextended_input_shape,
+                           const T* input_data,
+                           const RuntimeShape& unextended_output_size_shape,
                            const int32* output_size_data,
-                           const Dims<4>& output_size_dims, T* output_data,
-                           const Dims<4>& output_dims, bool align_corners) {
-  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  int32 input_height = ArraySize(input_dims, 2);
-  int32 input_width = ArraySize(input_dims, 1);
-  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+                           const RuntimeShape& unextended_output_shape,
+                           T* output_data) {
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  RuntimeShape output_size_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
+  RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
-  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
-  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
-  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  int32 output_height = output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+
   float height_scale = static_cast<float>(input_height) / output_height;
   float width_scale = static_cast<float>(input_width) / output_width;
-  if (align_corners && output_height > 1) {
+  if (op_params.align_corners && output_height > 1) {
     height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
   }
-  if (align_corners && output_width > 1) {
+  if (op_params.align_corners && output_width > 1) {
     width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
   }
 
@@ -3384,19 +3418,32 @@ inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
         int32 x1 = std::min(x0 + 1, input_width - 1);
         for (int c = 0; c < depth; ++c) {
           T interpolation =
-              static_cast<T>(input_data[Offset(input_dims, c, x0, y0, b)] *
+              static_cast<T>(input_data[Offset(input_shape, b, y0, x0, c)] *
                                  (1 - (input_y - y0)) * (1 - (input_x - x0)) +
-                             input_data[Offset(input_dims, c, x0, y1, b)] *
+                             input_data[Offset(input_shape, b, y1, x0, c)] *
                                  (input_y - y0) * (1 - (input_x - x0)) +
-                             input_data[Offset(input_dims, c, x1, y0, b)] *
+                             input_data[Offset(input_shape, b, y0, x1, c)] *
                                  (1 - (input_y - y0)) * (input_x - x0) +
-                             input_data[Offset(input_dims, c, x1, y1, b)] *
+                             input_data[Offset(input_shape, b, y1, x1, c)] *
                                  (input_y - y0) * (input_x - x0));
-          output_data[Offset(output_dims, c, x, y, b)] = interpolation;
+          output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
     }
   }
+}
+
+// Legacy Dims<4>.
+template <typename T>
+inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, T* output_data,
+                           const Dims<4>& output_dims, bool align_corners) {
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = align_corners;
+  ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
+                 DimsToShape(output_size_dims), output_size_data,
+                 DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -3409,6 +3456,7 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                         /*align_corners=*/false);
 }
 
+// Legacy.
 inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, uint8* output_data,
