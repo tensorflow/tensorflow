@@ -32,10 +32,8 @@ class MemoryOptimizer : public GraphOptimizer {
   //   RewriterConfig::memory_optimizer_target_node_name_scope.
   explicit MemoryOptimizer(
       RewriterConfig::MemOptType optimization_level,
-      double per_process_gpu_memory_fraction = 1.0,
       const string& recomputation_targets_name_scope = "gradients/")
       : optimization_level_(optimization_level),
-        per_process_gpu_memory_fraction_(per_process_gpu_memory_fraction),
         recomputation_targets_name_scope_(recomputation_targets_name_scope) {}
   ~MemoryOptimizer() override {}
 
@@ -49,7 +47,6 @@ class MemoryOptimizer : public GraphOptimizer {
 
  private:
   RewriterConfig::MemOptType optimization_level_;
-  double per_process_gpu_memory_fraction_;
   string recomputation_targets_name_scope_;
 };
 
