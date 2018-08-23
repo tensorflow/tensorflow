@@ -379,12 +379,13 @@ def mean(values,
       update_count_op = state_ops.assign_add(count, num_values)
 
     compute_mean = lambda _, t, c: math_ops.div_no_nan(
-        t, c, negative_to_zero=True, name='value')
+        t, math_ops.maximum(c, 0), name='value')
 
     mean_t = _aggregate_across_towers(
         metrics_collections, compute_mean, total, count)
-    update_op = math_ops.div_no_nan(update_total_op, update_count_op,
-                                    negative_to_zero=True, name='update_op')
+    update_op = math_ops.div_no_nan(update_total_op,
+                                    math_ops.maximum(update_count_op, 0),
+                                    name='update_op')
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
@@ -756,21 +757,21 @@ def auc(labels,
       """
       dtp = tp[:num_thresholds - 1] - tp[1:]
       p = tp + fp
-      prec_slope = math_ops.div_no_nan(dtp, p[:num_thresholds - 1] - p[1:],
-                                       negative_to_zero=True,
-                                       name='prec_slope')
+      prec_slope = math_ops.div_no_nan(
+          dtp,
+          math_ops.maximum(p[:num_thresholds - 1] - p[1:], 0),
+          name='prec_slope')
       intercept = tp[1:] - math_ops.multiply(prec_slope, p[1:])
       safe_p_ratio = array_ops.where(
           math_ops.logical_and(p[:num_thresholds - 1] > 0, p[1:] > 0),
-          math_ops.div_no_nan(p[:num_thresholds - 1], p[1:],
-                              negative_to_zero=True,
+          math_ops.div_no_nan(p[:num_thresholds - 1],
+                              math_ops.maximum(p[1:], 0),
                               name='recall_relative_ratio'),
           array_ops.ones_like(p[1:]))
       return math_ops.reduce_sum(
           math_ops.div_no_nan(
               prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
-              tp[1:] + fn[1:],
-              negative_to_zero=True,
+              math_ops.maximum(tp[1:] + fn[1:], 0),
               name='pr_auc_increment'),
           name='interpolate_pr_auc')
 
@@ -1052,7 +1053,7 @@ def mean_per_class_accuracy(labels,
 
     def compute_mean_accuracy(_, count, total):
       per_class_accuracy = math_ops.div_no_nan(
-          count, total, negative_to_zero=True, name=None)
+          count, math_ops.maximum(total, 0), name=None)
       mean_accuracy_v = math_ops.reduce_mean(
           per_class_accuracy, name='mean_accuracy')
       return mean_accuracy_v
@@ -1060,8 +1061,8 @@ def mean_per_class_accuracy(labels,
     mean_accuracy_v = _aggregate_across_towers(
         metrics_collections, compute_mean_accuracy, count, total)
 
-    update_op = math_ops.div_no_nan(update_count_op, update_total_op,
-                                    negative_to_zero=True,
+    update_op = math_ops.div_no_nan(update_count_op,
+                                    math_ops.maximum(update_total_op, 0),
                                     name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
@@ -1372,13 +1373,13 @@ def mean_tensor(values,
       update_count_op = state_ops.assign_add(count, num_values)
 
     compute_mean = lambda _, t, c: math_ops.div_no_nan(
-        t, c, negative_to_zero=True, name='value')
+        t, math_ops.maximum(c, 0), name='value')
 
     mean_t = _aggregate_across_towers(
         metrics_collections, compute_mean, total, count)
 
-    update_op = math_ops.div_no_nan(update_total_op, update_count_op,
-                                    negative_to_zero=True,
+    update_op = math_ops.div_no_nan(update_total_op,
+                                    math_ops.maximum(update_count_op, 0),
                                     name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
