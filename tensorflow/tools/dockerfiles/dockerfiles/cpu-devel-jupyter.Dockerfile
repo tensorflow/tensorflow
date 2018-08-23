@@ -88,7 +88,7 @@ RUN echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8
     apt-get install -y bazel
 
 COPY bashrc /etc/bash.bashrc
-RUN chmod 777 /etc/bash.bashrc
+RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter
 
