@@ -213,8 +213,13 @@ def _generate_feature_name_mapping(sorted_feature_columns):
                     feature_column_lib._VocabularyListCategoricalColumn):  # pylint:disable=protected-access
         for value in categorical_column.vocabulary_list:
           names.append('{}:{}'.format(column.name, value))
+      elif isinstance(categorical_column,
+                      feature_column_lib._BucketizedColumn):  # pylint:disable=protected-access
+        boundaries = [-np.inf] + list(categorical_column.boundaries) + [np.inf]
+        for pair in zip(boundaries[:-1], boundaries[1:]):
+          names.append('{}:{}'.format(column.name, pair))
       else:
-        for num in categorical_column._num_buckets:  # pylint:disable=protected-access
+        for num in range(categorical_column._num_buckets):  # pylint:disable=protected-access
           names.append('{}:{}'.format(column.name, num))
     else:
       names.append(column.name)
