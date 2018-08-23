@@ -109,6 +109,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       """Enqueue ops for one iteration."""
       control_deps = []
       sharded_inputs = []
+      # TODO(sourabhbajaj): Add support for TPU pods
       with ops.device(self._host):
         for _ in range(self.num_towers):
           # Use control dependencies to ensure a deterministic ordering.
@@ -261,4 +262,4 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
   @property
   def num_towers(self):
-    return self._num_cores_override or self._tpu_metadata.num_of_cores_per_host
+    return self._num_cores_override or self._tpu_metadata.num_cores
