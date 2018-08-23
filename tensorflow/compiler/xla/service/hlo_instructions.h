@@ -218,7 +218,31 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
       HloCloneContext* context) const override;
 };
 
-class HloAllReduceInstruction : public HloInstruction {
+class HloCollectiveInstruction : public HloInstruction {
+ public:
+  const std::vector<ReplicaGroup>& replica_groups() const {
+    return replica_groups_;
+  }
+
+ protected:
+  explicit HloCollectiveInstruction(
+      HloOpcode opcode, const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const std::vector<ReplicaGroup>& replica_groups);
+
+  HloInstructionProto ToProto() const override;
+
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  std::vector<ReplicaGroup> replica_groups_;
+};
+
+class HloAllReduceInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllReduceInstruction(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
@@ -226,10 +250,6 @@ class HloAllReduceInstruction : public HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups,
       tensorflow::StringPiece barrier,
       const absl::optional<int64>& all_reduce_id);
-
-  const std::vector<ReplicaGroup>& replica_groups() const {
-    return replica_groups_;
-  }
 
   // Returns the barrier config used for the CrossReplicaSum implementation of
   // each backend.
@@ -259,9 +279,6 @@ class HloAllReduceInstruction : public HloInstruction {
       tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
       HloCloneContext* context) const override;
 
-  // The replica ids of each subgroup for CrossReplicaSum op.
-  std::vector<ReplicaGroup> replica_groups_;
-
   // The string representation of the barrier config used for CrossReplicaSum.
   string cross_replica_sum_barrier_;
 
@@ -271,33 +288,18 @@ class HloAllReduceInstruction : public HloInstruction {
   absl::optional<int64> all_reduce_id_;
 };
 
-class HloAllToAllInstruction : public HloInstruction {
+class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllToAllInstruction(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operand,
       const std::vector<ReplicaGroup>& replica_groups);
 
-  const std::vector<ReplicaGroup>& replica_groups() const {
-    return replica_groups_;
-  }
-
-  HloInstructionProto ToProto() const override;
-
  private:
-  std::vector<string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
-
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
       HloCloneContext* context) const override;
-
-  std::vector<ReplicaGroup> replica_groups_;
 };
 
 class HloReverseInstruction : public HloInstruction {

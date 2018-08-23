@@ -3183,26 +3183,16 @@ const string& HloInstruction::outfeed_config() const {
 }
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
-  if (opcode() == HloOpcode::kCrossReplicaSum) {
-    return Cast<HloAllReduceInstruction>(this)->replica_groups();
-  }
-  return Cast<HloAllToAllInstruction>(this)->replica_groups();
+  return Cast<HloCollectiveInstruction>(this)->replica_groups();
 }
 
 string HloInstruction::cross_replica_sum_barrier() const {
-  if (opcode() == HloOpcode::kCrossReplicaSum) {
     return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
-  }
-  return Cast<HloAllToAllInstruction>(this)->cross_replica_sum_barrier();
 }
 
 void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
-  if (opcode() == HloOpcode::kCrossReplicaSum) {
     return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
         barrier);
-  }
-  return Cast<HloAllToAllInstruction>(this)->set_cross_replica_sum_barrier(
-      barrier);
 }
 
 absl::optional<int64> HloInstruction::all_reduce_id() const {
