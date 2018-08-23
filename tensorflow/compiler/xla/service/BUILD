@@ -952,6 +952,7 @@ tf_cc_test(
     deps = [
         ":buffer_liveness",
         ":hlo",
+        ":hlo_dataflow_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

@@ -254,6 +254,10 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   }
   // All uses of 'a' must be before 'b' is defined.
   for (const HloUse& use : a.uses()) {
+    if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
+                                         use.instruction)) {
+      continue;
+    }
     if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
       VLOG(4) << "use of " << a << " (" << use << ") not before " << b
               << " is defined";

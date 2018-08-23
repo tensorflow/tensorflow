@@ -977,28 +977,22 @@ Status HloDataflowAnalysis::Verify() const {
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
     const HloInstruction* operand, const ShapeIndex& index,
     const HloInstruction* user) const {
-  CHECK(user->IsUserOf(operand))
-      << "user: " << user->ToString() << " operand: " << operand->ToString();
-  if (user->opcode() == HloOpcode::kFusion &&
-      user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
-    // Find fusion parameter associated with 'operand'.
-    HloInstruction* fusion_param =
-        user->fused_parameter(user->operand_index(operand));
-    // Iterate through all users of all uses of the fusion parameter value.
-    // Return false if any uses are detected, returns true otherwise.
-    const HloValue& value = GetValueDefinedAt(fusion_param, index);
-    return value.uses().empty();
-  } else {
-    // Return false if no value at 'operand' and 'index' is used at 'user'.
-    for (const HloValue* value : GetValueSet(operand, index).values()) {
-      for (const HloUse& use : value->uses()) {
-        if (use.instruction == user) {
-          return false;
+  // Return false if no value at 'operand' and 'index' is used at 'user'.
+  for (const HloValue* value : GetValueSet(operand, index).values()) {
+    for (const HloUse& use : value->uses()) {
+      if (use.instruction == user) {
+        if (user->opcode() == HloOpcode::kFusion &&
+            user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+          HloInstruction* fusion_param =
+              user->fused_parameter(use.operand_number);
+          const HloValue& value =
+              GetValueDefinedAt(fusion_param, use.operand_index);
+          return value.uses().empty();
         }
+        return false;
       }
     }
   }
-
   return true;
 }
 
