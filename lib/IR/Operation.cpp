@@ -24,7 +24,7 @@
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
-Operation::Operation(Identifier name, bool isInstruction,
+Operation::Operation(bool isInstruction, Identifier name,
                      ArrayRef<NamedAttribute> attrs, MLIRContext *context)
     : nameAndIsInstruction(name, isInstruction) {
   this->attrs = AttributeListStorage::get(attrs, context);
@@ -42,6 +42,14 @@ MLIRContext *Operation::getContext() const {
   if (auto *inst = dyn_cast<OperationInst>(this))
     return inst->getContext();
   return cast<OperationStmt>(this)->getContext();
+}
+
+/// The source location the operation was defined or derived from.  Note that
+/// it is possible for this pointer to be null.
+Attribute *Operation::getLoc() const {
+  if (auto *inst = dyn_cast<OperationInst>(this))
+    return inst->getLoc();
+  return cast<OperationStmt>(this)->getLoc();
 }
 
 /// Return the function this operation is defined in.
@@ -139,14 +147,14 @@ auto Operation::removeAttr(Identifier name) -> RemoveResult {
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Operation::emitNote(const Twine &message) const {
-  getContext()->emitDiagnostic(getAttr(":location"), message,
+  getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Note);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Operation::emitWarning(const Twine &message) const {
-  getContext()->emitDiagnostic(getAttr(":location"), message,
+  getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Warning);
 }
 
@@ -155,6 +163,6 @@ void Operation::emitWarning(const Twine &message) const {
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
 void Operation::emitError(const Twine &message) const {
-  getContext()->emitDiagnostic(getAttr(":location"), message,
+  getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Error);
 }

@@ -27,6 +27,7 @@
 #include "llvm/ADT/ilist_node.h"
 
 namespace mlir {
+class Attribute;
 class MLFunction;
 class StmtBlock;
 class ForStmt;
@@ -46,6 +47,14 @@ public:
   };
 
   Kind getKind() const { return kind; }
+
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const;
+
+  /// The source location the operation was defined or derived from.  Note that
+  /// it is possible for this pointer to be null.
+  Attribute *getLoc() const { return location; }
+
   /// Remove this statement from its block and delete it.
   void eraseFromBlock();
 
@@ -82,8 +91,22 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
+  /// Emit an error about fatal conditions with this operation, reporting up to
+  /// any diagnostic handlers that may be listening.  NOTE: This may terminate
+  /// the containing application, only use when the IR is in an inconsistent
+  /// state.
+  void emitError(const Twine &message) const;
+
+  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitWarning(const Twine &message) const;
+
+  /// Emit a note about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitNote(const Twine &message) const;
+
 protected:
-  Statement(Kind kind) : kind(kind) {}
+  Statement(Kind kind, Attribute *location) : kind(kind), location(location) {}
   // Statements are deleted through the destroy() member because this class
   // does not have a virtual destructor.
   ~Statement();
@@ -92,6 +115,10 @@ private:
   Kind kind;
   /// The statement block that containts this statement.
   StmtBlock *block = nullptr;
+
+  /// This holds information about the source location the operation was defined
+  /// or derived from.
+  Attribute *location;
 
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Statement>;

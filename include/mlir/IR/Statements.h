@@ -40,13 +40,19 @@ class OperationStmt final
       private llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult> {
 public:
   /// Create a new OperationStmt with the specific fields.
-  static OperationStmt *create(Identifier name, ArrayRef<MLValue *> operands,
+  static OperationStmt *create(Attribute *location, Identifier name,
+                               ArrayRef<MLValue *> operands,
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
+
+  using Statement::emitError;
+  using Statement::emitNote;
+  using Statement::emitWarning;
+  using Statement::getLoc;
 
   /// Check if this statement is a return statement.
   bool isReturn() const { return getName().str() == "return"; }
@@ -179,8 +185,9 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationStmt(Identifier name, unsigned numOperands, unsigned numResults,
-                ArrayRef<NamedAttribute> attributes, MLIRContext *context);
+  OperationStmt(Attribute *location, Identifier name, unsigned numOperands,
+                unsigned numResults, ArrayRef<NamedAttribute> attributes,
+                MLIRContext *context);
   ~OperationStmt();
 
   // This stuff is used by the TrailingObjects template.
@@ -198,7 +205,7 @@ class ForStmt : public Statement, public MLValue, public StmtBlock {
 public:
   // TODO: lower and upper bounds should be affine maps with
   // dimension and symbol use lists.
-  explicit ForStmt(AffineConstantExpr *lowerBound,
+  explicit ForStmt(Attribute *location, AffineConstantExpr *lowerBound,
                    AffineConstantExpr *upperBound, int64_t step,
                    MLIRContext *context);
 
@@ -275,10 +282,7 @@ private:
 /// If statement restricts execution to a subset of the loop iteration space.
 class IfStmt : public Statement {
 public:
-  explicit IfStmt(IntegerSet *condition)
-      : Statement(Kind::If), thenClause(new IfClause(this)),
-        elseClause(nullptr), condition(condition) {}
-
+  explicit IfStmt(Attribute *location, IntegerSet *condition);
   ~IfStmt();
 
   IfClause *getThen() const { return thenClause; }
@@ -296,6 +300,8 @@ public:
   }
 
 private:
+  // TODO: The 'If' always has an associated 'theClause', we should be able to
+  // store the IfClause object for it inline to save an extra allocation.
   IfClause *thenClause;
   IfClause *elseClause;
   // TODO(shpeisman): please name the ifStmt's conditional encapsulating

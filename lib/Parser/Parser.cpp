@@ -120,6 +120,10 @@ public:
   const Token &getToken() const { return state.curToken; }
   StringRef getTokenSpelling() const { return state.curToken.getSpelling(); }
 
+  /// Encode the specified source location information into an attribute for
+  /// attachment to the IR.
+  Attribute *getEncodedSourceLocation(llvm::SMLoc loc);
+
   /// Emit an error and return failure.
   ParseResult emitError(const Twine &message) {
     return emitError(state.curToken.getLoc(), message);
@@ -202,6 +206,20 @@ private:
 //===----------------------------------------------------------------------===//
 // Helper methods.
 //===----------------------------------------------------------------------===//
+
+/// Encode the specified source location information into an attribute for
+/// attachment to the IR.
+Attribute *Parser::getEncodedSourceLocation(llvm::SMLoc loc) {
+  // TODO(clattner): Switch to an more structured form that includes
+  // file/line/column instead of just byte offset in the file.  This will
+  // eliminate this block of low level code poking at the SourceMgr directly.
+  auto &sourceMgr = getSourceMgr();
+  auto fileID = sourceMgr.FindBufferContainingLoc(loc);
+
+  auto *srcBuffer = sourceMgr.getMemoryBuffer(fileID);
+  unsigned locationEncoding = loc.getPointer() - srcBuffer->getBufferStart();
+  return builder.getIntegerAttr(locationEncoding);
+}
 
 ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   // If we hit a parse error in response to a lexer error, then the lexer
@@ -1367,8 +1385,11 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   // We create these placeholders as having an empty name, which we know cannot
   // be created through normal user input, allowing us to distinguish them.
   auto name = Identifier::get("placeholder", getContext());
-  auto *inst = OperationInst::create(name, /*operands*/ {}, type, /*attrs*/ {},
-                                     getContext());
+  auto *inst =
+      // FIXME(clattner): encode the location into the placeholder instead of
+      // into the forwardReferencePlaceholders map!
+      OperationInst::create(/*location=*/nullptr, name, /*operands=*/{}, type,
+                            /*attrs=*/{}, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }
@@ -1606,19 +1627,6 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   if (!op)
     return ParseFailure;
 
-  // Apply location information to the instruction.
-  // TODO(clattner): make this more principled.  We shouldn't overwrite existing
-  // location info, we should use a better serialized form, and we shouldn't
-  // be using the :location attribute.  This is also pretty inefficient.
-  {
-    auto &sourceMgr = getSourceMgr();
-    auto fileID = sourceMgr.FindBufferContainingLoc(loc);
-    auto *srcBuffer = sourceMgr.getMemoryBuffer(fileID);
-    unsigned locationEncoding = loc.getPointer() - srcBuffer->getBufferStart();
-    op->setAttr(builder.getIdentifier(":location"),
-                builder.getIntegerAttr(locationEncoding));
-  }
-
   // We just parsed an operation.  If it is a recognized one, verify that it
   // is structurally as we expect.  If not, produce an error with a reasonable
   // source location.
@@ -1642,13 +1650,17 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
 
 Operation *FunctionParser::parseVerboseOperation(
     const CreateOperationFunction &createOpFunc) {
+
+  // Get location information for the operation.
+  auto *srcLocation = getEncodedSourceLocation(getToken().getLoc());
+
   auto name = getToken().getStringValue();
   if (name.empty())
     return (emitError("empty operation name is invalid"), nullptr);
 
   consumeToken(Token::string);
 
-  OperationState result(builder.getContext(), name);
+  OperationState result(builder.getContext(), srcLocation, name);
 
   // Parse the operand list.
   SmallVector<SSAUseInfo, 8> operandInfos;
@@ -1915,8 +1927,11 @@ Operation *FunctionParser::parseCustomOperation(
   llvm::PrettyStackTraceFormat fmt("MLIR Parser: custom op parser '%s'",
                                    opNameStr.c_str());
 
+  // Get location information for the operation.
+  auto *srcLocation = getEncodedSourceLocation(opLoc);
+
   // Have the op implementation take a crack and parsing this.
-  OperationState opState(builder.getContext(), opName);
+  OperationState opState(builder.getContext(), srcLocation, opName);
   if (opDefinition->parseAssembly(&opAsmParser, &opState))
     return nullptr;
 
@@ -2100,6 +2115,8 @@ ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
 ///   terminator-stmt ::= `return` ssa-use-and-type-list?
 ///
 TerminatorInst *CFGFunctionParser::parseTerminator() {
+  auto loc = getToken().getLoc();
+
   switch (getToken().getKind()) {
   default:
     return (emitError("expected terminator at end of basic block"), nullptr);
@@ -2111,7 +2128,7 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
     SmallVector<CFGValue *, 8> operands;
     if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized*/ false))
       return nullptr;
-    return builder.createReturnInst(operands);
+    return builder.createReturnInst(getEncodedSourceLocation(loc), operands);
   }
 
   case Token::kw_br: {
@@ -2120,7 +2137,8 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
     SmallVector<CFGValue *, 4> values;
     if (parseBranchBlockAndUseList(destBB, values))
       return nullptr;
-    auto branch = builder.createBranchInst(destBB);
+    auto branch =
+        builder.createBranchInst(getEncodedSourceLocation(loc), destBB);
     branch->addOperands(values);
     return branch;
   }
@@ -2149,7 +2167,8 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
     if (parseBranchBlockAndUseList(falseBlock, falseOperands))
       return nullptr;
 
-    auto branch = builder.createCondBranchInst(cast<CFGValue>(cond), trueBlock,
+    auto branch = builder.createCondBranchInst(getEncodedSourceLocation(loc),
+                                               cast<CFGValue>(cond), trueBlock,
                                                falseBlock);
     branch->addTrueOperands(trueOperands);
     branch->addFalseOperands(falseOperands);
@@ -2240,7 +2259,8 @@ ParseResult MLFunctionParser::parseForStmt() {
   }
 
   // Create for statement.
-  ForStmt *forStmt = builder.createFor(lowerBound, upperBound, step);
+  ForStmt *forStmt = builder.createFor(getEncodedSourceLocation(loc),
+                                       lowerBound, upperBound, step);
 
   // Create SSA value definition for the induction variable.
   if (addDefinition({inductionVariableName, 0, loc}, forStmt))
@@ -2394,6 +2414,7 @@ IntegerSet *Parser::parseIntegerSetReference() {
 ///               | ml-if-head `else` `{` ml-stmt* `}`
 ///
 ParseResult MLFunctionParser::parseIfStmt() {
+  auto loc = getToken().getLoc();
   consumeToken(Token::kw_if);
 
   if (parseToken(Token::l_paren, "expected '('"))
@@ -2406,7 +2427,7 @@ ParseResult MLFunctionParser::parseIfStmt() {
   if (parseToken(Token::r_paren, "expected ')'"))
     return ParseFailure;
 
-  IfStmt *ifStmt = builder.createIf(condition);
+  IfStmt *ifStmt = builder.createIf(getEncodedSourceLocation(loc), condition);
   IfClause *thenClause = ifStmt->getThen();
 
   // When parsing of an if statement body fails, the IR contains

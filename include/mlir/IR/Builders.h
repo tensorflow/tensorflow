@@ -174,8 +174,8 @@ public:
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Args... args) {
-    OperationState state(getContext(), OpTy::getOperationName());
+  OpPointer<OpTy> create(Attribute *location, Args... args) {
+    OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);
     auto result = inst->template getAs<OpTy>();
@@ -191,19 +191,20 @@ public:
 
   // Terminators.
 
-  ReturnInst *createReturnInst(ArrayRef<CFGValue *> operands) {
-    return insertTerminator(ReturnInst::create(operands));
+  ReturnInst *createReturnInst(Attribute *location,
+                               ArrayRef<CFGValue *> operands) {
+    return insertTerminator(ReturnInst::create(location, operands));
   }
 
-  BranchInst *createBranchInst(BasicBlock *dest) {
-    return insertTerminator(BranchInst::create(dest));
+  BranchInst *createBranchInst(Attribute *location, BasicBlock *dest) {
+    return insertTerminator(BranchInst::create(location, dest));
   }
 
-  CondBranchInst *createCondBranchInst(CFGValue *condition,
+  CondBranchInst *createCondBranchInst(Attribute *location, CFGValue *condition,
                                        BasicBlock *trueDest,
                                        BasicBlock *falseDest) {
     return insertTerminator(
-        CondBranchInst::create(condition, trueDest, falseDest));
+        CondBranchInst::create(location, condition, trueDest, falseDest));
   }
 
 private:
@@ -280,8 +281,8 @@ public:
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Args... args) {
-    OperationState state(getContext(), OpTy::getOperationName());
+  OpPointer<OpTy> create(Attribute *location, Args... args) {
+    OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *stmt = createOperation(state);
     auto result = stmt->template getAs<OpTy>();
@@ -302,14 +303,10 @@ public:
   }
 
   // Creates for statement. When step is not specified, it is set to 1.
-  ForStmt *createFor(AffineConstantExpr *lowerBound,
+  ForStmt *createFor(Attribute *location, AffineConstantExpr *lowerBound,
                      AffineConstantExpr *upperBound, int64_t step = 1);
 
-  IfStmt *createIf(IntegerSet *condition) {
-    auto *stmt = new IfStmt(condition);
-    block->getStatements().insert(insertPoint, stmt);
-    return stmt;
-  }
+  IfStmt *createIf(Attribute *location, IntegerSet *condition);
 
 private:
   StmtBlock *block = nullptr;

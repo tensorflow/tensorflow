@@ -196,7 +196,8 @@ bool LoopUnroll::loopUnrollFull(ForStmt *forStmt) {
     // value and add an operand mapping for it.
     if (!forStmt->use_empty()) {
       auto *ivConst =
-          funcTopBuilder.create<ConstantAffineIntOp>(i)->getResult();
+          funcTopBuilder.create<ConstantAffineIntOp>(forStmt->getLoc(), i)
+              ->getResult();
       operandMapping[forStmt] = cast<MLValue>(ivConst);
     }
 
@@ -261,7 +262,8 @@ bool LoopUnroll::loopUnrollByFactor(ForStmt *forStmt, unsigned unrollFactor) {
                                           builder.getConstantExpr(i * step));
       auto *bumpMap = builder.getAffineMap(1, 0, {bumpExpr}, {});
       auto *ivUnroll =
-          builder.create<AffineApplyOp>(bumpMap, forStmt)->getResult(0);
+          builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)
+              ->getResult(0);
       operandMapping[forStmt] = cast<MLValue>(ivUnroll);
     }
 

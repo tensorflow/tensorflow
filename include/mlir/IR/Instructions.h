@@ -49,6 +49,10 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
+  /// The source location the operation was defined or derived from.  Note that
+  /// it is possible for this pointer to be null.
+  Attribute *getLoc() const { return location; }
+
   /// Return the BasicBlock containing this instruction.
   BasicBlock *getBlock() const { return block; }
 
@@ -119,8 +123,23 @@ public:
   /// be deleted.
   void dropAllReferences();
 
+  /// Emit an error about fatal conditions with this operation, reporting up to
+  /// any diagnostic handlers that may be listening.  NOTE: This may terminate
+  /// the containing application, only use when the IR is in an inconsistent
+  /// state.
+  void emitError(const Twine &message) const;
+
+  /// Emit a warning about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitWarning(const Twine &message) const;
+
+  /// Emit a note about this operation, reporting up to any diagnostic
+  /// handlers that may be listening.
+  void emitNote(const Twine &message) const;
+
 protected:
-  Instruction(Kind kind) : kind(kind) {}
+  Instruction(Kind kind, Attribute *location)
+      : kind(kind), location(location) {}
 
   // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.  A vtable would bloat the size of
@@ -131,6 +150,10 @@ protected:
 private:
   Kind kind;
   BasicBlock *block = nullptr;
+
+  /// This holds information about the source location the operation was defined
+  /// or derived from.
+  Attribute *location;
 
   friend struct llvm::ilist_traits<OperationInst>;
   friend class BasicBlock;
@@ -150,13 +173,17 @@ class OperationInst final
       private llvm::TrailingObjects<OperationInst, InstOperand, InstResult> {
 public:
   /// Create a new OperationInst with the specific fields.
-  static OperationInst *create(Identifier name, ArrayRef<CFGValue *> operands,
+  static OperationInst *create(Attribute *location, Identifier name,
+                               ArrayRef<CFGValue *> operands,
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 
-  /// Return the context this operation is associated with.
-  MLIRContext *getContext() const { return Instruction::getContext(); }
+  using Instruction::emitError;
+  using Instruction::emitNote;
+  using Instruction::emitWarning;
+  using Instruction::getContext;
+  using Instruction::getLoc;
 
   OperationInst *clone() const;
 
@@ -278,8 +305,9 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationInst(Identifier name, unsigned numOperands, unsigned numResults,
-                ArrayRef<NamedAttribute> attributes, MLIRContext *context);
+  OperationInst(Attribute *location, Identifier name, unsigned numOperands,
+                unsigned numResults, ArrayRef<NamedAttribute> attributes,
+                MLIRContext *context);
   ~OperationInst();
 
   // This stuff is used by the TrailingObjects template.
@@ -323,7 +351,8 @@ public:
   }
 
 protected:
-  TerminatorInst(Kind kind) : Instruction(kind) {}
+  TerminatorInst(Kind kind, Attribute *location)
+      : Instruction(kind, location) {}
   ~TerminatorInst() {}
 };
 
@@ -331,7 +360,9 @@ protected:
 /// and may pass basic block arguments to the successor.
 class BranchInst : public TerminatorInst {
 public:
-  static BranchInst *create(BasicBlock *dest) { return new BranchInst(dest); }
+  static BranchInst *create(Attribute *location, BasicBlock *dest) {
+    return new BranchInst(location, dest);
+  }
   ~BranchInst() {}
 
   /// Return the block this branch jumps to.
@@ -361,7 +392,7 @@ public:
   }
 
 private:
-  explicit BranchInst(BasicBlock *dest);
+  explicit BranchInst(Attribute *location, BasicBlock *dest);
 
   BasicBlockOperand dest;
   std::vector<InstOperand> operands;
@@ -375,9 +406,9 @@ class CondBranchInst : public TerminatorInst {
   enum { trueIndex = 0, falseIndex = 1 };
 
 public:
-  static CondBranchInst *create(CFGValue *condition, BasicBlock *trueDest,
-                                BasicBlock *falseDest) {
-    return new CondBranchInst(condition, trueDest, falseDest);
+  static CondBranchInst *create(Attribute *location, CFGValue *condition,
+                                BasicBlock *trueDest, BasicBlock *falseDest) {
+    return new CondBranchInst(location, condition, trueDest, falseDest);
   }
   ~CondBranchInst() {}
 
@@ -521,7 +552,7 @@ public:
   }
 
 private:
-  CondBranchInst(CFGValue *condition, BasicBlock *trueDest,
+  CondBranchInst(Attribute *location, CFGValue *condition, BasicBlock *trueDest,
                  BasicBlock *falseDest);
 
   CFGValue *condition;
@@ -541,7 +572,7 @@ class ReturnInst final
       private llvm::TrailingObjects<ReturnInst, InstOperand> {
 public:
   /// Create a new ReturnInst with the specific fields.
-  static ReturnInst *create(ArrayRef<CFGValue *> operands);
+  static ReturnInst *create(Attribute *location, ArrayRef<CFGValue *> operands);
 
   unsigned getNumOperands() const { return numOperands; }
 
@@ -566,8 +597,7 @@ private:
     return numOperands;
   }
 
-  explicit ReturnInst(unsigned numOperands)
-      : TerminatorInst(Kind::Return), numOperands(numOperands) {}
+  ReturnInst(Attribute *location, unsigned numOperands);
   ~ReturnInst();
 
   unsigned numOperands;

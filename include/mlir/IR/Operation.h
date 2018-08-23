@@ -46,6 +46,7 @@ typedef std::pair<Identifier, Attribute*> NamedAttribute;
 /// this in a collection.
 struct OperationState {
   MLIRContext *const context;
+  Attribute *location;
   Identifier name;
   SmallVector<SSAValue *, 4> operands;
   /// Types of the results of this operation.
@@ -53,16 +54,18 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
 
 public:
-  OperationState(MLIRContext *context, StringRef name)
-      : context(context), name(Identifier::get(name, context)) {}
+  OperationState(MLIRContext *context, Attribute *location, StringRef name)
+      : context(context), location(location),
+        name(Identifier::get(name, context)) {}
 
-  OperationState(MLIRContext *context, Identifier name)
-      : context(context), name(name) {}
+  OperationState(MLIRContext *context, Attribute *location, Identifier name)
+      : context(context), location(location), name(name) {}
 
-  OperationState(MLIRContext *context, StringRef name,
+  OperationState(MLIRContext *context, Attribute *location, StringRef name,
                  ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
                  ArrayRef<NamedAttribute> attributes = {})
-      : context(context), name(Identifier::get(name, context)),
+      : context(context), location(location),
+        name(Identifier::get(name, context)),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
         attributes(attributes.begin(), attributes.end()) {}
@@ -88,6 +91,10 @@ class Operation {
 public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
+
+  /// The source location the operation was defined or derived from.  Note that
+  /// it is possible for this pointer to be null.
+  Attribute *getLoc() const;
 
   /// Return the function this operation is defined in.  This has a verbose
   /// name to avoid name lookup ambiguities.
@@ -236,7 +243,7 @@ public:
   }
 
 protected:
-  Operation(Identifier name, bool isInstruction, ArrayRef<NamedAttribute> attrs,
+  Operation(bool isInstruction, Identifier name, ArrayRef<NamedAttribute> attrs,
             MLIRContext *context);
   ~Operation();
 
@@ -247,6 +254,8 @@ private:
   /// This holds the name of the operation, and a bool.  The bool is true if
   /// this operation is an OperationInst, false if it is a OperationStmt.
   llvm::PointerIntPair<Identifier, 1, bool> nameAndIsInstruction;
+
+  /// This holds general named attributes for the operation.
   AttributeListStorage *attrs;
 };
 

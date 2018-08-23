@@ -182,8 +182,8 @@ OperationInst *CFGFuncBuilder::createOperation(const OperationState &state) {
   for (auto elt : state.operands)
     operands.push_back(cast<CFGValue>(elt));
 
-  auto *op = OperationInst::create(state.name, operands, state.types,
-                                   state.attributes, context);
+  auto *op = OperationInst::create(state.location, state.name, operands,
+                                   state.types, state.attributes, context);
   block->getOperations().insert(insertPoint, op);
   return op;
 }
@@ -199,16 +199,23 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
   for (auto elt : state.operands)
     operands.push_back(cast<MLValue>(elt));
 
-  auto *op = OperationStmt::create(state.name, operands, state.types,
-                                   state.attributes, context);
+  auto *op = OperationStmt::create(state.location, state.name, operands,
+                                   state.types, state.attributes, context);
   block->getStatements().insert(insertPoint, op);
   return op;
 }
 
-ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
+ForStmt *MLFuncBuilder::createFor(Attribute *location,
+                                  AffineConstantExpr *lowerBound,
                                   AffineConstantExpr *upperBound,
                                   int64_t step) {
-  auto *stmt = new ForStmt(lowerBound, upperBound, step, context);
+  auto *stmt = new ForStmt(location, lowerBound, upperBound, step, context);
+  block->getStatements().insert(insertPoint, stmt);
+  return stmt;
+}
+
+IfStmt *MLFuncBuilder::createIf(Attribute *location, IntegerSet *condition) {
+  auto *stmt = new IfStmt(location, condition);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;
 }

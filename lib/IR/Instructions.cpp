@@ -17,6 +17,7 @@
 
 #include "mlir/IR/Instructions.h"
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLIRContext.h"
 using namespace mlir;
 
 /// Replace all uses of 'this' value with the new value, updating anything in
@@ -118,12 +119,35 @@ void Instruction::dropAllReferences() {
       dest.drop();
 }
 
+/// Emit a note about this instruction, reporting up to any diagnostic
+/// handlers that may be listening.
+void Instruction::emitNote(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Note);
+}
+
+/// Emit a warning about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void Instruction::emitWarning(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Warning);
+}
+
+/// Emit an error about fatal conditions with this instruction, reporting up to
+/// any diagnostic handlers that may be listening.  NOTE: This may terminate
+/// the containing application, only use when the IR is in an inconsistent
+/// state.
+void Instruction::emitError(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Error);
+}
+
 //===----------------------------------------------------------------------===//
 // OperationInst
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specific fields.
-OperationInst *OperationInst::create(Identifier name,
+OperationInst *OperationInst::create(Attribute *location, Identifier name,
                                      ArrayRef<CFGValue *> operands,
                                      ArrayRef<Type *> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -134,7 +158,7 @@ OperationInst *OperationInst::create(Identifier name,
 
   // Initialize the OperationInst part of the instruction.
   auto inst = ::new (rawMem) OperationInst(
-      name, operands.size(), resultTypes.size(), attributes, context);
+      location, name, operands.size(), resultTypes.size(), attributes, context);
 
   // Initialize the operands and results.
   auto instOperands = inst->getInstOperands();
@@ -151,23 +175,23 @@ OperationInst *OperationInst::clone() const {
   SmallVector<CFGValue *, 8> operands;
   SmallVector<Type *, 8> resultTypes;
 
-  // TODO(clattner): switch to iterator logic.
   // Put together the operands and results.
-  for (unsigned i = 0, e = getNumOperands(); i != e; ++i)
-    operands.push_back(getInstOperand(i).get());
+  for (auto *operand : getOperands())
+    operands.push_back(const_cast<CFGValue *>(operand));
 
-  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
-    resultTypes.push_back(getInstResult(i).getType());
+  for (auto *result : getResults())
+    resultTypes.push_back(result->getType());
 
-  return create(getName(), operands, resultTypes, getAttrs(), getContext());
+  return create(getLoc(), getName(), operands, resultTypes, getAttrs(),
+                getContext());
 }
 
-OperationInst::OperationInst(Identifier name, unsigned numOperands,
-                             unsigned numResults,
+OperationInst::OperationInst(Attribute *location, Identifier name,
+                             unsigned numOperands, unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Operation(name, /*isInstruction=*/true, attributes, context),
-      Instruction(Kind::Operation), numOperands(numOperands),
+    : Operation(/*isInstruction=*/true, name, attributes, context),
+      Instruction(Kind::Operation, location), numOperands(numOperands),
       numResults(numResults) {}
 
 OperationInst::~OperationInst() {
@@ -257,12 +281,13 @@ MutableArrayRef<BasicBlockOperand> TerminatorInst::getBasicBlockOperands() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specific fields.
-ReturnInst *ReturnInst::create(ArrayRef<CFGValue *> operands) {
+ReturnInst *ReturnInst::create(Attribute *location,
+                               ArrayRef<CFGValue *> operands) {
   auto byteSize = totalSizeToAlloc<InstOperand>(operands.size());
   void *rawMem = malloc(byteSize);
 
   // Initialize the ReturnInst part of the instruction.
-  auto inst = ::new (rawMem) ReturnInst(operands.size());
+  auto inst = ::new (rawMem) ReturnInst(location, operands.size());
 
   // Initialize the operands and results.
   auto instOperands = inst->getInstOperands();
@@ -270,6 +295,9 @@ ReturnInst *ReturnInst::create(ArrayRef<CFGValue *> operands) {
     new (&instOperands[i]) InstOperand(inst, operands[i]);
   return inst;
 }
+
+ReturnInst::ReturnInst(Attribute *location, unsigned numOperands)
+    : TerminatorInst(Kind::Return, location), numOperands(numOperands) {}
 
 void ReturnInst::destroy() {
   this->~ReturnInst();
@@ -286,8 +314,8 @@ ReturnInst::~ReturnInst() {
 // BranchInst
 //===----------------------------------------------------------------------===//
 
-BranchInst::BranchInst(BasicBlock *dest)
-    : TerminatorInst(Kind::Branch), dest(this, dest) {}
+BranchInst::BranchInst(Attribute *location, BasicBlock *dest)
+    : TerminatorInst(Kind::Branch, location), dest(this, dest) {}
 
 void BranchInst::setDest(BasicBlock *block) { dest.set(block); }
 
@@ -307,9 +335,9 @@ void BranchInst::addOperands(ArrayRef<CFGValue *> values) {
 // CondBranchInst
 //===----------------------------------------------------------------------===//
 
-CondBranchInst::CondBranchInst(CFGValue *condition, BasicBlock *trueDest,
-                               BasicBlock *falseDest)
-    : TerminatorInst(Kind::CondBranch),
+CondBranchInst::CondBranchInst(Attribute *location, CFGValue *condition,
+                               BasicBlock *trueDest, BasicBlock *falseDest)
+    : TerminatorInst(Kind::CondBranch, location),
       condition(condition), dests{{this}, {this}}, numTrueOperands(0) {
   dests[falseIndex].set(falseDest);
   dests[trueIndex].set(trueDest);
