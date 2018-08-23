@@ -431,7 +431,11 @@ class Estimator(object):
     Returns:
       A dict containing the evaluation metrics specified in `model_fn` keyed by
       name, as well as an entry `global_step` which contains the value of the
-      global step for which this evaluation was performed.
+      global step for which this evaluation was performed. For canned
+      estimators, the dict contains the `loss` (mean loss per mini-batch) and
+      the `average_loss` (mean loss per sample). Canned classifiers also return
+      the `accuracy`. Canned regressors also return the `label/mean` and the
+      `prediction/mean`.
 
     Raises:
       ValueError: If `steps <= 0`.
