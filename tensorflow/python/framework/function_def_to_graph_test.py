@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
@@ -190,23 +190,25 @@ class FunctionDefToGraphDefTest(test.TestCase):
     x = constant_op.constant(5.0)
     y = constant_op.constant(10.0)
 
-    @function.Defun()
+    @function.defun
     def fn():
 
-      @function.Defun()
+      @function.defun
       def inner_fn():
         return x + y
 
       return inner_fn()
 
-    # Instantiate the function in this graph so that
-    # `function_def_to_graph` can find it.
-    fn()
-
     def fn2():
       return 2 * fn()
 
-    fdef = function._DefinedFunction(fn2, [], []).definition
+    fn2_defun = function.make_defun_op(fn2)
+
+    # Call `fn2` to make sure `fn` is correctly instantiated so
+    # `function_def_to_graph` can find it.
+    fn2_defun()
+
+    fdef = fn2_defun._inference_function.definition
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
     with func_graph.as_default():
       x_ph, y_ph = func_graph.inputs
@@ -216,7 +218,6 @@ class FunctionDefToGraphDefTest(test.TestCase):
                 x_ph: 5.0,
                 y_ph: 10.0
             }), 30.0)
-
 
   def testControlDependencies(self):
 
@@ -228,14 +229,14 @@ class FunctionDefToGraphDefTest(test.TestCase):
         constant_op.constant(3.0, name="y")
       return 4.0
 
-    fdef = function._DefinedFunction(
-        fn, ["inp"], [dtypes.float32]).definition
+    inp = constant_op.constant(1.0)
+    fdef = function.make_defun_op(fn, inp)._inference_function.definition
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
 
     op = func_graph.get_operation_by_name("y")
     self.assertEqual(len(op.control_inputs), 2)
     self.assertEqual(op.control_inputs[0].name, "x")
-    self.assertEqual(op.control_inputs[1].name, "inp")
+    self.assertEqual(op.control_inputs[1].name, "placeholder")
 
 
 if __name__ == "__main__":

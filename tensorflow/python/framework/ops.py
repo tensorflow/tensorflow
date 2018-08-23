@@ -3112,7 +3112,7 @@ class Graph(object):
     Returns:
       bool indicating whether or not 'name' is registered in function library.
     """
-    return name in self._functions
+    return compat.as_str(name) in self._functions
 
   def _get_function(self, name):
     """Returns the function definition for 'name'.
@@ -3122,7 +3122,7 @@ class Graph(object):
     Returns:
       The function def proto.
     """
-    return self._functions.get(name, None)
+    return self._functions.get(compat.as_str(name), None)
 
   def _add_function(self, function):
     """Adds a function to the graph.
@@ -3158,7 +3158,7 @@ class Graph(object):
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
     # pylint: enable=protected-access
 
-    self._functions[name] = function
+    self._functions[compat.as_str(name)] = function
 
     # Need a new-enough consumer to support the functions we add to the graph.
     if self._graph_def_versions.min_consumer < 12:
