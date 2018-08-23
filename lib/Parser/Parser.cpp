@@ -1648,7 +1648,7 @@ Operation *FunctionParser::parseVerboseOperation(
 
   consumeToken(Token::string);
 
-  OperationState result(builder.getIdentifier(name));
+  OperationState result(builder.getContext(), name);
 
   // Parse the operand list.
   SmallVector<SSAUseInfo, 8> operandInfos;
@@ -1675,7 +1675,7 @@ Operation *FunctionParser::parseVerboseOperation(
   if (!fnType)
     return (emitError(typeLoc, "expected function type"), nullptr);
 
-  result.types.append(fnType->getResults().begin(), fnType->getResults().end());
+  result.addTypes(fnType->getResults());
 
   // Check that we have the right number of types for the operands.
   auto operandTypes = fnType->getInputs();
@@ -1916,7 +1916,7 @@ Operation *FunctionParser::parseCustomOperation(
                                    opNameStr.c_str());
 
   // Have the op implementation take a crack and parsing this.
-  OperationState opState(builder.getIdentifier(opName));
+  OperationState opState(builder.getContext(), opName);
   if (opDefinition->parseAssembly(&opAsmParser, &opState))
     return nullptr;
 

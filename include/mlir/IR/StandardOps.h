@@ -43,13 +43,8 @@ class AddFOp
 public:
   static StringRef getOperationName() { return "addf"; }
 
-  template <class Builder, class Value>
-  static OpPointer<AddFOp> build(Builder *builder, Value *lhs, Value *rhs) {
-    // The resultant type of a addf is the same as both the lhs and rhs.
-    return OpPointer<AddFOp>(AddFOp(builder->createOperation(
-        builder->getIdentifier("addf"), {lhs, rhs}, {lhs->getType()}, {})));
-  }
-
+  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
+                    SSAValue *rhs);
   const char *verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -77,8 +72,8 @@ class AffineApplyOp : public OpBase<AffineApplyOp, OpTrait::VariadicOperands,
                                     OpTrait::VariadicResults> {
 public:
   /// Builds an affine apply op with the specified map and operands.
-  static OperationState build(Builder *builder, AffineMap *map,
-                              ArrayRef<SSAValue *> operands);
+  static void build(Builder *builder, OperationState *result, AffineMap *map,
+                    ArrayRef<SSAValue *> operands);
 
   // Returns the affine map to be applied by this operation.
   AffineMap *getAffineMap() const {
@@ -145,8 +140,8 @@ class CallOp : public OpBase<CallOp, OpTrait::VariadicOperands,
 public:
   static StringRef getOperationName() { return "call"; }
 
-  static OperationState build(Builder *builder, Function *callee,
-                              ArrayRef<SSAValue *> operands);
+  static void build(Builder *builder, OperationState *result, Function *callee,
+                    ArrayRef<SSAValue *> operands);
 
   Function *getCallee() const {
     return getAttrOfType<FunctionAttr>("callee")->getValue();
@@ -175,8 +170,8 @@ class CallIndirectOp : public OpBase<CallIndirectOp, OpTrait::VariadicOperands,
 public:
   static StringRef getOperationName() { return "call_indirect"; }
 
-  static OperationState build(Builder *builder, SSAValue *callee,
-                              ArrayRef<SSAValue *> operands);
+  static void build(Builder *builder, OperationState *result, SSAValue *callee,
+                    ArrayRef<SSAValue *> operands);
 
   const SSAValue *getCallee() const { return getOperand(0); }
   SSAValue *getCallee() { return getOperand(0); }
@@ -222,7 +217,8 @@ protected:
 class ConstantFloatOp : public ConstantOp {
 public:
   /// Builds a constant float op producing a float of the specified type.
-  static OperationState build(Builder *builder, double value, FloatType *type);
+  static void build(Builder *builder, OperationState *result, double value,
+                    FloatType *type);
 
   double getValue() const {
     return getAttrOfType<FloatAttr>("value")->getValue();
@@ -243,7 +239,8 @@ private:
 class ConstantIntOp : public ConstantOp {
 public:
   /// Build a constant int op producing an integer of the specified width.
-  static OperationState build(Builder *builder, int64_t value, unsigned width);
+  static void build(Builder *builder, OperationState *result, int64_t value,
+                    unsigned width);
 
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value")->getValue();
@@ -264,7 +261,7 @@ private:
 class ConstantAffineIntOp : public ConstantOp {
 public:
   /// Build a constant int op producing an affineint.
-  static OperationState build(Builder *builder, int64_t value);
+  static void build(Builder *builder, OperationState *result, int64_t value);
 
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value")->getValue();

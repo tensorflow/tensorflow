@@ -45,6 +45,7 @@ typedef std::pair<Identifier, Attribute*> NamedAttribute;
 /// be used as a temporary object on the stack.  It is generally unwise to put
 /// this in a collection.
 struct OperationState {
+  MLIRContext *const context;
   Identifier name;
   SmallVector<SSAValue *, 4> operands;
   /// Types of the results of this operation.
@@ -52,14 +53,31 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
 
 public:
-  OperationState(Identifier name) : name(name) {}
+  OperationState(MLIRContext *context, StringRef name)
+      : context(context), name(Identifier::get(name, context)) {}
 
-  OperationState(Identifier name, ArrayRef<SSAValue *> operands,
-                 ArrayRef<Type *> types,
+  OperationState(MLIRContext *context, Identifier name)
+      : context(context), name(name) {}
+
+  OperationState(MLIRContext *context, StringRef name,
+                 ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
                  ArrayRef<NamedAttribute> attributes = {})
-      : name(name), operands(operands.begin(), operands.end()),
+      : context(context), name(Identifier::get(name, context)),
+        operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
         attributes(attributes.begin(), attributes.end()) {}
+
+  void addOperands(ArrayRef<SSAValue *> newOperands) {
+    operands.append(newOperands.begin(), newOperands.end());
+  }
+
+  void addTypes(ArrayRef<Type *> newTypes) {
+    types.append(newTypes.begin(), newTypes.end());
+  }
+
+  void addAttribute(StringRef name, Attribute *attr) {
+    attributes.push_back({Identifier::get(name, context), attr});
+  }
 };
 
 /// Operations represent all of the arithmetic and other basic computation in

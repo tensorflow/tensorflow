@@ -175,7 +175,9 @@ public:
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Args... args) {
-    auto *inst = createOperation(OpTy::build(this, args...));
+    OperationState state(getContext(), OpTy::getOperationName());
+    OpTy::build(this, &state, args...);
+    auto *inst = createOperation(state);
     auto result = inst->template getAs<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;
@@ -279,7 +281,9 @@ public:
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Args... args) {
-    auto stmt = createOperation(OpTy::build(this, args...));
+    OperationState state(getContext(), OpTy::getOperationName());
+    OpTy::build(this, &state, args...);
+    auto *stmt = createOperation(state);
     auto result = stmt->template getAs<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;

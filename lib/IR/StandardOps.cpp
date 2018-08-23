@@ -66,6 +66,13 @@ parseDimAndSymbolList(OpAsmParser *parser,
 // AddFOp
 //===----------------------------------------------------------------------===//
 
+void AddFOp::build(Builder *builder, OperationState *result, SSAValue *lhs,
+                   SSAValue *rhs) {
+  assert(lhs->getType() == rhs->getType());
+  result->addOperands({lhs, rhs});
+  result->types.push_back(lhs->getType());
+}
+
 bool AddFOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type *type;
@@ -201,15 +208,11 @@ const char *AllocOp::verify() const {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-OperationState CallOp::build(Builder *builder, Function *callee,
-                             ArrayRef<SSAValue *> operands) {
-  OperationState result(builder->getIdentifier("call"));
-  result.operands.append(operands.begin(), operands.end());
-  result.attributes.push_back(
-      {builder->getIdentifier("callee"), builder->getFunctionAttr(callee)});
-  result.types.append(callee->getType()->getResults().begin(),
-                      callee->getType()->getResults().end());
-  return result;
+void CallOp::build(Builder *builder, OperationState *result, Function *callee,
+                   ArrayRef<SSAValue *> operands) {
+  result->addOperands(operands);
+  result->addAttribute("callee", builder->getFunctionAttr(callee));
+  result->addTypes(callee->getType()->getResults());
 }
 
 bool CallOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -229,10 +232,7 @@ bool CallOp::parse(OpAsmParser *parser, OperationState *result) {
                               result->operands))
     return true;
 
-  auto &builder = parser->getBuilder();
-  result->attributes.push_back(
-      {builder.getIdentifier("callee"), builder.getFunctionAttr(callee)});
-
+  result->addAttribute("callee", parser->getBuilder().getFunctionAttr(callee));
   return false;
 }
 
@@ -277,15 +277,12 @@ const char *CallOp::verify() const {
 // CallIndirectOp
 //===----------------------------------------------------------------------===//
 
-OperationState CallIndirectOp::build(Builder *builder, SSAValue *callee,
-                                     ArrayRef<SSAValue *> operands) {
+void CallIndirectOp::build(Builder *builder, OperationState *result,
+                           SSAValue *callee, ArrayRef<SSAValue *> operands) {
   auto *fnType = cast<FunctionType>(callee->getType());
-
-  OperationState result(builder->getIdentifier("call_indirect"));
-  result.operands.push_back(callee);
-  result.operands.append(operands.begin(), operands.end());
-  result.types.append(fnType->getResults().begin(), fnType->getResults().end());
-  return result;
+  result->operands.push_back(callee);
+  result->addOperands(operands);
+  result->addTypes(fnType->getResults());
 }
 
 bool CallIndirectOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -406,13 +403,10 @@ const char *ConstantOp::verify() const {
   return "requires a result type that aligns with the 'value' attribute";
 }
 
-OperationState ConstantFloatOp::build(Builder *builder, double value,
-                                      FloatType *type) {
-  OperationState result(builder->getIdentifier("constant"));
-  result.attributes.push_back(
-      {builder->getIdentifier("value"), builder->getFloatAttr(value)});
-  result.types.push_back(type);
-  return result;
+void ConstantFloatOp::build(Builder *builder, OperationState *result,
+                            double value, FloatType *type) {
+  result->addAttribute("value", builder->getFloatAttr(value));
+  result->types.push_back(type);
 }
 
 bool ConstantFloatOp::isClassFor(const Operation *op) {
@@ -426,13 +420,10 @@ bool ConstantIntOp::isClassFor(const Operation *op) {
          isa<IntegerType>(op->getResult(0)->getType());
 }
 
-OperationState ConstantIntOp::build(Builder *builder, int64_t value,
-                                    unsigned width) {
-  OperationState result(builder->getIdentifier("constant"));
-  result.attributes.push_back(
-      {builder->getIdentifier("value"), builder->getIntegerAttr(value)});
-  result.types.push_back(builder->getIntegerType(width));
-  return result;
+void ConstantIntOp::build(Builder *builder, OperationState *result,
+                          int64_t value, unsigned width) {
+  result->addAttribute("value", builder->getIntegerAttr(value));
+  result->types.push_back(builder->getIntegerType(width));
 }
 
 /// ConstantAffineIntOp only matches values whose result type is AffineInt.
@@ -441,28 +432,21 @@ bool ConstantAffineIntOp::isClassFor(const Operation *op) {
          op->getResult(0)->getType()->isAffineInt();
 }
 
-OperationState ConstantAffineIntOp::build(Builder *builder, int64_t value) {
-  OperationState result(builder->getIdentifier("constant"));
-  result.attributes.push_back(
-      {builder->getIdentifier("value"), builder->getIntegerAttr(value)});
-  result.types.push_back(builder->getAffineIntType());
-  return result;
+void ConstantAffineIntOp::build(Builder *builder, OperationState *result,
+                                int64_t value) {
+  result->addAttribute("value", builder->getIntegerAttr(value));
+  result->types.push_back(builder->getAffineIntType());
 }
 
 //===----------------------------------------------------------------------===//
 // AffineApplyOp
 //===----------------------------------------------------------------------===//
 
-OperationState AffineApplyOp::build(Builder *builder, AffineMap *map,
-                                    ArrayRef<SSAValue *> operands) {
-  SmallVector<Type *, 4> resultTypes(map->getNumResults(),
-                                     builder->getAffineIntType());
-
-  OperationState result(
-      builder->getIdentifier("affine_apply"), operands, resultTypes,
-      {{builder->getIdentifier("map"), builder->getAffineMapAttr(map)}});
-
-  return result;
+void AffineApplyOp::build(Builder *builder, OperationState *result,
+                          AffineMap *map, ArrayRef<SSAValue *> operands) {
+  result->addOperands(operands);
+  result->types.append(map->getNumResults(), builder->getAffineIntType());
+  result->addAttribute("map", builder->getAffineMapAttr(map));
 }
 
 //===----------------------------------------------------------------------===//
