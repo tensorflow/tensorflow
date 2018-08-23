@@ -76,4 +76,4 @@ ARG TF_PACKAGE=tensorflow-gpu
 RUN ${PIP} install ${TF_PACKAGE}
 
 COPY bashrc /etc/bash.bashrc
-RUN chmod 777 /etc/bash.bashrc
+RUN chmod a+rwx /etc/bash.bashrc
