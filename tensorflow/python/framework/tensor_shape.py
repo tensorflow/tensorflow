@@ -477,7 +477,7 @@ def as_dimension(value):
     A Dimension corresponding to the given value.
   """
   if isinstance(value, Dimension):
-    return value
+    return Dimension(value.value)
   else:
     return Dimension(value)
 
