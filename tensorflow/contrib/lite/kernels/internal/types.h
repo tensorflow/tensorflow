@@ -745,7 +745,7 @@ struct ConvParams {
 };
 
 struct DepthToSpaceParams {
-  int16 block_size;
+  int32 block_size;
 };
 
 struct DepthwiseParams {
@@ -871,8 +871,13 @@ struct SoftmaxParams {
   int diff_min;
 };
 
+struct SpaceToBatchParams {
+  // "Zero" padding for uint8 means padding with the output offset.
+  int32 output_offset;
+};
+
 struct SpaceToDepthParams {
-  int16 block_size;
+  int32 block_size;
 };
 
 struct SplitParams {
