@@ -124,6 +124,10 @@ class XlaOpKernelContext {
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
 
+  // Reshapes and converts a constant int32 or int64 tensor into a vector of
+  // int64s.
+  Status ConstantInputReshapedToIntVector(int index, std::vector<int64>* out);
+
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
   Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
 
