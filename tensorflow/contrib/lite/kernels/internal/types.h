@@ -668,9 +668,9 @@ static_assert(sizeof(MinMax) == 8, "");
 
 struct ActivationParams {
   FusedActivationFunctionType activation_type;
-  // Quantized inference params.
-  int32 activation_min;
-  int32 activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
 };
 
 // For Add, Sub, Mul ops.
