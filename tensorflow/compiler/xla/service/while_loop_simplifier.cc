@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
@@ -239,8 +239,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
             << tensorflow::str_util::Join(
                    user->users(), ", ",
                    [&](string* out, const HloInstruction* instr) {
-                     tensorflow::strings::StrAppend(
-                         out, instr->ToString(print_no_metadata));
+                     absl::StrAppend(out, instr->ToString(print_no_metadata));
                    })
             << "}";
 

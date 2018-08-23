@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -449,7 +450,7 @@ struct R4Spec {
 
 string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
-  return tensorflow::strings::StrCat(              //
+  return absl::StrCat(                             //
       "input_", Join(spec.input_dims, "x"),        //
       "__layout_", Join(spec.input_layout, ""),    //
       "__starts_", Join(spec.slice_starts, "x"),   //

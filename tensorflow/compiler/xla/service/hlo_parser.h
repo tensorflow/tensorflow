@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
@@ -32,32 +33,31 @@ namespace xla {
 // The api of the hlo parser. Given a string in the HloModule::ToString()
 // format, parses the string and creates a HloModule with the given config.
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(
-    tensorflow::StringPiece str, const HloModuleConfig& config);
+    absl::string_view str, const HloModuleConfig& config);
 
 // Parses the text for a single HLO operation into an HLO module with a function
 // that runs that operation (with the same parameters) as its entry computation.
 StatusOr<std::unique_ptr<HloModule>> ParseHloOpToModule(
-    tensorflow::StringPiece str, tensorflow::StringPiece name = "single_op");
+    absl::string_view str, absl::string_view name = "single_op");
 
 // The api of the hlo parser. Given a string in the HloModule::ToString()
 // format, parses the string and creates a HloModule with default config.
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
-    tensorflow::StringPiece str);
+StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);
 
 // Parses the result of HloSharding::ToString(), e.g. "{replicated}".
-StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str);
+StatusOr<HloSharding> ParseSharding(absl::string_view str);
 
 // Parses the result of window_util::ToString(const Window&).
-StatusOr<Window> ParseWindow(tensorflow::StringPiece str);
+StatusOr<Window> ParseWindow(absl::string_view str);
 
 // Parses the result of ConvolutionDimensionNumbersToString(), e.g.
 // "b0f_0io->b0f".
 StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
-    tensorflow::StringPiece str);
+    absl::string_view str);
 
 // ParseHloString sharding from str. str is supposed to contain the body of the
 // sharding, i.e. just the rhs of the "sharding={...}" attribute string.
-StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str);
+StatusOr<HloSharding> ParseSharding(absl::string_view str);
 
 }  // namespace xla
 

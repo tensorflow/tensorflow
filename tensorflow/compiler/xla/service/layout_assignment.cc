@@ -27,6 +27,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -368,31 +368,27 @@ const ShapeLayout* LayoutConstraints::ResultLayout() const {
 
 string LayoutConstraints::ToString() const {
   string output;
-  tensorflow::strings::StrAppend(&output, "LayoutConstraints for computation ",
-                                 computation_->name(), ":\n");
+  absl::StrAppend(&output, "LayoutConstraints for computation ",
+                  computation_->name(), ":\n");
   for (auto* instruction : computation_->MakeInstructionPostOrder()) {
-    tensorflow::strings::StrAppend(&output, "  ", instruction->ToShortString(),
-                                   "\n");
+    absl::StrAppend(&output, "  ", instruction->ToShortString(), "\n");
     for (int64 i = 0; i < instruction->operand_count(); ++i) {
       if (OperandLayout(instruction, i) != nullptr) {
-        tensorflow::strings::StrAppend(
-            &output, "    operand (", i,
-            "): ", OperandLayout(instruction, i)->ToString(), "\n");
+        absl::StrAppend(&output, "    operand (", i,
+                        "): ", OperandLayout(instruction, i)->ToString(), "\n");
       }
     }
     for (const LogicalBuffer* buffer :
          points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
       if (BufferLayout(*buffer) != nullptr) {
-        tensorflow::strings::StrAppend(
-            &output, "    ", buffer->ToString(), " : ",
-            LayoutUtil::HumanString(*BufferLayout(*buffer)), "\n");
+        absl::StrAppend(&output, "    ", buffer->ToString(), " : ",
+                        LayoutUtil::HumanString(*BufferLayout(*buffer)), "\n");
       }
     }
   }
 
   if (ResultLayout() != nullptr) {
-    tensorflow::strings::StrAppend(&output, "  => ", ResultLayout()->ToString(),
-                                   "\n");
+    absl::StrAppend(&output, "  => ", ResultLayout()->ToString(), "\n");
   }
   return output;
 }

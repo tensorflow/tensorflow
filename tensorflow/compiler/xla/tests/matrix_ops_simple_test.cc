@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -158,7 +159,7 @@ class TestLinspaceMaxParametric
 string PrintTestLinspaceMaxParam(
     const ::testing::TestParamInfo<TestLinspaceMaxParam>& test_param) {
   const TestLinspaceMaxParam& param = test_param.param;
-  return tensorflow::strings::StrCat(param.rows, "r", param.cols, "c");
+  return absl::StrCat(param.rows, "r", param.cols, "c");
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16

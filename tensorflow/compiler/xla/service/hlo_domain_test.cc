@@ -46,9 +46,8 @@ class HloDomainTest : public HloVerifiedTestBase {
 
   // Checks whether there is a kDomain instruction in the edge between the
   // instruction and the operand.
-  bool HasDomainEdge(HloModule* module,
-                     tensorflow::StringPiece instruction_name,
-                     tensorflow::StringPiece operand_name) {
+  bool HasDomainEdge(HloModule* module, absl::string_view instruction_name,
+                     absl::string_view operand_name) {
     HloInstruction* instruction = FindInstruction(module, instruction_name);
     HloInstruction* operand = FindInstruction(module, operand_name);
     CHECK_NE(instruction, nullptr);
@@ -66,7 +65,7 @@ class HloDomainTest : public HloVerifiedTestBase {
     return false;
   }
 
-  StatusOr<HloModule*> ParseModule(tensorflow::StringPiece hlo_string) {
+  StatusOr<HloModule*> ParseModule(absl::string_view hlo_string) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
     ParseAndVerifyModule(hlo_string, config);
@@ -84,7 +83,7 @@ class OpNameMetadata : public DomainMetadata {
     return absl::make_unique<OpNameMetadata>(opname_);
   }
 
-  tensorflow::StringPiece Kind() const override { return KindName(); }
+  absl::string_view Kind() const override { return KindName(); }
 
   bool Matches(const DomainMetadata& other) const override {
     const OpNameMetadata* other_ptr =
@@ -98,7 +97,7 @@ class OpNameMetadata : public DomainMetadata {
 
   string ToString() const override { return opname_; }
 
-  static tensorflow::StringPiece KindName() { return "opname"; }
+  static absl::string_view KindName() { return "opname"; }
 
  private:
   string opname_;

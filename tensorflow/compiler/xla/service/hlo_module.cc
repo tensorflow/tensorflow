@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -410,7 +410,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
     string error_message =
         "The subcomputation to outline has multiple outputs:\n";
     for (HloInstruction* output : outputs) {
-      tensorflow::strings::StrAppend(&error_message, output->ToString(), "\n");
+      absl::StrAppend(&error_message, output->ToString(), "\n");
     }
     LOG(FATAL) << error_message;
   }
@@ -536,8 +536,7 @@ uint64 HloModule::RandomNew64() const {
   return rng_();
 }
 
-HloComputation* HloModule::GetComputationWithName(
-    tensorflow::StringPiece name) {
+HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
   auto computations_in_module = computations();
   auto it = absl::c_find_if(
       computations_in_module,

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -22,13 +23,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
+using ::absl::StrAppend;
+using ::absl::StrCat;
 using ::tensorflow::GraphDef;
 using ::tensorflow::NodeDef;
 using ::tensorflow::TensorShapeProto;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
 using ::tensorflow::str_util::Join;
 
 namespace xla {
@@ -42,7 +42,7 @@ string GetOpDefName(const HloInstruction* instruction) {
 
   if (instruction->opcode() == HloOpcode::kFusion) {
     string fusion_name = ToString(instruction->fusion_kind());
-    StrAppend(&name, tensorflow::StringPiece(fusion_name).substr(1));
+    StrAppend(&name, absl::string_view(fusion_name).substr(1));
   }
   return name;
 }

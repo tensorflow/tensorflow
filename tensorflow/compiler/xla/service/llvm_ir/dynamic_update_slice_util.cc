@@ -40,7 +40,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const ElementGenerator& start_indices_generator,
     bool is_signed, ElementGenerator update_array_generator,
     const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
-    tensorflow::StringPiece name, llvm::IRBuilder<>* b) {
+    absl::string_view name, llvm::IRBuilder<>* b) {
   const Shape& output_shape = output_array.GetShape();
 
   // Read start indices from start_indices_generator.
@@ -101,8 +101,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
 Status EmitDynamicUpdateSliceInPlace(
     tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
-    const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* b) {
+    const IrArray& output_array, absl::string_view name, llvm::IRBuilder<>* b) {
   VLOG(2) << "EmitDynamicUpdateSliceInPlace for " << name;
 
   // No need to use operand_arrays[0], the input array of the

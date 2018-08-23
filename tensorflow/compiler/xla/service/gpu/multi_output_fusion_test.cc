@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -47,7 +48,7 @@ const char kModulePrefix[] = R"(
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
   // Fusion with reduce instruction root and a sibling reduce instruction
   // sharing the same input param.
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation {
       p1.1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
       mul = f32[128,512,28,28]{3,2,1,0} multiply(p1.1, p1.1)
@@ -74,7 +75,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[6400]{0} parameter(1)
       mul = f32[6400]{0} multiply(p1.1, p1.1)
@@ -101,7 +102,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[10,10]{1,0} parameter(1)
       mul = f32[10,10]{1,0} multiply(p1.1, p1.1)
@@ -130,7 +131,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
   // Two sibling fusions with reduce instruction roots sharing the same input
   // param.
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
       mul = f32[128,512,28,28]{3,2,1,0} multiply(p1.1, p1.1)
@@ -165,7 +166,7 @@ TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingReduceAndReduceMultiOutputFusion) {
   // Multi-output fusion with two reduce instructions root and a sibling reduce
   // instruction sharing the same input param.
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation (p0: f32[128,512,28,28]) -> (f32[512], f32[512]) {
       const.1 = f32[] constant(1)
       p0.1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
@@ -198,7 +199,7 @@ TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingFusionCheckAgainstReduceOperand) {
   // Verify that if we already have a multi-output fusion that we prefer to pick
   // a reduce op from its operands for checking shape compatibility.
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[10,10]{1,0} parameter(1)
       mul = f32[10,10]{1,0} multiply(p1.1, p1.1)
@@ -228,7 +229,7 @@ TEST_F(MultiOutputFusionTest,
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -341,7 +342,7 @@ TEST_F(MultiOutputFusionTest,
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -361,7 +362,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_add {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
@@ -388,7 +389,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
@@ -429,7 +430,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_element_wise {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
@@ -456,7 +457,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
 
 TEST_F(MultiOutputFusionTest,
        ProducerConsumerFusionFp16LoopFusionAndReduceFusion) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f16[2,2,2]{2,1,0} parameter(1)
       c0 = f16[] constant(0)
@@ -497,7 +498,7 @@ TEST_F(MultiOutputFusionTest,
 
 TEST_F(MultiOutputFusionTest,
        ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
       p1.1 = f16[128,1024,32,32]{3,2,1,0} parameter(1)

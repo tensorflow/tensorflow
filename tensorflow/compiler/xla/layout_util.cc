@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -403,11 +403,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
   if (IsSparse(layout)) {
-    return tensorflow::strings::StrCat("sparse{", layout.max_sparse_elements(),
-                                       "}");
+    return absl::StrCat("sparse{", layout.max_sparse_elements(), "}");
   }
   CHECK(IsDense(layout));
-  return tensorflow::strings::StrCat(
+  return absl::StrCat(
       "{", tensorflow::str_util::Join(layout.minor_to_major(), ","), "}");
 }
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -21,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
@@ -128,14 +128,14 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
 
 string AlgorithmToString(const AlgorithmDesc& algo) {
   if (algo.tensor_ops_enabled()) {
-    return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
+    return absl::StrCat(algo.algo_id(), "+TC");
   }
-  return tensorflow::strings::StrCat(algo.algo_id());
+  return absl::StrCat(algo.algo_id());
 }
 
 string NumBytesToString(int64 bytes) {
-  return tensorflow::strings::StrCat(
-      tensorflow::strings::HumanReadableNumBytes(bytes), " (", bytes, "B)");
+  return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
+                      bytes, "B)");
 }
 
 // Acquires a process-global lock on the device pointed to by the given

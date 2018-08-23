@@ -17,6 +17,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -82,8 +85,7 @@ struct ParsedProfileOutputLine {
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
     gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results,
-    tensorflow::gtl::ArraySlice<tensorflow::StringPiece> opcodes_to_ignore =
-        {}) {
+    tensorflow::gtl::ArraySlice<absl::string_view> opcodes_to_ignore = {}) {
   string separator = "[^:]*:: +";
   string match_percentage = R"(\d+\.\d*% +\d+Σ)";
   string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
@@ -100,7 +102,7 @@ Status ParseOneProfileOutputLine(
 
   string match_opcode =
       expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*" : "(\\[total\\])";
-  string regexp_pattern = tensorflow::strings::StrCat(
+  string regexp_pattern = absl::StrCat(
       " +", match_cycles, separator, match_usecs, separator, match_flops,
       separator, match_trops, separator, match_bytes_per_sec, separator,
       match_bytes_per_cycle, separator, match_opcode);
@@ -205,7 +207,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                          rhs_shape);
 
   std::vector<string> profile_output_lines =
-      tensorflow::str_util::Split(profile_output, '\n');
+      absl::StrSplit(profile_output, '\n');
 
   gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
 
@@ -292,22 +294,20 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
                          matrix_shape);
 
   std::vector<string> profile_output_lines =
-      tensorflow::str_util::Split(profile_output, '\n');
+      absl::StrSplit(profile_output, '\n');
 
   auto while_body_profile_start =
-      absl::c_find_if(profile_output_lines, [](tensorflow::StringPiece s) {
-        return tensorflow::str_util::StartsWith(s,
-                                                "Execution profile for body");
+      absl::c_find_if(profile_output_lines, [](absl::string_view s) {
+        return absl::StartsWith(s, "Execution profile for body");
       });
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
 
-  auto while_body_profile_end =
-      std::find_if(while_body_profile_start, profile_output_lines.end(),
-                   [](tensorflow::StringPiece s) {
-                     return tensorflow::str_util::StartsWith(
-                         s, "********** microseconds report **********");
-                   });
+  auto while_body_profile_end = std::find_if(
+      while_body_profile_start, profile_output_lines.end(),
+      [](absl::string_view s) {
+        return absl::StartsWith(s, "********** microseconds report **********");
+      });
 
   // We emit a blank line before the "********** microseconds report **********"
   // line.

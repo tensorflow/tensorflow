@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -29,11 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -50,7 +50,7 @@ bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
   return std::set<int64>(slice.begin(), slice.end()).size() == slice.size();
 }
 
-Status ExpectArray(const Shape& shape, tensorflow::StringPiece op_type) {
+Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!ShapeUtil::IsArray(shape)) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type).c_str(),
@@ -883,12 +883,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  TF_RETURN_IF_ERROR(
-      ExpectArray(lhs, tensorflow::strings::StrCat("lhs of binary operation ",
-                                                   HloOpcodeString(opcode))));
-  TF_RETURN_IF_ERROR(
-      ExpectArray(rhs, tensorflow::strings::StrCat("rhs of binary operation ",
-                                                   HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(ExpectArray(
+      lhs, absl::StrCat("lhs of binary operation ", HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(ExpectArray(
+      rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -2465,7 +2463,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     string computation_signature = ShapeUtil::HumanString(to_apply);
     string argument_shapes =
         Join(arg_shapes, ", ", [](string* out, const Shape* shape) {
-          tensorflow::strings::StrAppend(out, ShapeUtil::HumanString(*shape));
+          absl::StrAppend(out, ShapeUtil::HumanString(*shape));
         });
     return InvalidArgument(
         "Call applied function arity must match number of arguments; got: "

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -24,14 +25,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-/* static */ Status TextLiteralWriter::WriteToPath(
-    const Literal& literal, tensorflow::StringPiece path) {
+/* static */ Status TextLiteralWriter::WriteToPath(const Literal& literal,
+                                                   absl::string_view path) {
   std::unique_ptr<tensorflow::WritableFile> f;
   auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
@@ -51,11 +51,10 @@ namespace xla {
         if (!status.ok()) {
           return;
         }
-        string coordinates = tensorflow::strings::StrCat(
-            "(", tensorflow::str_util::Join(indices, ", "), ")");
+        string coordinates =
+            absl::StrCat("(", tensorflow::str_util::Join(indices, ", "), ")");
 
-        status = f_ptr->Append(
-            tensorflow::strings::StrCat(coordinates, ": ", value, "\n"));
+        status = f_ptr->Append(absl::StrCat(coordinates, ": ", value, "\n"));
       });
   auto ignored = f->Close();
   return status;

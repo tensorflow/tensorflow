@@ -18,6 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -1324,8 +1326,8 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
   auto literal = LiteralUtil::CreateR0<uint32>(1234);
   Status status = literal->BitcastConvert(F64).status();
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
-                                                "bit widths are different"));
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "bit widths are different"));
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
@@ -1819,21 +1821,20 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
       "false");
   ASSERT_EQ(LiteralUtil::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(int64{2}));
+            absl::StrCat(int64{2}));
   ASSERT_EQ(
       LiteralUtil::CreateSparse<double>(dimensions, indices, {1.0, 2.0, 3.0})
           ->GetSparseElementAsString(1),
-      tensorflow::strings::StrCat(double{2.0}));
+      absl::StrCat(double{2.0}));
   ASSERT_EQ(LiteralUtil::CreateSparse<half>(dimensions, indices,
                                             {half{1.0}, half{2.0}, half{3.0}})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(static_cast<float>(half{2.0})));
-  ASSERT_EQ(
-      LiteralUtil::CreateSparse<complex64>(
-          dimensions, indices,
-          std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
-          ->GetSparseElementAsString(1),
-      tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
+            absl::StrCat(static_cast<float>(half{2.0})));
+  ASSERT_EQ(LiteralUtil::CreateSparse<complex64>(
+                dimensions, indices,
+                std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
+                ->GetSparseElementAsString(1),
+            absl::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
 }
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {

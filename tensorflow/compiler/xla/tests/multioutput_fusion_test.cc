@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -291,7 +292,7 @@ const char* const kScalarOps = R"(
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinor)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -323,7 +324,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajor)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -355,7 +356,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalar)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -388,7 +389,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinorWithExtraOutput)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -422,7 +423,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajorWithExtraOutput)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -457,7 +458,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalarWithExtraOutput)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -494,7 +495,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionNonConstInit)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       init1 = f32[] parameter(1)
@@ -529,7 +530,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionDifferentElementTypes)) {
-  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+  const string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce (p0: f16[2,2,2]) -> (f32[2,2], f32[2,2], f16[2,2,2]) {
       p0 = f16[2,2,2]{2,1,0} parameter(0)
       convert = f32[2,2,2]{2,1,0} convert(p0)

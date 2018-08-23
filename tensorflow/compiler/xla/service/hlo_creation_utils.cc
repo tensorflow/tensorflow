@@ -16,14 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+using absl::StrCat;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::strings::StrCat;
 
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs) {
@@ -336,7 +337,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
 
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     ArraySlice<const Shape*> domain, const Shape& range,
-    tensorflow::StringPiece name) {
+    absl::string_view name) {
   HloComputation::Builder b{std::string(name)};
   int64 param_idx = 0;
   for (const Shape* param_shape : domain) {

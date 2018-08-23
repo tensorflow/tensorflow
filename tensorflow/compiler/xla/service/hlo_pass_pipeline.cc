@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -24,11 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using ::absl::StrAppend;
+using ::absl::StrCat;
 
 namespace xla {
 

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,7 +29,7 @@ namespace xla {
 // computation, suitable for consumption by humans.
 class HumanReadableProfileBuilder {
  public:
-  explicit HumanReadableProfileBuilder(tensorflow::StringPiece computation_name,
+  explicit HumanReadableProfileBuilder(absl::string_view computation_name,
                                        int64 total_cycles,
                                        double clock_rate_ghz)
       : computation_name_(std::string(computation_name)),
@@ -43,9 +43,8 @@ class HumanReadableProfileBuilder {
   // Adds an operation to the profile.  If you don't know the number of
   // floating-point ops or bytes touched by the op, or if you don't know how
   // fast it would run optimally, pass -1 for that param.
-  void AddOp(tensorflow::StringPiece op_name,
-             tensorflow::StringPiece short_name,
-             tensorflow::StringPiece category, int64 cycles, int64 flop_count,
+  void AddOp(absl::string_view op_name, absl::string_view short_name,
+             absl::string_view category, int64 cycles, int64 flop_count,
              int64 transcendental_count, int64 bytes_accessed,
              float optimal_seconds) {
     op_infos_.push_back({std::string(op_name), std::string(short_name),

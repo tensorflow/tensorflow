@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -56,7 +57,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
           "Can't allocate twice from a ScratchBufAllocator.");
     }
     if (byte_size > scratch_.size()) {
-      return se::port::InternalError(tensorflow::strings::StrCat(
+      return se::port::InternalError(absl::StrCat(
           "Can't allocate ", byte_size,
           " bytes from a ScratchBufAllocator of size ", scratch_.size()));
     }

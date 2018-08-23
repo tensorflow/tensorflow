@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -29,10 +32,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::str_util::CEscape;
+using ::absl::CEscape;
+using ::absl::StrAppend;
+using ::absl::StrCat;
 using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
 
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {
@@ -343,11 +346,11 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
 HloAllReduceInstruction::HloAllReduceInstruction(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups,
-    tensorflow::StringPiece barrier, const absl::optional<int64>& all_reduce_id)
+    const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
+    const absl::optional<int64>& all_reduce_id)
     : HloCollectiveInstruction(HloOpcode::kCrossReplicaSum, shape, operands,
                                replica_groups),
-      cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
+      cross_replica_sum_barrier_(barrier),
       all_reduce_id_(all_reduce_id) {
   AppendComputation(reduce_computation);
 }
@@ -853,7 +856,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     // lines. Compact this into one line by stripping out white space.
     string tmp = literal().ToString();
     std::replace(tmp.begin(), tmp.end(), '\n', ' ');
-    std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
+    std::vector<string> v = absl::StrSplit(tmp, ' ');
     bool first = true;
     // Concatenate elements in "v" with spaces separating them, but ignoring
     // empty entries.
@@ -1554,12 +1557,13 @@ std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
       infeed_shape(), new_operands[0], infeed_config());
 }
 
-HloOutfeedInstruction::HloOutfeedInstruction(
-    const Shape& outfeed_shape, HloInstruction* operand,
-    HloInstruction* token_operand, tensorflow::StringPiece outfeed_config)
+HloOutfeedInstruction::HloOutfeedInstruction(const Shape& outfeed_shape,
+                                             HloInstruction* operand,
+                                             HloInstruction* token_operand,
+                                             absl::string_view outfeed_config)
     : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeTokenShape()),
       outfeed_shape_(outfeed_shape),
-      outfeed_config_(outfeed_config.begin(), outfeed_config.end()) {
+      outfeed_config_(outfeed_config) {
   CHECK(ShapeUtil::Compatible(operand->shape(), outfeed_shape))
       << "Outfeed shape " << outfeed_shape
       << " must be compatible with operand shape " << operand->shape();
@@ -1767,7 +1771,7 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece custom_call_target)
+    absl::string_view custom_call_target)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(),
                           custom_call_target.end()) {

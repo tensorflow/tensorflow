@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -579,7 +580,7 @@ string R4ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R4ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
+  string str = absl::StrCat(
       "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),  //
       "__window_bounds_",
       tensorflow::str_util::Join(param.window_bounds, "x"),            //
@@ -593,7 +594,7 @@ string R4ReduceWindowTestDataToString(
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -935,7 +936,7 @@ string R3ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R3ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
+  string str = absl::StrCat(
       "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
       "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
       "__strides_", tensorflow::str_util::Join(param.strides, "x"),
@@ -943,7 +944,7 @@ string R3ReduceWindowTestDataToString(
       "__layout_", param.layout[0], "_", param.layout[1], "_", param.layout[2],
       "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1069,7 +1070,7 @@ string R2ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R2ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
+  string str = absl::StrCat(
       "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),  //
       "__window_bounds_",
       tensorflow::str_util::Join(param.window_bounds, "x"),          //
@@ -1079,7 +1080,7 @@ string R2ReduceWindowTestDataToString(
       "__layout_", param.layout[0], "_", param.layout[1],  //
       "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }
@@ -1274,7 +1275,7 @@ string R1ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R1ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = tensorflow::strings::StrCat(
+  string str = absl::StrCat(
       "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
       "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
       "__strides_", tensorflow::str_util::Join(param.strides, "x"),
@@ -1282,7 +1283,7 @@ string R1ReduceWindowTestDataToString(
       "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),
       "__reducer_", param.reducer == kAdd ? "add" : "max");
   if (::testing::get<1>(data.param)) {
-    str = tensorflow::strings::StrCat(str, "_bfloat16");
+    str = absl::StrCat(str, "_bfloat16");
   }
   return str;
 }

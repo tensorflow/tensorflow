@@ -46,8 +46,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo) override {
     string params = tensorflow::str_util::Join(
         hlo->operands(), ", ", [](string* out, const HloInstruction* operand) {
-          tensorflow::strings::StrAppend(
-              out, ShapeUtil::HumanString(operand->shape()));
+          absl::StrAppend(out, ShapeUtil::HumanString(operand->shape()));
         });
     // Spit `op_name(params...) -> result_type :: path` to stdout.
     std::cout << tensorflow::strings::Printf(

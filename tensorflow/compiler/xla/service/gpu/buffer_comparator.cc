@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 
 #include <cmath>
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -74,9 +75,8 @@ ENTRY MaxDifference {
   %error = f32[SIZE] divide(%sub_abs, %denominator)
   ROOT %max_diff = f32[] reduce(%error, %zero_constant), dimensions={0}, to_apply=MaxF32
 })";
-  auto size_string = std::to_string(num_elements);
-  return tensorflow::str_util::StringReplace(
-      kF16CompHloText, "SIZE", {size_string.data(), size_string.size()}, true);
+  return absl::StrReplaceAll(kF16CompHloText,
+                             {{"SIZE", absl::StrCat(num_elements)}});
 }
 
 StatusOr<F16BufferComparator> F16BufferComparator::Create(

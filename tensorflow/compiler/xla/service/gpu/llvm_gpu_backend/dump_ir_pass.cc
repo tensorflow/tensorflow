@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -86,7 +86,7 @@ void IrDumpingPassManager::run(llvm::Module &module) {
       const llvm::PassInfo *PI =
           llvm::PassRegistry::getPassRegistry()->getPassInfo(P->getPassID());
       const string basename = ReplaceFilenameExtension(
-          tensorflow::io::Basename(input_filename_),
+          absl::string_view(tensorflow::io::Basename(input_filename_)),
           tensorflow::strings::Printf(
               "pass-%02d.before.%s.ll", i,
               (PI == nullptr ? "unknown" : PI->getPassArgument().data())));

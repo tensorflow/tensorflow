@@ -21,13 +21,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -37,8 +40,8 @@ limitations under the License.
 namespace xla {
 
 StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
-    tensorflow::StringPiece path) {
-  CHECK(!tensorflow::str_util::EndsWith(path, ".gz"))
+    absl::string_view path) {
+  CHECK(!absl::EndsWith(path, ".gz"))
       << "TextLiteralReader no longer supports reading .gz files";
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   Status s =
@@ -58,8 +61,8 @@ namespace {
 // This is an optimized version of tensorflow::str_util::Split which uses
 // StringPiece for the delimited strings and uses an out parameter for the
 // result to avoid vector creation/destruction.
-void SplitByDelimToStringPieces(tensorflow::StringPiece text, char delim,
-                                std::vector<tensorflow::StringPiece>* result) {
+void SplitByDelimToStringPieces(absl::string_view text, char delim,
+                                std::vector<absl::string_view>* result) {
   result->clear();
 
   if (text.empty()) {
@@ -73,7 +76,7 @@ void SplitByDelimToStringPieces(tensorflow::StringPiece text, char delim,
   size_t token_start = 0;
   for (size_t i = 0; i < text.size() + 1; i++) {
     if (i == text.size() || text[i] == delim) {
-      tensorflow::StringPiece token(text.data() + token_start, i - token_start);
+      absl::string_view token(text.data() + token_start, i - token_start);
       result->push_back(token);
       token_start = i + 1;
     }
@@ -90,11 +93,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
     return s;
   }
 
-  tensorflow::StringPiece sp(shape_string);
-  if (tensorflow::str_util::RemoveWhitespaceContext(&sp) > 0) {
-    string tmp = std::string(sp);
-    shape_string = tmp;
-  }
+  absl::StripAsciiWhitespace(&shape_string);
   TF_ASSIGN_OR_RETURN(Shape shape, ShapeUtil::ParseShapeString(shape_string));
   if (shape.element_type() != F32) {
     return Unimplemented(
@@ -105,35 +104,33 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
   auto result = absl::make_unique<Literal>(shape);
   const float fill = std::numeric_limits<float>::quiet_NaN();
   result->PopulateWithValue<float>(fill);
-  std::vector<tensorflow::StringPiece> pieces;
-  std::vector<tensorflow::StringPiece> coordinates;
+  std::vector<absl::string_view> pieces;
+  std::vector<absl::string_view> coordinates;
   std::vector<int64> coordinate_values;
   string line;
   while (buf.ReadLine(&line).ok()) {
     SplitByDelimToStringPieces(line, ':', &pieces);
-    tensorflow::StringPiece coordinates_string = pieces[0];
-    tensorflow::StringPiece value_string = pieces[1];
-    tensorflow::str_util::RemoveWhitespaceContext(&coordinates_string);
-    tensorflow::str_util::RemoveWhitespaceContext(&value_string);
-    if (!tensorflow::str_util::ConsumePrefix(&coordinates_string, "(")) {
+    absl::string_view coordinates_string =
+        absl::StripAsciiWhitespace(pieces[0]);
+    absl::string_view value_string = absl::StripAsciiWhitespace(pieces[1]);
+    if (!absl::ConsumePrefix(&coordinates_string, "(")) {
       return InvalidArgument(
           "expected '(' at the beginning of coordinates: \"%s\"", line.c_str());
     }
-    if (!tensorflow::str_util::ConsumeSuffix(&coordinates_string, ")")) {
+    if (!absl::ConsumeSuffix(&coordinates_string, ")")) {
       return InvalidArgument("expected ')' at the end of coordinates: \"%s\"",
                              line.c_str());
     }
     float value;
-    if (!tensorflow::strings::safe_strtof(std::string(value_string).c_str(),
-                                          &value)) {
+    if (!absl::SimpleAtof(std::string(value_string).c_str(), &value)) {
       return InvalidArgument("could not parse value as float: \"%s\"",
                              std::string(value_string).c_str());
     }
     SplitByDelimToStringPieces(coordinates_string, ',', &coordinates);
     coordinate_values.clear();
-    for (tensorflow::StringPiece piece : coordinates) {
+    for (absl::string_view piece : coordinates) {
       int64 coordinate_value;
-      if (!tensorflow::strings::safe_strto64(piece, &coordinate_value)) {
+      if (!absl::SimpleAtoi(piece, &coordinate_value)) {
         return InvalidArgument(
             "could not parse coordinate member as int64: \"%s\"",
             std::string(piece).c_str());

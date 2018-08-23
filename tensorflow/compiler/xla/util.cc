@@ -18,11 +18,13 @@ limitations under the License.
 #include <stdarg.h>
 #include <numeric>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -54,16 +56,16 @@ ScopedLoggingTimer::~ScopedLoggingTimer() {
   }
 }
 
-Status AddStatus(Status prior, tensorflow::StringPiece context) {
+Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), tensorflow::strings::StrCat(
-                                  context, ": ", prior.error_message())};
+  return Status{prior.code(),
+                absl::StrCat(context, ": ", prior.error_message())};
 }
 
-Status AppendStatus(Status prior, tensorflow::StringPiece context) {
+Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), tensorflow::strings::StrCat(prior.error_message(),
-                                                          ": ", context)};
+  return Status{prior.code(),
+                absl::StrCat(prior.error_message(), ": ", context)};
 }
 
 // Implementation note: we can't common these out (without using macros) because
@@ -146,15 +148,13 @@ Status Unavailable(const char* format, ...) {
   return WithLogBacktrace(tensorflow::errors::Unavailable(message));
 }
 
-string Reindent(tensorflow::StringPiece original,
-                const tensorflow::StringPiece indentation) {
-  std::vector<string> pieces = tensorflow::str_util::Split(
-      tensorflow::StringPiece(original.data(), original.size()), '\n');
+string Reindent(absl::string_view original,
+                const absl::string_view indentation) {
+  std::vector<string> pieces =
+      absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
   return tensorflow::str_util::Join(
       pieces, "\n", [indentation](string* out, string s) {
-        tensorflow::StringPiece piece(s);
-        tensorflow::str_util::RemoveWhitespaceContext(&piece);
-        tensorflow::strings::StrAppend(out, indentation, piece);
+        absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
       });
 }
 
@@ -234,20 +234,20 @@ bool HasInteriorPadding(const PaddingConfig& config) {
 
 namespace {
 string HumanReadableNumOps(double flops, double nanoseconds,
-                           tensorflow::StringPiece op_prefix) {
+                           absl::string_view op_prefix) {
   if (nanoseconds == 0) {
-    return tensorflow::strings::StrCat("NaN ", op_prefix, "OP/s");
+    return absl::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
       static_cast<int64>(nano_flops * 1e9));
-  tensorflow::StringPiece sp(throughput);
+  absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
-  if (tensorflow::str_util::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
-      tensorflow::str_util::EndsWith(sp, "b")) {
+  if (absl::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
+      absl::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += tensorflow::strings::StrCat(op_prefix, "OP/s");
+  throughput += absl::StrCat(op_prefix, "OP/s");
   return throughput;
 }
 }  // namespace
@@ -260,8 +260,7 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
-void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
-              int lineno) {
+void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   const int orig_sev = sev;
   if (sev == tensorflow::FATAL) {
     sev = tensorflow::ERROR;
@@ -275,7 +274,7 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
   size_t cur = 0;
   while (cur < text.size()) {
     size_t eol = text.find('\n', cur);
-    if (eol == tensorflow::StringPiece::npos) {
+    if (eol == absl::string_view::npos) {
       eol = text.size();
     }
     auto msg = text.substr(cur, eol - cur);

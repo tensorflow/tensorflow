@@ -34,7 +34,7 @@ class HloCSE : public HloPassInterface {
       : is_layout_sensitive_(is_layout_sensitive),
         only_fusion_computations_(only_fusion_computations) {}
   ~HloCSE() override = default;
-  tensorflow::StringPiece name() const override { return "cse"; }
+  absl::string_view name() const override { return "cse"; }
 
   // Run CSE on the given module. Returns whether the module was changed (common
   // subexpressions were found and eliminated).

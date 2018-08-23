@@ -109,6 +109,7 @@ limitations under the License.
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
 
+#include "third_party/absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -896,7 +897,7 @@ tensorflow::ImportNumpy();
     if (o != Py_None) {
       StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
       if (!statusor.ok()) {
-        PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
+        PyErr_SetString(PyExc_TypeError, absl::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
         Py_DECREF(o);
         SWIG_fail;
       }
