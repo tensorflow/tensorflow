@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -1030,9 +1031,9 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
       element_index.push_back(i);
       std::vector<string> element_pieces;
       ToStringHelper(literal, element_index, print_layout, &element_pieces);
-      tuple_pieces.push_back(tensorflow::str_util::Join(element_pieces, ""));
+      tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
     }
-    pieces->push_back(tensorflow::str_util::Join(tuple_pieces, ",\n"));
+    pieces->push_back(absl::StrJoin(tuple_pieces, ",\n"));
     pieces->push_back("\n)");
     return;
   }
@@ -1056,8 +1057,7 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
         pieces->push_back(": ");
       } else {
         pieces->push_back("[");
-        pieces->push_back(
-            tensorflow::str_util::Join(literal.GetSparseIndex(i), ", "));
+        pieces->push_back(absl::StrJoin(literal.GetSparseIndex(i), ", "));
         pieces->push_back("]: ");
       }
       pieces->push_back(literal.GetSparseElementAsString(i));
@@ -1183,7 +1183,7 @@ string LiteralBase::ToString(bool print_layout) const {
   std::vector<string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, print_layout, &pieces);
-  return tensorflow::str_util::Join(pieces, "");
+  return absl::StrJoin(pieces, "");
 }
 
 void LiteralBase::EachCellAsString(

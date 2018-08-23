@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -477,7 +478,7 @@ std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
 
 /* static */ string LiteralUtil::MultiIndexAsString(
     tensorflow::gtl::ArraySlice<int64> multi_index) {
-  return StrCat("{", tensorflow::str_util::Join(multi_index, ","), "}");
+  return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }
 
 }  // namespace xla

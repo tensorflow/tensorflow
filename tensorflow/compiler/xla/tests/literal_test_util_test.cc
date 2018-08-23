@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -80,7 +81,7 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   std::vector<string> results;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &results));
 
-  LOG(INFO) << "results: [" << tensorflow::str_util::Join(results, ", ") << "]";
+  LOG(INFO) << "results: [" << absl::StrJoin(results, ", ") << "]";
   EXPECT_EQ(3, results.size());
   for (const string& result : results) {
     LiteralProto literal_proto;

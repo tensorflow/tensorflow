@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 
 using ::absl::StrCat;
-using ::tensorflow::str_util::Join;
+using ::absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
   return HloSharding(device_id);
@@ -90,7 +91,7 @@ string HloSharding::ToString() const {
     for (const HloSharding& element : tuple_elements_) {
       parts.push_back(element.ToString());
     }
-    return StrCat("{", tensorflow::str_util::Join(parts, ", "), "}");
+    return StrCat("{", absl::StrJoin(parts, ", "), "}");
   }
 
   if (replicated_) {
@@ -99,8 +100,8 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{devices=[", Join(tile_assignment_.dimensions(), ","), "]",
-                  Join(tile_assignment_, ","), "}");
+    return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","),
+                  "]", StrJoin(tile_assignment_, ","), "}");
   }
 }
 

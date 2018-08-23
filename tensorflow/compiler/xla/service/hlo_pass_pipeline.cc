@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -68,7 +69,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
                                                    repeated_field.end());
   if (!disabled_passes.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
-            << tensorflow::str_util::Join(disabled_passes, ", ");
+            << absl::StrJoin(disabled_passes, ", ");
   }
 
   auto run_invariant_checkers = [this,

@@ -192,6 +192,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

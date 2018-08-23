@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -211,7 +212,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
           "layout minor_to_major field contains %d elements, "
           "but shape is rank %lld: {%s}; shape: %s",
           layout.minor_to_major_size(), ShapeUtil::Rank(shape),
-          tensorflow::str_util::Join(layout.minor_to_major(), ", ").c_str(),
+          absl::StrJoin(layout.minor_to_major(), ", ").c_str(),
           shape.ShortDebugString().c_str());
     }
 
@@ -406,8 +407,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     return absl::StrCat("sparse{", layout.max_sparse_elements(), "}");
   }
   CHECK(IsDense(layout));
-  return absl::StrCat(
-      "{", tensorflow::str_util::Join(layout.minor_to_major(), ","), "}");
+  return absl::StrCat("{", absl::StrJoin(layout.minor_to_major(), ","), "}");
 }
 
 namespace {

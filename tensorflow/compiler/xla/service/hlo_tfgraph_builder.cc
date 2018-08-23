@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -29,7 +30,6 @@ using ::absl::StrCat;
 using ::tensorflow::GraphDef;
 using ::tensorflow::NodeDef;
 using ::tensorflow::TensorShapeProto;
-using ::tensorflow::str_util::Join;
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -166,7 +166,9 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
     } else {
       layout_string = StrCat(
-          "{", Join(LayoutUtil::MinorToMajor(instruction->shape()), ","), "}");
+          "{",
+          absl::StrJoin(LayoutUtil::MinorToMajor(instruction->shape()), ","),
+          "}");
     }
     attrs["layout"].set_s(layout_string);
   }

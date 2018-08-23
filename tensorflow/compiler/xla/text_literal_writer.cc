@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -52,7 +53,7 @@ namespace xla {
           return;
         }
         string coordinates =
-            absl::StrCat("(", tensorflow::str_util::Join(indices, ", "), ")");
+            absl::StrCat("(", absl::StrJoin(indices, ", "), ")");
 
         status = f_ptr->Append(absl::StrCat(coordinates, ": ", value, "\n"));
       });

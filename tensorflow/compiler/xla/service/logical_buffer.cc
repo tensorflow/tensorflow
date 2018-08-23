@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -36,9 +37,8 @@ string LogicalBuffer::ToString() const {
   if (has_color()) {
     color_string = absl::StrCat(" @", color().value());
   }
-  return absl::StrCat(instruction_->name(), "[",
-                      tensorflow::str_util::Join(index_, ","), "](#", id(),
-                      color_string, ")");
+  return absl::StrCat(instruction_->name(), "[", absl::StrJoin(index_, ","),
+                      "](#", id(), color_string, ")");
 }
 
 }  // namespace xla

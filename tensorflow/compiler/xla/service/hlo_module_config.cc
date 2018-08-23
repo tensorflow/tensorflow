@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -46,7 +47,7 @@ string HloModuleConfig::compilation_cache_key() const {
        entry_computation_layout_->parameter_layouts()) {
     params.push_back(param_layout.shape().DebugString());
   }
-  StrAppend(&key, tensorflow::str_util::Join(params, ", "), ") => ",
+  StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
             entry_computation_layout_->result_shape().SerializeAsString());
   if (seed() != 0) {
     // TODO(b/32083678): force recompilation to reset global state.

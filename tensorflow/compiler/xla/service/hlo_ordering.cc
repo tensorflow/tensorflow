@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -321,7 +322,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       }
     }
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
@@ -392,7 +393,7 @@ string SequentialHloOrdering::ToString() const {
           tensorflow::strings::Printf("  %s", instruction->name().c_str()));
     }
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 std::ostream& operator<<(

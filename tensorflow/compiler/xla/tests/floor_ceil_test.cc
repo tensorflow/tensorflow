@@ -16,6 +16,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -39,8 +40,7 @@ class FloorCeilTest : public ClientLibraryTestBase {
   // Runs a computation and comparison on expected vs f(input)
   void TestR1F32(tensorflow::gtl::ArraySlice<float> input,
                  tensorflow::gtl::ArraySlice<float> expected, Function f) {
-    LOG(INFO) << "input: {" << tensorflow::str_util::Join(expected, ", ")
-              << "}";
+    LOG(INFO) << "input: {" << absl::StrJoin(expected, ", ") << "}";
     XlaBuilder builder(TestName());
     auto c = ConstantR1<float>(&builder, input);
     if (f == kCeil) {

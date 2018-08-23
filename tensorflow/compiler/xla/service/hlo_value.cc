@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -39,7 +40,6 @@ namespace xla {
 
 using ::absl::StrAppend;
 using ::absl::StrCat;
-using ::tensorflow::str_util::Join;
 
 const Shape& HloPosition::shape() const {
   return ShapeUtil::GetSubshape(instruction->shape(), index);
@@ -216,10 +216,11 @@ void HloValueSet::SortAndUniquifyValues() {
 }
 
 string HloValueSet::ToString() const {
-  return StrCat("HloValueSet: ",
-                Join(values_, ", ", [](string* result, const HloValue* value) {
-                  result->append(value->ToShortString());
-                }));
+  return StrCat(
+      "HloValueSet: ",
+      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
+        result->append(value->ToShortString());
+      }));
 }
 
 bool HloValueSet::AssignUnionOf(

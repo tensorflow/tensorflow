@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -806,11 +807,10 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
     }
   }
   VLOG(3) << "Unreachable roots:"
-          << tensorflow::str_util::Join(
-                 unreachable_roots, "\n\t",
-                 [](string* out, const HloInstruction* hlo) {
-                   absl::StrAppend(out, hlo->ToString());
-                 });
+          << absl::StrJoin(unreachable_roots, "\n\t",
+                           [](string* out, const HloInstruction* hlo) {
+                             absl::StrAppend(out, hlo->ToString());
+                           });
   return unreachable_roots;
 }
 

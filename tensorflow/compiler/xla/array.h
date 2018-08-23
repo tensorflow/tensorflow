@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -527,7 +528,7 @@ class Array {
         }
       }
     } while (next_index(&index));
-    return tensorflow::str_util::Join(pieces, "");
+    return absl::StrJoin(pieces, "");
   }
 
  private:
