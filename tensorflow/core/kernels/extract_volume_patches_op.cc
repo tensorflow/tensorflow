@@ -87,6 +87,10 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     const int stride_cols = strides_[3];
 
     /*
+    // TODO(hsgkim): enable rates
+    // Rates are disabled as of now due to Eigen's definitions of extract_volume_patch
+    // functions; none of them accept rates as its argument and rates are fixed to
+    // (1, 1, 1, 1, 1). A workaround has to be found for this.
     // In order to enable rates, uncomment the following lines and use
     // ksize_*_eff instead of ksize_* for the second argument of GetWindowedOutputSize
     // calls.
