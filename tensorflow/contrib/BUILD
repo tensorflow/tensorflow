@@ -181,6 +181,7 @@ cc_library(
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/data:dataset_ops_op_lib",
+        "//tensorflow/contrib/data:indexed_dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",
