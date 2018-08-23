@@ -140,7 +140,7 @@ class HloVerifier : public HloPassInterface {
       : shape_verifier_factory_(std::move(shape_verifier_factory)) {}
 
   ~HloVerifier() override = default;
-  tensorflow::StringPiece name() const override { return "verifier"; }
+  absl::string_view name() const override { return "verifier"; }
 
   // Note: always returns false (no instructions are ever modified by this
   // pass).

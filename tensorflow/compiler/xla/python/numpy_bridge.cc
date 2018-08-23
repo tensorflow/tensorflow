@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -191,8 +192,8 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
     PyObject* result =
         PyObject_CallMethod(o, const_cast<char*>(method.c_str()), nullptr);
     if (result == nullptr) {
-      return error(tensorflow::strings::StrCat(
-          "Failed to call method of shape object:", method));
+      return error(
+          absl::StrCat("Failed to call method of shape object:", method));
     }
     return result;
   };

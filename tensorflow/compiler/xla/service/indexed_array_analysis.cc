@@ -17,12 +17,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace gtl = ::tensorflow::gtl;
@@ -41,24 +41,22 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
   switch (root->kind()) {
     case Array::kUnknown: {
       auto* unknown_tensor = root->as<UnknownArray>();
-      return tensorflow::strings::StrCat("%",
-                                         unknown_tensor->instruction().name());
+      return absl::StrCat("%", unknown_tensor->instruction().name());
     }
 
     case Array::kConstant: {
       if (print_constants) {
         string contents = root->as<ConstantArray>()->literal()->ToString();
-        return tensorflow::strings::StrCat(
-            "(constant ", ShapeUtil::HumanString(root->shape()), " ", contents,
-            ")");
+        return absl::StrCat("(constant ", ShapeUtil::HumanString(root->shape()),
+                            " ", contents, ")");
       }
-      return tensorflow::strings::StrCat(
-          "(constant ", ShapeUtil::HumanString(root->shape()), ")");
+      return absl::StrCat("(constant ", ShapeUtil::HumanString(root->shape()),
+                          ")");
     }
 
     case Array::kReshaped: {
       ReshapedArray* reshaped_array = root->as<ReshapedArray>();
-      return tensorflow::strings::StrCat(
+      return absl::StrCat(
           "(reshape ", ToString(reshaped_array->operand(), print_constants),
           " to ", ShapeUtil::HumanString(reshaped_array->shape()), ")");
     }
@@ -69,7 +67,7 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
       string name = root->kind() == Array::kScalarIndexedConstant
                         ? "scalar-indexed-const"
                         : "scalar-indexed";
-      return tensorflow::strings::StrCat(
+      return absl::StrCat(
           "(", name, " ", ToString(indexed_array->source(), print_constants),
           " ", ToString(indexed_array->indices(), print_constants), " ",
           indexed_array->source_dim(), "->[",
@@ -396,8 +394,8 @@ std::vector<ReshapePassthroughDimPair> ComputeReshapePassthroughDimPairs(
     std::vector<string> result_strings;
     absl::c_transform(result, std::back_inserter(result_strings),
                       [](ReshapePassthroughDimPair value) {
-                        return tensorflow::strings::StrCat(
-                            value.result_dim, "->", value.operand_dim);
+                        return absl::StrCat(value.result_dim, "->",
+                                            value.operand_dim);
                       });
     VLOG(3) << "For a reshape from [" << Join(operand_shape, ",") << "] to ["
             << Join(result_shape, ",") << "] passthrough indices are ["
@@ -997,8 +995,7 @@ absl::optional<int64> GetOnlyNonContractingNonBatchDim(
 // `contracting_dims` and `batch_dims` are the contracting and batch dimensions
 // of whatever operand `indexed_array` is to the dot (LHS or RHS).
 bool CanFoldDotIntoIndexedArray(
-    tensorflow::StringPiece tag,
-    Analysis::ScalarIndexedConstantArray* indexed_array,
+    absl::string_view tag, Analysis::ScalarIndexedConstantArray* indexed_array,
     ArraySlice<int64> contracting_dims, ArraySlice<int64> batch_dims) {
   absl::optional<int64> non_contracting_non_batch_dim =
       GetOnlyNonContractingNonBatchDim(ShapeUtil::Rank(indexed_array->shape()),
@@ -1135,7 +1132,7 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
   return nullptr;
 }
 
-tensorflow::StringPiece IndexedArrayAnalysisPrinterPass::name() const {
+absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
   return "indexed-array-analysis-printer-pass";
 }
 

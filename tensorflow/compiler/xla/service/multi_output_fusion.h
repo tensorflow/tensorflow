@@ -19,10 +19,10 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
@@ -48,9 +48,7 @@ class MultiOutputFusion : public HloPassInterface {
  public:
   MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
 
-  tensorflow::StringPiece name() const override {
-    return "multi_output_fusion";
-  }
+  absl::string_view name() const override { return "multi_output_fusion"; }
 
   // Run multi-output fusion on the given module. Returns whether the module
   // was changed.

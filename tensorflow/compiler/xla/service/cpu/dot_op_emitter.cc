@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -146,9 +147,9 @@ class GemvConfig {
   bool has_addend() const { return has_addend_; }
 
   string GetCacheKey() const {
-    return tensorflow::strings::StrCat(
-        name_, "_", PrimitiveType_Name(scalar_type()), "_", tile_rows(), "_",
-        tile_cols(), "_", m(), "_", k(), has_addend() ? "_with_addend" : "");
+    return absl::StrCat(name_, "_", PrimitiveType_Name(scalar_type()), "_",
+                        tile_rows(), "_", tile_cols(), "_", m(), "_", k(),
+                        has_addend() ? "_with_addend" : "");
   }
 
  protected:
@@ -642,9 +643,7 @@ class TiledSmallGemmEmitter {
     int64 k() const { return k_; }
     int64 n() const { return n_; }
 
-    string ToString() const {
-      return tensorflow::strings::StrCat(m(), "x", k(), "x", n());
-    }
+    string ToString() const { return absl::StrCat(m(), "x", k(), "x", n()); }
 
    private:
     const int64 m_;
@@ -687,10 +686,10 @@ class TiledSmallGemmEmitter {
           tile_size_k_(tile_size_k) {}
 
     string GetCacheKey() const {
-      return tensorflow::strings::StrCat(
-          "gemm_", PrimitiveType_Name(scalar_type()), "_", dims().ToString(),
-          "_", max_vectorization_width(), "_", min_vectorization_width(), "_",
-          tile_size_m(), "_", tile_size_k());
+      return absl::StrCat("gemm_", PrimitiveType_Name(scalar_type()), "_",
+                          dims().ToString(), "_", max_vectorization_width(),
+                          "_", min_vectorization_width(), "_", tile_size_m(),
+                          "_", tile_size_k());
     }
 
     PrimitiveType scalar_type() const { return scalar_type_; }

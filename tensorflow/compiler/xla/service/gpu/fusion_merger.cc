@@ -291,8 +291,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " into users { "
           << tensorflow::str_util::Join(users, ", ",
                                         [](string* out, HloInstruction* user) {
-                                          tensorflow::strings::StrAppend(
-                                              out, user->name());
+                                          absl::StrAppend(out, user->name());
                                         })
           << " }";
   // Remove 'fusion' instruction.

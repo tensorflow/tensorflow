@@ -97,7 +97,7 @@ static StatusOr<std::unique_ptr<llvm::TargetMachine>>
 GetTargetMachineFromTriple(StringPiece target_triple) {
   std::string error;
   std::string normalized_triple =
-      llvm::Triple::normalize(AsStringRef(target_triple));
+      llvm::Triple::normalize(AsStringRef(absl::string_view(target_triple)));
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(normalized_triple, error);
   if (target == nullptr) {

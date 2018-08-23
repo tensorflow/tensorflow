@@ -26,16 +26,16 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -202,8 +202,8 @@ void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
 // Adds some context information to the error message in a
 // Status.  This is useful as Statuses are
 // propagated upwards.
-Status AddStatus(Status prior, tensorflow::StringPiece context);
-Status AppendStatus(Status prior, tensorflow::StringPiece context);
+Status AddStatus(Status prior, absl::string_view context);
+Status AppendStatus(Status prior, absl::string_view context);
 
 // Status error shorthands -- printfs the arguments to be
 // used as an error message and returns a status in the canonical
@@ -222,26 +222,26 @@ Status InvalidArgumentV(const char* format, va_list args);
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
-  return InvalidArgument(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return InvalidArgument("%s",
+                         absl::StrCat(std::forward<Args>(concat)...).c_str());
 }
 
 template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
-  return Unimplemented(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return Unimplemented("%s",
+                       absl::StrCat(std::forward<Args>(concat)...).c_str());
 }
 
 template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
-  return InternalError(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return InternalError("%s",
+                       absl::StrCat(std::forward<Args>(concat)...).c_str());
 }
 
 template <typename... Args>
 Status ResourceExhaustedStrCat(Args&&... concat) {
-  return ResourceExhausted(
-      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+  return ResourceExhausted("%s",
+                           absl::StrCat(std::forward<Args>(concat)...).c_str());
 }
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
@@ -250,8 +250,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(tensorflow::StringPiece original,
-                tensorflow::StringPiece indentation);
+string Reindent(absl::string_view original, absl::string_view indentation);
 
 // Checks whether permutation is a permutation of the [0, rank) integer range.
 bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
@@ -313,7 +312,7 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
   string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
-    tensorflow::strings::StrAppend(&comma_separated, separator, entry);
+    absl::StrAppend(&comma_separated, separator, entry);
     separator = ", ";
   }
   comma_separated += suffix;
@@ -395,8 +394,7 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
-void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
-              int lineno);
+void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
 template <typename T>
 inline bool IsPowerOfTwo(T x) {

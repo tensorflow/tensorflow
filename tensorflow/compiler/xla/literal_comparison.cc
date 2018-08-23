@@ -19,16 +19,16 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 
+using absl::StrAppend;
+using absl::StrCat;
 using tensorflow::strings::Appendf;
 using tensorflow::strings::Printf;
-using tensorflow::strings::StrAppend;
-using tensorflow::strings::StrCat;
 
 namespace xla {
 namespace literal_comparison {

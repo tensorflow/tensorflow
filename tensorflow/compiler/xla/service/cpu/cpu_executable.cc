@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -177,7 +177,7 @@ Status CpuExecutable::ExecuteComputeFunction(
         buffer_pointers.size(), profile_counters_size);
     VLOG(3) << tensorflow::strings::Printf("    result = %p", result_buffer);
     auto ptr_printer = [](string* out, const void* p) {
-      tensorflow::strings::StrAppend(out, tensorflow::strings::Printf("%p", p));
+      absl::StrAppend(out, tensorflow::strings::Printf("%p", p));
     };
     VLOG(3) << "    params = nullptr";
     VLOG(3) << tensorflow::strings::Printf(

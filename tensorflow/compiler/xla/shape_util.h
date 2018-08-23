@@ -228,7 +228,7 @@ class ShapeUtil {
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
-  static StatusOr<Shape> ParseShapeString(tensorflow::StringPiece s);
+  static StatusOr<Shape> ParseShapeString(absl::string_view s);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.

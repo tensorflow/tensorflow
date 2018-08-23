@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/jit/legacy_flags/parallel_check_op_flags.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op.h"
@@ -41,14 +42,12 @@ class ParallelCheckOp : public OpKernel {
     double rtol;
     legacy_flags::ParallelCheckOpFlags* flags =
         legacy_flags::GetParallelCheckOpFlags();
-    if (!tensorflow::strings::safe_strtod(flags->parallel_check_rtol.c_str(),
-                                          &rtol)) {
+    if (!absl::SimpleAtod(flags->parallel_check_rtol.c_str(), &rtol)) {
       LOG(ERROR) << "can't convert parallel_check_rtol "
                  << flags->parallel_check_rtol << " to double";
     }
     double atol;
-    if (!tensorflow::strings::safe_strtod(flags->parallel_check_atol.c_str(),
-                                          &atol)) {
+    if (!absl::SimpleAtod(flags->parallel_check_atol.c_str(), &atol)) {
       LOG(ERROR) << "can't convert parallel_check_atol "
                  << flags->parallel_check_atol << " to double";
     }

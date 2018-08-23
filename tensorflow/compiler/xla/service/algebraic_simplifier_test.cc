@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -2143,7 +2144,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         root->operand(0)->opcode() == HloOpcode::kDot) {
       auto lhs_shape = root->operand(0)->operand(0)->shape();
       auto rhs_shape = root->operand(0)->operand(1)->shape();
-      return tensorflow::strings::StrCat(
+      return absl::StrCat(
           tensorflow::str_util::Join(lhs_shape.dimensions(), "x"), " DOT ",
           tensorflow::str_util::Join(rhs_shape.dimensions(), "x"));
     }
@@ -2660,11 +2661,11 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool should_become_broadcast;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::StrCat(
-        tensorflow::str_util::Join(input_spatials, ","), ";",
-        tensorflow::str_util::Join(symmetric_pad_spatials, ","), ";",
-        tensorflow::str_util::Join(reduce_window_spatials, ","), ";", prepend_a,
-        ";", should_become_broadcast);
+    return absl::StrCat(tensorflow::str_util::Join(input_spatials, ","), ";",
+                        tensorflow::str_util::Join(symmetric_pad_spatials, ","),
+                        ";",
+                        tensorflow::str_util::Join(reduce_window_spatials, ","),
+                        ";", prepend_a, ";", should_become_broadcast);
   }
 };
 

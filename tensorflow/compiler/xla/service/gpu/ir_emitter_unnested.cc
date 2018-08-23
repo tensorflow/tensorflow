@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
@@ -90,10 +91,10 @@ namespace {
 using absl::InlinedVector;
 using absl::nullopt;
 using absl::optional;
+using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::strings::StrCat;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -801,8 +802,7 @@ Status IrEmitterUnnested::EmitReductionToScalar(
   // //     RoundUpToNextMultipleOf(Ceil(num_elems / kTileSize), warpSize),
   // //
   // // and threads_per_block is a multiple of warpSize.
-  // reduce_kernel<<<num_blocks, threads_per_block>>>();
-  //
+  // reduce_kernel  //
   auto loop_body_emitter = [=](const IrArray::Index& tile_index) -> Status {
     const int num_reduces = reducers.size();
     llvm::Type* element_ir_type =

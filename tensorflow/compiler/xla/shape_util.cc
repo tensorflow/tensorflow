@@ -22,6 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -31,20 +37,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using ::absl::StrAppend;
+using ::absl::StrCat;
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
 
@@ -550,14 +554,14 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
 namespace {
 // Parses shapes with simple recursive descent structure -- consumes from the
 // front of s and passes that view recursively as required.
-StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
-  tensorflow::str_util::RemoveLeadingWhitespace(s);
+StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
+  *s = StripLeadingAsciiWhitespace(*s);
 
-  if (tensorflow::str_util::ConsumePrefix(s, "(")) {  // Tuple.
+  if (absl::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
     bool must_end = false;
     while (true) {
-      if (tensorflow::str_util::ConsumePrefix(s, ")")) {
+      if (absl::ConsumePrefix(s, ")")) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
@@ -565,8 +569,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
-      tensorflow::str_util::RemoveLeadingWhitespace(s);
-      must_end = !tensorflow::str_util::ConsumePrefix(s, ",");
+      *s = StripLeadingAsciiWhitespace(*s);
+      must_end = !absl::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);
   }
@@ -575,9 +579,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   string dimensions_string;
   string format_string;
   string layout_string;
-  // tensorflow::StringPiece is not compatible with internal RE2 StringPiece, so
+  // absl::string_view is not compatible with internal RE2 StringPiece, so
   // we convert in to the RE2-consumable type and then consume the corresponding
-  // amount from our StringPiece type.
+  // amount from our string_view type.
   static LazyRE2 shape_pattern = {
       "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
@@ -585,12 +589,12 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                    &dimensions_string, &format_string, &layout_string)) {
     size_t consumed = s->size() - s_consumable.size();
     s->remove_prefix(consumed);
-    auto string_to_int64 = [&s](const string& input) -> StatusOr<int64> {
+    auto string_to_int64 = [&s](absl::string_view input) -> StatusOr<int64> {
       int64 element;
-      if (!tensorflow::strings::safe_strto64(input.c_str(), &element)) {
+      if (!absl::SimpleAtoi(input, &element)) {
         return InvalidArgument(
             "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            input.c_str(), std::string(*s).c_str());
+            string(input).c_str(), std::string(*s).c_str());
       }
       return element;
     };
@@ -598,7 +602,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     auto comma_list_to_int64s =
         [string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
       std::vector<int64> results;
-      for (const string& piece : tensorflow::str_util::Split(input, ',')) {
+      for (const auto& piece : absl::StrSplit(input, ',', absl::SkipEmpty())) {
         TF_ASSIGN_OR_RETURN(int64 element, string_to_int64(piece));
         results.push_back(element);
       }
@@ -649,8 +653,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 }  // namespace
 
-/* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(
-    tensorflow::StringPiece s) {
+/* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(absl::string_view s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
     return InvalidArgument("Invalid shape string to parse: \"%s\"",

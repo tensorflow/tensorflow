@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -88,7 +88,7 @@ void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
 
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        const absl::optional<IrArray>& values_array,
-                       tensorflow::StringPiece name, llvm::Value* xor_mask,
+                       absl::string_view name, llvm::Value* xor_mask,
                        llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions* launch_dimensions) {
   const Shape& keys_shape = keys_array.GetShape();

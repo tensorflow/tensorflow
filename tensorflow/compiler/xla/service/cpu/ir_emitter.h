@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
@@ -107,7 +107,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* EmitElementalMap(
       const HloMapInstruction& map_instr,
       tensorflow::gtl::ArraySlice<llvm::Value*> elemental_operands,
-      tensorflow::StringPiece name);
+      absl::string_view name);
 
  protected:
   //
@@ -239,7 +239,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // function that a map operation applies.
   StatusOr<llvm::Function*> EmitFunction(
       HloComputation* function,  // The function to emit.
-      tensorflow::StringPiece
+      absl::string_view
           function_name_suffix);  // Used for LLVM IR register names.
 
   // Emits a call to a thread local function (e.g. to the computation nested
@@ -251,14 +251,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* EmitThreadLocalCall(
       const HloComputation& callee,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameters,
-      tensorflow::StringPiece name);
+      absl::string_view name);
 
   // Emits a call to a "global" function (e.g. to the computation nested within
   // a kWhile or a kCall).  Buffer assignment unabiguously assignes buffers to
   // the parameters and return values for these computations so there is no need
   // to explicitly pass parameters or return results.
-  void EmitGlobalCall(const HloComputation& callee,
-                      tensorflow::StringPiece name);
+  void EmitGlobalCall(const HloComputation& callee, absl::string_view name);
 
   // Returns the buffer to which a global call to `callee` would have written
   // its result.
@@ -285,7 +284,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloInstruction* target_op,
       const llvm_ir::ElementGenerator& element_generator);
   Status EmitTargetElementLoop(
-      HloInstruction* target_op, tensorflow::StringPiece desc,
+      HloInstruction* target_op, absl::string_view desc,
       const llvm_ir::ElementGenerator& element_generator);
 
   // Emits a memcpy from the source instruction's result value to the

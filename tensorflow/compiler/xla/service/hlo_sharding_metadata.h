@@ -32,7 +32,7 @@ class ShardingMetadata : public DomainMetadata {
 
   std::unique_ptr<DomainMetadata> Clone() const override;
 
-  tensorflow::StringPiece Kind() const override { return KindName(); }
+  absl::string_view Kind() const override { return KindName(); }
 
   bool Matches(const DomainMetadata& other) const override;
 
@@ -40,7 +40,7 @@ class ShardingMetadata : public DomainMetadata {
 
   const HloSharding* sharding() const { return sharding_.get(); }
 
-  static tensorflow::StringPiece KindName() { return "sharding"; }
+  static absl::string_view KindName() { return "sharding"; }
 
   static StatusOr<const ShardingMetadata*> ToShardingMetadata(
       const DomainMetadata* metadata);

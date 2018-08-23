@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include <string>
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -29,7 +31,7 @@ namespace xla {
 
 namespace {
 
-using ::tensorflow::StringPiece;
+using ::absl::string_view;
 
 struct TestData {
   string test_name;
@@ -1128,8 +1130,8 @@ ENTRY Computation {
 class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
-  static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-    EXPECT_TRUE(tensorflow::str_util::StrContains(s, expected))
+  static void ExpectHasSubstr(string_view s, string_view expected) {
+    EXPECT_TRUE(absl::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
 
@@ -1393,15 +1395,14 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )";
 
-  ExpectHasSubstr(ParseHloString(tensorflow::strings::StrCat(
-                                     prefix, ",dim_labels=00_01_10", suffix))
-                      .status()
-                      .error_message(),
-                  "expects dim labels pattern");
+  ExpectHasSubstr(
+      ParseHloString(absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+          .status()
+          .error_message(),
+      "expects dim labels pattern");
 
   ExpectHasSubstr(
-      ParseHloString(tensorflow::strings::StrCat(
-                         prefix, ",dim_labels=010_1100->010", suffix))
+      ParseHloString(absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
           .status()
           .error_message(),
       "must have the same rank");

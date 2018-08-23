@@ -26,6 +26,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -41,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -49,13 +51,12 @@ limitations under the License.
 
 using ::absl::nullopt;
 using ::absl::optional;
+using ::absl::StrAppend;
+using ::absl::StrCat;
 using ::tensorflow::Env;
 using ::tensorflow::WriteStringToFile;
 using ::tensorflow::io::JoinPath;
 using ::tensorflow::str_util::Join;
-using ::tensorflow::str_util::StringReplace;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -217,9 +218,8 @@ string NodeColorAttributes(ColorScheme color) {
 
 // Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
 // graphviz HTML-like string.
-string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
-  return StringReplace(StringReplace(s, "<", "&lt;", /*replace_all=*/true), ">",
-                       "&gt;", /*replace_all=*/true);
+string HtmlLikeStringSanitize(absl::string_view s) {
+  return absl::StrReplaceAll(s, {{"<", "&lt;"}, {">", "&gt;"}});
 }
 
 // Tries to generates a human-readable one-word description of the given
@@ -322,7 +322,7 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 // Encapsulates logic for dumping an HLO module to DOT (i.e. graphviz syntax).
 class HloDotDumper {
  public:
-  HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
+  HloDotDumper(const HloComputation* computation, absl::string_view label,
                const DebugOptions& debug_options, bool show_backend_config,
                const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
@@ -854,7 +854,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
-    if (tensorflow::str_util::StartsWith(constant->name(), "constant")) {
+    if (absl::StartsWith(constant->name(), "constant")) {
       constant_name = constant->name();
     } else {
       constant_name = StrCat("constant ", constant->name());
@@ -1084,8 +1084,7 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
-  if (tensorflow::str_util::StartsWith(instr->name(),
-                                       HloOpcodeString(instr->opcode()))) {
+  if (absl::StartsWith(instr->name(), HloOpcodeString(instr->opcode()))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =
@@ -1160,8 +1159,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     constexpr int kMaxShapeLen = 64;
     if (instr_shape.length() > kMaxShapeLen) {
       instr_shape = StrCat(
-          tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
-          "...");
+          absl::string_view(instr_shape).substr(0, kMaxShapeLen - 3), "...");
     }
     lines.push_back(instr_shape);
   }

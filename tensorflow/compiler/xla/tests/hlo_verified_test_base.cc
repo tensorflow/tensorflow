@@ -73,7 +73,7 @@ HloModule* HloVerifiedTestBase::CreateNewModule(const string& name) {
   return modules_.back().get();
 }
 
-void HloVerifiedTestBase::ParseAndVerifyModule(tensorflow::StringPiece hlo_text,
+void HloVerifiedTestBase::ParseAndVerifyModule(absl::string_view hlo_text,
                                                const HloModuleConfig& config) {
   CHECK(!module_) << "Called ParseModule when test already has a module.";
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text, config));

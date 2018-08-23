@@ -248,8 +248,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      tensorflow::StringPiece barrier,
-      const absl::optional<int64>& all_reduce_id);
+      absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
 
   // Returns the barrier config used for the CrossReplicaSum implementation of
   // each backend.
@@ -908,7 +907,7 @@ class HloOutfeedInstruction : public HloInstruction {
   explicit HloOutfeedInstruction(const Shape& outfeed_shape,
                                  HloInstruction* operand,
                                  HloInstruction* token_operand,
-                                 tensorflow::StringPiece outfeed_config);
+                                 absl::string_view outfeed_config);
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const {
     TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape_));
@@ -1061,7 +1060,7 @@ class HloCustomCallInstruction : public HloInstruction {
  public:
   explicit HloCustomCallInstruction(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      tensorflow::StringPiece custom_call_target);
+      absl::string_view custom_call_target);
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;

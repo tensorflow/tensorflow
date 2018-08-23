@@ -77,7 +77,7 @@ const absl::optional<string>& ExecutableBuildOptions::generate_hlo_graph()
 }
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_dump_optimized_hlo_proto_to(
-    tensorflow::StringPiece dirpath) {
+    absl::string_view dirpath) {
   dump_optimized_hlo_proto_to_ = string(dirpath);
   return *this;
 }
@@ -89,8 +89,8 @@ ExecutableBuildOptions::dump_optimized_hlo_proto_to() const {
 
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_dump_unoptimized_hlo_proto_to(
-    tensorflow::StringPiece dirpath) {
-  dump_unoptimized_hlo_proto_to_ = dirpath.ToString();
+    absl::string_view dirpath) {
+  dump_unoptimized_hlo_proto_to_ = string(dirpath);
   return *this;
 }
 
@@ -100,7 +100,7 @@ ExecutableBuildOptions::dump_unoptimized_hlo_proto_to() const {
 }
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_dump_per_pass_hlo_proto_to(
-    tensorflow::StringPiece dirpath) {
+    absl::string_view dirpath) {
   dump_per_pass_hlo_proto_to_ = string(dirpath);
   return *this;
 }

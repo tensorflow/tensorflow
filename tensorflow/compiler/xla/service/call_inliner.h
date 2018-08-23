@@ -35,7 +35,7 @@ class CallInliner : public HloPassInterface {
   static StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
 
   ~CallInliner() override = default;
-  tensorflow::StringPiece name() const override { return "CallInliner"; }
+  absl::string_view name() const override { return "CallInliner"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

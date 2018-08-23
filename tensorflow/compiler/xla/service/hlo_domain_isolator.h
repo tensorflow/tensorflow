@@ -43,7 +43,7 @@ class HloDomainIsolator : public HloPassInterface {
 
   explicit HloDomainIsolator(DomainCreator creator);
 
-  tensorflow::StringPiece name() const override { return "domain_isolator"; }
+  absl::string_view name() const override { return "domain_isolator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

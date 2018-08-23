@@ -43,7 +43,7 @@ namespace xla {
 namespace {
 
 using absl::optional;
-using tensorflow::StringPiece;
+using absl::string_view;
 using tensorflow::gtl::ArraySlice;
 
 constexpr char kInterpreter[] = "interpreter";
@@ -239,7 +239,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
+    string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -252,7 +252,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                        reference_preprocessor);
 }
 
-::testing::AssertionResult HloTestBase::Run(const StringPiece hlo_string) {
+::testing::AssertionResult HloTestBase::Run(string_view hlo_string) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
@@ -289,7 +289,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    const StringPiece hlo_string, const absl::optional<ErrorSpec>& error,
+    string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
@@ -316,7 +316,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 }
 
 HloComputation* HloTestBase::FindComputation(HloModule* module,
-                                             tensorflow::StringPiece name) {
+                                             absl::string_view name) {
   auto computations = module->computations();
   auto it = absl::c_find_if(
       computations, [&](HloComputation* c) { return c->name() == name; });
@@ -327,7 +327,7 @@ HloComputation* HloTestBase::FindComputation(HloModule* module,
 }
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
-                                             tensorflow::StringPiece name) {
+                                             absl::string_view name) {
   for (const HloComputation* c : module->computations()) {
     auto instructions = c->instructions();
     auto it = absl::c_find_if(
