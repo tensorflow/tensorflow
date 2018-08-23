@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
-
+#include <string>
 #include <vector>
 
 namespace xla {
@@ -31,14 +31,21 @@ namespace poplarplugin {
 
 struct CompilerAnnotations;
 
-enum ClassificationType {
+enum ConvClassificationType {
   FORWARD,
   BACKPROP_INPUT,
   BACKPROP_FILTER,
   INFERENCE,
 };
 
-using ConvClassification = std::map<const HloInstruction*, ClassificationType>;
+ConvClassificationType GetConvClassificationType(const HloInstruction*,
+                                                 const CompilerAnnotations&);
+std::string ConvClassificationTypeToString(const ConvClassificationType&);
+std::string ConvClassificationTypeToString(const HloInstruction*,
+                                           const CompilerAnnotations&);
+
+using ConvClassification =
+    std::map<const HloInstruction*, ConvClassificationType>;
 
 /**
  * This class marks each convolution as either a forward pass, a backprop input

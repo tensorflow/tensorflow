@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
@@ -24,6 +25,41 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
+
+ConvClassificationType GetConvClassificationType(
+    const HloInstruction* inst, const CompilerAnnotations& annotations) {
+  if (IsForward(inst, annotations)) {
+    return ConvClassificationType::FORWARD;
+  }
+  if (IsBackpropInput(inst, annotations)) {
+    return ConvClassificationType::BACKPROP_INPUT;
+  }
+  if (IsBackpropFilter(inst, annotations)) {
+    return ConvClassificationType::BACKPROP_FILTER;
+  }
+  return ConvClassificationType::INFERENCE;
+}
+
+std::string ConvClassificationTypeToString(const ConvClassificationType& x) {
+  switch (x) {
+    case ConvClassificationType::FORWARD:
+      return "TRAINING_FWD";
+    case ConvClassificationType::BACKPROP_INPUT:
+      return "TRAINING_BWD";
+    case ConvClassificationType::BACKPROP_FILTER:
+      return "TRAINING_WU";
+    case ConvClassificationType::INFERENCE:
+      return "INFERENCE_FWD";
+    default:
+      return "NONE";
+  }
+}
+
+std::string ConvClassificationTypeToString(
+    const HloInstruction* inst, const CompilerAnnotations& annotations) {
+  return ConvClassificationTypeToString(
+      GetConvClassificationType(inst, annotations));
+}
 
 using ArgMap = std::multimap<const HloInstruction*, const HloInstruction*>;
 
@@ -92,11 +128,11 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
       for (const auto* inst : comp->instructions()) {
         switch (inst->opcode()) {
           case HloOpcode::kConvolution: {
-            classification_[inst] = ClassificationType::INFERENCE;
+            classification_[inst] = ConvClassificationType::INFERENCE;
             break;
           }
           case HloOpcode::kDot: {
-            classification_[inst] = ClassificationType::INFERENCE;
+            classification_[inst] = ConvClassificationType::INFERENCE;
             break;
           }
           case HloOpcode::kCall: {
@@ -104,7 +140,7 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
             if (IsPopOpsCall(inst, "depthwise_conv") ||
                 IsPopOpsCall(inst, "conv_with_reverse") ||
                 IsPopOpsCall(inst, "depthwise_filter")) {
-              classification_[inst] = ClassificationType::INFERENCE;
+              classification_[inst] = ConvClassificationType::INFERENCE;
             }
             break;
           }
@@ -154,22 +190,22 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
 
       if (fwd.size() > 0 && wu.size() > 0) {
         for (const auto* i : fwd) {
-          classification_[i] = ClassificationType::FORWARD;
+          classification_[i] = ConvClassificationType::FORWARD;
         }
         for (const auto* i : wu) {
-          classification_[i] = ClassificationType::BACKPROP_FILTER;
+          classification_[i] = ConvClassificationType::BACKPROP_FILTER;
         }
       }
     }
   }
 
   for (auto& it : classification_) {
-    if (it.second == ClassificationType::INFERENCE) {
+    if (it.second == ConvClassificationType::INFERENCE) {
       auto weight = arg1_rev_map.find(it.first);
       auto targets = arg1_fwd_map.equal_range(weight->second);
       for (auto t = targets.first; t != targets.second; ++t) {
-        if (classification_[t->second] == ClassificationType::FORWARD) {
-          it.second = ClassificationType::BACKPROP_INPUT;
+        if (classification_[t->second] == ConvClassificationType::FORWARD) {
+          it.second = ConvClassificationType::BACKPROP_INPUT;
         }
       }
     }

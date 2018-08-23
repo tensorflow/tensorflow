@@ -267,8 +267,9 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   hlo_module->AddEntryComputation(std::move(computation_main));
 
   CompilerAnnotations annotations;
-  annotations.classification_map[conv1] = ClassificationType::FORWARD;
-  annotations.classification_map[conv2] = ClassificationType::BACKPROP_INPUT;
+  annotations.classification_map[conv1] = ConvClassificationType::FORWARD;
+  annotations.classification_map[conv2] =
+      ConvClassificationType::BACKPROP_INPUT;
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -375,8 +376,9 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   hlo_module->AddEntryComputation(std::move(computation_main));
 
   CompilerAnnotations annotations;
-  annotations.classification_map[conv1] = ClassificationType::BACKPROP_INPUT;
-  annotations.classification_map[conv2] = ClassificationType::FORWARD;
+  annotations.classification_map[conv1] =
+      ConvClassificationType::BACKPROP_INPUT;
+  annotations.classification_map[conv2] = ConvClassificationType::FORWARD;
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -724,7 +726,6 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
   EXPECT_EQ(t2.path.size(), 1);
 }
 
-
 // Check it goes through call sites
 TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
@@ -742,9 +743,9 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   HloInstruction* op0_sub = builder_sub.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "input"));
   HloInstruction* op1_sub = builder_sub.AddInstruction(
-    HloInstruction::CreateConstant(std::move(literal)));
+      HloInstruction::CreateConstant(std::move(literal)));
   HloInstruction* op2_sub = builder_sub.AddInstruction(
-    HloInstruction::CreateConcatenate(input_shape, {op0_sub, op1_sub}, 3));
+      HloInstruction::CreateConcatenate(input_shape, {op0_sub, op1_sub}, 3));
   auto computation_sub = builder_sub.Build();
 
   /* Create main computation */
@@ -755,9 +756,9 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
       HloInstruction::CreateParameter(1, weight_shape, "op1"));
   HloInstruction* call = builder_main.AddInstruction(
       HloInstruction::CreateCall(input_shape, {op0}, computation_sub.get()));
-  HloInstruction* conv = builder_main.AddInstruction(
-      HloInstruction::CreateConvolve(conv_shape, call, op1, GetConv1Window(),
-                                     GetConvDimensions()));
+  HloInstruction* conv =
+      builder_main.AddInstruction(HloInstruction::CreateConvolve(
+          conv_shape, call, op1, GetConv1Window(), GetConvDimensions()));
 
   builder_main.AddInstruction(HloInstruction::CreateTuple({conv}));
 

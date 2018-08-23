@@ -1,7 +1,8 @@
 #include <algorithm>
 
-#include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -119,20 +120,6 @@ static const HloInstruction* FindConvolutionOp(
     inst = annotations.fusion_map.at(inst->to_apply());
   }
   return inst;
-}
-
-static std::string GetConvolutionPass(const HloInstruction* inst,
-                                      const CompilerAnnotations& annotations) {
-  if (IsForward(inst, annotations)) {
-    return "TRAINING_FWD";
-  }
-  if (IsBackpropInput(inst, annotations)) {
-    return "TRAINING_BWD";
-  }
-  if (IsBackpropFilter(inst, annotations)) {
-    return "TRAINING_WU";
-  }
-  return "INFERENCE_FWD";
 }
 
 StatusOr<poplar::Tensor> ShuffleConvolutionInputToPoplar(
@@ -287,9 +274,6 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
   poplar::Tensor kernel;
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
-  poplar::OptionFlags opts;
-  opts.set("pass", GetConvolutionPass(conv, res.annotations));
-
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
@@ -302,9 +286,11 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
 
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
-  auto out =
-      poplin::convolution(graph, in, kernel, params, false, prog,
-                          GetDebugName(inst), opts, &res.convolution_cache);
+  const auto conv_type = GetConvClassificationType(conv, res.annotations);
+
+  auto out = graph_caching_util::DoCachedConvolution(graph, res, in, kernel,
+                                                     params, conv_type, false,
+                                                     prog, GetDebugName(conv));
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -327,9 +313,6 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   poplar::Tensor kernel;
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
-  poplar::OptionFlags opts;
-  opts.set("pass", GetConvolutionPass(inst, res.annotations));
-
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
@@ -342,9 +325,11 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 
   kernel = AddGroupsDimensionToWeights(params, kernel, true);
 
-  poplar::Tensor out =
-      poplin::convolution(graph, in, kernel, params, true, prog,
-                          GetDebugName(conv), opts, &res.convolution_cache);
+  auto conv_type = GetConvClassificationType(inst, res.annotations);
+
+  auto out = graph_caching_util::DoCachedConvolution(graph, res, in, kernel,
+                                                     params, conv_type, true,
+                                                     prog, GetDebugName(conv));
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -367,9 +352,6 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   poplar::Tensor kernel;
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
-  poplar::OptionFlags opts;
-  opts.set("pass", GetConvolutionPass(inst, res.annotations));
-
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
@@ -388,9 +370,11 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
 
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
-  poplar::Tensor out =
-      poplin::convolution(graph, in, kernel, params, false, prog,
-                          GetDebugName(conv), opts, &res.convolution_cache);
+  auto conv_type = GetConvClassificationType(inst, res.annotations);
+
+  poplar::Tensor out = graph_caching_util::DoCachedConvolution(
+      graph, res, in, kernel, params, conv_type, false, prog,
+      GetDebugName(conv));
 
   // Move 'G' parts of the B back to I
   out = out.reshapePartial(1, 2, {n_g, out.dim(1) / n_g});
@@ -460,8 +444,8 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
 
   poplar::program::Sequence prog;
   popops::reduceWithOutput(graph, deltas, biases, reduction_dims,
-                           {popops::Operation::ADD, -learning_rate, true},
-                           prog, GetDebugName(inst));
+                           {popops::Operation::ADD, -learning_rate, true}, prog,
+                           GetDebugName(inst));
 
   TF_CHECK_OK(
       AddOutputTensor(graph, res, prog, tensor_map, inst, 0, biases).status());
