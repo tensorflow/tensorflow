@@ -31,7 +31,8 @@ namespace tensorflow {
 class DecisionTreeResource : public ResourceBase {
  public:
   DecisionTreeResource(const int32& leaf_model_type, const int32& num_output)
-      : leaf_model_type_(leaf_model_type) {
+      : leaf_model_type_(leaf_model_type),
+        decision_tree_(new tensorforest::Model()) {
     model_op_ =
         LeafModelFactory::CreateLeafModelOperator(leaf_model_type_, num_output);
   };

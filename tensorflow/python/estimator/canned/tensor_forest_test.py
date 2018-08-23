@@ -72,5 +72,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
       self.assertEquals(probs.eval().shape, (4, 2))
       self.assertEquals(probs.eval().tolist(), expected_prediction)
 
+
 if __name__ == '__main__':
   googletest.main()
