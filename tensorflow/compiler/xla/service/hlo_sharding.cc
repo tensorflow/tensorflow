@@ -72,12 +72,9 @@ HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
                                      const HloSharding& sharding) {
   CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
   CHECK(!sharding.IsTuple()) << sharding.ToString();
-  int64 leaf_count = ShapeUtil::GetLeafCount(tuple_shape);
+  int64 leaf_count = RequiredLeaves(tuple_shape);
   std::vector<HloSharding> flattened_list;
-  flattened_list.reserve(leaf_count);
-  for (int64 i = 0; i < leaf_count; ++i) {
-    flattened_list.push_back(sharding);
-  }
+  flattened_list.resize(leaf_count, sharding);
   return HloSharding(flattened_list);
 }
 
@@ -446,7 +443,7 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   }
   for (int64 i = 1; i < tuple_elements_.size(); ++i) {
     if (tuple_elements_[0] != tuple_elements_[i]) {
-      return absl::optional<HloSharding>();
+      return absl::nullopt;
     }
   }
   return tuple_elements_.front();
