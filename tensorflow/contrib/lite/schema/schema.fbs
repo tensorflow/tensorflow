@@ -172,6 +172,7 @@ enum BuiltinOperator : byte {
   UNPACK = 88,
   REDUCE_MIN = 89,
   FLOOR_DIV = 90,
+  REDUCE_ANY = 91,
 }
 
 // Options for the builtin operators.
