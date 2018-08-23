@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -31,10 +30,6 @@ class MetaOptimizer : public GraphOptimizer {
  public:
   MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
       : cpu_device_(cpu_device), cfg_(cfg) {}
-
-  MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg, const GPUOptions& gpu_options)
-      : cpu_device_(cpu_device), cfg_(cfg), gpu_options_(gpu_options) {}
-
   ~MetaOptimizer() override = default;
 
   string name() const override { return "meta_optimizer"; };
@@ -82,7 +77,6 @@ class MetaOptimizer : public GraphOptimizer {
                       GraphOptimizationResult* optimization_result);
 
   std::vector<GraphOptimizationResult> optimization_results_;
-  GPUOptions gpu_options_;
 };
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg);
@@ -95,8 +89,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg);
 // when possible.
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
-                        GraphDef* optimized_graph,
-                        const GPUOptions& gpu_options);
+                        GraphDef* optimized_graph);
 
 }  // namespace grappler
 }  // namespace tensorflow
