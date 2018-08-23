@@ -51,7 +51,7 @@ CFGFunction *FunctionConverter::convert(const MLFunction *mlFunc) {
 
   // Creates return instruction with no operands.
   // TODO: convert return operands.
-  builder.createReturnInst(mlFunc->getReturnStmt()->getLoc(), {});
+  builder.createReturn(mlFunc->getReturnStmt()->getLoc(), {});
 
   // TODO: convert ML function body.
 

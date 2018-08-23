@@ -149,34 +149,34 @@ public:
   // High level parsing methods.
   //===--------------------------------------------------------------------===//
 
-  // These emit an error and return "true" on failure.  On success, they can
-  // optionally provide location information for clients who want it.
+  // These emit an error and return true on failure, or return false on success.
+  // This allows these to be chained together into a linear sequence of ||
+  // expressions in many cases.
 
   /// Get the location of the next token and store it into the argument.  This
   /// always succeeds.
   virtual bool getCurrentLocation(llvm::SMLoc *loc) = 0;
 
   /// This parses... a comma!
-  virtual bool parseComma(llvm::SMLoc *loc = nullptr) = 0;
+  virtual bool parseComma() = 0;
 
   /// Parse a colon followed by a type.
-  virtual bool parseColonType(Type *&result, llvm::SMLoc *loc = nullptr) = 0;
+  virtual bool parseColonType(Type *&result) = 0;
 
   /// Parse a type of a specific kind, e.g. a FunctionType.
-  template <typename TypeType>
-  bool parseColonType(TypeType *&result, llvm::SMLoc *loc = nullptr) {
+  template <typename TypeType> bool parseColonType(TypeType *&result) {
+    llvm::SMLoc loc;
+    getCurrentLocation(&loc);
+
     // Parse any kind of type.
     Type *type;
-    llvm::SMLoc tmpLoc;
-    if (parseColonType(type, &tmpLoc))
+    if (parseColonType(type))
       return true;
-    if (loc)
-      *loc = tmpLoc;
 
     // Check for the right kind of attribute.
     result = dyn_cast<TypeType>(type);
     if (!result) {
-      emitError(tmpLoc, "invalid kind of type specified");
+      emitError(loc, "invalid kind of type specified");
       return true;
     }
 
@@ -184,8 +184,7 @@ public:
   }
 
   /// Parse a colon followed by a type list, which must have at least one type.
-  virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result,
-                                  llvm::SMLoc *loc = nullptr) = 0;
+  virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result) = 0;
 
   /// Add the specified type to the end of the specified type list and return
   /// false.  This is a helper designed to allow parse methods to be simple and
@@ -207,27 +206,25 @@ public:
   /// attribute to the specified attribute list with the specified name.  this
   /// captures the location of the attribute in 'loc' if it is non-null.
   virtual bool parseAttribute(Attribute *&result, const char *attrName,
-                              SmallVectorImpl<NamedAttribute> &attrs,
-                              llvm::SMLoc *loc = nullptr) = 0;
+                              SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   /// Parse an attribute of a specific kind, capturing the location into `loc`
   /// if specified.
   template <typename AttrType>
   bool parseAttribute(AttrType *&result, const char *attrName,
-                      SmallVectorImpl<NamedAttribute> &attrs,
-                      llvm::SMLoc *loc = nullptr) {
+                      SmallVectorImpl<NamedAttribute> &attrs) {
+    llvm::SMLoc loc;
+    getCurrentLocation(&loc);
+
     // Parse any kind of attribute.
     Attribute *attr;
-    llvm::SMLoc tmpLoc;
-    if (parseAttribute(attr, attrName, attrs, &tmpLoc))
+    if (parseAttribute(attr, attrName, attrs))
       return true;
-    if (loc)
-      *loc = tmpLoc;
 
     // Check for the right kind of attribute.
     result = dyn_cast<AttrType>(attr);
     if (!result) {
-      emitError(tmpLoc, "invalid kind of constant specified");
+      emitError(loc, "invalid kind of constant specified");
       return true;
     }
 
@@ -236,8 +233,7 @@ public:
 
   /// If a named attribute dictionary is present, parse it into result.
   virtual bool
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result,
-                             llvm::SMLoc *loc = nullptr) = 0;
+  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
 
   /// Parse a function name like '@foo' and return the name in a form that can
   /// be passed to resolveFunctionName when a function type is available.

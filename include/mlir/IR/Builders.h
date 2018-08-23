@@ -191,18 +191,17 @@ public:
 
   // Terminators.
 
-  ReturnInst *createReturnInst(Attribute *location,
-                               ArrayRef<CFGValue *> operands) {
+  ReturnInst *createReturn(Attribute *location, ArrayRef<CFGValue *> operands) {
     return insertTerminator(ReturnInst::create(location, operands));
   }
 
-  BranchInst *createBranchInst(Attribute *location, BasicBlock *dest) {
+  BranchInst *createBranch(Attribute *location, BasicBlock *dest) {
     return insertTerminator(BranchInst::create(location, dest));
   }
 
-  CondBranchInst *createCondBranchInst(Attribute *location, CFGValue *condition,
-                                       BasicBlock *trueDest,
-                                       BasicBlock *falseDest) {
+  CondBranchInst *createCondBranch(Attribute *location, CFGValue *condition,
+                                   BasicBlock *trueDest,
+                                   BasicBlock *falseDest) {
     return insertTerminator(
         CondBranchInst::create(location, condition, trueDest, falseDest));
   }

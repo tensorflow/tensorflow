@@ -1715,14 +1715,6 @@ public:
   CustomOpAsmParser(SMLoc nameLoc, StringRef opName, FunctionParser &parser)
       : nameLoc(nameLoc), opName(opName), parser(parser) {}
 
-  /// This is an internal helper to parser a colon, we don't want to expose
-  /// this to clients.
-  bool internalParseColon(llvm::SMLoc *loc) {
-    if (loc)
-      *loc = parser.getToken().getLoc();
-    return parser.parseToken(Token::colon, "expected ':'");
-  }
-
   //===--------------------------------------------------------------------===//
   // High level parsing methods.
   //===--------------------------------------------------------------------===//
@@ -1731,19 +1723,17 @@ public:
     *loc = parser.getToken().getLoc();
     return false;
   }
-  bool parseComma(llvm::SMLoc *loc = nullptr) override {
-    if (loc)
-      *loc = parser.getToken().getLoc();
+  bool parseComma() override {
     return parser.parseToken(Token::comma, "expected ','");
   }
 
-  bool parseColonType(Type *&result, llvm::SMLoc *loc = nullptr) override {
-    return internalParseColon(loc) || !(result = parser.parseType());
+  bool parseColonType(Type *&result) override {
+    return parser.parseToken(Token::colon, "expected ':'") ||
+           !(result = parser.parseType());
   }
 
-  bool parseColonTypeList(SmallVectorImpl<Type *> &result,
-                          llvm::SMLoc *loc = nullptr) override {
-    if (internalParseColon(loc))
+  bool parseColonTypeList(SmallVectorImpl<Type *> &result) override {
+    if (parser.parseToken(Token::colon, "expected ':'"))
       return true;
 
     do {
@@ -1760,10 +1750,7 @@ public:
   /// attribute to the specified attribute list with the specified name.  this
   /// captures the location of the attribute in 'loc' if it is non-null.
   bool parseAttribute(Attribute *&result, const char *attrName,
-                      SmallVectorImpl<NamedAttribute> &attrs,
-                      llvm::SMLoc *loc = nullptr) override {
-    if (loc)
-      *loc = parser.getToken().getLoc();
+                      SmallVectorImpl<NamedAttribute> &attrs) override {
     result = parser.parseAttribute();
     if (!result)
       return true;
@@ -1774,12 +1761,10 @@ public:
   }
 
   /// If a named attribute list is present, parse is into result.
-  bool parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result,
-                                  llvm::SMLoc *loc = nullptr) override {
+  bool
+  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
       return false;
-    if (loc)
-      *loc = parser.getToken().getLoc();
     return parser.parseAttributeDict(result) == ParseFailure;
   }
 
@@ -2128,7 +2113,7 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
     SmallVector<CFGValue *, 8> operands;
     if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized*/ false))
       return nullptr;
-    return builder.createReturnInst(getEncodedSourceLocation(loc), operands);
+    return builder.createReturn(getEncodedSourceLocation(loc), operands);
   }
 
   case Token::kw_br: {
@@ -2137,8 +2122,7 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
     SmallVector<CFGValue *, 4> values;
     if (parseBranchBlockAndUseList(destBB, values))
       return nullptr;
-    auto branch =
-        builder.createBranchInst(getEncodedSourceLocation(loc), destBB);
+    auto branch = builder.createBranch(getEncodedSourceLocation(loc), destBB);
     branch->addOperands(values);
     return branch;
   }
@@ -2167,9 +2151,9 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
     if (parseBranchBlockAndUseList(falseBlock, falseOperands))
       return nullptr;
 
-    auto branch = builder.createCondBranchInst(getEncodedSourceLocation(loc),
-                                               cast<CFGValue>(cond), trueBlock,
-                                               falseBlock);
+    auto branch =
+        builder.createCondBranch(getEncodedSourceLocation(loc),
+                                 cast<CFGValue>(cond), trueBlock, falseBlock);
     branch->addTrueOperands(trueOperands);
     branch->addFalseOperands(falseOperands);
     return branch;
