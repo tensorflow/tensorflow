@@ -310,7 +310,9 @@ class ControlFlowTransformer(converter.Base):
     template = """
       def extra_test_name(state_ssf):
         return extra_test_expr
-      def body_name(iterate, state_ssf):
+      def body_name(loop_vars, state_ssf):
+        # Workaround for PEP-3113
+        iterate = loop_vars
         body
         return state_ssf,
       state_ast_tuple = ag__.for_stmt(

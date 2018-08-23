@@ -217,5 +217,13 @@ class ControlFlowTest(converter_testing.TestCase):
     with self.assertRaises(transformer.AutographParseError):
       control_flow.transform(node, ctx)
 
+  def test_for_tuple_unpacking(self):
+    def test_fn(x_list):
+      z = tf.constant(0)  # pylint:disable=undefined-variable
+      for i, x in enumerate(x_list):
+        z = z + x + i
+      return z
+
+    self.assertTransformedResult(test_fn, [3, 3], 7)
 if __name__ == '__main__':
   test.main()
