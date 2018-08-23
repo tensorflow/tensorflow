@@ -280,6 +280,14 @@ Status XlaOpKernelContext::ConstantInputAsIntVector(int index,
   return LiteralToInt64Vector(literal, out);
 }
 
+Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
+    int index, std::vector<int64>* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInputReshaped(
+      index, {InputShape(index).num_elements()}, &literal));
+  return LiteralToInt64Vector(literal, out);
+}
+
 Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
                                                        xla::Literal* out) {
   xla::Literal literal;
