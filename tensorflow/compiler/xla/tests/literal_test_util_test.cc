@@ -105,8 +105,10 @@ TEST(LiteralTestUtilTest, NotEqualHasValuesInMessage) {
   auto actual = LiteralUtil::CreateR1<int32>({4, 5, 6});
   ::testing::AssertionResult result =
       LiteralTestUtil::Equal(*expected, *actual);
-  EXPECT_THAT(result.message(), ::testing::HasSubstr("expected: {1, 2, 3}"));
-  EXPECT_THAT(result.message(), ::testing::HasSubstr("actual:   {4, 5, 6}"));
+  EXPECT_THAT(result.message(),
+              ::testing::HasSubstr("Expected literal:\n{1, 2, 3}"));
+  EXPECT_THAT(result.message(),
+              ::testing::HasSubstr("Actual literal:\n{4, 5, 6}"));
 }
 
 TEST(LiteralTestUtilTest, NearComparatorR1) {
