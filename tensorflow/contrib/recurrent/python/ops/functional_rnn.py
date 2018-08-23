@@ -279,11 +279,16 @@ def functional_rnn(cell, inputs, sequence_length=None,
     if initial_state is None:
       initial_state = cell.zero_state(batch_size, dtype)
     func_cell = _FunctionalRnnCell(cell, inputs, initial_state)
+  if sequence_length is not None:
+    max_length = math_ops.reduce_max(sequence_length)
+  else:
+    max_length = None
   extended_acc_state, extended_final_state = recurrent.Recurrent(
       theta=func_cell.theta,
       state0=func_cell.extended_initial_state,
       inputs=inputs,
       cell_fn=func_cell.cell_step,
+      max_input_length=max_length,
       use_tpu=use_tpu)
   tf_output, tf_state = _PostProcessOutput(
       extended_acc_state, extended_final_state, func_cell,
