@@ -334,6 +334,9 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       if (!var.initializer_name().empty()) {
         new_item->init_ops.push_back(NodeName(var.initializer_name()));
       }
+      if (!var_collection.compare("trainable_variables")) {
+        new_item->trainable_variables.push_back(var.variable_name());
+      }
     }
   }
 
@@ -413,12 +416,34 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
 
+  if (meta_graph.collection_def().count("gradients_info") > 0) {
+    const CollectionDef& gradients_info =
+        meta_graph.collection_def().at("gradients_info");
+    for (const auto& raw : gradients_info.bytes_list().value()) {
+      GradientsInfoDef gradients_info;
+      if (!gradients_info.ParseFromString(raw)) {
+        LOG(ERROR) << "Could not parse gradients info, skipping this input";
+        return nullptr;
+      }
+
+      const auto& target_tensor_info = gradients_info.target_tensor_info();
+      const auto& grad_tensor_info = gradients_info.grad_tensor_info();
+      auto grad_pair = std::make_pair(target_tensor_info, grad_tensor_info);
+      new_item->gradients_info.push_back(grad_pair);
+    }
+  }
+
   // Add each node referenced in a collection to the list of nodes to keep.
   for (const auto& col : meta_graph.collection_def()) {
     const CollectionDef& collection = col.second;
     for (const string& node : collection.node_list().value()) {
       new_item->keep_ops.push_back(NodeName(node));
     }
+  }
+
+  for (const auto& op_def :
+       meta_graph.meta_info_def().stripped_op_list().op()) {
+    new_item->op_def.insert(std::make_pair(op_def.name(), op_def));
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
@@ -566,9 +591,8 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
 
   // Instantiate all the missing attributes with their default values.
   Status attr_status = AddDefaultAttrsToGraphDef(
-      &new_item->graph,
-      FunctionLibraryDefinition(OpRegistry::Global(),
-                                new_item->graph.library()),
+      &new_item->graph, FunctionLibraryDefinition(OpRegistry::Global(),
+                                                  new_item->graph.library()),
       0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "

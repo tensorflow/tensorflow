@@ -198,6 +198,29 @@ TEST_F(GrapplerItemBuilderTest, GraphWithCustomOps) {
        test::function::NDef("y", "CustomOp", {"x"}, {{"T", DT_FLOAT}}, device)},
       {});
 
+  const string op_def_text = R"(
+name: "CustomOp"
+input_arg {
+  name: "a"
+  description: "Description for a."
+}
+output_arg {
+  name: "output"
+  description: "Description for output."
+}
+attr {
+  name: "b"
+  description: "Description for b."
+}
+summary: "Summary for Op1."
+description: "Description\nfor Op1."
+)";
+  meta_graph.mutable_meta_info_def()->mutable_stripped_op_list()->add_op();
+  protobuf::TextFormat::ParseFromString(op_def_text,
+                                        meta_graph.mutable_meta_info_def()
+                                            ->mutable_stripped_op_list()
+                                            ->mutable_op(0));
+
   CollectionDef train_op;
   train_op.mutable_node_list()->add_value("y");
   (*meta_graph.mutable_collection_def())["train_op"] = train_op;
@@ -207,6 +230,7 @@ TEST_F(GrapplerItemBuilderTest, GraphWithCustomOps) {
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
   ASSERT_TRUE(item != nullptr);
+  ASSERT_TRUE(item->op_def.find("CustomOp") != item->op_def.end());
 }
 
 TEST_F(GrapplerItemBuilderTest, FromGraphWithSignatureDef) {

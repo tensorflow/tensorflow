@@ -42,21 +42,49 @@ class AutoParallel : public GraphOptimizer {
  private:
   GraphDef graph_;
   std::map<string, NodeDef*> all_nodes_;
-  std::set<string> apply_gradients_nodes_;
+  std::set<std::pair<std::string, std::string>> gradients_;
   std::set<string> replica_nodes_;
   std::set<string> shared_nodes_;
   const GrapplerItem* item_;
   int num_replicas_;
   int num_gpus_;
   Status Initialize(const GrapplerItem& item);
-  NodeDef* AddNodeDivConst();
+  NodeDef* AddNodeNumReplicasConst(bool is_float, GraphDef* graph);
+  NodeDef* AddNodeMaxLongConst(const string& name, GraphDef* graph);
   NodeDef* AddNodeDiv(const string& name, const string& input_a,
-                      const string& input_b);
+                      const string& input_b, GraphDef* graph);
+  NodeDef* AddNodeAdd(const string& name, const std::set<string>& inps,
+                      GraphDef* graph);
+  NodeDef* AddNodeSparseAccumulator(const string& name, GraphDef* graph);
+  NodeDef* AddNodeCast(const string& name, const string& input,
+                       const DataType& src_dtype, const DataType& dst_dtype,
+                       GraphDef* graph);
+  NodeDef* AddNodeSparseAccumApply(const string& name,
+                                   const string& accumulator,
+                                   const string& max_long,
+                                   const string& indices, const string& values,
+                                   GraphDef* graph);
+  NodeDef* AddNodeSparseAccumTakeGrad(const string& name,
+                                      const string& accumulator,
+                                      const string& num_replicas,
+                                      const string& control, GraphDef* graph);
   NodeDef* AddNodeControl(const string& name, const std::set<string>& deps,
                           GraphDef* graph);
+  void AddDenseAggregatedGrad(GraphDef* graph, NodeDef* num_replicas,
+                              const std::string& grad_name,
+                              std::string* new_grad_name);
+  void AddSparseAggregatedGrad(GraphDef* graph, NodeDef* num_replicas,
+                               const std::string& indices_name,
+                               const std::string& values_name,
+                               std::string* new_indices_name,
+                               std::string* new_grad_name);
+  void UpdateConsumers(
+      const std::vector<std::pair<NodeDef*, int>>& grad_consumers,
+      const std::string& new_grad_name);
   bool NotSharedNode(const string& name);
   void AddSharedNodes(GraphDef* graph);
   void AddOneReplica(GraphDef* graph, int number);
+  void AddGradientAggregation(GraphDef* graph);
   void BuildGraph(GraphDef* graph);
 };
 

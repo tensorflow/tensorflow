@@ -5777,6 +5777,9 @@ class GraphKeys(object):
   # Key for streaming model ports.
   # NOTE(yuanbyu): internal and experimental.
   _STREAMING_MODEL_PORTS = "streaming_model_ports"
+  
+  #Key for gradients information.
+  GRADIENTS_INFO = "gradients_info"  
 
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument

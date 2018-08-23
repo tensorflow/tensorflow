@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/protobuf/gradients_info.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
@@ -60,6 +61,17 @@ struct GrapplerItem {
 
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
+
+  // Trainable variable(s) of this model.
+  std::vector<string> trainable_variables;
+
+  // Pairs of a target tensor and its gradient tensor of this model.
+  std::vector<
+      std::pair<GradientsInfoDef_TensorInfoDef, GradientsInfoDef_TensorInfoDef>>
+      gradients_info;
+
+  // Map of an operator name to its OpDef in metagraph.
+  std::map<std::string, OpDef> op_def;
 
   // List of op names to keep in the graph. This includes nodes that are
   // referenced in various collections, and therefore must be preserved to

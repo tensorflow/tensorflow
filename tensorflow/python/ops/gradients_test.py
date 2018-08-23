@@ -23,6 +23,7 @@ import warnings
 
 import numpy as np
 
+from tensorflow.core.protobuf import gradients_info_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -1000,6 +1001,87 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
     result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
 
+class GradientsInfoTest(test_util.TensorFlowTestCase):
+  TENSOR = gradients_info_pb2.GradientsInfoDef.TensorInfoDef.TENSOR
+  INDEXED_SLICES = \
+      gradients_info_pb2.GradientsInfoDef.TensorInfoDef.INDEXED_SLICES
+
+  def testGradientsInfoCollection(self):
+    with ops.Graph().as_default():
+      inp = constant(1.0, shape=[32, 100], name="in")
+      w = constant(1.0, shape=[100, 10], name="w")
+      b = constant(1.0, shape=[10], name="b")
+      xw = math_ops.matmul(inp, w, name="xw")
+      h = bias_add(xw, b, name="h")
+      w_grad = gradients.gradients(h, w)[0]
+      gi = ops.get_collection(ops.GraphKeys.GRADIENTS_INFO)
+    self.assertEquals(gi[0]._target, w)
+    self.assertEquals(gi[0]._grad, w_grad)
+
+  def testGradientsInfoIndexedSlices(self):
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32)
+      y = array_ops.identity(x)
+      dy = ops.IndexedSlices(
+          array_ops.placeholder(dtypes.float32),
+          array_ops.placeholder(dtypes.int32))
+      dx, = gradients.gradients(y, x, grad_ys=dy)
+      gi = ops.get_collection(ops.GraphKeys.GRADIENTS_INFO)
+    self.assertEquals(gi[0]._target, x)
+    self.assertEquals(gi[0]._grad, dx)
+
+  def testToProto(self):
+    with ops.Graph().as_default():
+      x = constant(1.0, shape=[32, 100])
+      y = constant(1.0, shape=[32, 100])
+      dx = constant(2.0, shape=[32, 100])
+      dy = ops.IndexedSlices(
+          constant(2.0),
+          constant(1))
+      gi1 = gradients_impl.GradientsInfo(target=x, grad=dx)
+      gi2 = gradients_impl.GradientsInfo(target=y, grad=dy)
+      proto1 = gi1.to_proto()
+      proto2 = gi2.to_proto()
+    self.assertEquals(proto1.target_tensor_info.tensor_type, GradientsInfoTest.TENSOR)
+    self.assertEquals(proto1.target_tensor_info.values_tensor_name, x.name)
+    self.assertEquals(proto1.grad_tensor_info.tensor_type, GradientsInfoTest.TENSOR)
+    self.assertEquals(proto1.grad_tensor_info.values_tensor_name, dx.name)
+    self.assertEquals(proto2.target_tensor_info.tensor_type, GradientsInfoTest.TENSOR)
+    self.assertEquals(proto2.target_tensor_info.values_tensor_name, y.name)
+    self.assertEquals(proto2.grad_tensor_info.tensor_type, GradientsInfoTest.INDEXED_SLICES)
+    self.assertEquals(proto2.grad_tensor_info.indices_tensor_name,
+                      dy.indices.name)
+    self.assertEquals(proto2.grad_tensor_info.values_tensor_name,
+                      dy.values.name)
+
+  def testFromProto(self):
+    with ops.Graph().as_default():
+      x = constant(1.0, shape=[32, 100])
+      y = constant(1.0, shape=[32, 100])
+      dx = constant(2.0, shape=[32, 100])
+      dy = ops.IndexedSlices(
+          constant(2.0),
+          constant(1))
+      gi_def1 = gradients_info_pb2.GradientsInfoDef()
+      gi_def1.target_tensor_info.tensor_type = GradientsInfoTest.TENSOR
+      gi_def1.target_tensor_info.values_tensor_name = x.name
+      gi_def1.grad_tensor_info.tensor_type = GradientsInfoTest.TENSOR
+      gi_def1.grad_tensor_info.values_tensor_name = dx.name
+      gi1 = gradients_impl.GradientsInfo.from_proto(gi_def1)
+
+      gi_def2 = gradients_info_pb2.GradientsInfoDef()
+      gi_def2.target_tensor_info.tensor_type = GradientsInfoTest.TENSOR
+      gi_def2.target_tensor_info.values_tensor_name = y.name
+      gi_def2.grad_tensor_info.tensor_type = GradientsInfoTest.INDEXED_SLICES
+      gi_def2.grad_tensor_info.indices_tensor_name = dy.indices.name
+      gi_def2.grad_tensor_info.values_tensor_name = dy.values.name
+      gi2 = gradients_impl.GradientsInfo.from_proto(gi_def2)
+
+      self.assertEquals(gi1._target, x)
+      self.assertEquals(gi1._grad, dx)
+      self.assertEquals(gi2._target, y)
+      self.assertEquals(gi2._grad.indices, dy.indices)
+      self.assertEquals(gi2._grad.values, dy.values)
 
 if __name__ == "__main__":
   googletest.main()
