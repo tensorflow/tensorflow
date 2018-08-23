@@ -731,5 +731,27 @@ TEST(XlaCompilationTest, ClusterControlTrigger) {
   EXPECT_EQ(clusters, expected_clusters);
 }
 
+TEST(XlaCompilationTest, RandomShape) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output shape_shape = ops::Const(root.WithOpName("shape_shape"), {2}, {1});
+  Output shape =
+      ops::RandomUniformInt(root.WithOpName("shape"), shape_shape,
+                            ops::Const(root.WithOpName("minval"), 1),
+                            ops::Const(root.WithOpName("maxval"), 20));
+  Output reshape_input =
+      ops::Placeholder(root.WithOpName("reshape_input"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({500, 500})));
+  Output reshape =
+      ops::Reshape(root.WithOpName("reshape"), reshape_input, shape);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_EQ(clusters["shape"], "");
+}
+
 }  // namespace
 }  // namespace tensorflow
