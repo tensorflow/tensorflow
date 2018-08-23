@@ -22,6 +22,7 @@ tf_kernel_library(
         "bcast_ops.cc",
         "bias_ops.cc",
         "binary_ops.cc",
+        "broadcast_to_op.cc",
         "bucketize_op.cc",
         "cast_op.cc",
         "categorical_op.cc",
@@ -108,6 +109,7 @@ tf_kernel_library(
     deps = [
         ":if_op",
         ":while_op",
+        "@com_google_absl//absl/algorithm:container",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
