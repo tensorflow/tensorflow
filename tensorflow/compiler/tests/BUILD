@@ -1191,3 +1191,19 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
     ],
 )
+
+tf_xla_py_test(
+    name = "xla_ops_test",
+    size = "small",
+    srcs = ["xla_ops_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
