@@ -384,8 +384,8 @@ class CheckpointingTests(test.TestCase):
     saver = saver_lib.Saver(var_list=[v])
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
-    self.evaluate(v.non_dep_variable.assign(42.))
     with self.test_session() as sess:
+      self.evaluate(v.non_dep_variable.assign(42.))
       save_path = saver.save(sess, prefix)
       self.evaluate(v.non_dep_variable.assign(43.))
       self.evaluate(v.mirrored.assign(44.))
