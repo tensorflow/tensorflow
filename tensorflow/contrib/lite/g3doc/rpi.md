@@ -1,5 +1,3 @@
-book_path: /mobile/_book.yaml
-project_path: /mobile/_project.yaml
 
 # TensorFlow Lite for Raspberry Pi
 
