@@ -27,7 +27,7 @@ namespace toco {
 bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
   const auto switch_it = model->operators.begin() + op_index;
   const auto* switch_op = switch_it->get();
-  if (switch_op->type != OperatorType::kTensorFlowSwitch) {
+  if (switch_op->type != OperatorType::kSwitch) {
     return false;
   }
 
@@ -92,7 +92,9 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
       if (*input_it == switch_op->outputs[nonselected_output_index]) {
         // Let us guard our assumption that only Merge nodes consume the outputs
         // of Switch nodes:
-        CHECK(other_op->type == OperatorType::kTensorFlowMerge);
+        CHECK(other_op->type == OperatorType::kMerge)
+            << "Found " << HelpfulOperatorTypeName(*other_op)
+            << " as non-selected output from Switch, but only Merge supported.";
         input_it = other_op->inputs.erase(input_it);
       } else {
         ++input_it;

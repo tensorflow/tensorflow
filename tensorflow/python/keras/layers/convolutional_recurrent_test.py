@@ -47,7 +47,7 @@ class ConvLSTMTest(test.TestCase):
                                 input_channel)
 
       for return_sequences in [True, False]:
-        with self.test_session():
+        with self.cached_session():
           # test for return state:
           x = keras.Input(batch_shape=inputs.shape)
           kwargs = {'data_format': data_format,
@@ -92,7 +92,7 @@ class ConvLSTMTest(test.TestCase):
                             input_num_row, input_num_col,
                             input_channel)
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       kwargs = {'data_format': 'channels_last',
                 'return_sequences': False,
@@ -144,7 +144,7 @@ class ConvLSTMTest(test.TestCase):
                             input_num_row, input_num_col,
                             input_channel)
 
-    with self.test_session():
+    with self.cached_session():
       kwargs = {'data_format': 'channels_last',
                 'return_sequences': False,
                 'kernel_size': (num_row, num_col),
@@ -168,7 +168,7 @@ class ConvLSTMTest(test.TestCase):
 
   def test_conv_lstm_dropout(self):
     # check dropout
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.ConvLSTM2D,
           kwargs={'data_format': 'channels_last',
@@ -181,7 +181,7 @@ class ConvLSTMTest(test.TestCase):
           input_shape=(1, 2, 5, 5, 2))
 
   def test_conv_lstm_cloning(self):
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.ConvLSTM2D(5, 3, input_shape=(None, 5, 5, 3)))
 
@@ -190,7 +190,7 @@ class ConvLSTMTest(test.TestCase):
       weights = model.get_weights()
 
     # Use a new graph to clone the model
-    with self.test_session():
+    with self.cached_session():
       clone = keras.models.clone_model(model)
       clone.set_weights(weights)
 

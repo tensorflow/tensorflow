@@ -1,7 +1,7 @@
 # Operation Semantics
 
 The following describes the semantics of operations defined in the
-[`XlaBuilder`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h)
+[`XlaBuilder`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
 interface. Typically, these operations map one-to-one to operations defined in
 the RPC interface in
 [`xla_data.proto`](https://www.tensorflow.org/code/tensorflow/compiler/xla/xla_data.proto).
@@ -13,10 +13,83 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## AllToAll
+
+See also
+[`XlaBuilder::AllToAll`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Alltoall is a collective operation that sends data from all cores to all cores.
+It has two phases:
+
+1.  the scatter phase. On each core, the operand is split into `split_count`
+    number of blocks along the `split_dimensions`, and the blocks are scattered
+    to all cores, e.g., the ith block is send to the ith core.
+2.  the gather phase. Each core concatenates the received blocks along the
+    `concat_dimension`.
+
+The participating cores can be configured by:
+
+-   `replica_groups`: each ReplicaGroup contains a list of replica id. If empty,
+    all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
+    applied within subgroups in the specified order. For example, replica
+    groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
+    1, 2, 3, and in the gather phase, the received blocks will be concatenated
+    in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
+    5, 0, and the concatenation order is 4, 5, 0.
+
+Prerequisites:
+
+-   The dimension size of the operand on the split_dimension is divisible by
+    split_count.
+-   The operand's shape is not tuple.
+
+<b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
+replica_groups)` </b>
+
+
+| Arguments          | Type                  | Semantics                       |
+| ------------------ | --------------------- | ------------------------------- |
+| `operand`          | `XlaOp`               | n dimensional input array       |
+| `split_dimension`  | `int64`               | A value in the interval `[0,    |
+:                    :                       : n)` that names the dimension    :
+:                    :                       : along which the operand is      :
+:                    :                       : split                           :
+| `concat_dimension` | `int64`               | a value in the interval `[0,    |
+:                    :                       : n)` that names the dimension    :
+:                    :                       : along which the split blocks    :
+:                    :                       : are concatenated                :
+| `split_count`      | `int64`               | the number of cores that        |
+:                    :                       : participate this operation. If  :
+:                    :                       : `replica_groups` is empty, this :
+:                    :                       : should be the number of         :
+:                    :                       : replicas; otherwise, this       :
+:                    :                       : should be equal to the number   :
+:                    :                       : of replicas in each group.      :
+| `replica_groups`   | `ReplicaGroup` vector | each group contains a list of   |
+:                    :                       : replica id.                     :
+
+Below shows an example of Alltoall.
+
+```
+XlaBuilder b("alltoall");
+auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
+```
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/xla/ops_alltoall.png">
+</div>
+
+In this example, there are 4 cores participating the Alltoall. On each core, the
+operand is split into 4 parts along dimension 0, so each part has shape
+f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
+the received parts along dimension 1, in the order or core 0-4. So the output on
+each core has shape f32[16,4].
+
 ## BatchNormGrad
 
 See also
-[`XlaBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h)
+[`XlaBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
 and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
@@ -80,7 +153,7 @@ The output type is a tuple of three handles:
 ## BatchNormInference
 
 See also
-[`XlaBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h)
+[`XlaBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
 and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
@@ -115,7 +188,7 @@ The output is an n-dimensional, normalized array with the same shape as input
 ## BatchNormTraining
 
 See also
-[`XlaBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h)
+[`XlaBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
 and [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
@@ -167,7 +240,7 @@ spatial dimensions using the formulas above.
 ## BitcastConvertType
 
 See also
-[`XlaBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
 operation from a data shape to a target shape. The dimensions must match, and
@@ -189,7 +262,7 @@ and destination element types must not be tuples.
 ## Broadcast
 
 See also
-[`XlaBuilder::Broadcast`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Broadcast`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Adds dimensions to an array by duplicating the data in the array.
 
@@ -217,7 +290,7 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 ## Call
 
 See also
-[`XlaBuilder::Call`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Call`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Invokes a computation with the given arguments.
 
@@ -236,7 +309,7 @@ The arity and types of the `args` must match the parameters of the
 ## Clamp
 
 See also
-[`XlaBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Clamps an operand to within the range between a minimum and maximum value.
 
@@ -269,8 +342,8 @@ Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ## Collapse
 
 See also
-[`XlaBuilder::Collapse`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h)
-and the @{tf.reshape} operation.
+[`XlaBuilder::Collapse`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
+and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
 
@@ -291,7 +364,7 @@ same position in the dimension sequence as those they replace, with the new
 dimension size equal to the product of original dimension sizes. The lowest
 dimension number in `dimensions` is the slowest varying dimension (most major)
 in the loop nest which collapses these dimension, and the highest dimension
-number is fastest varying (most minor). See the @{tf.reshape} operator
+number is fastest varying (most minor). See the `tf.reshape` operator
 if more general collapse ordering is needed.
 
 For example, let v be an array of 24 elements:
@@ -332,7 +405,7 @@ then v12 == f32[8x3] {{10, 11, 12},
 ## Concatenate
 
 See also
-[`XlaBuilder::ConcatInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::ConcatInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Concatenate composes an array from multiple array operands. The array is of the
 same rank as each of the input array operands (which must be of the same rank as
@@ -388,7 +461,7 @@ Diagram:
 ## Conditional
 
 See also
-[`XlaBuilder::Conditional`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Conditional`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Conditional(pred, true_operand, true_computation, false_operand,
 false_computation)` </b>
@@ -416,7 +489,7 @@ executed depending on the value of `pred`.
 ## Conv (convolution)
 
 See also
-[`XlaBuilder::Conv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Conv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 As ConvWithGeneralPadding, but the padding is specified in a short-hand way as
 either SAME or VALID. SAME padding pads the input (`lhs`) with zeroes so that
@@ -426,22 +499,23 @@ account. VALID padding simply means no padding.
 ## ConvWithGeneralPadding (convolution)
 
 See also
-[`XlaBuilder::ConvWithGeneralPadding`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::ConvWithGeneralPadding`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments        | Type                    | Semantics                     |
-| ---------------- | ----------------------- | ----------------------------- |
-| `lhs`            | `XlaOp`                 | rank n+2 array of inputs      |
-| `rhs`            | `XlaOp`                 | rank n+2 array of kernel      |
-:                  :                         : weights                       :
-| `window_strides` | `ArraySlice<int64>`     | n-d array of kernel strides   |
-| `padding`        | `ArraySlice<pair<int64, | n-d array of (low, high)      |
-:                  : int64>>`                : padding                       :
-| `lhs_dilation`   | `ArraySlice<int64>`     | n-d lhs dilation factor array |
-| `rhs_dilation`   | `ArraySlice<int64>`     | n-d rhs dilation factor array |
+| Arguments             | Type                 | Semantics                     |
+| --------------------- | -------------------- | ----------------------------- |
+| `lhs`                 | `XlaOp`              | rank n+2 array of inputs      |
+| `rhs`                 | `XlaOp`              | rank n+2 array of kernel      |
+:                       :                      : weights                       :
+| `window_strides`      | `ArraySlice<int64>`  | n-d array of kernel strides   |
+| `padding`             | `ArraySlice<         | n-d array of (low, high)      |
+:                       : pair<int64, int64>>` : padding                       :
+| `lhs_dilation`        | `ArraySlice<int64>`  | n-d lhs dilation factor array |
+| `rhs_dilation`        | `ArraySlice<int64>`  | n-d rhs dilation factor array |
+| `feature_group_count` | int64                | the number of feature groups  |
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -459,8 +533,8 @@ The `rhs` argument is a rank n+2 array describing the convolutional
 filter/kernel/window. The dimensions are, in this order:
 
 *   `output-z`: The `z` dimension of the output.
-*   `input-z`: The size of this dimension should equal the size of the `z`
-    dimension in lhs.
+*   `input-z`: The size of this dimension times `feature_group_count` should
+    equal the size of the `z` dimension in lhs.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the n-d
     window that moves across the base area.
 
@@ -490,8 +564,26 @@ array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
 Dilation of the rhs is also called atrous convolution. For more details, see
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
-convolution. For more details, see @{tf.nn.conv2d_transpose}.
+`tf.nn.atrous_conv2d`. Dilation of the lhs is also called transposed
+convolution. For more details, see `tf.nn.conv2d_transpose`.
+
+The `feature_group_count` argument (default value 1) can be used for grouped
+convolutions. `feature_group_count` needs to be a divisor of both the input and
+the output feature dimension. If `feature_group_count` is greater than 1, it
+means that conceptually the input and output feature dimension and the `rhs`
+output feature dimension are split evenly into `feature_group_count` many
+groups, each group consisting of a consecutive subsequence of features. The
+input feature dimension of `rhs` needs to be equal to the `lhs` input feature
+dimension divided by `feature_group_count` (so it already has the size of a
+group of input features). The i-th groups are used together to compute
+`feature_group_count` many separate convolutions. The results of these
+convolutions are concatenated together in the output feature dimension.
+
+For depthwise convolution the `feature_group_count` argument would be set to the
+input feature dimension, and the filter would be reshaped from
+`[filter_height, filter_width, in_channels, channel_multiplier]` to
+`[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
+details, see `tf.nn.depthwise_conv2d`.
 
 The output shape has these dimensions, in this order:
 
@@ -538,7 +630,7 @@ for (b, oz, oy, ox) {  // output coordinates
 ## ConvertElementType
 
 See also
-[`XlaBuilder::ConvertElementType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::ConvertElementType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Similar to an element-wise `static_cast` in C++, performs an element-wise
 conversion operation from a data shape to a target shape. The dimensions must
@@ -572,7 +664,7 @@ then b == f32[3]{0.0, 1.0, 2.0}
 ## CrossReplicaSum
 
 See also
-[`XlaBuilder::CrossReplicaSum`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::CrossReplicaSum`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Computes a sum across replicas.
 
@@ -581,11 +673,20 @@ Computes a sum across replicas.
 Arguments | Type    | Semantics
 --------- | ------- | -----------------------------
 `operand` | `XlaOp` | Array to sum across replicas.
+| `replica_group_ids`    | `int64` vector | Group ID for each replica.      |
 
 The output shape is the same as the input shape. For example, if there are two
 replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
 respectively on the two replicas, then the output value from this op will be
 `(4.0, 7.75)` on both replicas.
+
+`replica_group_ids` identifies the group ID of each replica. The group ID must
+either be empty (all replicas belong to a single group), or contain the same
+number of elements as the number of replicas. For example, if
+`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
+four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
+each subgroup *must* be identical, so, for example, using:
+`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
 
 Computing the result of CrossReplicaSum requires having one input from each
 replica, so if one replica executes a CrossReplicaSum node more times than
@@ -598,7 +699,7 @@ than another.
 ## CustomCall
 
 See also
-[`XlaBuilder::CustomCall`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::CustomCall`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Call a user-provided function within a computation.
 
@@ -659,7 +760,7 @@ idempotent.
 ## Dot
 
 See also
-[`XlaBuilder::Dot`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Dot`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Dot(lhs, rhs)` </b>
 
@@ -688,7 +789,7 @@ multiplications or matrix/matrix multiplications.
 ## DotGeneral
 
 See also
-[`XlaBuilder::DotGeneral`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::DotGeneral`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `DotGeneral(lhs, rhs, dimension_numbers)` </b>
 
@@ -775,15 +876,13 @@ non-contracting/non-batch dimension.
 ## DynamicSlice
 
 See also
-[`XlaBuilder::DynamicSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::DynamicSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 DynamicSlice extracts a sub-array from the input array at dynamic
 `start_indices`. The size of the slice in each dimension is passed in
 `size_indices`, which specify the end point of exclusive slice intervals in each
 dimension: [start, start + size). The shape of `start_indices` must be rank ==
 1, with dimension size equal to the rank of `operand`.
-Note: handling of out-of-bounds slice indices (generated by incorrect runtime
-calculation of 'start_indices') is currently implementation-defined.
 
 <b> `DynamicSlice(operand, start_indices, size_indices)` </b>
 
@@ -802,6 +901,17 @@ calculation of 'start_indices') is currently implementation-defined.
 :                 :                     : than or equal to the size of the    :
 :                 :                     : dimension to avoid wrapping modulo  :
 :                 :                     : dimension size.                     :
+
+The effective slice indices are computed by applying the following
+transformation for each index `i` in `[1, N)` before performing the slice:
+
+```
+start_indices[i] = clamp(start_indices[i], 0, operand.dimension_size[i] - size_indices[i])
+```
+
+This ensures that the extracted slice is always in-bounds with respect to the
+operand array. If the slice is in-bounds before the transformation is applied,
+the transformation has no effect.
 
 1-dimensional example:
 
@@ -830,7 +940,7 @@ DynamicSlice(b, s, {2, 2}) produces:
 ## DynamicUpdateSlice
 
 See also
-[`XlaBuilder::DynamicUpdateSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::DynamicUpdateSlice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 DynamicUpdateSlice generates a result which is the value of the input array
 `operand`, with a slice `update` overwritten at `start_indices`.
@@ -838,8 +948,6 @@ The shape of `update` determines the shape of the sub-array of the result which
 is updated.
 The shape of `start_indices` must be rank == 1, with dimension size equal to
 the rank of `operand`.
-Note: handling of out-of-bounds slice indices (generated by incorrect runtime
-calculation of 'start_indices') is currently implementation-defined.
 
 <b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
 
@@ -856,6 +964,17 @@ calculation of 'start_indices') is currently implementation-defined.
 :                 :         : starting indices of the slice for each           :
 :                 :         : dimension. Value must be greater than or equal   :
 :                 :         : to zero.                                         :
+
+The effective slice indices are computed by applying the following
+transformation for each index `i` in `[1, N)` before performing the slice:
+
+```
+start_indices[i] = clamp(start_indices[i], 0, operand.dimension_size[i] - update.dimension_size[i])
+```
+
+This ensures that the updated slice is always in-bounds with respect to the
+operand array. If the slice is in-bounds before the transformation is applied,
+the transformation has no effect.
 
 1-dimensional example:
 
@@ -893,7 +1012,7 @@ DynamicUpdateSlice(b, u, s) produces:
 ## Element-wise binary arithmetic operations
 
 See also
-[`XlaBuilder::Add`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Add`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 A set of element-wise binary arithmetic operations is supported.
 
@@ -909,13 +1028,17 @@ Arguments | Type    | Semantics
 `rhs`     | `XlaOp` | right-hand-side operand: array of type T
 
 The arguments' shapes have to be either similar or compatible. See the
-@{$broadcasting$broadcasting} documentation about what it means for shapes to
+[broadcasting](../../performance/xla/broadcasting.md) documentation about what it means for shapes to
 be compatible. The result of an operation has a shape which is the result of
 broadcasting the two input arrays. In this variant, operations between arrays of
 different ranks are *not* supported, unless one of the operands is a scalar.
 
 When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
 absolute value of the result is always less than the divisor's absolute value.
+
+Integer division overflow (signed/unsigned division/remainder by zero or signed
+divison/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+value.
 
 An alternative variant with different-rank broadcasting support exists for these
 operations:
@@ -933,12 +1056,12 @@ the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
 then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
-@{$broadcasting$broadcasting page}.
+[broadcasting page](../../performance/xla/broadcasting.md).
 
 ## Element-wise comparison operations
 
 See also
-[`XlaBuilder::Eq`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Eq`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 A set of standard element-wise binary comparison operations is supported. Note
 that standard IEEE 754 floating-point comparison semantics apply when comparing
@@ -956,7 +1079,7 @@ Arguments | Type    | Semantics
 `rhs`     | `XlaOp` | right-hand-side operand: array of type T
 
 The arguments' shapes have to be either similar or compatible. See the
-@{$broadcasting$broadcasting} documentation about what it means for shapes to
+[broadcasting](../../performance/xla/broadcasting.md) documentation about what it means for shapes to
 be compatible. The result of an operation has a shape which is the result of
 broadcasting the two input arrays with the element type `PRED`. In this variant,
 operations between arrays of different ranks are *not* supported, unless one of
@@ -973,7 +1096,7 @@ matrix to a vector).
 
 The additional `broadcast_dimensions` operand is a slice of integers specifying
 the dimensions to use for broadcasting the operands. The semantics are described
-in detail on the @{$broadcasting$broadcasting page}.
+in detail on the [broadcasting page](../../performance/xla/broadcasting.md).
 
 ## Element-wise unary functions
 
@@ -1019,159 +1142,149 @@ array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 ## Gather
 
 The XLA gather operation stitches together several slices (each slice at a
-potentially different runtime offset) of an input tensor into an output tensor.
+potentially different runtime offset) of an input array.
 
 ### General Semantics
 
 See also
-[`XlaBuilder::Gather`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Gather`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 For a more intuitive description, see the "Informal Description" section below.
 
-<b> `gather(operand, gather_indices, output_window_dims, elided_window_dims, window_bounds, gather_dims_to_operand_dims)` </b>
+<b> `gather(operand, start_indices, offset_dims, collapsed_slice_dims, slice_sizes, start_index_map)` </b>
 
 |Arguments         | Type                    | Semantics                       |
 |----------------- | ----------------------- | --------------------------------|
-|`operand`         | `XlaOp`                 | The tensor we’re gathering      |
+|`operand`         | `XlaOp`                 | The array we’re gathering       |
 :                  :                         : from.                           :
-|`gather_indices`  | `XlaOp`                 | Tensor containing the starting  |
-:                  :                         : indices of the slices we're     :
-:                  :                         : stitching together into the     :
-:                  :                         : output tensor.                  :
-|`index_vector_dim`  | `int64`               | The dimension in                |
-:                  :                         : `gather_indices` that contains  :
-:                  :                         : the starting indices.           :
-|`output_window_dims` | `ArraySlice<int64>`  | The set of dimensions in the    |
-:                  :                         : output shape that are _window   :
-:                  :                         : dimensions_ (defined below).    :
-:                  :                         : Not all window dimensions may   :
-:                  :                         : be present in the output shape. :
-|`elided_window_dims` | `ArraySlice<int64>`  | The set of _window dimensions_  |
-:                  :            : that are not present in the output shape.    :
-:                  :            : `window_bounds[i]` must be `1` for all `i`   :
-:                  :            : in `elided_window_dims`.                     :
-|`window_bounds`   | `ArraySlice<int64>`    | `window_bounds[i]` is the bounds |
-:                  :            : for  window dimension `i`. This includes     :
-:                  :            : both the window dimensions that are          :
-:                  :            : explicitly part of the output shape (via     :
-:                  :            : `output_window_dims`) and the window         :
-:                  :            : dimensions that are elided (via              :
-:                  :            : `elided_window_dims`).                       :
-|`gather_dims_to_operand_dims` | `ArraySlice<int64>` | A dimension map (the    |
-:                  :            : array is interpreted as mapping `i` to       :
-:                  :            : `gather_dims_to_operand_dims[i]`)  from      :
-:                  :            : the gather indices in `gather_indices` to    :
-:                  :            : the operand index space.  It has to be       :
-:                  :            : one-to-one and total.                        :
+|`start_indices`   | `XlaOp`                 | Array containing the starting  |
+:                  :                         : indices of the slices we gather.:
+|`index_vector_dim` | `int64`                | The dimension in                |
+:                  :                         : `start_indices` that "contains" :
+:                  :                         : the starting indices.  See      :
+:                  :                         : below for a detailed            :
+:                  :                         : description.                    :
+|`offset_dims`     | `ArraySlice<int64>`     | The set of dimensions in  the   :
+:                  :                         : output shape that offset into a :
+:                  :                         : array sliced from operand.     :
+|`slice_sizes`     | `ArraySlice<int64>`      | `slice_sizes[i]` is the bounds |
+:                  :                          : for the slice on dimension `i`.:
+|`collapsed_slice_dims` | `ArraySlice<int64>` | The set of dimensions in each  :
+|                  :                          | slice that are collapsed away. :
+|                  :                          | These dimensions must have size:
+|                  :                          | 1.                             |
+|`start_index_map` | `ArraySlice<int64>`      | A map that describes how to map|
+:                  :                          : indices in `start_indices` to  :
+:                  :                          : to legal indices into operand. :
 
-For every index `Out` in the output tensor, we compute two things (more
-precisely described later):
+For convenience, we label dimensions in the output array not in `offset_dims`
+as `batch_dims`.
 
-  - An index into `gather_indices.rank` - `1` dimensions of `gather_indices`,
-    which gives us a starting index of a slice, _operand slice_, in the operand
-    tensor.  These `gather_indices.rank` - `1` dimensions are all the dimensions
-    in `gather_indices` except `index_vector_dim`.
+The output is an array of rank `batch_dims.size` + `operand.rank` -
+`collapsed_slice_dims`.size.
 
-  - A _window index_ that has the same rank as the operand.  This index is
-    composed of the values in `Out` at dimensions `output_window_dims`, embedded
-    with zeroes according to `elided_window_dims`.
+If `index_vector_dim` is equal to `start_indices.rank` we implicitly consider
+`start_indices` to have a trailing `1` dimension (i.e. if `start_indices` was of
+shape `[6,7]` and `index_vector_dim` is `2` then we implicitly consider the
+shape of `start_indices` to be `[6,7,1]`).
 
-The _window index_ is the relative index of the element in _operand slice_ that
-should be present in the output at index `Out`.
+The bounds for the output array along dimension `i` is computed as follows:
 
-The output is a tensor of rank `output_window_dims.size` + `gather_indices.rank`
-- `1`.  Additionally, as a shorthand, we define `output_gather_dims` of type
-`ArraySlice<int64>` as the set of dimensions in the output shape but not in
-`output_window_dims`, in ascending order.  E.g. if the output tensor has rank
-`5`, `output_window_dims` is {`2`, `4`} then `output_gather_dims` is {`0`, `1`,
-`3`}
+  1. If `i` is present in `batch_dims` (i.e. is equal to `batch_dims[k]` for
+     some `k`) then we pick the corresponding dimension bounds out of
+     `start_indices.shape`, skipping `index_vector_dim` (i.e. pick
+     `start_indices.shape.dims`[`k`] if `k` < `index_vector_dim` and
+     `start_indices.shape.dims`[`k`+`1`] otherwise).
 
-If `index_vector_dim` is equal to `gather_indices.rank` we implicitly
-consider `gather_indices` to have a trailing `1` dimension (i.e. if
-`gather_indices` was of shape `[6,7]` and `index_vector_dim` is `2` then
-we implicitly consider the shape of `gather_indices` to be `[6,7,1]`).
+  2. If `i` is present in `offset_dims` (i.e. equal to `offset_dims`[`k`] for
+     some `k`) then we pick the corresponding bound out of `slice_sizes` after
+     accounting for `collapsed_slice_dims` (i.e. we pick
+     `adjusted_slice_sizes`[`k`] where `adjusted_slice_sizes` is `slice_sizes`
+     with the bounds at indices `collapsed_slice_dims` removed).
 
-The bounds for the output tensor along dimension `i` is computed as follows:
+Formally, the operand index `In` corresponding to an output index `Out` is
+computed as follows:
 
-  1. If `i` is present in `output_gather_dims` (i.e. is equal to
-     `output_gather_dims[k]` for some `k`) then we pick the corresponding
-     dimension bounds out of `gather_indices.shape`, skipping
-     `index_vector_dim` (i.e. pick `gather_indices.shape.dims`[`k`] if `k`
-     < `index_vector_dim` and `gather_indices.shape.dims`[`k`+`1`]
-     otherwise).
-  2. If `i` is present in `output_window_dims` (i.e. equal to
-     `output_window_dims`[`k`] for some `k`) then we pick the corresponding
-     bound out of `window_bounds` after accounting for `elided_window_dims`
-     (i.e. we pick `adjusted_window_bounds`[`k`] where `adjusted_window_bounds`
-     is `window_bounds` with the bounds at indices `elided_window_dims`
-     removed).
+  1. Let `G` = { `Out`[`k`] for `k` in `batch_dims` }.  Use `G` to slice out
+     vector `S` such that `S`[`i`] = `start_indices`[Combine(`G`, `i`)] where
+     Combine(A, b) inserts b at position `index_vector_dim` into A.  Note that
+     this is well defined even if `G` is empty -- if `G` is empty then `S` =
+     `start_indices`.
 
-The operand index `In` corresponding to an output index `Out` is computed as
-follows:
-
-  1. Let `G` = { `Out`[`k`] for `k` in `output_gather_dims` }.  Use `G` to slice
-     out vector `S` such that `S`[`i`] = `gather_indices`[Combine(`G`, `i`)]
-     where Combine(A, b) inserts b at position `index_vector_dim` into A.
-     Note that this is well defined even if `G` is empty -- if `G` is empty then
-     `S` = `gather_indices`.
-  2. Create an index, `S`<sub>`in`</sub>, into `operand` using `S` by
-     scattering `S` using the `gather_dims_to_operand_dims` map
-     (`S`<sub>`in`</sub> is the starting indices for _operand slice_ mentioned
-     above).  More precisely:
-       1. `S`<sub>`in`</sub>[`gather_dims_to_operand_dims`[`k`]] = `S`[`k`] if `k` <
-          `gather_dims_to_operand_dims.size`.
+  2. Create a starting index, `S`<sub>`in`</sub>, into `operand` using `S` by
+     scattering `S` using `start_index_map`.  More precisely:
+       1. `S`<sub>`in`</sub>[`start_index_map`[`k`]] = `S`[`k`] if `k` <
+          `start_index_map.size`.
        2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
-  3. Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
-     at the output window dimensions in `Out` according to
-     the `elided_window_dims` set (`W`<sub>`in`</sub> is the _window index_
-     mentioned above).  More precisely:
-       1. `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `Out`[`k`] if
-          `k` < `output_window_dims.size` (`window_dims_to_operand_dims` is
-          defined below).
-       2. `W`<sub>`in`</sub>[`_`] = `0` otherwise.
-  4. `In` is `W`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+
+  3. Create an index `O`<sub>`in`</sub> into `operand` by scattering the indices
+     at the offset dimensions in `Out` according to the `collapsed_slice_dims`
+     set.  More precisely:
+       1. `O`<sub>`in`</sub>[`expand_offset_dims`(`k`)] =
+          `Out`[`offset_dims`[`k`]] if `k` < `offset_dims.size`
+          (`expand_offset_dims` is defined below).
+       2. `O`<sub>`in`</sub>[`_`] = `0` otherwise.
+  4. `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
      addition.
 
-`window_dims_to_operand_dims` is the monotonic function with domain [`0`,
-`output_window_dims.size`) and range [`0`, `operand.rank`) \
-`elided_window_dims`.  So if, e.g., `output_window_dims.size` is `4`,
-`operand.rank` is `6` and `elided_window_dims` is {`0`, `2`} then
-`window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+`expand_offset_dims` is the monotonic function with domain [`0`, `offset.size`)
+and range [`0`, `operand.rank`) \ `collapsed_slice_dims`.  So if, e.g.,
+`offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
+`2`} then `expand_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
 
 ### Informal Description and Examples
 
-`index_vector_dim` is set to `gather_indices.rank` - `1` in all of the
-examples that follow.  More interesting values for `index_vector_dim`
-does not change the operation fundamentally, but makes the visual representation
-more cumbersome.
+Informally, every index `Out` in the output array corresponds to an element `E`
+in the operand array, computed as follows:
+
+  - We use the batch dimensions in `Out` to look up a starting index from
+    `start_indices`.
+
+  - We use `start_index_map` to map the starting index (which may have size less
+    than operand.rank) to a "full" starting index into operand.
+
+  - We dynamic-slice out a slice with size `slice_sizes` using the full starting
+    index.
+
+  - We reshape the slice by collapsing the `collapsed_slice_dims` dimensions.
+    Since all collapsed slice dimensions have to have bound 1 this reshape is
+    always legal.
+
+  - We use the offset dimensions in `Out` to index into this slice to get the
+    input element, `E`, corresponding to output index `Out`.
+
+`index_vector_dim` is set to `start_indices.rank` - `1` in all of the
+examples that follow.  More interesting values for `index_vector_dim` does not
+change the operation fundamentally, but makes the visual representation more
+cumbersome.
 
 To get an intuition on how all of the above fits together, let's look at an
-example that gathers 5 slices of shape `[8,6]` from a `[16,11]` tensor.  The
-position of a slice into the `[16,11]` tensor can be represented as an index
+example that gathers 5 slices of shape `[8,6]` from a `[16,11]` array.  The
+position of a slice into the `[16,11]` array can be represented as an index
 vector of shape `S64[2]`, so the set of 5 positions can be represented as a
-`S64[5,2]` tensor.
+`S64[5,2]` array.
 
 The behavior of the gather operation can then be depicted as an index
-transformation that takes [`G`,`W`<sub>`0`</sub>,`W`<sub>`1`</sub>], an index in
-the output shape, and maps it to an element in the input tensor in the following
+transformation that takes [`G`,`O`<sub>`0`</sub>,`O`<sub>`1`</sub>], an index in
+the output shape, and maps it to an element in the input array in the following
 way:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="../../images/ops_xla_gather_0.svg">
 </div>
 
-We first select an (`X`,`Y`) vector from the gather indices tensor using `G`.
-The element in the output tensor at index
-[`G`,`W`<sub>`0`</sub>,`W`<sub>`1`</sub>] is then the element in the input
-tensor at index [`X`+`W`<sub>`0`</sub>,`Y`+`W`<sub>`1`</sub>].
+We first select an (`X`,`Y`) vector from the gather indices array using `G`.
+The element in the output array at index
+[`G`,`O`<sub>`0`</sub>,`O`<sub>`1`</sub>] is then the element in the input
+array at index [`X`+`O`<sub>`0`</sub>,`Y`+`O`<sub>`1`</sub>].
 
-`window_bounds` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
+`slice_sizes` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
 W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 
 This gather operation acts as a batch dynamic slice with `G` as the batch
 dimension.
 
 The gather indices may be multidimensional.  For instance, a more general
-version of the example above using a "gather indices" tensor of shape `[4,5,2]`
+version of the example above using a "gather indices" array of shape `[4,5,2]`
 would translate indices like this:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
@@ -1179,25 +1292,25 @@ would translate indices like this:
 </div>
 
 Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
-`G`<sub>`1`</sub> as the batch dimensions.  The window bounds are still `[8,6]`.
+`G`<sub>`1`</sub> as the batch dimensions.  The slice size is still `[8,6]`.
 
 The gather operation in XLA generalizes the informal semantics outlined above in
 the following ways:
 
- 1. We can configure which dimensions in the output shape are the window
-    dimensions (dimensions containing `W`<sub>`0`</sub>, `W`<sub>`1`</sub> in
-    the last example).  The output gather dimensions (dimensions containing
+ 1. We can configure which dimensions in the output shape are the offset
+    dimensions (dimensions containing `O`<sub>`0`</sub>, `O`<sub>`1`</sub> in
+    the last example).  The output batch dimensions (dimensions containing
     `G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
-    the output dimensions that are not window dimensions.
+    the output dimensions that are not offset dimensions.
 
- 2. The number of output window dimensions explicitly present in the output
+ 2. The number of output offset dimensions explicitly present in the output
     shape may be smaller than the input rank.  These "missing" dimensions, which
-    are listed explicitly as `elided_window_dims`, must have a window bound of
-    `1`.  Since they have a window bound of `1` the only valid index for them is
+    are listed explicitly as `collapsed_slice_dims`, must have a slice size of
+    `1`.  Since they have a slice size of `1` the only valid index for them is
     `0` and eliding them does not introduce ambiguity.
 
- 3. The slice extracted from the "Gather Indices" tensor ((`X`, `Y`) in the last
-    example) may have fewer elements than the input tensor rank, and an explicit
+ 3. The slice extracted from the "Gather Indices" array ((`X`, `Y`) in the last
+    example) may have fewer elements than the input array rank, and an explicit
     mapping dictates how the index should be expanded to have the same rank as
     the input.
 
@@ -1208,26 +1321,25 @@ As a final example, we use (2) and (3) to implement `tf.gather_nd`:
 </div>
 
 `G`<sub>`0`</sub> and `G`<sub>`1`</sub> are used to slice out a starting index
-from the gather indices tensor as usual, except the starting index has only one
-element, `X`.  Similarly, there is only one output window index with the value
-`W`<sub>`0`</sub>.  However, before being used as indices into the input tensor,
-these are expanded in accordance to "Gather Index Mapping"
-(`gather_dims_to_operand_dims` in the formal description) and "Window Mapping"
-(`window_dims_to_operand_dims` in the formal description) into
-[`0`,`W`<sub>`0`</sub>] and [`X`,`0`] respectively, adding up to
-[`X`,`W`<sub>`0`</sub>].  In other words, the output index
-[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`W`<sub>`0`</sub>] maps to the input index
+from the gather indices array as usual, except the starting index has only one
+element, `X`.  Similarly, there is only one output offset index with the value
+`O`<sub>`0`</sub>.  However, before being used as indices into the input array,
+these are expanded in accordance to "Gather Index Mapping" (`start_index_map` in
+the formal description) and "Offset Mapping" (`expand_offset_dims` in the formal
+description) into [`0`,`O`<sub>`0`</sub>] and [`X`,`0`] respectively, adding up
+to [`X`,`O`<sub>`0`</sub>].  In other words, the output index
+[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
 [`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
 the semantics for `tf.gather_nd`.
 
-`window_bounds` for this case is `[1,11]`.  Intuitively this means that every
-index `X` in the gather indices tensor picks an entire row and the result is the
+`slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
+index `X` in the gather indices array picks an entire row and the result is the
 concatenation of all these rows.
 
 ## GetTupleElement
 
 See also
-[`XlaBuilder::GetTupleElement`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::GetTupleElement`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Indexes into a tuple with a compile-time-constant value.
 
@@ -1243,12 +1355,12 @@ let t: (f32[10], s32) = tuple(v, s);
 let element_1: s32 = gettupleelement(t, 1);  // Inferred shape matches s32.
 ```
 
-See also @{tf.tuple}.
+See also `tf.tuple`.
 
 ## Infeed
 
 See also
-[`XlaBuilder::Infeed`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Infeed`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Infeed(shape)` </b>
 
@@ -1284,27 +1396,38 @@ Infeed of the device.
 > which case the compiler will provide information about how the Infeed
 > operations are serialized in the compiled program.
 
+## Iota
+
+<b> `Iota()` </b>
+
+Builds a constant literal on device rather than a potentially large host
+transfer.  Creates a rank 1 tensor of values starting at zero and incrementing
+by one.
+
+Arguments          | Type            | Semantics
+------------------ | --------------- | ---------------------------
+`type`             | `PrimitiveType` | type U
+`size`             | `int64`         | The number of elements in the tensor.
+
 ## Map
 
 See also
-[`XlaBuilder::Map`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Map`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Map(operands..., computation)` </b>
 
 | Arguments         | Type                   | Semantics                      |
 | ----------------- | ---------------------- | ------------------------------ |
 | `operands`        | sequence of N `XlaOp`s | N arrays of types T_0..T_{N-1} |
-| `computation`     | `XlaComputation`        | computation of type `T_0, T_1, |
+| `computation`     | `XlaComputation`       | computation of type `T_0, T_1, |
 :                   :                        : ..., T_{N + M -1} -> S` with N :
 :                   :                        : parameters of type T and M of  :
 :                   :                        : arbitrary type                 :
 | `dimensions`      | `int64` array          | array of map dimensions        |
-| `static_operands` | sequence of M `XlaOp`s | M arrays of arbitrary type     |
 
 Applies a scalar function over the given `operands` arrays, producing an array
 of the same dimensions where each element is the result of the mapped function
-applied to the corresponding elements in the input arrays with `static_operands`
-given as additional input to `computation`.
+applied to the corresponding elements in the input arrays.
 
 The mapped function is an arbitrary computation with the restriction that it has
 N inputs of scalar type `T` and a single output with type `S`. The output has
@@ -1318,7 +1441,7 @@ input arrays to produce the output array.
 ## Pad
 
 See also
-[`XlaBuilder::Pad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Pad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Pad(operand, padding_value, padding_config)` </b>
 
@@ -1357,7 +1480,7 @@ are all 0. The figure below shows examples of different `edge_padding` and
 ## Recv
 
 See also
-[`XlaBuilder::Recv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Recv`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Recv(shape, channel_handle)` </b>
 
@@ -1391,21 +1514,31 @@ complete and returns the received data.
 ## Reduce
 
 See also
-[`XlaBuilder::Reduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Reduce`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Applies a reduction function to an array.
+Applies a reduction function to one or more arrays in parallel.
 
-<b> `Reduce(operand, init_value, computation, dimensions)` </b>
+<b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type             | Semantics
-------------- | ---------------- | ---------------------------------------
-`operand`     | `XlaOp`          | array of type `T`
-`init_value`  | `XlaOp`          | scalar of type `T`
-`computation` | `XlaComputation` | computation of type `T, T -> T`
-`dimensions`  | `int64` array    | unordered array of dimensions to reduce
+Arguments     | Type                  | Semantics
+------------- | --------------------- | ---------------------------------------
+`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
+`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
+`computation` | `XlaComputation`      | computation of type
+              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
+`dimensions`  | `int64` array         | unordered array of dimensions to reduce
 
-This operation reduces one or more dimensions of the input array into scalars.
-The rank of the returned array is `rank(operand) - len(dimensions)`.
+Where:
+* N is required to be greater or equal to 1.
+* All input arrays must have the same dimensions.
+* If `N = 1`, `Collate(T)` is `T`.
+* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
+
+The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
+`T_i`, the dimensions of which are described below.
+
+This operation reduces one or more dimensions of each input array into scalars.
+The rank of each returned array is `rank(operand) - len(dimensions)`.
 `init_value` is the initial value used for every reduction and may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
 identity of the reduction function (for example, 0 for addition). The applied
@@ -1421,9 +1554,9 @@ enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
 incorrect or unpredictable results in XLA reductions.
 
-As an example, when reducing across the one dimension in a 1D array with values
-[10, 11, 12, 13], with reduction function `f` (this is `computation`) then that
-could be computed as
+As an example, when reducing across one dimension in a single 1D array with
+values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
 
@@ -1505,10 +1638,38 @@ the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. For example, consider the following
+reduction function, which can be used to compute the max and the argmax of a
+a 1-D tensor in parallel:
+
+```
+f: (Float, Int, Float, Int) -> Float, Int
+f(max, argmax, value, index):
+  if value >= argmax:
+    return (value, index)
+  else:
+    return (max, argmax)
+```
+
+For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
+`I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
+input dimension is equivalent to the following recursive application:
+```
+f_0 = f(I_V, I_K, V_0, K_0)
+f_1 = f(f_0.first, f_0.second, V_1, K_1)
+...
+f_(N-1) = f(f_(N-2).first, f_(N-2).second, V_(N-1), K_(N-1))
+```
+
+Applying this reduction to an array of values, and an array of sequential
+indices (i.e. iota), will co-iterate over the arrays, and return a tuple
+containing the maximal value and the matching index.
+
 ## ReducePrecision
 
 See also
-[`XlaBuilder::ReducePrecision`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::ReducePrecision`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Models the effect of converting floating-point values to a lower-precision
 format (such as IEEE-FP16) and back to the original format.  The number of
@@ -1539,7 +1700,7 @@ portion of the conversion is then simply a no-op.
 ## ReduceWindow
 
 See also
-[`XlaBuilder::ReduceWindow`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::ReduceWindow`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Applies a reduction function to all elements in each window of the input
 multi-dimensional array, producing an output multi-dimensional array with the
@@ -1622,7 +1783,7 @@ context of [`Reduce`](#reduce) for more details.
 ## Reshape
 
 See also
-[`XlaBuilder::Reshape`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h)
+[`XlaBuilder::Reshape`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h)
 and the [`Collapse`](#collapse) operation.
 
 Reshapes the dimensions of an array into a new configuration.
@@ -1703,7 +1864,7 @@ Reshape(5, {}, {1,1}) == f32[1x1] {{5}};
 ## Rev (reverse)
 
 See also
-[`XlaBuilder::Rev`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Rev`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b>`Rev(operand, dimensions)`</b>
 
@@ -1725,33 +1886,35 @@ the two window dimensions during the gradient computation in neural networks.
 ## RngNormal
 
 See also
-[`XlaBuilder::RngNormal`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::RngNormal`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
-the $$N(\mu, \sigma)$$ normal distribution. The parameters `mu` and `sigma`, and
-output shape have to have elemental type F32. The parameters furthermore have to
-be scalar valued.
+the $$N(\mu, \sigma)$$ normal distribution. The parameters $$\mu$$ and
+$$\sigma$$, and output shape have to have a floating point elemental type. The
+parameters furthermore have to be scalar valued.
 
-<b>`RngNormal(mean, sigma, shape)`</b>
+<b>`RngNormal(mu, sigma, shape)`</b>
 
 | Arguments | Type    | Semantics                                           |
 | --------- | ------- | --------------------------------------------------- |
-| `mu`      | `XlaOp` | Scalar of type F32 specifying mean of generated     |
-:           :         : numbers                                             :
-| `sigma`   | `XlaOp` | Scalar of type F32 specifying standard deviation of |
+| `mu`      | `XlaOp` | Scalar of type T specifying mean of generated       |
+:           :         : numbers                                   :
+| `sigma`   | `XlaOp` | Scalar of type T specifying standard deviation of   |
 :           :         : generated numbers                                   :
-| `shape`   | `Shape` | Output shape of type F32                            |
+| `shape`   | `Shape` | Output shape of type T                              |
 
 ## RngUniform
 
 See also
-[`XlaBuilder::RngUniform`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::RngUniform`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $$[a,b)$$. The parameters and output
-shape may be either F32, S32 or U32, but the types have to be consistent.
-Furthermore, the parameters need to be scalar valued. If $$b <= a$$ the result
-is implementation-defined.
+element type have to be a boolean type, an integral type or a floating point
+types, and the types have to be consistent. The CPU and GPU backends currently
+only support F64, F32, F16, BF16, S64, U64, S32 and U32. Furthermore, the
+parameters need to be scalar valued. If $$b <= a$$ the result is
+implementation-defined.
 
 <b>`RngUniform(a, b, shape)`</b>
 
@@ -1763,10 +1926,142 @@ is implementation-defined.
 :           :                         : limit of interval                 :
 | `shape`   | `Shape`                 | Output shape of type T            |
 
+## Scatter
+
+The XLA scatter operation generates a result which is the value of the input
+tensor `operand`, with several slices (at indices specified by
+`scatter_indices`) updated with the values in `updates` using
+`update_computation`.
+
+See also
+[`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+<b> `scatter(operand, scatter_indices, updates, update_computation, index_vector_dim, update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims)` </b>
+
+|Arguments         | Type                   | Semantics                        |
+|------------------|------------------------|----------------------------------|
+|`operand`         | `XlaOp`                | Tensor to be scattered into.     |
+|`scatter_indices` | `XlaOp`                | Tensor containing the starting   |
+:                  :                        : indices of the slices that must  :
+:                  :                        : be scattered to.                 :
+|`updates`         | `XlaOp`                | Tensor containing the values that|
+:                  :                        : must be used for scattering.     :
+|`update_computation`| `XlaComputation`     | Computation to be used for       |
+:                  :                        : combining the existing values in :
+:                  :                        : the input tensor and the updates :
+:                  :                        : during scatter. This computation :
+:                  :                        : should be of type `T, T -> T`.   :
+|`index_vector_dim`| `int64`                | The dimension in                 |
+:                  :                        : `scatter_indices` that contains  :
+:                  :                        : the starting indices.            :
+|`update_window_dims`| `ArraySlice<int64>`  | The set of dimensions in         |
+:                  :                        : `updates` shape that are _window :
+:                  :                        : dimensions_.                     :
+|`inserted_window_dims`| `ArraySlice<int64>`| The set of _window dimensions_   |
+:                  :                        : that must be inserted into       :
+:                  :                        : `updates` shape.                 :
+|`scatter_dims_to_operand_dims`| `ArraySlice<int64>`  | A dimensions map from  |
+:                  :                        : the scatter indices to the       :
+:                  :                        : operand index space. This array  :
+:                  :                        : is interpreted as mapping `i` to :
+:                  :                        : `scatter_dims_to_operand_dims[i]`:
+:                  :                        : . It has to be one-to-one and    :
+:                  :                        : total.                           :
+
+If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
+`scatter_indices` to have a trailing `1` dimension.
+
+We define `update_scatter_dims` of type `ArraySlice<int64>` as the set of
+dimensions in `updates` shape that are not in `update_window_dims`, in ascending
+order.
+
+The arguments of scatter should follow these constraints:
+
+  - `updates` tensor must be of rank `update_window_dims.size +
+  scatter_indices.rank - 1`.
+
+  - Bounds of dimension `i` in `updates` must conform to the following:
+      - If `i` is present in `update_window_dims` (i.e. equal to
+        `update_window_dims`[`k`] for some `k`), then the bound of dimension
+        `i` in `updates` must not exceed the corresponding bound of `operand`
+        after accounting for the `inserted_window_dims` (i.e.
+        `adjusted_window_bounds`[`k`], where `adjusted_window_bounds` contains
+        the bounds of `operand` with the bounds at indices
+        `inserted_window_dims` removed).
+      - If `i` is present in `update_scatter_dims` (i.e. equal to
+        `update_scatter_dims`[`k`] for some `k`), then the bound of dimension
+        `i` in `updates` must be equal to the corresponding bound of
+        `scatter_indices`, skipping `index_vector_dim` (i.e.
+        `scatter_indices.shape.dims`[`k`], if `k` < `index_vector_dim` and
+        `scatter_indices.shape.dims`[`k+1`] otherwise).
+
+  - `update_window_dims` must be in ascending order, not have any repeating
+    dimension numbers, and be in the range `[0, updates.rank)`.
+
+  - `inserted_window_dims` must be in ascending order, not have any
+    repeating dimension numbers, and be in the range `[0, operand.rank)`.
+
+  - `scatter_dims_to_operand_dims.size` must be equal to
+    `scatter_indices`[`index_vector_dim`], and its values must be in the range
+    `[0, operand.rank)`.
+
+For a given index `U` in the `updates` tensor, the corresponding index `I` in
+the `operand` tensor into which this update has to be applied is computed as
+follows:
+
+  1. Let `G` = { `U`[`k`] for `k` in `update_scatter_dims` }. Use `G` to look up
+     an index vector `S` in the `scatter_indices` tensor such that `S`[`i`] =
+     `scatter_indices`[Combine(`G`, `i`)] where Combine(A, b) inserts b at
+     positions `index_vector_dim` into A.
+  2. Create an index `S`<sub>`in`</sub> into `operand` using `S` by scattering
+     `S` using the `scatter_dims_to_operand_dims` map. More formally:
+       1. `S`<sub>`in`</sub>[`scatter_dims_to_operand_dims`[`k`]] = `S`[`k`] if
+          `k` < `scatter_dims_to_operand_dims.size`.
+       2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+  3. Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
+     at `update_window_dims` in `U` according to `inserted_window_dims`.
+     More formally:
+       1. `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if
+          `k` < `update_window_dims.size`, where `window_dims_to_operand_dims`
+          is the monotonic function with domain [`0`, `update_window_dims.size`)
+          and range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For
+          example, if `update_window_dims.size` is `4`, `operand.rank` is `6`,
+          and `inserted_window_dims` is {`0`, `2`} then
+          `window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`,
+          `3`→`5`}).
+       2. `W`<sub>`in`</sub>[`_`] = `0` otherwise.
+  4. `I` is `W`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+     addition.
+
+In summary, the scatter operation can be defined as follows.
+
+   - Initialize `output` with `operand`, i.e. for all indices `O` in the
+     `operand` tensor:\
+       `output`[`O`] = `operand`[`O`]
+   - For every index `U` in the `updates` tensor and the corresponding index `O`
+     in the `operand` tensor:\
+       `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
+
+The order in which updates are applied is non-deterministic. So, when multiple
+indices in `updates` refer to the same index in `operand`, the corresponding
+value in `output` will be non-deterministic.
+
+Note that the first parameter that is passed into the `update_computation` will
+always be the current value from the `output` tensor and the second parameter
+will always be the value from the `updates` tensor. This is important
+specifically for cases when the `update_computation` is _not commutative_.
+
+Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
+the scatter op updates the elements in the input that are extracted by the
+corresponding gather op.
+
+For a detailed informal description and examples, refer to the
+"Informal Description" section under `Gather`.
+
 ## Select
 
 See also
-[`XlaBuilder::Select`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Select`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Constructs an output array from elements of two input arrays, based on the
 values of a predicate array.
@@ -1817,7 +2112,7 @@ the same shape!) then `pred` has to be a scalar of type `PRED`.
 ## SelectAndScatter
 
 See also
-[`XlaBuilder::SelectAndScatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::SelectAndScatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 This operation can be considered as a composite operation that first computes
 `ReduceWindow` on the `operand` array to select an element from each window, and
@@ -1897,7 +2192,7 @@ context of [`Reduce`](#reduce) for more details.
 ## Send
 
 See also
-[`XlaBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Send`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `Send(operand, channel_handle)` </b>
 
@@ -1952,7 +2247,7 @@ computations. For example, below schedules lead to deadlocks.
 ## Slice
 
 See also
-[`XlaBuilder::Slice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Slice`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Slicing extracts a sub-array from the input array. The sub-array is of the same
 rank as the input and contains the values inside a bounding box within the input
@@ -2001,19 +2296,48 @@ Slice(b, {2, 1}, {4, 3}) produces:
 ## Sort
 
 See also
-[`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Sorts the elements in the operand.
+There are two versions of the Sort instruction: a single-operand and a
+two-operand version.
 
 <b>`Sort(operand)`</b>
 
-Arguments | Type    | Semantics
---------- | ------- | -------------------
-`operand` | `XlaOp` | The operand to sort
+Arguments   | Type    | Semantics
+----------- | ------- | --------------------
+`operand`   | `XlaOp` | The operand to sort.
+`dimension` | `int64` | The dimension along which to sort.
+
+Sorts the elements in the operand in ascending order along the provided
+dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
+will sort each column independently, and a `dimension` value of 1 will sort each
+row independently. If the operand's elements have floating point type, and the
+operand contains NaN elements, the order of elements in the output is
+implementation-defined.
+
+<b>`Sort(key, value)`</b>
+
+Sorts both the key and the value operands. The keys are sorted as in the
+single-operand version. The values are sorted according to the order of their
+corresponding keys. For example, if the inputs are `keys = [3, 1]` and
+`values = [42, 50]`, then the output of the sort is the tuple 
+`{[1, 3], [50, 42]}`.
+
+The sort is not guaranteed to be stable, that is, if the keys array contains
+duplicates, the order of their corresponding values may not be preserved.
+
+Arguments   | Type    | Semantics
+----------- | ------- | -------------------
+`keys`      | `XlaOp` | The sort keys.
+`values`    | `XlaOp` | The values to sort.
+`dimension` | `int64` | The dimension along which to sort.
+
+The `keys` and `values` must have the same dimensions, but may have different
+element types.
 
 ## Transpose
 
-See also the @{tf.reshape} operation.
+See also the `tf.reshape` operation.
 
 <b>`Transpose(operand)`</b>
 
@@ -2032,7 +2356,7 @@ This is the same as Reshape(operand, permutation,
 ## Tuple
 
 See also
-[`XlaBuilder::Tuple`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::Tuple`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 A tuple containing a variable number of data handles, each of which has its own
 shape.
@@ -2051,7 +2375,7 @@ Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 ## While
 
 See also
-[`XlaBuilder::While`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
+[`XlaBuilder::While`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 <b> `While(condition, body, init)` </b>
 
@@ -2073,8 +2397,6 @@ restrictions listed below.
     last execution of the `body`.
 *   The shape of the type `T` is statically determined and must be the same
     across all iterations.
-*   `While` nodes are not allowed to be nested. (This restriction may be lifted
-    in the future on some targets.)
 
 The T parameters of the computations are initialized with the `init` value in
 the first iteration and are automatically updated to the new result from `body`

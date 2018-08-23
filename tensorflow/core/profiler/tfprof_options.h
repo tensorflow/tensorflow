@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OPTIONS_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OPTIONS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_TFPROF_OPTIONS_H_
+#define TENSORFLOW_CORE_PROFILER_TFPROF_OPTIONS_H_
 
 #include <set>
 #include <string>
@@ -183,4 +183,4 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OPTIONS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_TFPROF_OPTIONS_H_

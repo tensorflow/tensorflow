@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training.adam import AdamOptimizer
@@ -46,7 +48,11 @@ def _test_optimizer(optimizer, target=0.75):
   model.compile(loss='categorical_crossentropy',
                 optimizer=optimizer,
                 metrics=['accuracy'])
+  np.testing.assert_equal(keras.backend.get_value(model.optimizer.iterations),
+                          0)
   history = model.fit(x_train, y_train, epochs=2, batch_size=16, verbose=0)
+  np.testing.assert_equal(keras.backend.get_value(model.optimizer.iterations),
+                          126)  # 63 steps per epoch
   assert history.history['acc'][-1] >= target
   config = keras.optimizers.serialize(optimizer)
   optim = keras.optimizers.deserialize(config)
@@ -66,7 +72,11 @@ def _test_optimizer(optimizer, target=0.75):
   model.compile(loss='categorical_crossentropy',
                 optimizer=optimizer,
                 metrics=['accuracy'])
+  np.testing.assert_equal(keras.backend.get_value(model.optimizer.iterations),
+                          126)  # Using same optimizer from before
   model.train_on_batch(x_train[:10], y_train[:10])
+  np.testing.assert_equal(keras.backend.get_value(model.optimizer.iterations),
+                          127)
   kernel, bias = dense.get_weights()
   np.testing.assert_allclose(kernel, 1., atol=1e-3)
   np.testing.assert_allclose(bias, 2., atol=1e-3)
@@ -132,6 +142,7 @@ class KerasOptimizersTest(test.TestCase):
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
     # This is possible
     model.compile(loss='mean_squared_error', optimizer=optimizer)
+    keras.backend.track_tf_optimizer(optimizer)
     model.fit(np.random.random((5, 3)),
               np.random.random((5, 2)),
               epochs=1,
@@ -144,6 +155,40 @@ class KerasOptimizersTest(test.TestCase):
       optimizer.get_config()
     with self.assertRaises(NotImplementedError):
       optimizer.from_config(None)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_tfoptimizer_iterations(self):
+    with self.test_session():
+      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(
+          2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
+      model.compile(loss='mean_squared_error', optimizer=optimizer)
+      keras.backend.track_tf_optimizer(optimizer)
+      self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 0)
+
+      model.fit(np.random.random((55, 3)),
+                np.random.random((55, 2)),
+                epochs=1,
+                batch_size=5,
+                verbose=0)
+      self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 11)
+
+      if not context.executing_eagerly():
+        # TODO(kathywu): investigate why training with an array input and
+        # setting the argument steps_per_epoch does not work in eager mode.
+        model.fit(np.random.random((20, 3)),
+                  np.random.random((20, 2)),
+                  steps_per_epoch=8,
+                  verbose=0)
+        self.assertEqual(
+            keras.backend.get_value(model.optimizer.iterations), 19)
+
+  def test_negative_clipvalue_or_clipnorm(self):
+    with self.assertRaises(ValueError):
+      _ = keras.optimizers.SGD(lr=0.01, clipvalue=-0.5)
+    with self.assertRaises(ValueError):
+      _ = keras.optimizers.Adam(clipnorm=-2.0)
 
 
 if __name__ == '__main__':

@@ -128,13 +128,7 @@ bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
   }
   const Array& input_array = model->GetArray(op->inputs[0]);
 
-  if (input_array.minmax) {
-    output_array.GetOrCreateMinMax() = input_array.GetMinMax();
-  }
-  if (input_array.quantization_params) {
-    output_array.GetOrCreateQuantizationParams() =
-        input_array.GetQuantizationParams();
-  }
+  CopyMinMaxAndQuantizationRelatedFields(input_array, &output_array);
 
   if (op->perm.empty()) {
     // Yield until perm has been populated by ResolveTransposeAttributes.

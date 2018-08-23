@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include "google/protobuf/text_format.h"
 #include "tensorflow/contrib/lite/toco/format_port.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
 #if defined(PLATFORM_GOOGLE)
@@ -54,26 +55,6 @@ double round(double x);
 namespace toco {
 namespace port {
 
-class Status {
- public:
-  static Status OK() { return Status(true, ""); }
-
-  // Create a failed status with no message.
-  Status() {}
-
-  Status(bool ok, const string& message) : ok_(ok), message_(message) {}
-
-  void AppendMessage(const string& message) { message_ += message; }
-
-  bool ok() const { return ok_; }
-
-  const string error_message() const { return message_; }
-
- private:
-  bool ok_ = false;
-  string message_;
-};
-
 void InitGoogle(const char* usage, int* argc, char*** argv, bool remove_flags);
 void CheckInitGoogleIsDone(const char* message);
 
@@ -83,14 +64,14 @@ inline Options Defaults() {
   Options o;
   return o;
 }
-Status GetContents(const string& filename, string* contents,
-                   const Options& options);
-Status SetContents(const string& filename, const string& contents,
-                   const Options& options);
+tensorflow::Status GetContents(const string& filename, string* contents,
+                               const Options& options);
+tensorflow::Status SetContents(const string& filename, const string& contents,
+                               const Options& options);
 string JoinPath(const string& base, const string& filename);
-Status Writable(const string& filename);
-Status Readable(const string& filename, const Options& options);
-Status Exists(const string& filename, const Options& options);
+tensorflow::Status Writable(const string& filename);
+tensorflow::Status Readable(const string& filename, const Options& options);
+tensorflow::Status Exists(const string& filename, const Options& options);
 }  // namespace file
 
 // Copy `src` string to `dest`. User must ensure `dest` has enough space.

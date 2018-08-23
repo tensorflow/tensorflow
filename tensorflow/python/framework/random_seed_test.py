@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 
 class RandomSeedTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRandomSeed(self):
     test_cases = [
         # Each test case is a tuple with input to get_seed:

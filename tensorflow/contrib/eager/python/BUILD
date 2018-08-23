@@ -104,7 +104,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/eager:graph_callable",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:variables",
     ],
@@ -199,7 +198,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:util",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -221,5 +220,19 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_test(
+    name = "remote_test",
+    srcs = ["remote_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/eager/python:tfe",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:function",
     ],
 )

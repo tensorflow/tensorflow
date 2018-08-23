@@ -214,7 +214,7 @@ class AddSignTest(test.TestCase):
         # Run 7 steps of AddSign
         # first 4 steps with positive gradient
         # last 3 steps with negative gradient (sign(gm) should be -1)
-        for t in range(1, 4):
+        for t in range(1, 8):
           if t < 5:
             update.run()
           else:
@@ -222,7 +222,7 @@ class AddSignTest(test.TestCase):
 
           var0_np, m0 = addsign_update_numpy(
               var0_np,
-              grads0_np,
+              grads0_np if t < 5 else -grads0_np,
               m0,
               learning_rate,
               alpha=alpha,
@@ -232,7 +232,7 @@ class AddSignTest(test.TestCase):
           )
           var1_np, m1 = addsign_update_numpy(
               var1_np,
-              grads1_np,
+              grads1_np if t < 5 else -grads1_np,
               m1,
               learning_rate,
               alpha=alpha,

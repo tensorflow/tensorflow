@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Optional debugging functionality. For small sized binaries, these are not
 // needed.
-#ifndef TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
-#define TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_OPTIONAL_DEBUG_TOOLS_H_
+#define TENSORFLOW_CONTRIB_LITE_OPTIONAL_DEBUG_TOOLS_H_
 
 #include "tensorflow/contrib/lite/interpreter.h"
 
@@ -24,9 +24,6 @@ namespace tflite {
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(Interpreter* interpreter);
 
-// Prints a dump of what tensors and what nodes are in the interpreter.
-TfLiteStatus ValidateInterpreterState(const Interpreter* interpreter);
-
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_OPTIONAL_DEBUG_TOOLS_H_

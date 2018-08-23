@@ -38,29 +38,32 @@ class ShardingMetadata : public DomainMetadata {
 
   string ToString() const override;
 
-  Status NormalizeInstructions(
-      const DomainMetadata::Domain& domain) const override;
+  const HloSharding* sharding() const { return sharding_.get(); }
 
   static tensorflow::StringPiece KindName() { return "sharding"; }
+
+  static StatusOr<const ShardingMetadata*> ToShardingMetadata(
+      const DomainMetadata* metadata);
+
+  // Apply the specified domain metadata onto the specified domain. If no
+  // metadata is specified then apply sharding heuristics and normalize the
+  // instructions whose sharding deviates from the one which is inferred as to
+  // be the original one. Policy wise, HLO passes are allowed to create new
+  // unassigned instructions, but if they do create assigned ones, they have to
+  // conform to the ones around.
+  static Status NormalizeShardingDomain(const DomainMetadata::Domain& domain,
+                                        const DomainMetadata* metadata);
 
  private:
   std::unique_ptr<HloSharding> sharding_;
 };
 
-// Within a set of instructions which had common sharding attributes before
-// entring the HLO passes pipeline, apply sharding heuristics and normalize the
-// instructions whose sharding deviates from the one which is inferred as to be
-// the original one.
-// Policy wise, HLO passes are allowed to create new unassigned instructions,
-// but if they do create assigned ones, they have to conform to the ones around.
-Status NormalizeShardingDomain(const DomainMetadata::Domain& domain);
-
 // Given an HLO graph edge between instruction and one of its operands, creates
 // a ShardingMetadata based kDomain instruction if the sharding between
-// instruction and operand changes. Returns nullptr if there is no need for a
+// instruction and parent changes. Returns nullptr if there is no need for a
 // domain separation.
 std::unique_ptr<HloInstruction> CreateShardingDomain(
-    HloInstruction* instruction, HloInstruction* operand);
+    HloInstruction* instruction, HloInstruction* root, HloInstruction* operand);
 
 }  // namespace xla
 

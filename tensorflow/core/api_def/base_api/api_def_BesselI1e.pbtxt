@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "BesselI1e"
+  summary: "Computes the Bessel i1e function of `x` element-wise."
+  description: <<END
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+This function is faster and numerically stabler than `bessel_i1(x)`.
+END
+}

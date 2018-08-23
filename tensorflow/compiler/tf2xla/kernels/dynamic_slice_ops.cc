@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -57,8 +57,8 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
                                 input_shape.DebugString(), "; update shape is ",
                                 update_shape.DebugString()));
 
-    xla::XlaOp result = ctx->builder()->DynamicUpdateSlice(
-        ctx->Input(0), ctx->Input(1), ctx->Input(2));
+    xla::XlaOp result =
+        xla::DynamicUpdateSlice(ctx->Input(0), ctx->Input(1), ctx->Input(2));
     ctx->SetOutput(0, result);
   }
 };

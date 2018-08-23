@@ -133,24 +133,20 @@ bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
 }
 
 bool HardcodeMinMaxForSplit(Model* model, Operator* op) {
-  for (const auto& output : op->outputs) {
-    if (model->GetArray(output).minmax) {
-      LOG(WARNING) << "Skipping min-max setting for " << LogName(*op)
-                   << " because output " << output << " already has min-max.";
-      return false;
-    }
-  }
   // Data is in second input.
   auto& input_array = model->GetArray(op->inputs[1]);
   if (!input_array.minmax) {
     return false;
-  } else {
-    for (const auto& output : op->outputs) {
-      auto& array = model->GetArray(output);
+  }
+  bool changed = false;
+  for (const auto& output : op->outputs) {
+    auto& array = model->GetArray(output);
+    if (!array.minmax || !(array.GetMinMax() == input_array.GetMinMax())) {
+      changed = true;
       array.GetOrCreateMinMax() = *input_array.minmax;
     }
-    return true;
   }
+  return changed;
 }
 
 // The output of average or max pooling is within the same range as its input.
@@ -232,6 +228,14 @@ bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
   return true;
 }
 
+bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
+  const double magnitude =
+      std::min(minmax1.max - minmax1.min, minmax2.max - minmax2.min);
+  const double tolerated = 1e-6 * magnitude;
+  return std::abs(minmax1.min - minmax2.min) < tolerated &&
+         std::abs(minmax1.max - minmax2.max) < tolerated;
+}
+
 // Propagates MinMax from any of the listed arrays, to all others.
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
@@ -254,7 +258,7 @@ bool PropagateMinMaxAmongArrays(Model* model,
   for (const string& array_name : array_names) {
     auto& array = model->GetArray(array_name);
     if (array.minmax) {
-      CHECK(*array.minmax == *reference_minmax)
+      CHECK(MinMaxApproximatelyEqual(*array.minmax, *reference_minmax))
           << "Both the following arrays have minmax, and they disagree: "
           << reference_array_name << " (" << reference_minmax->min << ","
           << reference_minmax->max << ") and " << array_name << " ("
@@ -268,6 +272,19 @@ bool PropagateMinMaxAmongArrays(Model* model,
     }
   }
   return changed;
+}
+
+bool HardcodeMinMaxForReshape(Model* model, Operator* op) {
+  Array& input = model->GetArray(op->inputs[0]);
+  Array& output = model->GetArray(op->outputs[0]);
+
+  // If input and output both exist or do not exist, do nothing.
+  if ((!input.minmax && !output.minmax) || (input.minmax && output.minmax)) {
+    return false;
+  }
+
+  // Otherwise propagate info amongst the input and output array.
+  return PropagateMinMaxAmongArrays(model, {op->inputs[0], op->outputs[0]});
 }
 
 bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
@@ -353,7 +370,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForConcatenation(model, op);
       break;
 
-    case OperatorType::kTensorFlowSplit:
+    case OperatorType::kSplit:
       changed = HardcodeMinMaxForSplit(model, op);
       break;
 
@@ -362,14 +379,29 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForAverageOrMaxPool(model, op);
       break;
 
+    case OperatorType::kResizeBilinear:
+    case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kExpandDims:
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:
     case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
+      break;
+    case OperatorType::kSum:
+      // reduce_sum is expected to change the output range. Hence
+      // a fake_quant op is necessary in the output to minimize error. However
+      // in special circumstances like when computing expected value using
+      // reduce_sum the input range and the output range matches. Hence the
+      // below code would act as a fallback. If a fake_quant node is observed in
+      // the output that takes precendence over the hard coding logic below.
+      changed = HardcodeMinMaxFromFirstInput(model, op);
+      if (changed) {
+        LOG(WARNING) << "Using the input range for output in reduce_sum op."
+                     << "This could have an impact on your model accuracy.";
+      }
       break;
     case OperatorType::kSelect:
       changed = HardcodeMinMaxForSelect(model, op);
@@ -394,6 +426,10 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
 
     case OperatorType::kLstmCell:
       changed = HardcodeMinMaxForLstmCell(model, op);
+      break;
+
+    case OperatorType::kReshape:
+      changed = HardcodeMinMaxForReshape(model, op);
       break;
 
     default:

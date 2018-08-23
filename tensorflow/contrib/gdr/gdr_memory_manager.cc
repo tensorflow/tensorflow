@@ -33,9 +33,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #endif  // GOOGLE_CUDA
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -172,7 +174,7 @@ class GdrMemoryManager : public RemoteMemoryManager {
   // Client side endpoints
   mutex client_mu_;
   std::map<std::pair<string, string>, RdmaEndpointPtr> clients_
-      GUARDED_BY(cient_mu_);
+      GUARDED_BY(client_mu_);
 
   // Managed memory regions
   mutex alloc_mu_;
@@ -181,28 +183,25 @@ class GdrMemoryManager : public RemoteMemoryManager {
   TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
 };
 
-// TODO(byronyi): remove this class duplicated from the one in
-// common/runtime/gpu/pool_allocator.h when it is available in common_runtime
-class BasicCPUAllocator : public SubAllocator {
- public:
-  ~BasicCPUAllocator() override {}
-
-  void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
-  }
-  void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
-};
-
 // TODO(byronyi): remove this class and its registration when the default
-// cpu_allocator() returns visitable allocator
+// cpu_allocator() returns visitable allocator, or cpu_allocator() is no
+// longer in use.
 class BFCRdmaAllocator : public BFCAllocator {
  public:
   BFCRdmaAllocator()
-      : BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {
+      : BFCAllocator(new BasicCPUAllocator(port::kNUMANoAffinity), 1LL << 36,
+                     true, "cpu_rdma_bfc") {}
+};
+class BFCRdmaAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() override { return new BFCRdmaAllocator; }
+
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new BasicCPUAllocator(numa_node);
   }
 };
 
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocator);
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
 
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
@@ -274,9 +273,9 @@ Status GdrMemoryManager::Init() {
 
   Allocator* allocators[] = {
 #if GOOGLE_CUDA
-    ProcessState::singleton()->GetCUDAHostAllocator(0),
-    ProcessState::singleton()->GetCPUAllocator(0),
+    GPUProcessState::singleton()->GetCUDAHostAllocator(0),
 #endif  // GOOGLE_CUDA
+    ProcessState::singleton()->GetCPUAllocator(0),
     cpu_allocator(),
   };
 
@@ -308,7 +307,8 @@ Status GdrMemoryManager::Init() {
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
     int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
-    ProcessState::singleton()->AddGPUAllocVisitor(bus_id, cuda_alloc_visitor);
+    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
+                                                     cuda_alloc_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
 #endif  // GOOGLE_CUDA
@@ -430,7 +430,7 @@ void GdrMemoryManager::TransportOptionsFromTensor(
 
 #if GOOGLE_CUDA
   if (!on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    Allocator* alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
     Tensor* host_copy = new Tensor(alloc, tensor.dtype(), tensor.shape());
     GPUUtil::CopyGPUTensorToCPU(
         device, device_context, &tensor, host_copy,
@@ -532,7 +532,7 @@ void GdrMemoryManager::TensorFromTransportOptions(
   Tensor host_copy;
 #if GOOGLE_CUDA
   if (mr == nullptr && !on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    Allocator* alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
     host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
     buffer = DMAHelper::buffer(&host_copy);
     addr = buffer->data();

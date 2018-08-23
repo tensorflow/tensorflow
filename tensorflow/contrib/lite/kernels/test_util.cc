@@ -32,8 +32,8 @@ std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
   return matchers;
 }
 
-int SingleOpModel::AddInput(const TensorData& t) {
-  int id = AddTensor<float>(t, {});
+int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
+  int id = AddTensor<float>(t, {}, is_variable);
   inputs_.push_back(id);
   return id;
 }
@@ -112,8 +112,15 @@ void SingleOpModel::BuildInterpreter(
     if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
+
+  // Modify delegate with function.
+  if (apply_delegate_fn_) {
+    apply_delegate_fn_(interpreter_.get());
+  }
+
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
       << "Cannot allocate tensors";
+  interpreter_->ResetVariableTensorsToZero();
 }
 
 void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }

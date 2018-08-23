@@ -77,9 +77,10 @@ def load_data(path='imdb.npz',
   if kwargs:
     raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
 
+  origin_folder = 'https://storage.googleapis.com/tensorflow/tf-keras-datasets/'
   path = get_file(
       path,
-      origin='https://s3.amazonaws.com/text-datasets/imdb.npz',
+      origin=origin_folder + 'imdb.npz',
       file_hash='599dadb1135973df5b59232a0e9a887c')
   with np.load(path) as f:
     x_train, labels_train = f['x_train'], f['y_train']
@@ -140,9 +141,10 @@ def get_word_index(path='imdb_word_index.json'):
   Returns:
       The word index dictionary.
   """
+  origin_folder = 'https://storage.googleapis.com/tensorflow/tf-keras-datasets/'
   path = get_file(
       path,
-      origin='https://s3.amazonaws.com/text-datasets/imdb_word_index.json',
+      origin=origin_folder + 'imdb_word_index.json',
       file_hash='bfafd718b763782e994055a2d397834f')
   with open(path) as f:
     return json.load(f)

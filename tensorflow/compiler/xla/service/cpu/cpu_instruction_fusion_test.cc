@@ -19,9 +19,9 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -172,7 +172,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -202,7 +202,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -233,7 +233,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -282,7 +282,7 @@ class OpcodeFusionTest : public InstructionFusionTest {
         builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(F32, {}), "arg0"));
     HloInstruction* one = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
     return module->AddEmbeddedComputation(builder.Build());
@@ -501,8 +501,8 @@ TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
 
   HloInstruction* exp = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
-  builder.AddInstruction(HloInstruction::CreateMap(
-      shape, {exp}, CreateAdderToOne(module.get()), /*static_operands=*/{}));
+  builder.AddInstruction(
+      HloInstruction::CreateMap(shape, {exp}, CreateAdderToOne(module.get())));
 
   module->AddEntryComputation(builder.Build());
 
@@ -525,8 +525,8 @@ TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
   HloInstruction* exp1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kExp, param1));
 
-  builder.AddInstruction(HloInstruction::CreateMap(
-      shape, {exp0, exp1}, CreateMax(module.get()), /*static_operands=*/{}));
+  builder.AddInstruction(
+      HloInstruction::CreateMap(shape, {exp0, exp1}, CreateMax(module.get())));
 
   module->AddEntryComputation(builder.Build());
 
@@ -595,7 +595,7 @@ TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
   auto pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(S32, {5}), idx_choice,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0(0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0))),
       padding_config));
 
   auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -697,8 +697,9 @@ void CreateComputationForDotAddOutputFusionTest(const string& test_name,
       HloInstruction::CreateBinary(dot_shape, HloOpcode::kAdd, dot, addend));
 
   if (add_extra_use_for_dot) {
+    auto* token = builder.AddInstruction(HloInstruction::CreateToken());
     builder.AddInstruction(
-        HloInstruction::CreateOutfeed(dot_shape, dot, "no_config"));
+        HloInstruction::CreateOutfeed(dot_shape, dot, token, "no_config"));
   }
 
   module->AddEntryComputation(builder.Build());
@@ -775,7 +776,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   string hlo_string = tensorflow::strings::StrCat(
       "HloModule ", spec.test_name, "\n\n", spec.hlo_computation_text);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
@@ -791,11 +792,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[3,2] broadcast(one), dimensions={}
   ROOT result = s32[3,2]{1,0} add(gather, one_broadcasted)
@@ -807,11 +808,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,3,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,3,2] broadcast(one), dimensions={}
   ROOT result = s32[2,3,2]{2,1,0} add(gather, one_broadcasted)
@@ -823,11 +824,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=2,
-      window_bounds={1, 1}
+      slice_sizes={1, 1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
@@ -839,11 +840,11 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
@@ -855,11 +856,11 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
   one = s32[] constant(1)
   one_broadcasted = s32[2,2] broadcast(one), dimensions={}
   ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
@@ -871,11 +872,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   gather = s32[1,1] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={0,1},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   one = s32[] constant(1)
   one_broadcasted = s32[1,1] broadcast(one), dimensions={}
   ROOT result = s32[1,1]{1,0} add(gather, one_broadcasted)
@@ -887,11 +888,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   gather = s32[2,1,1] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
   one = s32[] constant(1)
   one_broadcasted = s32[2,1,1] broadcast(one), dimensions={}
   ROOT result = s32[2,1,1]{2,1,0} add(gather, one_broadcasted)

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_FRAMEWORK_COLLECTIVE_EXECUTOR_H_
-#define TENSORFLOW_FRAMEWORK_COLLECTIVE_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_
 
 #include <string>
 #include <vector>
@@ -225,6 +225,7 @@ class PeerAccessInterface {
                             const AllocatorAttributes& to_alloc_attr,
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
+                            int dev_to_dev_stream_index,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,
@@ -307,4 +308,4 @@ class PerStepCollectiveRemoteAccess : public CollectiveRemoteAccess {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_COLLECTIVE_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_COLLECTIVE_H_

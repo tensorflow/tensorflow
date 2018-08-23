@@ -17,18 +17,132 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.contrib.data.python.ops import get_single_element
+from tensorflow.contrib.data.python.ops import grouping
 from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
+
+
+def batch_window(dataset):
+  """Batches a window of tensors.
+
+  Args:
+    dataset: the input dataset.
+
+  Returns:
+    A `Tensor` representing the batch of the entire input dataset.
+  """
+  if isinstance(dataset.output_classes, tuple):
+    raise TypeError("Input dataset expected to have a single component")
+  if dataset.output_classes is ops.Tensor:
+    return _batch_dense_window(dataset)
+  elif dataset.output_classes is sparse_tensor.SparseTensor:
+    return _batch_sparse_window(dataset)
+  else:
+    raise TypeError("Unsupported dataset type: %s" % dataset.output_classes)
+
+
+def _batch_dense_window(dataset):
+  """Batches a window of dense tensors."""
+
+  def key_fn(_):
+    return np.int64(0)
+
+  def shape_init_fn(_):
+    return array_ops.shape(first_element)
+
+  def shape_reduce_fn(state, value):
+    check_ops.assert_equal(state, array_ops.shape(value))
+    return state
+
+  def finalize_fn(state):
+    return state
+
+  if dataset.output_shapes.is_fully_defined():
+    shape = dataset.output_shapes
+  else:
+    first_element = get_single_element.get_single_element(dataset.take(1))
+    shape_reducer = grouping.Reducer(shape_init_fn, shape_reduce_fn,
+                                     finalize_fn)
+    shape = get_single_element.get_single_element(
+        dataset.apply(grouping.group_by_reducer(key_fn, shape_reducer)))
+
+  def batch_init_fn(_):
+    batch_shape = array_ops.concat([[0], shape], 0)
+    return gen_array_ops.empty(batch_shape, dtype=dataset.output_types)
+
+  def batch_reduce_fn(state, value):
+    return array_ops.concat([state, [value]], 0)
+
+  batch_reducer = grouping.Reducer(batch_init_fn, batch_reduce_fn, finalize_fn)
+  return get_single_element.get_single_element(
+      dataset.apply(grouping.group_by_reducer(key_fn, batch_reducer)))
+
+
+def _batch_sparse_window(dataset):
+  """Batches a window of sparse tensors."""
+
+  def key_fn(_):
+    return np.int64(0)
+
+  def shape_init_fn(_):
+    return first_element.dense_shape
+
+  def shape_reduce_fn(state, value):
+    check_ops.assert_equal(state, value.dense_shape)
+    return state
+
+  def finalize_fn(state):
+    return state
+
+  if dataset.output_shapes.is_fully_defined():
+    shape = dataset.output_shapes
+  else:
+    first_element = get_single_element.get_single_element(dataset.take(1))
+    shape_reducer = grouping.Reducer(shape_init_fn, shape_reduce_fn,
+                                     finalize_fn)
+    shape = get_single_element.get_single_element(
+        dataset.apply(grouping.group_by_reducer(key_fn, shape_reducer)))
+
+  def batch_init_fn(_):
+    indices_shape = array_ops.concat([[0], [array_ops.size(shape) + 1]], 0)
+    return sparse_tensor.SparseTensor(
+        indices=gen_array_ops.empty(indices_shape, dtype=dtypes.int64),
+        values=constant_op.constant([], shape=[0], dtype=dataset.output_types),
+        dense_shape=array_ops.concat(
+            [np.array([0], dtype=np.int64),
+             math_ops.cast(shape, dtypes.int64)], 0))
+
+  def batch_reduce_fn(state, value):
+    return sparse_ops.sparse_concat(0, [state, value])
+
+  def reshape_fn(value):
+    return sparse_ops.sparse_reshape(
+        value,
+        array_ops.concat([np.array([1], dtype=np.int64), value.dense_shape], 0))
+
+  batch_reducer = grouping.Reducer(batch_init_fn, batch_reduce_fn, finalize_fn)
+  return get_single_element.get_single_element(
+      dataset.map(reshape_fn).apply(
+          grouping.group_by_reducer(key_fn, batch_reducer)))
 
 
 def dense_to_sparse_batch(batch_size, row_shape):
@@ -71,21 +185,172 @@ def dense_to_sparse_batch(batch_size, row_shape):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
-    return DenseToSparseBatchDataset(dataset, batch_size, row_shape)
+    return _DenseToSparseBatchDataset(dataset, batch_size, row_shape)
 
   return _apply_fn
 
 
-class UnbatchDataset(dataset_ops.Dataset):
+def padded_batch_window(dataset, padded_shape, padding_value=None):
+  """Batches a window of tensors with padding.
+
+  Args:
+    dataset: the input dataset.
+    padded_shape: (Optional.) `tf.TensorShape` or `tf.int64` vector tensor-like
+      object representing the shape to which the input elements should be padded
+      prior to batching. Any unknown dimensions (e.g. `tf.Dimension(None)` in a
+      `tf.TensorShape` or `-1` in a tensor-like object) will be padded to the
+      maximum size of that dimension in each batch.
+    padding_value: (Optional.) A scalar-shaped `tf.Tensor`, representing the
+      padding value to use. Defaults are `0` for numeric types and the empty
+      string for string types. If `dataset` contains `tf.SparseTensor`, this
+      value is ignored.
+
+  Returns:
+    A `Tensor` representing the batch of the entire input dataset.
+
+  Raises:
+    ValueError: if invalid arguments are provided.
+  """
+  if not issubclass(dataset.output_classes,
+                    (ops.Tensor, sparse_tensor.SparseTensor)):
+    raise TypeError("Input dataset expected to have a single tensor component")
+  if issubclass(dataset.output_classes, (ops.Tensor)):
+    return _padded_batch_dense_window(dataset, padded_shape, padding_value)
+  elif issubclass(dataset.output_classes, (sparse_tensor.SparseTensor)):
+    if padding_value is not None:
+      raise ValueError("Padding value not allowed for sparse tensors")
+    return _padded_batch_sparse_window(dataset, padded_shape)
+  else:
+    raise TypeError("Unsupported dataset type: %s" % dataset.output_classes)
+
+
+def _padded_batch_dense_window(dataset, padded_shape, padding_value=None):
+  """Batches a window of dense tensors with padding."""
+
+  padded_shape = math_ops.cast(
+      convert.partial_shape_to_tensor(padded_shape), dtypes.int32)
+
+  def key_fn(_):
+    return np.int64(0)
+
+  def max_init_fn(_):
+    return padded_shape
+
+  def max_reduce_fn(state, value):
+    """Computes the maximum shape to pad to."""
+    condition = math_ops.reduce_all(
+        math_ops.logical_or(
+            math_ops.less_equal(array_ops.shape(value), padded_shape),
+            math_ops.equal(padded_shape, -1)))
+    assert_op = control_flow_ops.Assert(condition, [
+        "Actual shape greater than padded shape: ",
+        array_ops.shape(value), padded_shape
+    ])
+    with ops.control_dependencies([assert_op]):
+      return math_ops.maximum(state, array_ops.shape(value))
+
+  def finalize_fn(state):
+    return state
+
+  # Compute the padded shape.
+  max_reducer = grouping.Reducer(max_init_fn, max_reduce_fn, finalize_fn)
+  padded_shape = get_single_element.get_single_element(
+      dataset.apply(grouping.group_by_reducer(key_fn, max_reducer)))
+
+  if padding_value is None:
+    if dataset.output_types == dtypes.string:
+      padding_value = ""
+    elif dataset.output_types == dtypes.bool:
+      padding_value = False
+    elif dataset.output_types == dtypes.variant:
+      raise TypeError("Unable to create padding for field of type 'variant'")
+    else:
+      padding_value = 0
+
+  def batch_init_fn(_):
+    return array_ops.fill(
+        array_ops.concat([np.array([0], dtype=np.int32), padded_shape], 0),
+        constant_op.constant(padding_value, dtype=dataset.output_types))
+
+  def batch_reduce_fn(state, value):
+    return array_ops.concat([state, [value]], 0)
+
+  def pad_fn(value):
+    shape = array_ops.shape(value)
+    left = array_ops.zeros_like(shape)
+    right = padded_shape - shape
+    return array_ops.pad(
+        value, array_ops.stack([left, right], 1), constant_values=padding_value)
+
+  batch_reducer = grouping.Reducer(batch_init_fn, batch_reduce_fn, finalize_fn)
+  return get_single_element.get_single_element(
+      dataset.map(pad_fn).apply(
+          grouping.group_by_reducer(key_fn, batch_reducer)))
+
+
+def _padded_batch_sparse_window(dataset, padded_shape):
+  """Batches a window of sparse tensors with padding."""
+
+  def key_fn(_):
+    return np.int64(0)
+
+  def max_init_fn(_):
+    return convert.partial_shape_to_tensor(padded_shape)
+
+  def max_reduce_fn(state, value):
+    """Computes the maximum shape to pad to."""
+    condition = math_ops.reduce_all(
+        math_ops.logical_or(
+            math_ops.less_equal(value.dense_shape, padded_shape),
+            math_ops.equal(padded_shape, -1)))
+    assert_op = control_flow_ops.Assert(condition, [
+        "Actual shape greater than padded shape: ", value.dense_shape,
+        padded_shape
+    ])
+    with ops.control_dependencies([assert_op]):
+      return math_ops.maximum(state, value.dense_shape)
+
+  def finalize_fn(state):
+    return state
+
+  # Compute the padded shape.
+  max_reducer = grouping.Reducer(max_init_fn, max_reduce_fn, finalize_fn)
+  padded_shape = get_single_element.get_single_element(
+      dataset.apply(grouping.group_by_reducer(key_fn, max_reducer)))
+
+  def batch_init_fn(_):
+    indices_shape = array_ops.concat([[0], [array_ops.size(padded_shape) + 1]],
+                                     0)
+    return sparse_tensor.SparseTensor(
+        indices=gen_array_ops.empty(indices_shape, dtype=dtypes.int64),
+        values=constant_op.constant([], shape=[0], dtype=dataset.output_types),
+        dense_shape=array_ops.concat(
+            [np.array([0], dtype=np.int64), padded_shape], 0))
+
+  def batch_reduce_fn(state, value):
+    padded_value = sparse_tensor.SparseTensor(
+        indices=value.indices, values=value.values, dense_shape=padded_shape)
+    reshaped_value = sparse_ops.sparse_reshape(
+        padded_value,
+        array_ops.concat(
+            [np.array([1], dtype=np.int64), padded_value.dense_shape], 0))
+    return sparse_ops.sparse_concat(0, [state, reshaped_value])
+
+  reducer = grouping.Reducer(batch_init_fn, batch_reduce_fn, finalize_fn)
+  return get_single_element.get_single_element(
+      dataset.apply(grouping.group_by_reducer(key_fn, reducer)))
+
+
+class _UnbatchDataset(dataset_ops.Dataset):
   """A dataset that splits the elements of its input into multiple elements."""
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-    super(UnbatchDataset, self).__init__()
+    super(_UnbatchDataset, self).__init__()
     flat_shapes = nest.flatten(input_dataset.output_shapes)
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
@@ -101,10 +366,7 @@ class UnbatchDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.unbatch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
@@ -139,13 +401,13 @@ def unbatch():
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     if not sparse.any_sparse(dataset.output_classes):
-      return UnbatchDataset(dataset)
+      return _UnbatchDataset(dataset)
 
     # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
     # are normalized to the rank-1 dense representation, so that the
@@ -171,57 +433,17 @@ def unbatch():
         dataset.output_shapes,
         dataset.output_classes,
         allow_unsafe_cast=True)
-    return UnbatchDataset(restructured_dataset)
+    return _UnbatchDataset(restructured_dataset)
 
   return _apply_fn
 
 
-def filter_irregular_batches(batch_size):
-  """Transformation that filters out batches that are not of size batch_size."""
-
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    tensor_batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-
-    flattened = _RestructuredDataset(
-        dataset,
-        tuple(nest.flatten(dataset.output_types)),
-        output_classes=tuple(nest.flatten(dataset.output_classes)))
-
-    def _predicate(*xs):
-      """Return `True` if this element is a full batch."""
-      # Extract the dynamic batch size from the first component of the flattened
-      # batched element.
-      first_component = xs[0]
-      first_component_batch_size = array_ops.shape(
-          first_component, out_type=dtypes.int64)[0]
-
-      return math_ops.equal(first_component_batch_size, tensor_batch_size)
-
-    filtered = flattened.filter(_predicate)
-
-    maybe_constant_batch_size = tensor_util.constant_value(tensor_batch_size)
-
-    def _set_first_dimension(shape):
-      return shape.merge_with(
-          tensor_shape.vector(maybe_constant_batch_size).concatenate(shape[1:]))
-
-    known_shapes = nest.map_structure(_set_first_dimension,
-                                      dataset.output_shapes)
-    return _RestructuredDataset(
-        filtered,
-        dataset.output_types,
-        known_shapes,
-        output_classes=dataset.output_classes)
-
-  return _apply_fn
-
-
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.batch(..., drop_remainder=True)`.")
 def batch_and_drop_remainder(batch_size):
   """A batching transformation that omits the final small batch (if present).
 
-  Like @{tf.data.Dataset.batch}, this transformation combines
+  Like `tf.data.Dataset.batch`, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
@@ -245,58 +467,59 @@ def batch_and_drop_remainder(batch_size):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    batched = dataset.batch(batch_size)
-    return filter_irregular_batches(batch_size)(batched)
+    return dataset.batch(batch_size, drop_remainder=True)
 
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.padded_batch(..., drop_remainder=True)`.")
 def padded_batch_and_drop_remainder(batch_size,
                                     padded_shapes,
                                     padding_values=None):
   """A batching and padding transformation that omits the final small batch.
 
-  Like @{tf.data.Dataset.padded_batch}, this transformation combines
+  Like `tf.data.Dataset.padded_batch`, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
 
-  See `@{tf.contrib.data.batch_and_drop_remainder}` for more details.
+  See `tf.contrib.data.batch_and_drop_remainder` for more details.
 
   Args:
     batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements of this dataset to combine in a single batch.
     padded_shapes: A nested structure of `tf.TensorShape` or
       `tf.int64` vector tensor-like objects. See
-      @{tf.data.Dataset.padded_batch} for details.
+      `tf.data.Dataset.padded_batch` for details.
     padding_values: (Optional.) A nested structure of scalar-shaped
-      `tf.Tensor`. See @{tf.data.Dataset.padded_batch} for details.
+      `tf.Tensor`. See `tf.data.Dataset.padded_batch` for details.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    batched = dataset.padded_batch(
-        batch_size, padded_shapes=padded_shapes, padding_values=padding_values)
-    return filter_irregular_batches(batch_size)(batched)
+    return dataset.padded_batch(
+        batch_size, padded_shapes=padded_shapes, padding_values=padding_values,
+        drop_remainder=True)
 
   return _apply_fn
 
 
-class DenseToSparseBatchDataset(dataset_ops.Dataset):
+class _DenseToSparseBatchDataset(dataset_ops.Dataset):
   """A `Dataset` that batches ragged dense elements into `tf.SparseTensor`s."""
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
-    super(DenseToSparseBatchDataset, self).__init__()
+    super(_DenseToSparseBatchDataset, self).__init__()
     if not isinstance(input_dataset.output_types, dtypes.DType):
       raise TypeError("DenseToSparseDataset requires an input whose elements "
                       "have a single component, whereas the input has %r." %
@@ -309,11 +532,8 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
     return gen_dataset_ops.dense_to_sparse_batch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._batch_size,
-        row_shape=dataset_ops._partial_shape_to_tensor(self._row_shape),  # pylint: disable=protected-access
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        row_shape=convert.partial_shape_to_tensor(self._row_shape),
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
@@ -441,7 +661,7 @@ def assert_element_shape(expected_shapes):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _check_shape(*elements):
@@ -490,10 +710,7 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
         batch_size=self._batch_size_t,
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
   @property
@@ -543,7 +760,7 @@ def map_and_batch(map_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: If both `num_parallel_batches` and `num_parallel_calls` are

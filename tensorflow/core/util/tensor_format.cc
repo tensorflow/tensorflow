@@ -25,6 +25,10 @@ string GetConvnet3dDataFormatAttrString() {
   return "data_format: { 'NDHWC', 'NCDHW' } = 'NDHWC' ";
 }
 
+string GetConvnetDataFormat2D3DAttrString() {
+  return "data_format: { 'NHWC', 'NCHW', 'NDHWC', 'NCDHW' } = 'NHWC' ";
+}
+
 string GetConvnetFilterFormatAttrString() {
   return "filter_format: { 'HWIO', 'OIHW' } = 'HWIO' ";
 }
@@ -43,6 +47,10 @@ string ToString(TensorFormat format) {
       return "NCHW_VECT_C";
     case FORMAT_NHWC_VECT_W:
       return "NHWC_VECT_W";
+    case FORMAT_HWNC:
+      return "HWNC";
+    case FORMAT_HWCN:
+      return "HWCN";
     default:
       LOG(FATAL) << "Invalid Format: " << static_cast<int32>(format);
       return "INVALID_FORMAT";
@@ -78,6 +86,14 @@ bool FormatFromString(const string& format_str, TensorFormat* format) {
   }
   if (format_str == "NHWC_VECT_W") {
     *format = FORMAT_NHWC_VECT_W;
+    return true;
+  }
+  if (format_str == "HWNC") {
+    *format = FORMAT_HWNC;
+    return true;
+  }
+  if (format_str == "HWCN") {
+    *format = FORMAT_HWCN;
     return true;
   }
   return false;

@@ -21,12 +21,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.autograph import utils
+from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.impl import api
-from tensorflow.contrib.autograph.impl import config
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 tf = utils.fake_tf()
@@ -154,6 +155,22 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], sess.run(x).tolist())
 
+  def test_decorator_preserves_argspec(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        if a < 0:
+          a = -a
+        return a
+
+      called_member_converted = api.convert()(called_member)
+
+    tc = TestClass()
+    self.assertListEqual(
+        list(tf_inspect.getfullargspec(tc.called_member)),
+        list(tf_inspect.getfullargspec(tc.called_member_converted)))
+
   def test_convert_call_site_decorator(self):
 
     class TestClass(object):
@@ -166,8 +183,8 @@ class ApiTest(test.TestCase):
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
-          x //= api.converted_call(self.called_member, False, False, {}, self,
-                                   a)
+          x //= api.converted_call(self.called_member, False, False, False, {},
+                                   self, a)
         return x
 
     tc = TestClass()
@@ -178,7 +195,7 @@ class ApiTest(test.TestCase):
       self.assertListEqual([0, 1], sess.run(x).tolist())
 
   def test_converted_call_builtin(self):
-    x = api.converted_call(range, False, False, {}, 3)
+    x = api.converted_call(range, False, False, False, {}, 3)
     self.assertEqual((0, 1, 2), tuple(x))
 
   def test_converted_call_function(self):
@@ -189,8 +206,8 @@ class ApiTest(test.TestCase):
       return x
 
     with self.test_session() as sess:
-      x = api.converted_call(
-          test_fn, False, False, {}, constant_op.constant(-1))
+      x = api.converted_call(test_fn, False, False, False, {},
+                             constant_op.constant(-1))
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_method(self):
@@ -207,7 +224,7 @@ class ApiTest(test.TestCase):
 
     with self.test_session() as sess:
       tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(tc.test_method, False, False, {}, tc)
+      x = api.converted_call(tc.test_method, False, False, False, {}, tc)
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_method_by_class(self):
@@ -224,7 +241,7 @@ class ApiTest(test.TestCase):
 
     with self.test_session() as sess:
       tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(TestClass.test_method, False, False, {}, tc)
+      x = api.converted_call(TestClass.test_method, False, False, False, {}, tc)
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_callable_object(self):
@@ -241,7 +258,7 @@ class ApiTest(test.TestCase):
 
     with self.test_session() as sess:
       tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(tc, False, False, {})
+      x = api.converted_call(tc, False, False, False, {})
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_constructor(self):
@@ -257,11 +274,26 @@ class ApiTest(test.TestCase):
         return self.x
 
     with self.test_session() as sess:
-      tc = api.converted_call(
-          TestClass, False, False, {}, constant_op.constant(-1))
+      tc = api.converted_call(TestClass, False, False, False, {},
+                              constant_op.constant(-1))
       # tc is now a converted object.
       x = tc.test_method()
       self.assertEqual(1, sess.run(x))
+
+  def test_converted_call_already_converted(self):
+
+    def f(x):
+      return x == 0
+
+    with self.test_session() as sess:
+      x = api.converted_call(f, False, False, False, {},
+                             constant_op.constant(0))
+      self.assertTrue(sess.run(x))
+
+      converted_f = api.to_graph(f)
+      x = api.converted_call(converted_f, False, False, False, {},
+                             constant_op.constant(0))
+      self.assertTrue(sess.run(x))
 
   def test_to_graph_basic(self):
 
@@ -287,6 +319,13 @@ class ApiTest(test.TestCase):
 
     # Just check that it is parseable Python code.
     self.assertIsNotNone(parser.parse_str(compiled_code))
+
+  def test_source_map_attribute_present(self):
+
+    def test_fn(y):
+      return y**2
+
+    self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
 
 
 if __name__ == '__main__':

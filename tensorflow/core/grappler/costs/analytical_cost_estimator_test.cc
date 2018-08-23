@@ -103,6 +103,9 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   TF_ASSERT_OK(estimator.PredictCosts(item.graph, &cost_graph, &summary));
 
   EXPECT_EQ(Costs::NanoSeconds(9151), summary.execution_time);
+  // Note there are totally 17 nodes (RandomUniform creates 2 nodes), but
+  // grappler will not process "label", therefore we have 15 here instead
+  EXPECT_EQ(15, summary.num_ops_total);
 
   // Make this estimate accurate:
   // TODO(http://b/70031255): Accurate estimator for RandomUniform op needed
@@ -110,6 +113,7 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   //
   // Change to EXPECT_FALSE when the above TODOs are done:
   EXPECT_TRUE(summary.inaccurate);
+  EXPECT_EQ(0, summary.num_ops_with_unknown_shapes);
 }
 
 }  // end namespace grappler

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUG_IO_UTILS_H_
-#define TENSORFLOW_DEBUG_IO_UTILS_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
 
 #include <cstddef>
 #include <functional>
@@ -398,4 +398,4 @@ class DebugGrpcIO {
 }  // namespace tensorflow
 #endif  // #ifndef(PLATFORM_WINDOWS)
 
-#endif  // TENSORFLOW_DEBUG_IO_UTILS_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_

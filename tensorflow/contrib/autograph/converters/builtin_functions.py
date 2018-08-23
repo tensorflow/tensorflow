@@ -20,11 +20,11 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
-class BuiltinFunctionTransformer(transformer.Base):
+class BuiltinFunctionTransformer(converter.Base):
   """Handles builtin functions.
 
   This transformer only covers functions that are translated into a
@@ -48,7 +48,7 @@ class BuiltinFunctionTransformer(transformer.Base):
     # TODO(mdan): This won't work if the function was hidden.
     # TODO(mdan): Rely on the live_val and use inspect_utils.is_builtin instead.
     if (isinstance(node.func, gast.Name) and
-        node.func.id in ('len', 'range', 'xrange')):
+        node.func.id in ('len', 'range', 'xrange', 'float', 'int')):
       return self._convert_builtin(node)
     # Print needs to be handled separately because it can be read as statement.
     if isinstance(node.func, gast.Name) and node.func.id == 'print':
@@ -68,5 +68,5 @@ class BuiltinFunctionTransformer(transformer.Base):
     return self.visit(function_call)
 
 
-def transform(node, context):
-  return BuiltinFunctionTransformer(context).visit(node)
+def transform(node, ctx):
+  return BuiltinFunctionTransformer(ctx).visit(node)

@@ -46,15 +46,16 @@ import unittest
 from absl.testing import parameterized
 import six
 
-from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import one_device_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy
+from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
+from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
+from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.training import adam
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import tf_inspect
 
@@ -143,7 +144,7 @@ def _augment_with_special_arguments(test_method):
     """A wrapped test method that treats some arguments in a special way."""
     mode = kwargs.pop("mode", "graph")
 
-    distribution = kwargs.pop("distribution", None)
+    distribution = kwargs.get("distribution", None)
     required_tpu = kwargs.pop("required_tpu", False)
     required_gpus = kwargs.pop("required_gpus", None)
 
@@ -152,7 +153,6 @@ def _augment_with_special_arguments(test_method):
           "Do not use `required_gpus` and `distribution` together.")
       assert required_tpu is False, (
           "Do not use `required_tpu` and `distribution` together.")
-      kwargs["distribution"] = distribution.strategy
       required_gpus = distribution.required_gpus
       required_tpu = distribution.required_tpu
 
@@ -188,9 +188,13 @@ def _augment_with_special_arguments(test_method):
 
     if mode == "eager":
       with ops.Graph().as_default(), context.eager_mode():
+        if distribution:
+          kwargs_to_pass["distribution"] = distribution.strategy
         test_method(**kwargs_to_pass)
     elif mode == "graph":
       with ops.Graph().as_default(), context.graph_mode():
+        if distribution:
+          kwargs_to_pass["distribution"] = distribution.strategy
         test_method(**kwargs_to_pass)
     else:
       raise ValueError(
@@ -289,9 +293,9 @@ class NamedObject(object):
 class NamedDistribution(object):
   """Translates DistributionStrategy and its data into a good name."""
 
-  def __init__(self, name, distribution, required_gpus=None,
+  def __init__(self, name, distribution_fn, required_gpus=None,
                required_tpu=False):
-    self._distribution = distribution
+    self._distribution_fn = distribution_fn
     self._name = name
     self._required_gpus = required_gpus
     self._required_tpu = required_tpu
@@ -301,7 +305,7 @@ class NamedDistribution(object):
 
   @property
   def strategy(self):
-    return self._distribution
+    return self._distribution_fn()
 
   @property
   def required_gpus(self):
@@ -312,42 +316,44 @@ class NamedDistribution(object):
     return self._required_tpu
 
 
+# pylint: disable=g-long-lambda
 default_strategy = NamedDistribution(
     "Default",
-    distribute_lib._default_distribution_strategy,  # pylint: disable=protected-access
+    distribution_strategy_context._get_default_distribution_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = NamedDistribution(
-    "OneDeviceCPU", one_device_strategy.OneDeviceStrategy("/cpu:0"),
+    "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
-tpu_strategy_single_iteration = NamedDistribution(
-    "TPUSingleIteration",
-    tpu_strategy.TPUStrategy(iterations_per_step=1),
-    required_tpu=True)
 tpu_strategy = NamedDistribution(
-    "TPU", tpu_strategy.TPUStrategy(), required_tpu=True)
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=5),
+    required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
-    mirrored_strategy.MirroredStrategy(
+    lambda: mirrored_lib.MirroredStrategy(
         ["/gpu:0", "/cpu:0"], prefetch_on_device=False),
     required_gpus=1)
 mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
-    mirrored_strategy.MirroredStrategy(
+    lambda: mirrored_lib.MirroredStrategy(
         ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
     required_gpus=2)
+
 
 adam_optimizer_v1_fn = NamedObject(
     "AdamV1", lambda: adam.AdamOptimizer(0.2, epsilon=1))
 gradient_descent_optimizer_v1_fn = NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
+optimizers_v1 = [adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn]
 
 adam_optimizer_v2_fn = NamedObject(
     "AdamV2", lambda: adam_v2.AdamOptimizer(0.2, epsilon=1))
 gradient_descent_optimizer_v2_fn = NamedObject(
     "GradientDescentV2",
     lambda: gradient_descent_v2.GradientDescentOptimizer(0.2))
+optimizers_v2 = [adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn]
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -359,7 +365,7 @@ def distributions_and_v1_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn])
+      optimizer_fn=optimizers_v1)
 
 
 def distributions_and_v2_optimizers():
@@ -369,4 +375,4 @@ def distributions_and_v2_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn])
+      optimizer_fn=optimizers_v2)

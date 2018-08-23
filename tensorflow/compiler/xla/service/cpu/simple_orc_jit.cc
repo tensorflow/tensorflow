@@ -20,13 +20,13 @@ limitations under the License.
 #include <list>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -127,13 +127,6 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  if (const uint8* from_constant_pool =
-          external_constant_pool_.Find(string(name))) {
-    return llvm::JITEvaluatedSymbol(
-        reinterpret_cast<uint64_t>(from_constant_pool),
-        llvm::JITSymbolFlags::None);
-  }
-
   void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
   if (func_addr == nullptr) {
     return nullptr;

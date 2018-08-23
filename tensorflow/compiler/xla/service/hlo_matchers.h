@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 namespace testing {
@@ -120,8 +120,7 @@ class HloShapeAndLayoutMatcher
 class HloShardingMatcher
     : public ::testing::MatcherInterface<const HloInstruction*> {
  public:
-  explicit HloShardingMatcher(
-      const tensorflow::gtl::optional<HloSharding>& sharding)
+  explicit HloShardingMatcher(const absl::optional<HloSharding>& sharding)
       : sharding_(sharding) {}
 
   bool MatchAndExplain(const HloInstruction* instruction,
@@ -129,7 +128,7 @@ class HloShardingMatcher
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  tensorflow::gtl::optional<HloSharding> sharding_;
+  absl::optional<HloSharding> sharding_;
 };
 
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
@@ -187,6 +186,7 @@ HLO_MATCHER(Exp);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
+HLO_MATCHER(AfterAll);
 HLO_MATCHER(Gt);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
@@ -195,6 +195,7 @@ HLO_MATCHER(Log);
 HLO_MATCHER(And);
 HLO_MATCHER(Not);
 HLO_MATCHER(Or);
+HLO_MATCHER(Xor);
 HLO_MATCHER(Lt);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
@@ -229,6 +230,7 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
+HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 
 // The special cases below let you check additional information about the
@@ -329,12 +331,12 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
     tensorflow::StringPiece sharding) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShardingMatcher(
-      xla::tools::ParseSharding(sharding).ValueOrDie()));
+      ParseSharding(sharding).ValueOrDie()));
 }
 // Verifies that no HloSharding is set for an HLO instruction.
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
-      new ::xla::testing::HloShardingMatcher(tensorflow::gtl::nullopt));
+      new ::xla::testing::HloShardingMatcher(absl::nullopt));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(

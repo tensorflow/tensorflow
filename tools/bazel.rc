@@ -1,14 +1,8 @@
-# By default, we don't distinct target and host platfroms.
-# When doing cross compilation, use --config=cross_compile to distinct them.
-build --distinct_host_configuration=false
-build:cross_compile --distinct_host_configuration=true
-
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
 build:android --crosstool_top=//external:android/crosstool
 build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-build:android --config=cross_compile
 build:android_arm --config=android
 build:android_arm --cpu=armeabi-v7a
 build:android_arm --fat_apk_cpu=armeabi-v7a
@@ -33,6 +27,10 @@ build --define framework_shared_object=true
 build:mkl --define=using_mkl=true
 build:mkl -c opt
 
+# This config option is used to enable MKL-DNN open source library only,
+# without depending on MKL binary version.
+build:mkl_open_source_only --define=using_mkl_dnn_only=true
+
 build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
 build:download_clang --define=using_clang=true
 
@@ -41,10 +39,6 @@ build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 
 build:cuda_clang --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true --define=using_clang=true
-
-build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
-
-build:mkl --define=using_mkl=true
 
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true --define=using_trisycl=false
@@ -65,3 +59,6 @@ build --define=grpc_no_ares=true
 build --spawn_strategy=standalone
 build --genrule_strategy=standalone
 build -c opt
+
+# Modular TF build options
+build:dynamic_kernels --define=dynamic_loaded_kernels=true

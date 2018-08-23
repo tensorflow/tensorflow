@@ -17,26 +17,56 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
 
-Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
-  xla::Shape literal_shape;
-  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
-      host_tensor.dtype(), host_tensor.shape(), &literal_shape));
+Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
+                                           host_tensor.shape(), &xla_shape));
+  *literal = xla::BorrowingLiteral(
+      static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
+  return Status::OK();
+}
 
-  *literal = xla::Literal(literal_shape);
+Status HostTensorToMutableBorrowingLiteral(
+    Tensor* host_tensor, xla::MutableBorrowingLiteral* literal) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor->dtype(),
+                                           host_tensor->shape(), &xla_shape));
+  return HostTensorToMutableBorrowingLiteral(xla_shape, host_tensor, literal);
+}
 
-  // memcpy over the payload ...
-  // TODO(phawkins): handle string types.
-  size_t total_bytes = host_tensor.TotalBytes();
-  if (total_bytes > 0) {
-    void* dst_ptr = literal->untyped_data();
-    const void* src_ptr = DMAHelper::base(&host_tensor);
-    memcpy(dst_ptr, src_ptr, total_bytes);
+Status HostTensorToMutableBorrowingLiteral(
+    const xla::Shape& xla_shape, Tensor* host_tensor,
+    xla::MutableBorrowingLiteral* literal) {
+  *literal = xla::MutableBorrowingLiteral(
+      static_cast<const char*>(DMAHelper::base(host_tensor)), xla_shape);
+
+  return Status::OK();
+}
+
+Status HostTensorsToBorrowingLiteralTuple(
+    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
+    xla::BorrowingLiteral* literal) {
+  std::vector<const char*> buf_ptrs;
+  buf_ptrs.reserve(host_tensors.size());
+  std::vector<xla::Shape> tensor_shapes(host_tensors.size());
+
+  for (int i = 0; i < host_tensors.size(); i++) {
+    // Validate runtime shapes and fail if it doesn't match the contract.
+    const Tensor* tensor = &host_tensors[i];
+    buf_ptrs.emplace_back(static_cast<const char*>(DMAHelper::base(tensor)));
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(tensor->dtype(), tensor->shape(),
+                                             &tensor_shapes[i]));
   }
+
+  *literal = xla::BorrowingLiteral(
+      buf_ptrs, xla::ShapeUtil::MakeTupleShape(tensor_shapes));
+
   return Status::OK();
 }
 

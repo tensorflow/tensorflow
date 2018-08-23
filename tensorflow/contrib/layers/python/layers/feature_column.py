@@ -997,9 +997,14 @@ class _OneHotColumn(
       # Remove (?, -1) index
       weighted_column = sparse_ops.sparse_slice(
           weighted_column,
-          [0, 0],
+          array_ops.zeros_like(weighted_column.dense_shape),
           weighted_column.dense_shape)
-      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+      dense_tensor = sparse_ops.sparse_tensor_to_dense(weighted_column)
+      batch_shape = array_ops.shape(dense_tensor)[:-1]
+      dense_tensor_shape = array_ops.concat(
+          [batch_shape, [self.length]], axis=0)
+      dense_tensor = array_ops.reshape(dense_tensor, dense_tensor_shape)
+      return dense_tensor
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
                                                         default_value=-1)

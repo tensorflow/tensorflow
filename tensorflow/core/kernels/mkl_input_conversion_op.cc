@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl_tfconv_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::stream;
@@ -60,7 +60,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 //     convert the TF format input to MKL format
 ///////////////////////////////////////////////////////////
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 template <typename Device, typename T>
 class MklInputConversionOp : public OpKernel {
  public:
@@ -369,8 +369,8 @@ class MklInputConversionOp : public OpKernel {
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            kInputIndex_1);
-      SetDummyMklShapeOutput(context, kInputIndex_0);
-      SetDummyMklShapeOutput(context, kInputIndex_1);
+      SetDummyMklDnnShapeOutput(context, kInputIndex_0);
+      SetDummyMklDnnShapeOutput(context, kInputIndex_1);
       return;
     }
 
@@ -439,11 +439,11 @@ class MklInputConversionOp : public OpKernel {
                    tensor_out, &net);
       if(!reordered) {
         // This is the case that the TF tensor has the same shape and format of
-        // mkl tensor. However, tf_tensor can not be simply forwarded to the output
-        // tensor since mkl data tensor is always one dimensional tensor. 
-        // Tensor::CopyFrom shares the buffer of the other tensor while set its shape
-        // to the other tensor. 
-        tensor_out->CopyFrom(*tf_tensor, tensor_out->shape());
+        // mkl tensor. However, tf_tensor can not be simply forwarded to the
+        // output tensor since mkl data tensor is always one dimensional tensor.
+        // Tensor::CopyFrom shares the buffer of the other tensor while set its
+        // shape to the other tensor.
+        CHECK(tensor_out->CopyFrom(*tf_tensor, tensor_out->shape()));
       }
       else  
         stream(stream::kind::eager).submit(net).wait();
@@ -458,7 +458,7 @@ class MklInputConversionOp : public OpKernel {
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            mkl_tensor_index);
-      SetDummyMklShapeOutput(context, mkl_tensor_index);
+      SetDummyMklDnnShapeOutput(context, mkl_tensor_index);
 
       // The tensor in TF format passes through
       ForwardTfTensorInToOut(context, tf_tensor_index, tf_tensor_index);

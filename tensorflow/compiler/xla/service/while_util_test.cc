@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_util.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -50,7 +51,7 @@ ENTRY entry {
 )";
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      tools::Parse(hlo_string));
+                      ParseHloString(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);
@@ -151,7 +152,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloComputation* while_body = module->GetComputationWithName("body");
 
@@ -179,7 +180,9 @@ body {
 
 cond {
   param.c = (s32[], s32[]) parameter(0)
-  ROOT condition = pred[] infeed()
+  token = token[] after-all()
+  infeed = (pred[], token[]) infeed(token)
+  ROOT condition = pred[] get-tuple-element(infeed), index=0
 }
 
 ENTRY main {
@@ -190,7 +193,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloComputation* main = module->GetComputationWithName("main");
   HloInstruction* while_instr = main->root_instruction();
@@ -204,7 +207,7 @@ ENTRY main {
   auto is_while = [](const HloInstruction* instr) {
     return instr->opcode() == HloOpcode::kWhile;
   };
-  EXPECT_EQ(c_count_if(main->instructions(), is_while), 1);
+  EXPECT_EQ(absl::c_count_if(main->instructions(), is_while), 1);
 }
 }  // namespace
 }  // namespace xla

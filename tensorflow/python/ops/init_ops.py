@@ -43,7 +43,8 @@ from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import (
+    deprecated, deprecated_arg_values)
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -86,7 +87,7 @@ class Initializer(object):
 
 
 @tf_export("keras.initializers.Zeros", "initializers.zeros",
-           "zeros_initializer")
+           "zeros_initializer", "keras.initializers.zeros")
 class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
@@ -102,7 +103,8 @@ class Zeros(Initializer):
     return {"dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer")
+@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer",
+           "keras.initializers.ones")
 class Ones(Initializer):
   """Initializer that generates tensors initialized to 1."""
 
@@ -119,7 +121,7 @@ class Ones(Initializer):
 
 
 @tf_export("keras.initializers.Constant", "initializers.constant",
-           "constant_initializer")
+           "constant_initializer", "keras.initializers.constant")
 class Constant(Initializer):
   """Initializer that generates tensors with constant values.
 
@@ -225,7 +227,8 @@ class Constant(Initializer):
 
 
 @tf_export("keras.initializers.RandomUniform", "initializers.random_uniform",
-           "random_uniform_initializer")
+           "random_uniform_initializer", "keras.initializers.uniform",
+           "keras.initializers.random_uniform")
 class RandomUniform(Initializer):
   """Initializer that generates tensors with a uniform distribution.
 
@@ -235,7 +238,7 @@ class RandomUniform(Initializer):
     maxval: A python scalar or a scalar tensor. Upper bound of the range
       of random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type.
   """
@@ -262,7 +265,8 @@ class RandomUniform(Initializer):
 
 
 @tf_export("keras.initializers.RandomNormal", "initializers.random_normal",
-           "random_normal_initializer")
+           "random_normal_initializer", "keras.initializers.normal",
+           "keras.initializers.random_normal")
 class RandomNormal(Initializer):
   """Initializer that generates tensors with a normal distribution.
 
@@ -272,7 +276,7 @@ class RandomNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -299,7 +303,8 @@ class RandomNormal(Initializer):
 
 
 @tf_export("keras.initializers.TruncatedNormal",
-           "initializers.truncated_normal", "truncated_normal_initializer")
+           "initializers.truncated_normal", "truncated_normal_initializer",
+           "keras.initializers.truncated_normal")
 class TruncatedNormal(Initializer):
   """Initializer that generates a truncated normal distribution.
 
@@ -314,7 +319,7 @@ class TruncatedNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -364,7 +369,7 @@ class UniformUnitScaling(Initializer):
   Args:
     factor: Float.  A multiplicative factor by which the values will be scaled.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -405,8 +410,10 @@ class UniformUnitScaling(Initializer):
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
-  With `distribution="normal"`, samples are drawn from a truncated normal
-  distribution centered on zero, with `stddev = sqrt(scale / n)`
+  With `distribution="truncated_normal" or "untruncated_normal"`,
+  samples are drawn from a truncated/untruncated normal
+  distribution with a mean of zero and a standard deviation (after truncation,
+  if used) `stddev = sqrt(scale / n)`
   where n is:
     - number of input units in the weight tensor, if mode = "fan_in"
     - number of output units, if mode = "fan_out"
@@ -420,7 +427,7 @@ class VarianceScaling(Initializer):
     mode: One of "fan_in", "fan_out", "fan_avg".
     distribution: Random distribution to use. One of "normal", "uniform".
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -429,10 +436,14 @@ class VarianceScaling(Initializer):
       "distribution" arguments.
   """
 
+  @deprecated_arg_values(
+      None,
+      "`normal` is a deprecated alias for `truncated_normal`",
+      distribution="normal")
   def __init__(self,
                scale=1.0,
                mode="fan_in",
-               distribution="normal",
+               distribution="truncated_normal",
                seed=None,
                dtype=dtypes.float32):
     if scale <= 0.:
@@ -440,7 +451,8 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
-    if distribution not in {"normal", "uniform"}:
+    if distribution not in {"normal", "uniform",
+                            "truncated_normal", "untruncated_normal"}:
       raise ValueError("Invalid `distribution` argument:", distribution)
     self.scale = scale
     self.mode = mode
@@ -462,9 +474,14 @@ class VarianceScaling(Initializer):
       scale /= max(1., fan_out)
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
-    if self.distribution == "normal":
-      stddev = math.sqrt(scale)
+    if self.distribution == "normal" or self.distribution == "truncated_normal":
+      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+      stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
+          shape, 0.0, stddev, dtype, seed=self.seed)
+    elif self.distribution == "untruncated_normal":
+      stddev = math.sqrt(scale)
+      return random_ops.random_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     else:
       limit = math.sqrt(3.0 * scale)
@@ -482,7 +499,7 @@ class VarianceScaling(Initializer):
 
 
 @tf_export("keras.initializers.Orthogonal", "initializers.orthogonal",
-           "orthogonal_initializer")
+           "orthogonal_initializer", "keras.initializers.orthogonal")
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
@@ -500,7 +517,7 @@ class Orthogonal(Initializer):
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type.
   """
@@ -546,14 +563,16 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
   The shape of the tensor must have length 3, 4 or 5. The number of input
   filters must not exceed the number of output filters. The center pixels of the
-  tensor form an orthogonal matrix. Other pixels are set to be zero.
+  tensor form an orthogonal matrix. Other pixels are set to be zero. See
+  algorithm 2 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
+
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -609,7 +628,7 @@ class ConvolutionOrthogonal(Initializer):
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -667,13 +686,14 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
       This has the effect of scaling the output 2-norm by a factor of
       `sqrt(gain)`.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -802,13 +822,14 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type.
   """
@@ -918,13 +939,14 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 [Xiao et al., 2018] in: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
       The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
       applying this convolution.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type.
   """
 
@@ -1062,7 +1084,8 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     return self._dict_to_tensor(p, ksize, ksize, ksize)
 
 
-@tf_export("keras.initializers.Identity", "initializers.identity")
+@tf_export("keras.initializers.Identity", "initializers.identity",
+           "keras.initializers.identity")
 class Identity(Initializer):
   """Initializer that generates the identity matrix.
 
@@ -1113,7 +1136,8 @@ convolutional_orthogonal_3d = ConvolutionOrthogonal3D
 # pylint: enable=invalid-name
 
 
-@tf_export("glorot_uniform_initializer")
+@tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
+           "initializers.glorot_uniform")
 def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -1126,7 +1150,7 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -1137,7 +1161,8 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
       scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
 
 
-@tf_export("glorot_normal_initializer")
+@tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
+           "initializers.glorot_normal")
 def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
@@ -1150,7 +1175,7 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -1158,7 +1183,98 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
     An initializer.
   """
   return variance_scaling_initializer(
-      scale=1.0, mode="fan_avg", distribution="normal", seed=seed, dtype=dtype)
+      scale=1.0,
+      mode="fan_avg",
+      distribution="truncated_normal",
+      seed=seed,
+      dtype=dtype)
+
+
+@tf_export("keras.initializers.lecun_normal", "initializers.lecun_normal")
+def lecun_normal(seed=None):
+  """LeCun normal initializer.
+
+  It draws samples from a truncated normal distribution centered on 0
+  with `stddev = sqrt(1 / fan_in)`
+  where `fan_in` is the number of input units in the weight tensor.
+
+  Arguments:
+      seed: A Python integer. Used to seed the random generator.
+
+  Returns:
+      An initializer.
+
+  References:
+      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+      - [Efficient
+      Backprop](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
+  """
+  return VarianceScaling(
+      scale=1., mode="fan_in", distribution="truncated_normal", seed=seed)
+
+
+@tf_export("keras.initializers.lecun_uniform", "initializers.lecun_uniform")
+def lecun_uniform(seed=None):
+  """LeCun uniform initializer.
+
+  It draws samples from a uniform distribution within [-limit, limit]
+  where `limit` is `sqrt(3 / fan_in)`
+  where `fan_in` is the number of input units in the weight tensor.
+
+  Arguments:
+      seed: A Python integer. Used to seed the random generator.
+
+  Returns:
+      An initializer.
+
+  References:
+      LeCun 98, Efficient Backprop,
+      http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf
+  """
+  return VarianceScaling(
+      scale=1., mode="fan_in", distribution="uniform", seed=seed)
+
+
+@tf_export("keras.initializers.he_normal", "initializers.he_normal")
+def he_normal(seed=None):
+  """He normal initializer.
+
+  It draws samples from a truncated normal distribution centered on 0
+  with `stddev = sqrt(2 / fan_in)`
+  where `fan_in` is the number of input units in the weight tensor.
+
+  Arguments:
+      seed: A Python integer. Used to seed the random generator.
+
+  Returns:
+      An initializer.
+
+  References:
+      He et al., http://arxiv.org/abs/1502.01852
+  """
+  return VarianceScaling(
+      scale=2., mode="fan_in", distribution="truncated_normal", seed=seed)
+
+
+@tf_export("keras.initializers.he_uniform", "initializers.he_uniform")
+def he_uniform(seed=None):
+  """He uniform variance scaling initializer.
+
+  It draws samples from a uniform distribution within [-limit, limit]
+  where `limit` is `sqrt(6 / fan_in)`
+  where `fan_in` is the number of input units in the weight tensor.
+
+  Arguments:
+      seed: A Python integer. Used to seed the random generator.
+
+  Returns:
+      An initializer.
+
+  References:
+      He et al., http://arxiv.org/abs/1502.01852
+  """
+  return VarianceScaling(
+      scale=2., mode="fan_in", distribution="uniform", seed=seed)
 
 
 # Utility functions.

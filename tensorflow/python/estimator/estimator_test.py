@@ -28,6 +28,7 @@ import six
 
 from google.protobuf import text_format
 
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
@@ -38,6 +39,7 @@ from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -56,16 +58,19 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.random_ops import random_uniform
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
@@ -98,6 +103,11 @@ def summaries_with_matching_keyword(keyword, dir_):
 def check_eventfile_for_keyword(keyword, dir_):
   """Checks event files for the keyword."""
   return any(summaries_with_matching_keyword(keyword, dir_))
+
+
+def get_mock_saver():
+  real_saver = saver.Saver()
+  return test.mock.Mock(wraps=real_saver, saver_def=real_saver.saver_def)
 
 
 class EstimatorInheritanceConstraintTest(test.TestCase):
@@ -149,16 +159,7 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
       def __init__(self):
         super(_Estimator, self).__init__(model_fn=dummy_model_fn)
 
-      def _call_input_fn(self, input_fn, mode):
-        return input_fn()
-
-      def _create_global_step(self, graph):
-        pass
-
-      def _convert_train_steps_to_hooks(self, steps, max_steps):
-        pass
-
-      def _convert_eval_steps_to_hooks(self, steps):
+      def _tf_api_names(self):
         pass
 
     _Estimator()
@@ -167,7 +168,7 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
 class EstimatorConstructorTest(test.TestCase):
 
   def test_config_must_be_a_run_config(self):
-    with self.assertRaisesRegexp(ValueError, 'an instance of RunConfig'):
+    with self.assertRaisesRegexp(ValueError, 'an instance of `RunConfig`'):
       estimator.Estimator(model_fn=None, config='NotARunConfig')
 
   def test_model_fn_must_be_provided(self):
@@ -196,6 +197,10 @@ class EstimatorConstructorTest(test.TestCase):
 
     est = estimator.Estimator(model_fn=model_fn)
     self.assertTrue(isinstance(est.config, run_config.RunConfig))
+    self.assertTrue(est._session_config.allow_soft_placement)
+    rewrite_options = est._session_config.graph_options.rewrite_options
+    self.assertEqual(rewrite_options.meta_optimizer_iterations,
+                     rewriter_config_pb2.RewriterConfig.ONE)
 
   def test_default_model_dir(self):
 
@@ -215,6 +220,15 @@ class EstimatorConstructorTest(test.TestCase):
     est = estimator.Estimator(model_fn=model_fn, model_dir=_TMP_DIR)
     self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_empty_model_dir(self):
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn, model_dir='')
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_run_config(self):
 
@@ -260,7 +274,7 @@ class EstimatorConstructorTest(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        'model_dir are set both in constructor and RunConfig, but '
+        '`model_dir` are set both in constructor and `RunConfig`, but '
         'with different values'):
       estimator.Estimator(
           model_fn=model_fn, config=FakeConfig(), model_dir=_ANOTHER_TMP_DIR)
@@ -450,6 +464,29 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(0, input_fn_call_count[0])
     est.train(InputFn(), steps=1)
     self.assertEqual(1, input_fn_call_count[0])
+
+  def test_nested_input_fn(self):
+    expected_params = {'batch_size': 10}
+
+    def _input_fn():
+      dataset_features = dataset_ops.Dataset.from_tensor_slices(
+          (random_uniform([4]),
+           random_uniform([4, 100], maxval=100, dtype=dtypes.int32)))
+      dataset_labels = dataset_ops.Dataset.from_tensor_slices(
+          random_uniform([4, 10]))
+      dataset = dataset_ops.Dataset.zip((dataset_features, dataset_labels))
+      dataset = dataset.repeat(-1)
+      iterator = dataset.make_initializable_iterator()
+      return iterator.get_next()
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    est = estimator.Estimator(
+        model_fn=_model_fn, params=expected_params, config=expected_config)
+    est.train(_input_fn, steps=4)
 
   def test_input_fn_args(self):
     expected_mode = model_fn_lib.ModeKeys.TRAIN
@@ -918,6 +955,19 @@ class EstimatorTrainTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
 
+  def test_config_should_not_be_evaluator_or_ps(self):
+
+    class FakeEvaluatorConfig(run_config.RunConfig):
+
+      @property
+      def task_type(self):
+        return run_config.TaskType.EVALUATOR
+
+    est = estimator.Estimator(
+        model_fn=dummy_model_fn, config=FakeEvaluatorConfig())
+    with self.assertRaisesRegexp(ValueError, 'train_and_evaluate'):
+      est.train(dummy_input_fn, steps=1)
+
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
   _, _ = features, labels
@@ -1290,14 +1340,37 @@ class EstimatorEvaluateTest(test.TestCase):
         dummy_input_fn, steps=1, checkpoint_path=est1.latest_checkpoint())
     self.assertEqual(5, scores['global_step'])
 
+  def test_wrong_shape_throws_reasonable_error(self):
+    """Make sure we are helpful when model_fns change. See b/110263146."""
+    def _get_model_fn(val=1):
+      def _model_fn(features, labels, mode):
+        del features, labels  # unused
+        variables.Variable(val, name='weight')
+        return model_fn_lib.EstimatorSpec(
+            mode=mode,
+            predictions=constant_op.constant([[1.]]),
+            loss=constant_op.constant(0.),
+            train_op=state_ops.assign_add(training.get_global_step(), 1))
+      return _model_fn
+
+    model_fn_1 = _get_model_fn()
+    model_fn_2 = _get_model_fn(val=[1])
+
+    est1 = estimator.Estimator(model_fn=model_fn_1)
+    est1.train(dummy_input_fn, steps=5)
+    est2 = estimator.Estimator(
+        model_fn=model_fn_2, model_dir=est1.model_dir)
+
+    expected_msg = 'Restoring from checkpoint failed.*a mismatch between'
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, expected_msg):
+      est2.train(dummy_input_fn, steps=1,)
+
   def test_scaffold_is_used(self):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+      self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           predictions=constant_op.constant([[1.]]),
@@ -1413,6 +1486,48 @@ class EstimatorEvaluateTest(test.TestCase):
     self.assertProtoEquals(expected_tensor_proto,
                            next(summaries).value[0].tensor)
 
+  def test_summary_writing_with_tensor(self):
+
+    def model_fn_with_prediction_mean_tensor_eval_metric_ops(
+        features, labels, mode, params):
+      _, _ = features, labels
+      global_step = training.get_global_step()
+
+      metric_name = params.get('metric_name') or 'metric'
+      predictions = constant_op.constant([1., .5, 0.])
+      eval_metric_ops = {metric_name: metrics_lib.mean_tensor(predictions)}
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(1.),
+          predictions={'predictions': predictions},
+          train_op=state_ops.assign_add(global_step, 1),
+          eval_metric_ops=eval_metric_ops)
+
+    metric_key = 'PMT'
+    params = {
+        'metric_name': metric_key,
+    }
+    est = estimator.Estimator(
+        model_fn=model_fn_with_prediction_mean_tensor_eval_metric_ops,
+        params=params,
+        config=run_config.RunConfig(save_summary_steps=1))
+    est.train(input_fn=dummy_input_fn, steps=10)
+    est.evaluate(
+        input_fn=dummy_input_fn,
+        steps=10,
+    )
+
+    writer_cache.FileWriterCache.clear()
+
+    self.assertTrue(
+        check_eventfile_for_keyword(metric_key, est.eval_dir()),
+        '{} should be part of reported summaries.'.format(metric_key))
+
+    summaries = summaries_with_matching_keyword(metric_key, est.eval_dir())
+    for value in next(summaries).value:
+      if value.tag == metric_key:
+        self.assertTrue(value.HasField('tensor'))
+
 
 class EstimatorPredictTest(test.TestCase):
 
@@ -1504,7 +1619,8 @@ class EstimatorPredictTest(test.TestCase):
       next(
           est.predict(
               dummy_input_fn,
-              checkpoint_path=saver.latest_checkpoint('fakedir')))
+              checkpoint_path=
+              checkpoint_management.latest_checkpoint('fakedir')))
 
   def test_tensor_predictions(self):
 
@@ -1819,9 +1935,7 @@ class EstimatorPredictTest(test.TestCase):
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+      self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           predictions=constant_op.constant([[1.]]),
@@ -2276,6 +2390,43 @@ class EstimatorExportTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, err_regex):
       est._export_all_saved_models(export_dir_base, input_receiver_fn_map)
 
+  def test_export_all_saved_models_metric_operation(self):
+    """Ensures metrics ops.Operations can be expoerted (b/109740581)."""
+
+    def _model_fn(features, labels, mode):
+      del features, labels  # Unused
+      metrics = {'metrics': (constant_op.constant([0]),
+                             control_flow_ops.no_op())}
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=constant_op.constant(10.),
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          eval_metric_ops=metrics)
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('metric_operation_export'))
+
+    input_receiver_fn_map = {
+        model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn()}
+
+    export_dir = est._export_all_saved_models(
+        export_dir_base, input_receiver_fn_map)
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        meta_graph = loader.load(sess, [tag_constants.EVAL], export_dir)
+        sig_outputs = meta_graph.signature_def[
+            model_fn_lib.ModeKeys.EVAL].outputs
+        self.assertEqual(
+            sig_outputs['metrics/update_op'].name, 'metric_op_wrapper:0')
+
   def test_export_savedmodel_with_saveables_proto_roundtrip(self):
     tmpdir = tempfile.mkdtemp()
     est = estimator.Estimator(
@@ -2315,8 +2466,8 @@ class EstimatorExportTest(test.TestCase):
         graph_ops = [x.name for x in graph.get_operations()]
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
-        # Note that the SavedModel builder replaced the Saver with a new one
-        self.assertTrue('save_1/LookupTableImportV2' in graph_ops)
+        # The original saver is used to restore variables
+        self.assertTrue('save/LookupTableImportV2' in graph_ops)
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
@@ -2481,9 +2632,7 @@ class EstimatorExportTest(test.TestCase):
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+      self.mock_saver = get_mock_saver()
       scores = constant_op.constant([3.])
       return model_fn_lib.EstimatorSpec(
           mode=mode,
@@ -2506,19 +2655,24 @@ class EstimatorExportTest(test.TestCase):
     est.export_savedmodel(export_dir_base, serving_input_receiver_fn)
 
     self.assertTrue(self.mock_saver.restore.called)
+    self.assertTrue(self.mock_saver.export_meta_graph.called)
+    self.assertTrue(self.mock_saver.save.called)
 
   def test_scaffold_is_used_for_saver_multiple_modes(self):
     tmpdir = tempfile.mkdtemp()
+    savers = {'predict_saver': None, 'train_saver': None}
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+
       scores = constant_op.constant([3.])
       if mode == model_fn_lib.ModeKeys.PREDICT:
-        scaffold = training.Scaffold(saver=self.mock_saver)
+        savers['predict_saver'] = get_mock_saver()
+        scaffold = training.Scaffold(saver=savers['predict_saver'])
+      elif mode == model_fn_lib.ModeKeys.TRAIN:
+        savers['train_saver'] = get_mock_saver()
+        scaffold = training.Scaffold(saver=savers['train_saver'])
       else:
         scaffold = training.Scaffold()
       return model_fn_lib.EstimatorSpec(
@@ -2542,7 +2696,13 @@ class EstimatorExportTest(test.TestCase):
         compat.as_bytes(tmpdir), compat.as_bytes('export'))
     est._export_all_saved_models(export_dir_base, input_receiver_fn_map)
 
-    self.assertTrue(self.mock_saver.restore.called)
+    self.assertTrue(savers['train_saver'].restore.called)
+    self.assertEqual(savers['train_saver'].export_meta_graph.call_count, 1)
+    self.assertEqual(savers['train_saver'].save.call_count, 1)
+
+    self.assertTrue(savers['predict_saver'].restore.called)
+    self.assertEqual(savers['predict_saver'].export_meta_graph.call_count, 1)
+    self.assertEqual(savers['predict_saver'].save.call_count, 0)
 
   def test_scaffold_is_used_for_local_init(self):
     tmpdir = tempfile.mkdtemp()
@@ -2551,6 +2711,7 @@ class EstimatorExportTest(test.TestCase):
       _, _ = features, labels
       my_int = variables.Variable(1, name='my_int',
                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      _ = training.get_or_create_steps_per_run_variable()
       scores = constant_op.constant([3.])
       with ops.control_dependencies([
           variables.local_variables_initializer(),
@@ -2819,6 +2980,45 @@ class EstimatorExportTest(test.TestCase):
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
 
+  def test_export_savedmodel_no_export_outputs(self):
+    """Ensure that an EstimatorSpec without outputs defined can be exported."""
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='weight')
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=constant_op.constant(10.),
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('no_export_outputs'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, _get_serving_input_receiver_fn())
+
+    # Check that all the files are in the right places.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self._validate_exported_files(export_dir)
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        meta_graph = loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('weight' in graph_ops)
+
+        sig_def = meta_graph.signature_def
+        self.assertEqual(len(sig_def), 1)
+        sig_outputs = sig_def[
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs
+        self.assertEqual(sig_outputs['output'].name, 'Const:0')
+
 
 class EstimatorHookOrderingTest(test.TestCase):
 
@@ -2863,7 +3063,7 @@ class EstimatorHookOrderingTest(test.TestCase):
 
 class EstimatorIntegrationTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_complete_flow_with_a_simple_linear_model(self):
 
     def _model_fn(features, labels, mode):

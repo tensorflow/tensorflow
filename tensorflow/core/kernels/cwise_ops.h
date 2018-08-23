@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 
 #include <cmath>
 #include <functional>
@@ -149,6 +149,27 @@ template <typename T, typename DivOrMod>
 struct functor_traits<safe_div_or_mod_op<T, DivOrMod>> {
   enum {
     Cost = functor_traits<DivOrMod>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
+template <typename T>
+struct div_no_nan_op {
+  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
+                                                           const T& b) const {
+    if (b != 0) {
+      return scalar_quotient_op<T>()(a, b);
+    } else {
+      return 0;
+    }
+  }
+};
+
+template <typename T>
+struct functor_traits<div_no_nan_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = false,
   };
 };
@@ -616,6 +637,12 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
+
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
@@ -715,6 +742,9 @@ struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
+struct div_no_nan : base<T, Eigen::internal::div_no_nan_op<T>> {};
+
+template <typename T>
 struct fmod : base<T, Eigen::internal::scalar_fmod_op<T>> {};
 
 template <typename T>
@@ -763,6 +793,10 @@ struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+
+template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
 
 template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
@@ -1002,4 +1036,4 @@ struct BatchSelectFunctor {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_

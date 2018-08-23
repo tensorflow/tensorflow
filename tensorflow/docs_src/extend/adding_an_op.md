@@ -46,7 +46,7 @@ To incorporate your custom op you'll need to:
 4.  Write a function to compute gradients for the op (optional).
 5.  Test the op. We usually do this in Python for convenience, but you can also
     test the op in C++. If you define gradients, you can verify them with the
-    Python @{tf.test.compute_gradient_error$gradient checker}.
+    Python `tf.test.compute_gradient_error`.
     See
     [`relu_op_test.py`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/relu_op_test.py) as
     an example that tests the forward functions of Relu-like operators and
@@ -56,8 +56,8 @@ PREREQUISITES:
 
 *   Some familiarity with C++.
 *   Must have installed the
-    @{$install$TensorFlow binary}, or must have
-    @{$install_sources$downloaded TensorFlow source},
+    [TensorFlow binary](../install/index.md), or must have
+    [downloaded TensorFlow source](../install/install_sources.md),
     and be able to build it.
 
 [TOC]
@@ -388,7 +388,7 @@ $ bazel build --config opt //tensorflow/core/user_ops:zero_out.so
 ## Use the op in Python
 
 TensorFlow Python API provides the
-@{tf.load_op_library} function to
+`tf.load_op_library` function to
 load the dynamic library and register the op with the TensorFlow
 framework. `load_op_library` returns a Python module that contains the Python
 wrappers for the op and the kernel. Thus, once you have built the op, you can
@@ -538,7 +538,7 @@ REGISTER_OP("ZeroOut")
 ```
 
 (Note that the set of [attribute types](#attr_types) is different from the
-@{tf.DType$tensor types} used for inputs and outputs.)
+`tf.DType` used for inputs and outputs.)
 
 Your kernel can then access this attr in its constructor via the `context`
 parameter:
@@ -615,7 +615,7 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
 
 * `{<type1>, <type2>}`: The value is of type `type`, and must be one of
   `<type1>` or `<type2>`, where `<type1>` and `<type2>` are supported
-  @{tf.DType$tensor types}.  You don't specify
+  `tf.DType`.  You don't specify
   that the type of the attr is `type`. This is implied when you have a list of
   types in `{...}`.  For example, in this case the attr `t` is a type that must
   be an `int32`, a `float`, or a `bool`:
@@ -649,7 +649,7 @@ define an attr with constraints, you can use the following `<attr-type-expr>`s:
     ```
 
     Lists can be combined with other lists and single types.  The following
-    op allows attr `t` to be any of the numberic types, or the bool type:
+    op allows attr `t` to be any of the numeric types, or the bool type:
 
     ```c++
     REGISTER_OP("NumberOrBooleanType")
@@ -714,7 +714,7 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 ```
 
 Note in particular that the values of type `type`
-use @{tf.DType$the `DT_*` names for the types}.
+use `tf.DType`.
 
 #### Polymorphism
 
@@ -1056,7 +1056,7 @@ expressions:
   `string`). This specifies a single tensor of the given type.
 
   See
-  @{tf.DType$the list of supported Tensor types}.
+  `tf.DType`.
 
   ```c++
   REGISTER_OP("BuiltInTypesExample")
@@ -1098,8 +1098,7 @@ expressions:
 
 * For a sequence of tensors with the same type: `<number> * <type>`, where
   `<number>` is the name of an [Attr](#attrs) with type `int`.  The `<type>` can
-  either be
-  @{tf.DType$a specific type like `int32` or `float`},
+  either be a `tf.DType`,
   or the name of an attr with type `type`.  As an example of the first, this
   op accepts a list of `int32` tensors:
 
@@ -1141,7 +1140,7 @@ In general, changes to existing, checked-in specifications must be
 backwards-compatible: changing the specification of an op must not break prior
 serialized `GraphDef` protocol buffers constructed from older specifications.
 The details of `GraphDef` compatibility are
-@{$version_compat#compatibility_of_graphs_and_checkpoints$described here}.
+[described here](../guide/version_compat.md#compatibility_of_graphs_and_checkpoints).
 
 There are several ways to preserve backwards-compatibility.
 
@@ -1191,7 +1190,7 @@ callers.  The Python API may be kept compatible by careful changes in a
 hand-written Python wrapper, by keeping the old signature except possibly adding
 new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
-@{$version_compat#compatibility_of_graphs_and_checkpoints$`GraphDef` version semantics}.
+[`GraphDef` version semantics](../guide/version_compat.md#compatibility_of_graphs_and_checkpoints).
 
 ### GPU Support
 
@@ -1202,7 +1201,7 @@ There are several examples of kernels with GPU support in
 Notice some kernels have a CPU version in a `.cc` file, a GPU version in a file
 ending in `_gpu.cu.cc`, and some code shared in common in a `.h` file.
 
-For example, the @{tf.pad} has
+For example, the `tf.pad` has
 everything but the GPU kernel in [`tensorflow/core/kernels/pad_op.cc`][pad_op].
 The GPU kernel is in
 [`tensorflow/core/kernels/pad_op_gpu.cu.cc`](https://www.tensorflow.org/code/tensorflow/core/kernels/pad_op_gpu.cu.cc),
@@ -1263,7 +1262,7 @@ For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 Given a graph of ops, TensorFlow uses automatic differentiation
 (backpropagation) to add new ops representing gradients with respect to the
 existing ops (see
-@{$python/train#gradient_computation$Gradient Computation}).
+[Gradient Computation](../api_guides/python/train.md#gradient_computation)).
 To make automatic differentiation work for new ops, you must register a gradient
 function which computes gradients with respect to the ops' inputs given
 gradients with respect to the ops' outputs.
@@ -1307,16 +1306,16 @@ def _zero_out_grad(op, grad):
 ```
 
 Details about registering gradient functions with
-@{tf.RegisterGradient}:
+`tf.RegisterGradient`:
 
 * For an op with one output, the gradient function will take an
-  @{tf.Operation} `op` and a
-  @{tf.Tensor} `grad` and build new ops
+  `tf.Operation` `op` and a
+  `tf.Tensor` `grad` and build new ops
   out of the tensors
   [`op.inputs[i]`](../../api_docs/python/framework.md#Operation.inputs),
   [`op.outputs[i]`](../../api_docs/python/framework.md#Operation.outputs), and `grad`.  Information
   about any attrs can be found via
-  @{tf.Operation.get_attr}.
+  `tf.Operation.get_attr`.
 
 * If the op has multiple outputs, the gradient function will take `op` and
   `grads`, where `grads` is a list of gradients with respect to each output.

@@ -16,6 +16,33 @@ limitations under the License.
 package org.tensorflow.types;
 
 /** Represents an 8-bit unsigned integer. */
-public class UInt8 {
+public class UInt8 extends Number {
+
+  private static final long serialVersionUID = 1L;
+  
+  // This class is only used for generic parameterization and is not instantiable. Thus,
+  // it is safe to implement the Number abstract methods with all zeros, as they will
+  // never be invoked.
+
+  @Override
+  public double doubleValue() {
+    return 0.0;
+  }
+
+  @Override
+  public float floatValue() {
+    return 0.0f;
+  }
+
+  @Override
+  public int intValue() {
+    return 0;
+  }
+
+  @Override
+  public long longValue() {
+    return 0L;
+  }
+
   private UInt8() {}
 }

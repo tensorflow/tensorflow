@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 
 class ConfusionMatrixTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testExample(self):
     """This is a test of the example provided in pydoc."""
     with self.test_session():
@@ -448,7 +448,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           errors_impl.InvalidArgumentError,
-          "Tried to explicitly squeeze dimension 2"):
+          "Can not squeeze dim\[2\]"):
         dynamic_labels.eval(feed_dict=feed_dict)
       self.assertAllEqual(
           prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
@@ -475,7 +475,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
           label_values, dynamic_labels.eval(feed_dict=feed_dict))
       with self.assertRaisesRegexp(
           errors_impl.InvalidArgumentError,
-          "Tried to explicitly squeeze dimension 2"):
+          "Can not squeeze dim\[2\]"):
         dynamic_predictions.eval(feed_dict=feed_dict)
 
 

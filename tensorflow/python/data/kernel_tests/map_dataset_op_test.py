@@ -20,9 +20,11 @@ from __future__ import print_function
 from collections import namedtuple
 import threading
 import time
+import warnings
 
 import numpy as np
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -30,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -637,6 +640,70 @@ class MapDatasetTest(test.TestCase):
         self.assertEqual((i, b"hello", 10), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testWarnOnLookupTable(self):
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map(collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
+
+  def testNestedDatasetError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        NotImplementedError, r"The Dataset.map\(\) transformation does not "
+        "currently support nested datasets as outputs."):
+      _ = dataset.map(dataset_ops.Dataset.from_tensor_slices)
+
+  def testReturnValueError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Unsupported return value from function passed to "
+        r"Dataset.map\(\): None."):
+      _ = dataset.map(lambda x: None)
+
+  def testBrokenFunctionErrorOnInitialization(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0, 3.0])
+
+    def broken_function(_):
+      """A function deliberately designed to fail on instantiation."""
+      value = []
+      tensor_value = attr_value_pb2.AttrValue()
+      tensor_value.tensor.CopyFrom(
+          tensor_util.make_tensor_proto(
+              value, dtype=dtypes.float32, shape=[0], verify_shape=False))
+      dtype_value = attr_value_pb2.AttrValue(type=dtypes.int32.as_datatype_enum)
+
+      # Create a "Const" op with a `tf.float32` value and a `tf.int32` type
+      # attr.
+      const_tensor = ops.get_default_graph().create_op(
+          "Const", [], [dtypes.int32],
+          attrs={
+              "value": tensor_value,
+              "dtype": dtype_value
+          },
+          name="BrokenConst").outputs[0]
+      return const_tensor
+
+    dataset = dataset.map(broken_function)
+    iterator = dataset.make_initializable_iterator()
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
+        sess.run(iterator.initializer)
 
 
 class MapDatasetBenchmark(test.Benchmark):

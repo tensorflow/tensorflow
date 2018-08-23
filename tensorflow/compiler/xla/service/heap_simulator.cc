@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -25,6 +26,47 @@ namespace xla {
 
 using tensorflow::gtl::FlatMap;
 using tensorflow::gtl::FlatSet;
+
+/*static*/
+StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
+    const LogicalBuffer::SizeFunction& size_function) {
+  if (module_sequence.empty()) {
+    return 0;
+  }
+
+  const HloModule* module = module_sequence.begin()->first->parent();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+                      TuplePointsToAnalysis::Run(module));
+
+  // The absolute minimum memory required for a given sequence of instructions
+  // is determined by the sequence of Alloc and Free calls on a simulated heap,
+  // ignoring fragmentation. We run the heap simulation on the whole module,
+  // rather than summing each computation, since it gives us a better lower
+  // bound, by minimizing the liveness of sub-computations.
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(), *module,
+                         module_sequence, *points_to_analysis, size_function));
+  return result.heap_size;
+}
+
+/*static*/
+StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+        memory_by_computation) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
+                         computation, sequence, points_to_analysis,
+                         size_function, HeapSimulator::Options(),
+                         memory_by_computation));
+  return result.heap_size;
+}
 
 /*static*/
 StatusOr<HeapSimulator::Result> HeapSimulator::Run(
@@ -46,9 +88,11 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm> algorithm, const HloComputation& computation,
     const std::vector<const HloInstruction*>& instruction_sequence,
     const TuplePointsToAnalysis& points_to_analysis,
-    const BufferValue::SizeFunction& size_fn, const Options& options) {
+    const BufferValue::SizeFunction& size_fn, const Options& options,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+        memory_by_computation) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
-                     /*module_sequence=*/nullptr);
+                     /*module_sequence=*/nullptr, memory_by_computation);
   TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
                                          points_to_analysis));
   return heap.Finish();
@@ -100,7 +144,7 @@ Status HeapSimulator::RunComputation(
         }
       } else {
         // A GetTupleElement doesn't need to keep all of its operand's buffers
-        // alive. It only needs the buffers that relate to the element its
+        // alive. It only needs the buffers that relate to the element it's
         // extracting, and the tuple it's extracting from, but not the buffers
         // for the other elements.
         for (const BufferValue* buffer : points_to.element({})) {
@@ -188,6 +232,9 @@ Status HeapSimulator::RunComputation(
     //
     // INVARIANT: Either Alloc or ShareBuffer will be called for each buffer
     // that we should assign.
+
+    // Make sure each buffer get reused at most once.
+    FlatSet<const BufferValue*> reused_buffers;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -200,6 +247,9 @@ Status HeapSimulator::RunComputation(
       bool shared = false;
       if (options_.may_reuse_operand_buffers) {
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
+          if (reused_buffers.count(operand_buffer) != 0) {
+            continue;
+          }
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
               buffer->instruction()->opcode() != HloOpcode::kCopy &&
               points_to_analysis.CanShareOperandBufferWithUser(
@@ -209,6 +259,7 @@ Status HeapSimulator::RunComputation(
                     << operand_buffer->ToString();
             ShareBuffer(buffer, operand_buffer, instruction);
             shared = true;
+            reused_buffers.insert(operand_buffer);
             break;
           }
         }
@@ -219,14 +270,20 @@ Status HeapSimulator::RunComputation(
         Alloc(buffer, instruction);
       }
     }
+    // Account for the memory used by subcomputations when estimating the
+    // current heap size.
+    if (memory_by_computation_ != nullptr) {
+      algorithm_->AccountForSubcomputationMemory(instruction,
+                                                 *memory_by_computation_);
+    }
 
-    // If the whole module is sequential, we can save memory by running the
-    // heap-simulation for sub-computations inline. E.g. the buffers for the
-    // condition and body of a kWhile instruction are only live for the duration
-    // of the instruction itself.
+    // If all computations in the module have been scheduled, we can save memory
+    // by running the heap-simulation for sub-computations inline. E.g. the
+    // buffers for the condition and body of a kWhile instruction are only live
+    // for the duration of the instruction itself.
     //
     // The order that the sub-computations are simulated does not affect
-    // correctness; since the whole module is sequential, we know that the
+    // correctness; since the whole module has been scheduled, we know that the
     // sub-computations will never be run concurrently.
     if (module_sequence_ != nullptr) {
       if (instruction->opcode() == HloOpcode::kCall ||
@@ -286,12 +343,15 @@ Status HeapSimulator::RunComputation(
 HeapSimulator::HeapSimulator(
     std::unique_ptr<HeapAlgorithm> algorithm,
     const BufferValue::SizeFunction& size_fn, const Options& options,
-    const SequentialHloOrdering::HloModuleSequence* module_sequence)
-    : no_fragmentation_stats_(MakeUnique<NoFragmentationStatsHeap>()),
+    const SequentialHloOrdering::HloModuleSequence* module_sequence,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+        memory_by_computation)
+    : no_fragmentation_stats_(absl::make_unique<NoFragmentationStatsHeap>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),
-      module_sequence_(module_sequence) {
+      module_sequence_(module_sequence),
+      memory_by_computation_(memory_by_computation) {
   debug_trace_.set_whole_module_simulation(module_sequence_ != nullptr);
 }
 
@@ -320,9 +380,10 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 
   allocated_buffers_.insert(buffer);
   const int64 size = size_fn_(*buffer);
-  algorithm_->Alloc(buffer, size);
-  no_fragmentation_stats_->Alloc(buffer, size);
-
+  const HloInstruction* instruction_to_calc_aliasing =
+      memory_by_computation_ == nullptr ? nullptr : instruction;
+  algorithm_->Alloc(buffer, size, instruction_to_calc_aliasing);
+  no_fragmentation_stats_->Alloc(buffer, size, instruction_to_calc_aliasing);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
                  nullptr);
 }
@@ -458,6 +519,38 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
   }
+}
+
+void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
+                                     const HloInstruction* instruction) {
+  // The output buffer of while/call/conditional is always aliased with the
+  // output buffer of the root instruction in the body. Don't double count.
+  if (instruction == nullptr ||
+      (instruction->opcode() != HloOpcode::kWhile &&
+       instruction->opcode() != HloOpcode::kCall &&
+       instruction->opcode() != HloOpcode::kConditional)) {
+    Alloc(buffer, size);
+  }
+}
+
+void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
+    const HloInstruction* instruction,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
+  // We only count the memory usage of the largest subcomputation, instead of
+  // adding them all, because subcomputations won't execute in parallel.
+  int64 max_subcomputation_bytes = 0;
+  for (const auto* c : instruction->called_computations()) {
+    auto it = memory_by_computation.find(c);
+    if (it != memory_by_computation.end()) {
+      int64 subcomputation_bytes = it->second;
+      if (subcomputation_bytes > max_subcomputation_bytes) {
+        max_subcomputation_bytes = subcomputation_bytes;
+      }
+    }
+  }
+  max_heap_size_ =
+      std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
 }
 
 void NoFragmentationStatsHeap::Free(const BufferValue* buffer, int64 size) {

@@ -37,6 +37,14 @@ REGISTER_OP("RegexReplace")
       return Status::OK();
     });
 
+REGISTER_OP("StaticRegexReplace")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Attr("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("RegexFullMatch")
     .Input("input: string")
     .Input("pattern: string")
@@ -78,7 +86,9 @@ REGISTER_OP("ReduceJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int32, int64, complex64, float, double, bool, int8}")
+    .Attr(
+        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
+        "bool}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -134,9 +144,32 @@ REGISTER_OP("StringSplit")
       return Status::OK();
     });
 
+REGISTER_OP("StringSplitV2")
+    .Input("input: string")
+    .Input("sep: string")
+    .Output("indices: int64")
+    .Output("values: string")
+    .Output("shape: int64")
+    .Attr("maxsplit: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
 REGISTER_OP("StringStrip")
     .Input("input: string")
     .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringLength")
+    .Input("input: string")
+    .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")

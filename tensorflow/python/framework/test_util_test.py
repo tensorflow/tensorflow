@@ -22,6 +22,7 @@ import collections
 import copy
 import random
 import threading
+import weakref
 
 import numpy as np
 
@@ -40,6 +41,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -57,6 +59,33 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertRaises(ValueError, test_util.assert_ops_in_graph,
                       {"hello": "Variable"}, ops.get_default_graph())
 
+  def test_session_functions(self):
+    with self.test_session() as sess:
+      sess_ref = weakref.ref(sess)
+      with self.cached_session(graph=None, config=None) as sess2:
+        # We make sure that sess2 is sess.
+        assert sess2 is sess
+        # We make sure we raise an exception if we use cached_session with
+        # different values.
+        with self.assertRaises(ValueError):
+          with self.cached_session(graph=ops.Graph()) as sess2:
+            pass
+        with self.assertRaises(ValueError):
+          with self.cached_session(use_gpu=True) as sess2:
+            pass
+        with self.assertRaises(ValueError):
+          with self.cached_session(force_gpu=True) as sess2:
+            pass
+    # We make sure that test_session will cache the session even after the
+    # with scope.
+    assert not sess_ref()._closed
+    with self.session() as unique_sess:
+      unique_sess_ref = weakref.ref(unique_sess)
+      with self.session() as sess2:
+        assert sess2 is not unique_sess
+    # We make sure the session is closed when we leave the with statement.
+    assert unique_sess_ref()._closed
+
   def test_assert_equal_graph_def(self):
     with ops.Graph().as_default() as g:
       def_empty = g.as_graph_def()
@@ -73,7 +102,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     test_util.assert_equal_graph_def(def_57, def_75)
     # Compare two unequal graphs
     with self.assertRaisesRegexp(AssertionError,
-                                 r"^Found unexpected node 'seven"):
+                                 r"^Found unexpected node '{{node seven}}"):
       test_util.assert_equal_graph_def(def_57, def_empty)
 
   def testIsGoogleCudaEnabled(self):
@@ -569,7 +598,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_callable_evaluate(self):
     def model():
       return resource_variable_ops.ResourceVariable(
@@ -578,7 +607,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       self.assertEqual(2, self.evaluate(model))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_nested_tensors_evaluate(self):
     expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
     nested = {"a": constant_op.constant(1),
@@ -588,12 +617,98 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(expected, self.evaluate(nested))
 
+  def test_run_in_graph_and_eager_modes(self):
+    l = []
+    def inc(self, with_brackets):
+      del self  # self argument is required by run_in_graph_and_eager_modes.
+      mode = "eager" if context.executing_eagerly() else "graph"
+      with_brackets = "with_brackets" if with_brackets else "without_brackets"
+      l.append((with_brackets, mode))
+
+    f = test_util.run_in_graph_and_eager_modes(inc)
+    f(self, with_brackets=False)
+    f = test_util.run_in_graph_and_eager_modes()(inc)
+    f(self, with_brackets=True)
+
+    self.assertEqual(len(l), 4)
+    self.assertEqual(set(l), {
+        ("with_brackets", "graph"),
+        ("with_brackets", "eager"),
+        ("without_brackets", "graph"),
+        ("without_brackets", "eager"),
+    })
+
   def test_get_node_def_from_graph(self):
     graph_def = graph_pb2.GraphDef()
     node_foo = graph_def.node.add()
     node_foo.name = "foo"
     self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
+  def test_run_in_eager_and_graph_modes_test_class(self):
+    msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
+    with self.assertRaisesRegexp(ValueError, msg):
+      @test_util.run_in_graph_and_eager_modes()
+      class Foo(object):
+        pass
+      del Foo  # Make pylint unused happy.
+
+  def test_run_in_eager_and_graph_modes_skip_graph_runs_eager(self):
+    modes = []
+    def _test(self):
+      if not context.executing_eagerly():
+        self.skipTest("Skipping in graph mode")
+      modes.append("eager" if context.executing_eagerly() else "graph")
+    test_util.run_in_graph_and_eager_modes(_test)(self)
+    self.assertEqual(modes, ["eager"])
+
+  def test_run_in_eager_and_graph_modes_skip_eager_runs_graph(self):
+    modes = []
+    def _test(self):
+      if context.executing_eagerly():
+        self.skipTest("Skipping in eager mode")
+      modes.append("eager" if context.executing_eagerly() else "graph")
+    test_util.run_in_graph_and_eager_modes(_test)(self)
+    self.assertEqual(modes, ["graph"])
+
+  def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
+    modes = []
+    mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
+
+    class ExampleTest(test_util.TensorFlowTestCase):
+
+      def runTest(self):
+        pass
+
+      def setUp(self):
+        modes.append("setup_" + mode_name())
+
+      @test_util.run_in_graph_and_eager_modes
+      def testBody(self):
+        modes.append("run_" + mode_name())
+
+    e = ExampleTest()
+    e.setUp()
+    e.testBody()
+
+    self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
+    self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
+
+
+# Its own test case to reproduce variable sharing issues which only pop up when
+# setUp() is overridden and super() is not called.
+class GraphAndEagerNoVariableSharing(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    pass  # Intentionally does not call TensorFlowTestCase's super()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_no_variable_sharing(self):
+    variable_scope.get_variable(
+        name="step_size",
+        initializer=np.array(1e-5, np.float32),
+        use_resource=True,
+        trainable=False)
 
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
@@ -619,7 +734,7 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
     ReferenceCycleTest().test_has_no_cycle()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_no_leaked_tensor_decorator(self):
 
     class LeakedTensorTest(object):
