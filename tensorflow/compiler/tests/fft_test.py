@@ -23,10 +23,11 @@ import itertools
 import numpy as np
 import scipy.signal as sps
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.contrib.signal.python.ops import spectral_ops as signal
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import spectral_ops
 from tensorflow.python.platform import googletest
 
@@ -57,7 +58,7 @@ INNER_DIMS_2D = pick_10(itertools.product(POWS_OF_2, POWS_OF_2))
 INNER_DIMS_3D = pick_10(itertools.product(POWS_OF_2, POWS_OF_2, POWS_OF_2))
 
 
-class FFTTest(XLATestCase):
+class FFTTest(xla_test.XLATestCase):
 
   def _VerifyFftMethod(self, inner_dims, complex_to_input, input_to_expected,
                        tf_method):
@@ -70,7 +71,7 @@ class FFTTest(XLATestCase):
       data = np.reshape(data.astype(np.float32).view(np.complex64), shape)
       data = to_32bit(complex_to_input(data))
       expected = to_32bit(input_to_expected(data))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
           ph = array_ops.placeholder(
               dtypes.as_dtype(data.dtype), shape=data.shape)
@@ -92,13 +93,16 @@ class FFTTest(XLATestCase):
         data, nperseg=ws, noverlap=ws - hs, boundary=None, window=window)[2]
     expected = np.swapaxes(expected, -1, -2)
     expected *= window.sum()  # scipy divides by window sum
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         ph = array_ops.placeholder(
             dtypes.as_dtype(data.dtype), shape=data.shape)
         out = signal.stft(ph, ws, hs)
+        grad = gradients_impl.gradients(out, ph,
+                                        grad_ys=array_ops.ones_like(out))
 
-      value = sess.run(out, {ph: data})
+      # For gradients, we simply verify that they compile & execute.
+      value, _ = sess.run([out, grad], {ph: data})
       self.assertAllClose(expected, value, rtol=RTOL, atol=ATOL)
 
   def testFFT(self):

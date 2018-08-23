@@ -55,7 +55,7 @@ class Gamma(distribution.Distribution):
 
   ```none
   pdf(x; alpha, beta, x > 0) = x**(alpha - 1) exp(-x beta) / Z
-  Z = Gamma(alpha) beta**alpha
+  Z = Gamma(alpha) beta**(-alpha)
   ```
 
   where:
@@ -85,14 +85,35 @@ class Gamma(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
-  WARNING: This distribution may draw 0-valued samples for small `concentration`
-  values. See note in `tf.random_gamma` docstring.
+  Warning: The samples of this distribution are always non-negative. However,
+  the samples that are smaller than `np.finfo(dtype).tiny` are rounded
+  to this value, so it appears more often than it should.
+  This should only be noticeable when the `concentration` is very small, or the
+  `rate` is very large. See note in `tf.random_gamma` docstring.
+
+  Samples of this distribution are reparameterized (pathwise differentiable).
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
 
   #### Examples
 
   ```python
-  dist = Gamma(concentration=3.0, rate=2.0)
-  dist2 = Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
+  dist = tf.distributions.Gamma(concentration=3.0, rate=2.0)
+  dist2 = tf.distributions.Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
+  ```
+
+  Compute the gradients of samples w.r.t. the parameters:
+
+  ```python
+  concentration = tf.constant(3.0)
+  rate = tf.constant(2.0)
+  dist = tf.distributions.Gamma(concentration, rate)
+  samples = dist.sample(5)  # Shape [5]
+  loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
+  # Unbiased stochastic gradients of the loss function
+  grads = tf.gradients(loss, [concentration, rate])
   ```
 
   """
@@ -141,7 +162,7 @@ class Gamma(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._rate],

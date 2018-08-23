@@ -38,13 +38,13 @@ class TFRecordWriter(object):
         argument_dtype=dtypes.string)
 
   def write(self, dataset):
-    """Returns a @{tf.Operation} to write a dataset to a file.
+    """Returns a `tf.Operation` to write a dataset to a file.
 
     Args:
-      dataset: a @{tf.data.Dataset} whose elements are to be written to a file
+      dataset: a `tf.data.Dataset` whose elements are to be written to a file
 
     Returns:
-      A @{tf.Operation} that, when run, writes contents of `dataset` to a file.
+      A `tf.Operation` that, when run, writes contents of `dataset` to a file.
     """
     if not isinstance(dataset, dataset_ops.Dataset):
       raise TypeError("`dataset` must be a `tf.data.Dataset` object.")

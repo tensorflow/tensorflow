@@ -25,6 +25,7 @@ import tensorflow as tf
 
 from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
 from tensorflow.examples.speech_commands import input_data
+from tensorflow.examples.speech_commands import models
 from tensorflow.python.platform import test
 
 
@@ -32,7 +33,7 @@ class InputDataTest(test.TestCase):
 
   def _getWavData(self):
     with self.test_session() as sess:
-      sample_data = tf.zeros([1000, 2])
+      sample_data = tf.zeros([32000, 2])
       wav_encoder = contrib_audio.encode_wav(sample_data, 16000)
       wav_data = sess.run(wav_encoder)
     return wav_data
@@ -57,8 +58,30 @@ class InputDataTest(test.TestCase):
         "label_count": 4,
         "window_size_samples": 100,
         "window_stride_samples": 100,
-        "dct_coefficient_count": 40,
+        "fingerprint_width": 40,
+        "preprocess": "mfcc",
     }
+
+  def _runGetDataTest(self, preprocess, window_length_ms):
+    tmp_dir = self.get_temp_dir()
+    wav_dir = os.path.join(tmp_dir, "wavs")
+    os.mkdir(wav_dir)
+    self._saveWavFolders(wav_dir, ["a", "b", "c"], 100)
+    background_dir = os.path.join(wav_dir, "_background_noise_")
+    os.mkdir(background_dir)
+    wav_data = self._getWavData()
+    for i in range(10):
+      file_path = os.path.join(background_dir, "background_audio_%d.wav" % i)
+      self._saveTestWavFile(file_path, wav_data)
+    model_settings = models.prepare_model_settings(
+        4, 16000, 1000, window_length_ms, 20, 40, preprocess)
+    with self.test_session() as sess:
+      audio_processor = input_data.AudioProcessor(
+          "", wav_dir, 10, 10, ["a", "b"], 10, 10, model_settings, tmp_dir)
+      result_data, result_labels = audio_processor.get_data(
+          10, 0, model_settings, 0.3, 0.1, 100, "training", sess)
+      self.assertEqual(10, len(result_data))
+      self.assertEqual(10, len(result_labels))
 
   def testPrepareWordsList(self):
     words_list = ["a", "b"]
@@ -76,8 +99,9 @@ class InputDataTest(test.TestCase):
   def testPrepareDataIndex(self):
     tmp_dir = self.get_temp_dir()
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 100)
-    audio_processor = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b"],
-                                                10, 10, self._model_settings())
+    audio_processor = input_data.AudioProcessor("", tmp_dir, 10, 10,
+                                                ["a", "b"], 10, 10,
+                                                self._model_settings(), tmp_dir)
     self.assertLess(0, audio_processor.set_size("training"))
     self.assertTrue("training" in audio_processor.data_index)
     self.assertTrue("validation" in audio_processor.data_index)
@@ -90,7 +114,7 @@ class InputDataTest(test.TestCase):
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 0)
     with self.assertRaises(Exception) as e:
       _ = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b"], 10, 10,
-                                    self._model_settings())
+                                    self._model_settings(), tmp_dir)
     self.assertTrue("No .wavs found" in str(e.exception))
 
   def testPrepareDataIndexMissing(self):
@@ -98,7 +122,7 @@ class InputDataTest(test.TestCase):
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 100)
     with self.assertRaises(Exception) as e:
       _ = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b", "d"], 10,
-                                    10, self._model_settings())
+                                    10, self._model_settings(), tmp_dir)
     self.assertTrue("Expected to find" in str(e.exception))
 
   def testPrepareBackgroundData(self):
@@ -110,8 +134,9 @@ class InputDataTest(test.TestCase):
       file_path = os.path.join(background_dir, "background_audio_%d.wav" % i)
       self._saveTestWavFile(file_path, wav_data)
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 100)
-    audio_processor = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b"],
-                                                10, 10, self._model_settings())
+    audio_processor = input_data.AudioProcessor("", tmp_dir, 10, 10,
+                                                ["a", "b"], 10, 10,
+                                                self._model_settings(), tmp_dir)
     self.assertEqual(10, len(audio_processor.background_data))
 
   def testLoadWavFile(self):
@@ -148,44 +173,27 @@ class InputDataTest(test.TestCase):
         "label_count": 4,
         "window_size_samples": 100,
         "window_stride_samples": 100,
-        "dct_coefficient_count": 40,
+        "fingerprint_width": 40,
+        "preprocess": "mfcc",
     }
     audio_processor = input_data.AudioProcessor("", wav_dir, 10, 10, ["a", "b"],
-                                                10, 10, model_settings)
+                                                10, 10, model_settings, tmp_dir)
     self.assertIsNotNone(audio_processor.wav_filename_placeholder_)
     self.assertIsNotNone(audio_processor.foreground_volume_placeholder_)
     self.assertIsNotNone(audio_processor.time_shift_padding_placeholder_)
     self.assertIsNotNone(audio_processor.time_shift_offset_placeholder_)
     self.assertIsNotNone(audio_processor.background_data_placeholder_)
     self.assertIsNotNone(audio_processor.background_volume_placeholder_)
-    self.assertIsNotNone(audio_processor.mfcc_)
+    self.assertIsNotNone(audio_processor.output_)
 
-  def testGetData(self):
-    tmp_dir = self.get_temp_dir()
-    wav_dir = os.path.join(tmp_dir, "wavs")
-    os.mkdir(wav_dir)
-    self._saveWavFolders(wav_dir, ["a", "b", "c"], 100)
-    background_dir = os.path.join(wav_dir, "_background_noise_")
-    os.mkdir(background_dir)
-    wav_data = self._getWavData()
-    for i in range(10):
-      file_path = os.path.join(background_dir, "background_audio_%d.wav" % i)
-      self._saveTestWavFile(file_path, wav_data)
-    model_settings = {
-        "desired_samples": 160,
-        "fingerprint_size": 40,
-        "label_count": 4,
-        "window_size_samples": 100,
-        "window_stride_samples": 100,
-        "dct_coefficient_count": 40,
-    }
-    audio_processor = input_data.AudioProcessor("", wav_dir, 10, 10, ["a", "b"],
-                                                10, 10, model_settings)
-    with self.test_session() as sess:
-      result_data, result_labels = audio_processor.get_data(
-          10, 0, model_settings, 0.3, 0.1, 100, "training", sess)
-    self.assertEqual(10, len(result_data))
-    self.assertEqual(10, len(result_labels))
+  def testGetDataAverage(self):
+    self._runGetDataTest("average", 10)
+
+  def testGetDataAverageLongWindow(self):
+    self._runGetDataTest("average", 30)
+
+  def testGetDataMfcc(self):
+    self._runGetDataTest("mfcc", 30)
 
   def testGetUnprocessedData(self):
     tmp_dir = self.get_temp_dir()
@@ -198,10 +206,11 @@ class InputDataTest(test.TestCase):
         "label_count": 4,
         "window_size_samples": 100,
         "window_stride_samples": 100,
-        "dct_coefficient_count": 40,
+        "fingerprint_width": 40,
+        "preprocess": "mfcc",
     }
     audio_processor = input_data.AudioProcessor("", wav_dir, 10, 10, ["a", "b"],
-                                                10, 10, model_settings)
+                                                10, 10, model_settings, tmp_dir)
     result_data, result_labels = audio_processor.get_unprocessed_data(
         10, model_settings, "training")
     self.assertEqual(10, len(result_data))

@@ -108,6 +108,14 @@ TEST_F(ArrayGradTest, SplitGrad) {
   RunTest({x}, {x_shape}, y.output, {y_shape, y_shape});
 }
 
+TEST_F(ArrayGradTest, FillGrad) {
+  TensorShape x_shape({});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({2, 5, 3});
+  auto y = Fill(scope_, {2, 5, 3}, x);
+  RunTest(x, x_shape, y, y_shape);
+}
+
 TEST_F(ArrayGradTest, DiagGrad) {
   TensorShape x_shape({5, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
@@ -376,6 +384,13 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
                    StridedSlice::NewAxisMask(1 << 0));
   // y.shape = [1, 2, 2, 2];
   RunTest(x, x_shape, y, {1, 2, 2, 2});
+}
+
+TEST_F(ArrayGradTest, SliceGrad) {
+  TensorShape x_shape({3, 5, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Slice(scope_, x, {1, 2, 1}, {1, 3, 2});
+  RunTest(x, x_shape, y, {1, 3, 2});
 }
 
 }  // namespace

@@ -38,21 +38,21 @@ def unique():
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
-    return UniqueDataset(dataset)
+    return _UniqueDataset(dataset)
 
   return _apply_fn
 
 
-class UniqueDataset(dataset_ops.Dataset):
+class _UniqueDataset(dataset_ops.Dataset):
   """A `Dataset` contains the unique elements from its input."""
 
   def __init__(self, input_dataset):
     """See `unique()` for details."""
-    super(UniqueDataset, self).__init__()
+    super(_UniqueDataset, self).__init__()
     self._input_dataset = input_dataset
     if input_dataset.output_types not in (dtypes.int32, dtypes.int64,
                                           dtypes.string):

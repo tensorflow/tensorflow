@@ -26,8 +26,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -47,10 +47,10 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 
+using ::absl::nullopt;
+using ::absl::optional;
 using ::tensorflow::Env;
 using ::tensorflow::WriteStringToFile;
-using ::tensorflow::gtl::nullopt;
-using ::tensorflow::gtl::optional;
 using ::tensorflow::io::JoinPath;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::str_util::StringReplace;
@@ -844,7 +844,10 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         *elem_count *= dim;
       }
     }
-    if (elem_count.has_value() && *elem_count <= 8) {
+    // Allow HloDotDumper to print HloInstruction reconstructed from HloProto
+    // collected from profiling tools. Those constants may not have a valid
+    // literal.
+    if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
       return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }
@@ -948,6 +951,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGe:
     case HloOpcode::kGt:
     case HloOpcode::kImag:
+    case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
@@ -960,11 +964,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -983,7 +989,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
-    case HloOpcode::kGenerateToken:
+    case HloOpcode::kAfterAll:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
@@ -1000,7 +1006,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
       // De-emphasize scalar-shaped data movement ops and all data movement ops
       // inside fusion nodes, both of which are essentially free.
@@ -1016,6 +1022,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
         return kWhite;
       }
       return kGreen;
+    case HloOpcode::kScatter:
+      // Do not de-emphasize Scatter, since it involves significant work.
     case HloOpcode::kCopy:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
@@ -1040,6 +1048,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMap:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:
@@ -1050,7 +1059,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kWhile:
       return kDarkGreen;
     case HloOpcode::kConstant:

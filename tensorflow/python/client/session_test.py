@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import random
 import os
 import sys
 import threading
@@ -34,6 +35,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as framework_device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
@@ -103,18 +105,20 @@ class SessionTest(test_util.TensorFlowTestCase):
           copy_val)
 
   def testManyCPUs(self):
-    # TODO(keveman): Implement ListDevices and test for the number of
-    # devices returned by ListDevices.
     with session.Session(
         config=config_pb2.ConfigProto(device_count={
-            'CPU': 2
-        })):
+            'CPU': 2, 'GPU': 0
+        })) as sess:
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
+      devices = sess.list_devices()
+      self.assertEqual(2, len(devices))
+      for device in devices:
+        self.assertEqual('CPU', framework_device_lib.DeviceSpec.from_string(
+            device.name).device_type)
+
   def testPerSessionThreads(self):
-    # TODO(keveman): Implement ListDevices and test for the number of
-    # devices returned by ListDevices.
     with session.Session(
         config=config_pb2.ConfigProto(use_per_session_threads=True)):
       inp = constant_op.constant(10.0, name='W1')
@@ -1040,38 +1044,70 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
-  def testParallelRunAndBuild(self):
+  @staticmethod
+  def _build_graph():
+    time.sleep(random.random() * 0.1)
+    # Do some graph construction. Try to exercise non-trivial paths.
+    graph = ops.get_default_graph()
+    gdef = None
+    for _ in range(10):
+      x = array_ops.placeholder(dtype=dtypes.float32)
+      with ops.colocate_with(x):
+        y = array_ops.placeholder(dtype=dtypes.float32)
+      with ops.device('/cpu:0'):
+        z = control_flow_ops.while_loop(
+            lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
+      with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
+        gradients_impl.gradients(z, [x, y])
+        if gdef is None:
+          gdef = graph.as_graph_def()
+        else:
+          importer.import_graph_def(gdef, name='import')
+
+  def testParallelRunAndSingleBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
       stop = threading.Event()
 
       def run_loop():
         while not stop.is_set():
+          time.sleep(random.random() * 0.1)
           self.assertEqual(sess.run(c), 5.0)
 
-      threads = [self.checkedThread(target=run_loop) for _ in range(100)]
+      threads = [self.checkedThread(target=run_loop) for _ in range(10)]
       for t in threads:
         t.start()
 
-      # Do some graph construction. Try to exercise non-trivial paths.
-      graph = ops.get_default_graph()
-      gdef = None
-      for _ in range(10):
-        x = array_ops.placeholder(dtype=dtypes.float32)
-        with ops.colocate_with(x):
-          y = array_ops.placeholder(dtype=dtypes.float32)
-        with ops.device('/cpu:0'):
-          z = control_flow_ops.while_loop(
-              lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
-        with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
-          gradients_impl.gradients(z, [x, y])
-          if gdef is None:
-            gdef = graph.as_graph_def()
-          else:
-            importer.import_graph_def(gdef, name='import')
+      SessionTest._build_graph()
 
       stop.set()
       for t in threads:
+        t.join()
+
+  def testParallelRunAndParallelBuild(self):
+    with session.Session() as sess:
+      c = constant_op.constant(5.0)
+      stop = threading.Event()
+
+      def run_loop():
+        while not stop.is_set():
+          time.sleep(random.random() * 0.1)
+          self.assertEqual(sess.run(c), 5.0)
+
+      run_threads = [self.checkedThread(target=run_loop) for _ in range(10)]
+      for t in run_threads:
+        t.start()
+
+      build_threads = [self.checkedThread(target=SessionTest._build_graph)
+                       for _ in range(10)]
+      for t in build_threads:
+        t.start()
+      for t in build_threads:
+        t.join()
+
+      # Let the run_threads run until the build threads are finished.
+      stop.set()
+      for t in run_threads:
         t.join()
 
   def testRunFeedDict(self):
@@ -1835,19 +1871,21 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testDeviceAttributes(self):
     attrs = session._DeviceAttributes(
-        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337)
+        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337, 1000000)
     self.assertEqual(1337, attrs.memory_limit_bytes)
     self.assertEqual('/job:worker/replica:0/task:3/device:CPU:2', attrs.name)
     self.assertEqual('TYPE', attrs.device_type)
+    self.assertEqual(1000000, attrs.incarnation)
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 
   def testDeviceAttributesCanonicalization(self):
     attrs = session._DeviceAttributes('/job:worker/replica:0/task:3/cpu:1',
-                                      'TYPE', 1337)
+                                      'TYPE', 1337, 1000000)
     self.assertEqual(1337, attrs.memory_limit_bytes)
     self.assertEqual('/job:worker/replica:0/task:3/device:CPU:1', attrs.name)
     self.assertEqual('TYPE', attrs.device_type)
+    self.assertEqual(1000000, attrs.incarnation)
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 

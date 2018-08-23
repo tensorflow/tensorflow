@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -47,7 +48,7 @@ class HloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return MakeUnique<HloModule>("test_module", config);
+    return absl::make_unique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,

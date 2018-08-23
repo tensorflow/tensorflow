@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TRANSFER_MANAGER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TRANSFER_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_TRANSFER_MANAGER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_TRANSFER_MANAGER_H_
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -39,13 +40,14 @@ class CpuTransferManager : public GenericTransferManager {
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
-                                    Literal* literal) override;
+                                    MutableBorrowingLiteral literal) override;
 
  private:
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source);
+
   // Transfers infeed data to device. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
   StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
@@ -74,4 +76,4 @@ class CpuTransferManager : public GenericTransferManager {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TRANSFER_MANAGER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_TRANSFER_MANAGER_H_

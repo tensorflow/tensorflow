@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -57,7 +57,7 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
         PrimitiveType_Name(shape.element_type()).c_str());
   }
 
-  auto result = MakeUnique<Literal>(literal_shape);
+  auto result = absl::make_unique<Literal>(literal_shape);
   result->PopulateWithValue(std::numeric_limits<float>::quiet_NaN());
 
   int64 elements = ShapeUtil::ElementsIn(shape);

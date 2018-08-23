@@ -19,9 +19,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -72,7 +73,7 @@ namespace {
 // If the parameter number is invalid for this computation, nullopt is
 // returned. When the return value has_value(), nullptr will never be
 // the held value.
-tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
+absl::optional<const OpMetadata*> ParameterMetadata(
     const XlaComputation& computation, int parameter_number) {
   for (const HloComputationProto& comp : computation.proto().computations()) {
     if (comp.id() == computation.proto().entry_computation_id()) {
@@ -80,14 +81,14 @@ tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
         if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
             instr.parameter_number() == parameter_number) {
           if (!instr.has_metadata()) {
-            return tensorflow::gtl::nullopt;
+            return absl::nullopt;
           }
           return &instr.metadata();
         }
       }
     }
   }
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 ExecutionOptions CreateExecutionOptions(
@@ -154,9 +155,10 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
 
   for (int i = 0; i < argument_layouts.size(); ++i) {
     const Shape& argument_shape = *argument_layouts[i];
-    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
-      tensorflow::gtl::optional<const OpMetadata*> metadata =
+      absl::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
       auto metadata_string = [&metadata]() -> string {
         if (!metadata.has_value()) {
@@ -178,8 +180,8 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     }
   }
   if (build_options.result_layout() != nullptr) {
-    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(
-        *build_options.result_layout(), program_shape.result()));
+    TF_RETURN_IF_ERROR(ValidateResultShape(*build_options.result_layout(),
+                                           program_shape.result()));
   }
 
   ExecutionOptions execution_options =
@@ -188,6 +190,9 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(program_shape, argument_layouts, &execution_options));
+
+  VLOG(3) << "Computation Layout: "
+          << module_config->entry_computation_layout().ToString();
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,

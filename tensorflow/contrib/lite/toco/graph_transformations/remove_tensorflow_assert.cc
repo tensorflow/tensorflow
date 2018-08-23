@@ -26,7 +26,7 @@ namespace toco {
 bool RemoveTensorFlowAssert::Run(Model* model, std::size_t op_index) {
   const auto assert_it = model->operators.begin() + op_index;
   const auto* assert_op = assert_it->get();
-  if (assert_op->type != OperatorType::kTensorFlowAssert) {
+  if (assert_op->type != OperatorType::kAssert) {
     return false;
   }
 

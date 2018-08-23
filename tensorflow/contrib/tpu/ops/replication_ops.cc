@@ -53,10 +53,10 @@ REGISTER_OP("TPUReplicatedInput")
             nullptr;
         for (int i = c->num_inputs() - 1; i >= 0; --i) {
           if (shapes_and_types) {
-            if (!c->MergeInputHandleShapesAndTypes(i, *shapes_and_types)) {
-              return errors::InvalidArgument(
-                  "Incompatible resource shapes for replicated TPU input.");
-            }
+            // The return value of MergeInputHandleShapesAndTypes indicates
+            // the shape was refined, not that there was an error.
+            // TODO(phawkins): there seems to be no way to discover errors.
+            (void)c->MergeInputHandleShapesAndTypes(i, *shapes_and_types);
           } else {
             shapes_and_types = c->input_handle_shapes_and_types(i);
           }

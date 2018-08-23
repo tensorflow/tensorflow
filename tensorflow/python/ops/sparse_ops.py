@@ -14,7 +14,10 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Sparse Tensor Representation. See the @{$python/sparse_ops} guide."""
+"""Sparse Tensor Representation.
+
+See the [Sparse Ops](https://tensorflow.org/api_guides/python/sparse_ops) guide.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -38,6 +41,7 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -80,6 +84,50 @@ def _convert_to_sparse_tensors(sp_inputs):
   if isinstance(sp_inputs, tuple):
     return (_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs)
   raise TypeError("Inputs must be a list or tuple.")
+
+
+def _make_int64_tensor(value, name):
+  if isinstance(value, compat.integral_types):
+    return ops.convert_to_tensor(value, name=name, dtype=dtypes.int64)
+  if not isinstance(value, ops.Tensor):
+    raise TypeError("{} must be an integer value".format(name))
+  if value.dtype == dtypes.int64:
+    return value
+  return math_ops.cast(value, dtypes.int64)
+
+
+@tf_export("sparse.eye")
+def sparse_eye(num_rows,
+               num_columns=None,
+               dtype=dtypes.float32,
+               name=None):
+  """Creates a two-dimensional sparse tensor with ones along the diagonal.
+
+  Args:
+    num_rows: Non-negative integer or `int32` scalar `tensor` giving the number
+      of rows in the resulting matrix.
+    num_columns: Optional non-negative integer or `int32` scalar `tensor` giving
+      the number of columns in the resulting matrix. Defaults to `num_rows`.
+    dtype: The type of element in the resulting `Tensor`.
+    name: A name for this `Op`. Defaults to "eye".
+
+  Returns:
+    A `SparseTensor` of shape [num_rows, num_columns] with ones along the
+    diagonal.
+  """
+  with ops.name_scope(name, default_name="eye", values=[num_rows, num_columns]):
+    num_rows = _make_int64_tensor(num_rows, "num_rows")
+    num_columns = num_rows if num_columns is None else _make_int64_tensor(
+        num_columns, "num_columns")
+
+    # Create the sparse tensor.
+    diag_size = math_ops.minimum(num_rows, num_columns)
+    diag_range = math_ops.range(diag_size, dtype=dtypes.int64)
+
+    return sparse_tensor.SparseTensor(
+        indices=array_ops.stack([diag_range, diag_range], axis=1),
+        values=array_ops.ones(diag_size, dtype=dtype),
+        dense_shape=[num_rows, num_columns])
 
 
 # pylint: disable=protected-access
@@ -777,8 +825,10 @@ def sparse_to_dense(sparse_indices,
 
 
 @tf_export("sparse_reduce_max")
-def sparse_reduce_max(sp_input, axis=None, keep_dims=False,
-                      reduction_axes=None):
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+def sparse_reduce_max(sp_input, axis=None, keepdims=None,
+                      reduction_axes=None, keep_dims=None):
   """Computes the max of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -786,13 +836,18 @@ def sparse_reduce_max(sp_input, axis=None, keep_dims=False,
   instead of a sparse one.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
   with a single element is returned.  Additionally, the axes can be negative,
   similar to the indexing rules in Python.
+
+  The values not defined in `sp_input` don't participate in the reduce max,
+  as opposed to be implicitly assumed 0 -- hence it can return negative values
+  for sparse `reduction_axes`. But, in case there are no values in
+  `reduction_axes`, it will reduce to 0. See second example below.
 
   For example:
 
@@ -803,30 +858,44 @@ def sparse_reduce_max(sp_input, axis=None, keep_dims=False,
   tf.sparse_reduce_max(x) ==> 3
   tf.sparse_reduce_max(x, 0) ==> [1, 3, 2]
   tf.sparse_reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
-  tf.sparse_reduce_max(x, 1, keep_dims=True) ==> [[2], [3]]
+  tf.sparse_reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
   tf.sparse_reduce_max(x, [0, 1]) ==> 3
+
+  # 'y' represents [[-7, ?]
+  #                 [ 4, 3]
+  #                 [ ?, ?]
+  tf.sparse_reduce_max(x, 1) ==> [-7, 4, 0]
   ```
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
-    keep_dims: If true, retain reduced dimensions with length 1.
+    keepdims: If true, retain reduced dimensions with length 1.
     reduction_axes: Deprecated name of axis.
+    keep_dims:  Deprecated alias for `keepdims`.
 
   Returns:
     The reduced Tensor.
   """
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+
   return gen_sparse_ops.sparse_reduce_max(
       sp_input.indices, sp_input.values, sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes), keep_dims)
+      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
 @tf_export("sparse_reduce_max_sparse")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def sparse_reduce_max_sparse(sp_input,
                              axis=None,
-                             keep_dims=False,
-                             reduction_axes=None):
+                             keepdims=None,
+                             reduction_axes=None,
+                             keep_dims=None):
   """Computes the max of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -834,8 +903,8 @@ def sparse_reduce_max_sparse(sp_input,
   SparseTensor.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
@@ -846,23 +915,31 @@ def sparse_reduce_max_sparse(sp_input,
     sp_input: The SparseTensor to reduce. Should have numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
-    keep_dims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis
+    keepdims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced SparseTensor.
   """
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_reduce_max_sparse(
           sp_input.indices, sp_input.values, sp_input.dense_shape,
-          math_ops._ReductionDims(sp_input, axis, reduction_axes), keep_dims))
+          math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
 @tf_export("sparse_reduce_sum")
-def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
-                      reduction_axes=None):
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
+                      reduction_axes=None, keep_dims=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -870,8 +947,8 @@ def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
   instead of a sparse one.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
@@ -887,7 +964,7 @@ def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
   tf.sparse_reduce_sum(x) ==> 3
   tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
   tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
-  tf.sparse_reduce_sum(x, 1, keep_dims=True) ==> [[2], [1]]
+  tf.sparse_reduce_sum(x, 1, keepdims=True) ==> [[2], [1]]
   tf.sparse_reduce_sum(x, [0, 1]) ==> 3
   ```
 
@@ -895,22 +972,31 @@ def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
     sp_input: The SparseTensor to reduce. Should have numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
-    keep_dims: If true, retain reduced dimensions with length 1.
+    keepdims: If true, retain reduced dimensions with length 1.
     reduction_axes: Deprecated name of axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced Tensor.
   """
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+
   return gen_sparse_ops.sparse_reduce_sum(
       sp_input.indices, sp_input.values, sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes), keep_dims)
+      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
 @tf_export("sparse_reduce_sum_sparse")
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def sparse_reduce_sum_sparse(sp_input,
                              axis=None,
-                             keep_dims=False,
-                             reduction_axes=None):
+                             keepdims=None,
+                             reduction_axes=None,
+                             keep_dims=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -918,8 +1004,8 @@ def sparse_reduce_sum_sparse(sp_input,
   SparseTensor.
 
   Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keepdims` is true, the reduced dimensions are retained
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
@@ -930,16 +1016,22 @@ def sparse_reduce_sum_sparse(sp_input,
     sp_input: The SparseTensor to reduce. Should have numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
-    keep_dims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis
+    keepdims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced SparseTensor.
   """
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_reduce_sum_sparse(
           sp_input.indices, sp_input.values, sp_input.dense_shape,
-          math_ops._ReductionDims(sp_input, axis, reduction_axes), keep_dims))
+          math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 

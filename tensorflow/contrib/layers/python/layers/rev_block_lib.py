@@ -151,9 +151,19 @@ def _rev_block_forward(x1,
   return y1, y2
 
 
+def _safe_wraps(fn):
+  if isinstance(fn, functools.partial):
+    # functools.partial objects cannot be wrapped as they are missing the
+    # necessary properties (__name__, __module__, __doc__).
+    def passthrough(f):
+      return f
+    return passthrough
+  return functools.wraps(fn)
+
+
 def _scope_wrap(fn, scope):
 
-  @functools.wraps(fn)
+  @_safe_wraps(fn)
   def wrap(*args, **kwargs):
     with variable_scope.variable_scope(scope, use_resource=True):
       return fn(*args, **kwargs)
@@ -430,7 +440,7 @@ def rev_block(x1,
 def enable_with_args(dec):
   """A decorator for decorators to enable their usage with or without args."""
 
-  @functools.wraps(dec)
+  @_safe_wraps(dec)
   def new_dec(*args, **kwargs):
     if len(args) == 1 and not kwargs and callable(args[0]):
       # Used as decorator without args
@@ -477,7 +487,7 @@ def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
     tf.gradients).
   """
 
-  @functools.wraps(fn)
+  @_safe_wraps(fn)
   def wrapped(*args):
     return _recompute_grad(
         fn, args, use_data_dep=use_data_dep, tupleize_grads=tupleize_grads)
@@ -514,15 +524,15 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
     original_vars = set(tape.watched_variables())
 
     # Backward pass
-    def grad_fn(*output_grads, **kwargs):
+    def _grad_fn(output_grads, variables=None):
       """Recompute outputs for gradient computation."""
-      variables = []
+      variables = variables or []
       if original_vars:
-        variables = kwargs["variables"]
-      if set(variables) != original_vars:
-        raise ValueError(_WRONG_VARS_ERR)
-      del kwargs
-      inputs = list(args)
+        assert variables, ("Fn created variables but the variables were not "
+                           "passed to the gradient fn.")
+        if set(variables) != original_vars:
+          raise ValueError(_WRONG_VARS_ERR)
+      inputs = [array_ops.identity(x) for x in list(args)]
       # Recompute outputs
       with framework_ops.control_dependencies(output_grads):
         if use_data_dep_:
@@ -538,7 +548,7 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
             if original_vars != recompute_vars:
               raise ValueError(_WRONG_VARS_ERR)
 
-      if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
+      if not isinstance(outputs, (list, tuple)):
         outputs = [outputs]
       outputs = list(outputs)
       grads = gradients_impl.gradients(outputs, inputs + variables,
@@ -553,6 +563,16 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
       grad_inputs = grads[:len(inputs)]
       grad_vars = grads[len(inputs):]
       return grad_inputs, grad_vars
+
+    # custom_gradient inspects the signature of the function to determine
+    # whether the user expects variables passed in the grad_fn. If the function
+    # created variables, the grad_fn should accept the "variables" kwarg.
+    if original_vars:
+      def grad_fn(*output_grads, **kwargs):
+        return _grad_fn(output_grads, kwargs["variables"])
+    else:
+      def grad_fn(*output_grads):
+        return _grad_fn(output_grads)
 
     return outputs, grad_fn
 

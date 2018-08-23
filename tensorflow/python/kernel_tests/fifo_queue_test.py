@@ -126,14 +126,14 @@ class FIFOQueueTest(test.TestCase):
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMultipleDequeues(self):
     q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
     self.evaluate(q.enqueue_many([[1, 2, 3]]))
     a, b, c = self.evaluate([q.dequeue(), q.dequeue(), q.dequeue()])
     self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testQueuesDontShare(self):
     q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
     self.evaluate(q.enqueue(1))

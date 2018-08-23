@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class InverseGammaTest(test.TestCase):
 
   def testInverseGammaShape(self):
-    with self.test_session():
+    with self.cached_session():
       alpha = constant_op.constant([3.0] * 5)
       beta = constant_op.constant(11.0)
       inv_gamma = inverse_gamma.InverseGamma(concentration=alpha, rate=beta)
@@ -43,7 +43,7 @@ class InverseGammaTest(test.TestCase):
           []))
 
   def testInverseGammaLogPDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       alpha = constant_op.constant([2.0] * batch_size)
       beta = constant_op.constant([3.0] * batch_size)
@@ -61,7 +61,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
   def testInverseGammaLogPDFMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       alpha = constant_op.constant([[2.0, 4.0]] * batch_size)
       beta = constant_op.constant([[3.0, 4.0]] * batch_size)
@@ -81,7 +81,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
 
   def testInverseGammaLogPDFMultidimensionalBroadcasting(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       alpha = constant_op.constant([[2.0, 4.0]] * batch_size)
       beta = constant_op.constant(3.0)
@@ -101,7 +101,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
 
   def testInverseGammaCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       alpha_v = 2.0
       beta_v = 3.0
@@ -117,7 +117,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(cdf.eval(), expected_cdf)
 
   def testInverseGammaMode(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = np.array([5.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = inverse_gamma.InverseGamma(concentration=alpha_v, rate=beta_v)
@@ -126,7 +126,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(inv_gamma.mode().eval(), expected_modes)
 
   def testInverseGammaMeanAllDefined(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = np.array([5.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = inverse_gamma.InverseGamma(concentration=alpha_v, rate=beta_v)
@@ -135,7 +135,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(inv_gamma.mean().eval(), expected_means)
 
   def testInverseGammaMeanAllowNanStats(self):
-    with self.test_session():
+    with self.cached_session():
       # Mean will not be defined for the first entry.
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
@@ -145,7 +145,7 @@ class InverseGammaTest(test.TestCase):
         inv_gamma.mean().eval()
 
   def testInverseGammaMeanNanStats(self):
-    with self.test_session():
+    with self.cached_session():
       # Mode will not be defined for the first two entries.
       alpha_v = np.array([0.5, 1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 2.0, 4.0, 5.0])
@@ -158,7 +158,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(inv_gamma.mean().eval(), expected_means)
 
   def testInverseGammaVarianceAllDefined(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = np.array([7.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = inverse_gamma.InverseGamma(concentration=alpha_v, rate=beta_v)
@@ -167,7 +167,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(inv_gamma.variance().eval(), expected_variances)
 
   def testInverseGammaVarianceAllowNanStats(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = np.array([1.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = inverse_gamma.InverseGamma(
@@ -176,7 +176,7 @@ class InverseGammaTest(test.TestCase):
         inv_gamma.variance().eval()
 
   def testInverseGammaVarianceNanStats(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = np.array([1.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = inverse_gamma.InverseGamma(
@@ -187,7 +187,7 @@ class InverseGammaTest(test.TestCase):
       self.assertAllClose(inv_gamma.variance().eval(), expected_variances)
 
   def testInverseGammaEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       expected_entropy = stats.invgamma.entropy(alpha_v, scale=beta_v)
@@ -292,7 +292,7 @@ class InverseGammaTest(test.TestCase):
     self.assertNear(1., total, err=err)
 
   def testInverseGammaNonPositiveInitializationParamsRaises(self):
-    with self.test_session():
+    with self.cached_session():
       alpha_v = constant_op.constant(0.0, name="alpha")
       beta_v = constant_op.constant(1.0, name="beta")
       inv_gamma = inverse_gamma.InverseGamma(
@@ -307,7 +307,7 @@ class InverseGammaTest(test.TestCase):
         inv_gamma.mean().eval()
 
   def testInverseGammaWithSoftplusConcentrationRate(self):
-    with self.test_session():
+    with self.cached_session():
       alpha = constant_op.constant([-0.1, -2.9], name="alpha")
       beta = constant_op.constant([1.0, -4.8], name="beta")
       inv_gamma = inverse_gamma.InverseGammaWithSoftplusConcentrationRate(

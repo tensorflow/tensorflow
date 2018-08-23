@@ -91,8 +91,8 @@ limitations under the License.
 //   for (int i = 0; i < 10; ++i) { my_proto.add_value(i); }
 //   MyMutatingRoutine(my_proto.mutable_value());
 
-#ifndef TENSORFLOW_LIB_GTL_ARRAY_SLICE_H_
-#define TENSORFLOW_LIB_GTL_ARRAY_SLICE_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_
+#define TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_
 
 #include <initializer_list>
 #include <type_traits>
@@ -311,4 +311,4 @@ const typename MutableArraySlice<T>::size_type MutableArraySlice<T>::npos;
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_ARRAY_SLICE_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_

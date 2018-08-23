@@ -45,8 +45,7 @@ bool VectorizedReduceDisabled(const HloModuleConfig& config) {
   return extra_options_map.count(kXlaOptimizeForSizeCpuOption) > 0;
 }
 
-tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
-    const HloModuleConfig& config) {
+absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrDotTilingFactor);
@@ -55,7 +54,7 @@ tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
       tensorflow::strings::safe_strto64(it->second, &tiling_factor)) {
     return tiling_factor;
   }
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
@@ -71,13 +70,13 @@ static tensorflow::StringPiece RemoveSuffix(tensorflow::StringPiece str,
   return str.substr(0, str.size() - suffix.size());
 }
 
-tensorflow::gtl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
+absl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
     const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrGemmTileSize);
   if (it == extra_options_map.end()) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
 
   std::vector<string> tile_components =

@@ -67,7 +67,7 @@ class GANHeadTest(test.TestCase):
         generator_optimizer=training.GradientDescentOptimizer(1.0),
         discriminator_optimizer=training.GradientDescentOptimizer(1.0),
         get_eval_metric_ops_fn=self.get_metrics)
-    self.assertTrue(isinstance(self.gan_head, head.GANHead))
+    self.assertIsInstance(self.gan_head, head.GANHead)
 
   def get_metrics(self, gan_model):
     self.assertTrue(isinstance(gan_model, tfgan_tuples.GANModel))

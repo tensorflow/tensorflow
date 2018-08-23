@@ -20,7 +20,6 @@ from __future__ import print_function
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-# API IMPORTS PLACEHOLDER
 
 try:
   import os  # pylint: disable=g-import-not-at-top
@@ -36,6 +35,8 @@ try:
   del os
 except (ImportError, AttributeError):
   print('tf.estimator package not installed.')
+
+# API IMPORTS PLACEHOLDER
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')

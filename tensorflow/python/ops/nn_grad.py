@@ -240,13 +240,9 @@ def _SoftmaxGrad(op, grad_softmax):
      gradient w.r.t the input to the softmax
 
   """
-  # TODO(ilyasu): assert that the tensor has two dimensions at
-  # graph-construction time?  Alternatively: do different things
-  # depending on the dimensionality of the input tensors.
   softmax = op.outputs[0]
-  grad_x = ((grad_softmax - array_ops.reshape(
-      math_ops.reduce_sum(grad_softmax * softmax, [1]), [-1, 1])) * softmax)
-  return grad_x
+  sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
+  return (grad_softmax - sum_channels) * softmax
 
 
 @ops.RegisterGradient("LogSoftmax")
@@ -264,7 +260,7 @@ def _LogSoftmaxGrad(op, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, 1, keepdims=True) * softmax
+  return grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
 
 
 @ops.RegisterGradient("BiasAdd")
@@ -475,7 +471,9 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
-        math_ops.matmul(grad_grad[:, None, :], softmax[:, :, None]), axis=1)) *
+        math_ops.matmul(array_ops.expand_dims(grad_grad, 1),
+                        array_ops.expand_dims(softmax, 2)),
+        axis=1)) *
              softmax)
 
   return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))

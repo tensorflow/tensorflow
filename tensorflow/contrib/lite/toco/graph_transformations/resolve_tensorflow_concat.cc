@@ -28,8 +28,8 @@ namespace toco {
 bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
   auto concat_it = model->operators.begin() + op_index;
   const auto* tf_concat_op = concat_it->get();
-  if (tf_concat_op->type != OperatorType::kTensorFlowConcat &&
-      tf_concat_op->type != OperatorType::kTensorFlowConcatV2) {
+  if (tf_concat_op->type != OperatorType::kConcat &&
+      tf_concat_op->type != OperatorType::kConcatV2) {
     return false;
   }
 
@@ -38,7 +38,7 @@ bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
   // of inputs: in Concat,the axis is the first input, while in
   // ConcatV2, it is the last input.
   std::size_t axis_pos = 0;
-  if (tf_concat_op->type == OperatorType::kTensorFlowConcatV2) {
+  if (tf_concat_op->type == OperatorType::kConcatV2) {
     axis_pos = tf_concat_op->inputs.size() - 1;
   }
   const string axis_name = tf_concat_op->inputs[axis_pos];

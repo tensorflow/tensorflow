@@ -18,8 +18,8 @@ limitations under the License.
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
-#ifndef TENSORFLOW_LIB_CORE_CODING_H_
-#define TENSORFLOW_LIB_CORE_CODING_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_CODING_H_
+#define TENSORFLOW_CORE_LIB_CORE_CODING_H_
 
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -76,4 +76,4 @@ extern int VarintLength(uint64_t v);
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_CODING_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_CODING_H_

@@ -418,3 +418,4 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_search.h)

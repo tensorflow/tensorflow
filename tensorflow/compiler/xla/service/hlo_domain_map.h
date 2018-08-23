@@ -65,6 +65,10 @@ class HloDomainMap {
   // currently processing.
   bool IsDomainInstruction(HloInstruction* instruction) const;
 
+  // Retrieves the domain identifier of the instruction, or -1 in case
+  // instruction is not found within any domain.
+  int64 GetDomainId(HloInstruction* instruction) const;
+
  private:
   HloDomainMap(string domain_kind) : domain_kind_(std::move(domain_kind)) {}
 

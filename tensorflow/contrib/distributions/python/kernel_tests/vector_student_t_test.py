@@ -75,7 +75,7 @@ class VectorStudentTTest(test.TestCase):
     self._rng = np.random.RandomState(42)
 
   def testProbStaticScalar(self):
-    with self.test_session():
+    with self.cached_session():
       # Scalar batch_shape.
       df = np.asarray(3., dtype=np.float32)
       # Scalar batch_shape.
@@ -116,7 +116,7 @@ class VectorStudentTTest(test.TestCase):
     expected_mst = _FakeVectorStudentT(
         df=df, loc=loc, scale_tril=scale_tril)
 
-    with self.test_session():
+    with self.cached_session():
       actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
@@ -145,7 +145,7 @@ class VectorStudentTTest(test.TestCase):
     expected_mst = _FakeVectorStudentT(
         df=df, loc=loc, scale_tril=scale_tril)
 
-    with self.test_session():
+    with self.cached_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")
       loc_pl = array_ops.placeholder(dtypes.float32, name="loc")
       scale_diag_pl = array_ops.placeholder(dtypes.float32, name="scale_diag")
@@ -180,7 +180,7 @@ class VectorStudentTTest(test.TestCase):
         loc=loc,
         scale_tril=scale_tril)
 
-    with self.test_session():
+    with self.cached_session():
       actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
@@ -211,7 +211,7 @@ class VectorStudentTTest(test.TestCase):
         loc=loc,
         scale_tril=scale_tril)
 
-    with self.test_session():
+    with self.cached_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")
       loc_pl = array_ops.placeholder(dtypes.float32, name="loc")
       scale_diag_pl = array_ops.placeholder(dtypes.float32, name="scale_diag")
@@ -240,7 +240,7 @@ class VectorStudentTTest(test.TestCase):
         scale_tril=np.tile(scale_tril[array_ops.newaxis, :, :],
                            reps=[len(df), 1, 1]))
 
-    with self.test_session():
+    with self.cached_session():
       actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
@@ -266,7 +266,7 @@ class VectorStudentTTest(test.TestCase):
         scale_tril=np.tile(scale_tril[array_ops.newaxis, :, :],
                            reps=[len(df), 1, 1]))
 
-    with self.test_session():
+    with self.cached_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")
       loc_pl = array_ops.placeholder(dtypes.float32, name="loc")
       scale_diag_pl = array_ops.placeholder(dtypes.float32, name="scale_diag")

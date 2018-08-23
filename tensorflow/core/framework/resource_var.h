@@ -29,6 +29,8 @@ class Var : public ResourceBase {
   Var(const Var&) = delete;
   Var& operator=(const Var&) = delete;
 
+  // When locking multiple variables, the locks must be acquired in order of
+  // increasing mu() address.
   // TODO(ebrevdo): Use LockSet instead of exposing mu.
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }

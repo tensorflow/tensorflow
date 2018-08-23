@@ -105,14 +105,13 @@ class HloLexer {
   TokKind LexShape();
   TokKind LexConstant();
   TokKind LexNumberOrPattern();
-  TokKind LexComment();
   TokKind LexString();
 
   const tensorflow::StringPiece buf_;
   const char* current_ptr_;
 
   // Information about the current token.
-  const char* token_start_;
+  const char* token_start_ = nullptr;
   TokKind current_kind_;
   string str_val_;
   Shape shape_val_;

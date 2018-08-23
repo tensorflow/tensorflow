@@ -20,11 +20,11 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
-class BuiltinFunctionTransformer(transformer.Base):
+class BuiltinFunctionTransformer(converter.Base):
   """Handles builtin functions.
 
   This transformer only covers functions that are translated into a
@@ -68,5 +68,5 @@ class BuiltinFunctionTransformer(transformer.Base):
     return self.visit(function_call)
 
 
-def transform(node, context):
-  return BuiltinFunctionTransformer(context).visit(node)
+def transform(node, ctx):
+  return BuiltinFunctionTransformer(ctx).visit(node)

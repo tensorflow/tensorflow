@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/java/src/main/native/utils_jni.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 #include "tensorflow/java/src/main/native/session_jni.h"
 
@@ -55,37 +56,6 @@ void resolveHandles(JNIEnv* env, const char* type, jlongArray src_array,
   env->ReleaseLongArrayElements(src_array, src_start, JNI_ABORT);
 }
 
-void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,
-                    jintArray src_index, TF_Output* dst, jint n) {
-  if (env->ExceptionCheck()) return;
-  jint len = env->GetArrayLength(src_op);
-  if (len != n) {
-    throwException(env, kIllegalArgumentException,
-                   "expected %d, got %d %s Operations", n, len, type);
-    return;
-  }
-  len = env->GetArrayLength(src_index);
-  if (len != n) {
-    throwException(env, kIllegalArgumentException,
-                   "expected %d, got %d %s Operation output indices", n, len,
-                   type);
-    return;
-  }
-  jlong* op_handles = env->GetLongArrayElements(src_op, nullptr);
-  jint* indices = env->GetIntArrayElements(src_index, nullptr);
-  for (int i = 0; i < n; ++i) {
-    if (op_handles[i] == 0) {
-      throwException(env, kNullPointerException, "invalid %s (#%d of %d)", type,
-                     i, n);
-      break;
-    }
-    dst[i] = TF_Output{reinterpret_cast<TF_Operation*>(op_handles[i]),
-                       static_cast<int>(indices[i])};
-  }
-  env->ReleaseIntArrayElements(src_index, indices, JNI_ABORT);
-  env->ReleaseLongArrayElements(src_op, op_handles, JNI_ABORT);
-}
-
 void TF_MaybeDeleteBuffer(TF_Buffer* buf) {
   if (buf == nullptr) return;
   TF_DeleteBuffer(buf);
@@ -116,19 +86,21 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(
   TF_Graph* graph = reinterpret_cast<TF_Graph*>(graph_handle);
   TF_Status* status = TF_NewStatus();
   TF_SessionOptions* opts = TF_NewSessionOptions();
-  const char* ctarget = nullptr;
   jbyte* cconfig = nullptr;
-  if (target != nullptr) {
-    ctarget = env->GetStringUTFChars(target, nullptr);
-  }
   if (config != nullptr) {
     cconfig = env->GetByteArrayElements(config, nullptr);
     TF_SetConfig(opts, cconfig,
                  static_cast<size_t>(env->GetArrayLength(config)), status);
     if (!throwExceptionIfNotOK(env, status)) {
       env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+      TF_DeleteSessionOptions(opts);
+      TF_DeleteStatus(status);
       return 0;
     }
+  }
+  const char* ctarget = nullptr;
+  if (target != nullptr) {
+    ctarget = env->GetStringUTFChars(target, nullptr);
   }
   TF_Session* session = TF_NewSession(graph, opts, status);
   if (config != nullptr) {

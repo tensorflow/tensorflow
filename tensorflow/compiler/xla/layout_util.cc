@@ -248,6 +248,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     }
   }
 
+  if (layout.format() == SPARSE) {
+    if (!layout.padded_dimensions().empty()) {
+      return InvalidArgument("Sparse layout has padded dimensions");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -291,7 +297,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       shape.layout().padded_dimensions_size() == 0) {
     return false;
   }
-  CHECK(IsDenseArray(shape));
+  CHECK(IsDenseArray(shape)) << shape.ShortDebugString();
   CHECK_EQ(shape.dimensions_size(), shape.layout().padded_dimensions_size());
   for (int64 i = 0; i < shape.dimensions_size(); ++i) {
     if (shape.layout().padded_dimensions(i) > shape.dimensions(i)) {

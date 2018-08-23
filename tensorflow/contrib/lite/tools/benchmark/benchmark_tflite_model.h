@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_TFLITE_MODEL_H_
-#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_TFLITE_MODEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
+#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
 
 #include <memory>
 #include <string>
 #include <vector>
 
+#ifdef TFLITE_EXTENDED
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#endif  // TFLITE_EXTENDED
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/profiling/profile_summarizer.h"
 #include "tensorflow/contrib/lite/tools/benchmark/benchmark_model.h"
@@ -50,17 +53,16 @@ class ProfilingListener : public BenchmarkListener {
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
-  BenchmarkTfLiteModel() : use_nnapi(false) {
-    AddListener(&profiling_listener_);
-  }
+  BenchmarkTfLiteModel();
+  BenchmarkTfLiteModel(BenchmarkParams params);
+  virtual ~BenchmarkTfLiteModel() {}
 
   std::vector<Flag> GetFlags() override;
-  void LogFlags() override;
-  bool ValidateFlags() override;
+  void LogParams() override;
+  bool ValidateParams() override;
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;
-  virtual ~BenchmarkTfLiteModel() {}
 
   struct InputLayerInfo {
     std::string name;
@@ -68,15 +70,12 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   };
 
  private:
+#ifdef TFLITE_EXTENDED
+  std::unique_ptr<EagerDelegate> delegate_;
+#endif  // TFLITE_EXTENDED
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
-  std::string graph;
-  std::string input_layer_string;
-  std::string input_layer_type_string;
-  std::string input_layer_shape_string;
-  std::string input_layer_values_string;
   std::vector<InputLayerInfo> inputs;
-  bool use_nnapi;
   ProfilingListener profiling_listener_;
 };
 

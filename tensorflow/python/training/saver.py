@@ -21,15 +21,11 @@ from __future__ import print_function
 
 import collections
 import os.path
-import re
-import sys
 import time
 import uuid
 
 import numpy as np
 import six
-
-from google.protobuf import text_format
 
 from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -42,7 +38,6 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
@@ -53,12 +48,23 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saveable_object
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
+
+# TODO(allenl): Remove these aliases once all users are migrated off.
+get_checkpoint_state = checkpoint_management.get_checkpoint_state
+update_checkpoint_state = checkpoint_management.update_checkpoint_state
+generate_checkpoint_state_proto = (
+    checkpoint_management.generate_checkpoint_state_proto)
+latest_checkpoint = checkpoint_management.latest_checkpoint
+checkpoint_exists = checkpoint_management.checkpoint_exists
+get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
+remove_checkpoint = checkpoint_management.remove_checkpoint
 
 
 # Op names which identify variable reads which should be saved.
@@ -127,8 +133,10 @@ class BaseSaverBuilder(object):
           def f():
             with ops.device(v.device):
               x = v.read_value()
-            with ops.device("/device:CPU:0"):
-              return array_ops.identity(x)
+              # To allow variables placed on non-CPU devices to be checkpointed,
+              # we copy them to CPU on the same machine first.
+              with ops.device("/device:CPU:0"):
+                return array_ops.identity(x)
           return f
 
         self.handle_op = var.handle
@@ -801,6 +809,22 @@ class BaseSaverBuilder(object):
           keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
           version=self._write_version)
     else:
+      graph = ops.get_default_graph()
+      # Do some sanity checking on collections containing
+      # PartitionedVariables. If a saved collection has a PartitionedVariable,
+      # the GraphDef needs to include concat ops to get the value (or there'll
+      # be a lookup error on load).
+      check_collection_list = graph.get_all_collection_keys()
+      for collection_type in check_collection_list:
+        for element in graph.get_collection(collection_type):
+          if isinstance(element, variables.PartitionedVariable):
+            try:
+              graph.get_operation_by_name(element.name)
+            except KeyError:
+              # Create a concat op for this PartitionedVariable. The user may
+              # not need it, but we'll try looking it up on MetaGraph restore
+              # since it's in a collection.
+              element.as_tensor()
       return saver_pb2.SaverDef(
           filename_tensor_name=filename_tensor.name,
           save_tensor_name=save_tensor.name,
@@ -857,223 +881,11 @@ def _get_saver_or_default():
   return saver
 
 
-def _GetCheckpointFilename(save_dir, latest_filename):
-  """Returns a filename for storing the CheckpointState.
-
-  Args:
-    save_dir: The directory for saving and restoring checkpoints.
-    latest_filename: Name of the file in 'save_dir' that is used
-      to store the CheckpointState.
-
-  Returns:
-    The path of the file that contains the CheckpointState proto.
-  """
-  if latest_filename is None:
-    latest_filename = "checkpoint"
-  return os.path.join(save_dir, latest_filename)
-
-
-@tf_export("train.generate_checkpoint_state_proto")
-def generate_checkpoint_state_proto(save_dir,
-                                    model_checkpoint_path,
-                                    all_model_checkpoint_paths=None):
-  """Generates a checkpoint state proto.
-
-  Args:
-    save_dir: Directory where the model was saved.
-    model_checkpoint_path: The checkpoint file.
-    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
-      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
-      the last element must be equal to model_checkpoint_path.  These paths
-      are also saved in the CheckpointState proto.
-
-  Returns:
-    CheckpointState proto with model_checkpoint_path and
-    all_model_checkpoint_paths updated to either absolute paths or
-    relative paths to the current save_dir.
-  """
-  if all_model_checkpoint_paths is None:
-    all_model_checkpoint_paths = []
-
-  if (not all_model_checkpoint_paths or
-      all_model_checkpoint_paths[-1] != model_checkpoint_path):
-    logging.info("%s is not in all_model_checkpoint_paths. Manually adding it.",
-                 model_checkpoint_path)
-    all_model_checkpoint_paths.append(model_checkpoint_path)
-
-  # Relative paths need to be rewritten to be relative to the "save_dir"
-  # if model_checkpoint_path already contains "save_dir".
-  if not os.path.isabs(save_dir):
-    if not os.path.isabs(model_checkpoint_path):
-      model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
-    for i in range(len(all_model_checkpoint_paths)):
-      p = all_model_checkpoint_paths[i]
-      if not os.path.isabs(p):
-        all_model_checkpoint_paths[i] = os.path.relpath(p, save_dir)
-
-  coord_checkpoint_proto = CheckpointState(
-      model_checkpoint_path=model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths)
-
-  return coord_checkpoint_proto
-
-
-@tf_export("train.update_checkpoint_state")
-def update_checkpoint_state(save_dir,
-                            model_checkpoint_path,
-                            all_model_checkpoint_paths=None,
-                            latest_filename=None):
-  """Updates the content of the 'checkpoint' file.
-
-  This updates the checkpoint file containing a CheckpointState
-  proto.
-
-  Args:
-    save_dir: Directory where the model was saved.
-    model_checkpoint_path: The checkpoint file.
-    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
-      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
-      the last element must be equal to model_checkpoint_path.  These paths
-      are also saved in the CheckpointState proto.
-    latest_filename: Optional name of the checkpoint file.  Default to
-      'checkpoint'.
-
-  Raises:
-    RuntimeError: If any of the model checkpoint paths conflict with the file
-      containing CheckpointSate.
-  """
-  _update_checkpoint_state(
-      save_dir=save_dir,
-      model_checkpoint_path=model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths,
-      latest_filename=latest_filename,
-      save_relative_paths=False)
-
-
-def _update_checkpoint_state(save_dir,
-                             model_checkpoint_path,
-                             all_model_checkpoint_paths=None,
-                             latest_filename=None,
-                             save_relative_paths=False):
-  """Updates the content of the 'checkpoint' file.
-
-  This updates the checkpoint file containing a CheckpointState
-  proto.
-
-  Args:
-    save_dir: Directory where the model was saved.
-    model_checkpoint_path: The checkpoint file.
-    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
-      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
-      the last element must be equal to model_checkpoint_path.  These paths
-      are also saved in the CheckpointState proto.
-    latest_filename: Optional name of the checkpoint file.  Default to
-      'checkpoint'.
-    save_relative_paths: If `True`, will write relative paths to the checkpoint
-      state file.
-
-  Raises:
-    RuntimeError: If any of the model checkpoint paths conflict with the file
-      containing CheckpointSate.
-  """
-  # Writes the "checkpoint" file for the coordinator for later restoration.
-  coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
-  if save_relative_paths:
-    if os.path.isabs(model_checkpoint_path):
-      rel_model_checkpoint_path = os.path.relpath(
-          model_checkpoint_path, save_dir)
-    else:
-      rel_model_checkpoint_path = model_checkpoint_path
-    rel_all_model_checkpoint_paths = []
-    for p in all_model_checkpoint_paths:
-      if os.path.isabs(p):
-        rel_all_model_checkpoint_paths.append(os.path.relpath(p, save_dir))
-      else:
-        rel_all_model_checkpoint_paths.append(p)
-    ckpt = generate_checkpoint_state_proto(
-        save_dir,
-        rel_model_checkpoint_path,
-        all_model_checkpoint_paths=rel_all_model_checkpoint_paths)
-  else:
-    ckpt = generate_checkpoint_state_proto(
-        save_dir,
-        model_checkpoint_path,
-        all_model_checkpoint_paths=all_model_checkpoint_paths)
-
-  if coord_checkpoint_filename == ckpt.model_checkpoint_path:
-    raise RuntimeError("Save path '%s' conflicts with path used for "
-                       "checkpoint state.  Please use a different save path." %
-                       model_checkpoint_path)
-
-  # Preventing potential read/write race condition by *atomically* writing to a
-  # file.
-  file_io.atomic_write_string_to_file(coord_checkpoint_filename,
-                                      text_format.MessageToString(ckpt))
-
-
-@tf_export("train.get_checkpoint_state")
-def get_checkpoint_state(checkpoint_dir, latest_filename=None):
-  """Returns CheckpointState proto from the "checkpoint" file.
-
-  If the "checkpoint" file contains a valid CheckpointState
-  proto, returns it.
-
-  Args:
-    checkpoint_dir: The directory of checkpoints.
-    latest_filename: Optional name of the checkpoint file.  Default to
-      'checkpoint'.
-
-  Returns:
-    A CheckpointState if the state was available, None
-    otherwise.
-
-  Raises:
-    ValueError: if the checkpoint read doesn't have model_checkpoint_path set.
-  """
-  ckpt = None
-  coord_checkpoint_filename = _GetCheckpointFilename(checkpoint_dir,
-                                                     latest_filename)
-  f = None
-  try:
-    # Check that the file exists before opening it to avoid
-    # many lines of errors from colossus in the logs.
-    if file_io.file_exists(coord_checkpoint_filename):
-      file_content = file_io.read_file_to_string(
-          coord_checkpoint_filename)
-      ckpt = CheckpointState()
-      text_format.Merge(file_content, ckpt)
-      if not ckpt.model_checkpoint_path:
-        raise ValueError("Invalid checkpoint state loaded from %s",
-                         checkpoint_dir)
-      # For relative model_checkpoint_path and all_model_checkpoint_paths,
-      # prepend checkpoint_dir.
-      if not os.path.isabs(ckpt.model_checkpoint_path):
-        ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
-                                                  ckpt.model_checkpoint_path)
-      for i in range(len(ckpt.all_model_checkpoint_paths)):
-        p = ckpt.all_model_checkpoint_paths[i]
-        if not os.path.isabs(p):
-          ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
-  except errors.OpError as e:
-    # It's ok if the file cannot be read
-    logging.warning("%s: %s", type(e).__name__, e)
-    logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
-    return None
-  except text_format.ParseError as e:
-    logging.warning("%s: %s", type(e).__name__, e)
-    logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
-    return None
-  finally:
-    if f:
-      f.close()
-  return ckpt
-
-
 @tf_export("train.Saver")
 class Saver(object):
   """Saves and restores variables.
 
-  See @{$variables$Variables}
+  See [Variables](https://tensorflow.org/guide/variables)
   for an overview of variables, saving and restoring.
 
   The `Saver` class adds ops to save and restore variables to and from
@@ -1411,7 +1223,7 @@ class Saver(object):
 
       # Otherwise delete the files.
       try:
-        remove_checkpoint(
+        checkpoint_management.remove_checkpoint(
             self._CheckpointFilename(p), self.saver_def.version,
             meta_graph_suffix)
       except Exception as e:  # pylint: disable=broad-except
@@ -1517,7 +1329,7 @@ class Saver(object):
     Args:
       checkpoint_paths: a list of checkpoint paths.
     """
-    mtimes = get_checkpoint_mtimes(checkpoint_paths)
+    mtimes = checkpoint_management.get_checkpoint_mtimes(checkpoint_paths)
     self.set_last_checkpoints_with_time(list(zip(checkpoint_paths, mtimes)))
 
   def save(self,
@@ -1623,7 +1435,7 @@ class Saver(object):
         model_checkpoint_path = compat.as_str(model_checkpoint_path)
         if write_state:
           self._RecordLastCheckpoint(model_checkpoint_path)
-          _update_checkpoint_state(
+          checkpoint_management.update_checkpoint_state_internal(
               save_dir=save_path_parent,
               model_checkpoint_path=model_checkpoint_path,
               all_model_checkpoint_paths=self.last_checkpoints,
@@ -1638,7 +1450,7 @@ class Saver(object):
         raise exc
 
     if write_meta_graph:
-      meta_graph_filename = _meta_graph_filename(
+      meta_graph_filename = checkpoint_management.meta_graph_filename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
       if not context.executing_eagerly():
         with sess.graph.as_default():
@@ -1706,12 +1518,17 @@ class Saver(object):
       save_path: Path where parameters were previously saved.
 
     Raises:
-      ValueError: If save_path is None.
+      ValueError: If save_path is None or not a valid checkpoint.
     """
     if self._is_empty:
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
+
+    if not checkpoint_management.checkpoint_exists(compat.as_text(save_path)):
+      raise ValueError("The passed save_path is not a valid checkpoint: "
+                       + compat.as_text(save_path))
+
     logging.info("Restoring parameters from %s", compat.as_text(save_path))
     try:
       if context.executing_eagerly():
@@ -1719,23 +1536,22 @@ class Saver(object):
       else:
         sess.run(self.saver_def.restore_op_name,
                  {self.saver_def.filename_tensor_name: save_path})
-    except errors.NotFoundError:
-      exception_type, exception_value, exception_traceback = sys.exc_info()
-      # The checkpoint would not be loaded successfully as is. Try to parse it
-      # as an object-based checkpoint.
-      should_reraise = False
+    except errors.NotFoundError as err:
+      # There are three common conditions that might cause this error:
+      # 0. The file is missing. We ignore here, as this is checked above.
+      # 1. This is an object-based checkpoint trying name-based loading.
+      # 2. The graph has been altered and a variable or other name is missing.
+
+      # 1. The checkpoint would not be loaded successfully as is. Try to parse
+      # it as an object-based checkpoint.
       try:
-        reader = pywrap_tensorflow.NewCheckpointReader(save_path)
-        object_graph_string = reader.get_tensor(
-            checkpointable.OBJECT_GRAPH_PROTO_KEY)
+        names_to_keys = object_graph_key_mapping(save_path)
       except errors.NotFoundError:
-        # This is not an object-based checkpoint, or the checkpoint doesn't
-        # exist. Re-raise the original exception, but do it outside the except
-        # block so the object graph lookup isn't included in the stack trace.
-        should_reraise = True
-      if should_reraise:
-        six.reraise(exception_type, exception_value, exception_traceback)
-      del exception_traceback  # avoid reference cycles
+        # 2. This is not an object-based checkpoint, which likely means there
+        # is a graph mismatch. Re-raise the original error with
+        # a helpful message (b/110263146)
+        raise _wrap_restore_error_with_msg(
+            err, "a Variable name or other graph key that is missing")
 
       # This is an object-based checkpoint. We'll print a warning and then do
       # the restore.
@@ -1744,36 +1560,18 @@ class Saver(object):
           "may be somewhat fragile, and will re-build the Saver. Instead, "
           "consider loading object-based checkpoints using "
           "tf.train.Checkpoint().")
-      self._restore_from_object_based_checkpoint(
-          sess=sess, save_path=save_path,
-          object_graph_string=object_graph_string)
-
-  def _restore_from_object_based_checkpoint(self, sess, save_path,
-                                            object_graph_string):
-    """A compatibility mode for reading object-based checkpoints."""
-    object_graph_proto = (
-        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
-    object_graph_proto.ParseFromString(object_graph_string)
-    names_to_keys = {}
-    for node in object_graph_proto.nodes:
-      for attribute in node.attributes:
-        names_to_keys[attribute.full_name] = attribute.checkpoint_key
-    saveables = self._builder._ValidateAndSliceInputs(self._var_list)  # pylint: disable=protected-access
-    for saveable in saveables:
-      for spec in saveable.specs:
-        if spec.name not in names_to_keys:
-          raise errors.NotFoundError(
-              None, None,
-              message=("Attempting to load an object-based checkpoint using "
-                       "variable names, but could not find %s in the "
-                       "checkpoint.") % spec.name)
-        spec.name = names_to_keys[spec.name]
-    if self._object_restore_saver is None:
-      # Cache the Saver so multiple restore() calls don't pollute the graph when
-      # graph building. This assumes keys are consistent (i.e. this is the same
-      # type of object-based checkpoint we saw previously).
-      self._object_restore_saver = Saver(saveables)
-    self._object_restore_saver.restore(sess=sess, save_path=save_path)
+      self._object_restore_saver = saver_from_object_based_checkpoint(
+          checkpoint_path=save_path,
+          var_list=self._var_list,
+          builder=self._builder,
+          names_to_keys=names_to_keys,
+          cached_saver=self._object_restore_saver)
+      self._object_restore_saver.restore(sess=sess, save_path=save_path)
+    except errors.InvalidArgumentError as err:
+      # There is a mismatch between the graph and the checkpoint being loaded.
+      # We add a more reasonable error message here to help users (b/110263146)
+      raise _wrap_restore_error_with_msg(
+          err, "a mismatch between the current graph and the graph")
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):
@@ -1786,55 +1584,6 @@ class Saver(object):
     """
     meta_graph.add_collection_def(meta_graph_def, key,
                                   export_scope=export_scope)
-
-
-def _prefix_to_checkpoint_path(prefix, format_version):
-  """Returns the pathname of a checkpoint file, given the checkpoint prefix.
-
-  For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,
-  returns the pathname to the index file.
-
-  Args:
-    prefix: a string, the prefix of a checkpoint.
-    format_version: the checkpoint format version that corresponds to the
-      prefix.
-  Returns:
-    The pathname of a checkpoint file, taking into account the checkpoint
-      format version.
-  """
-  if format_version == saver_pb2.SaverDef.V2:
-    return prefix + ".index"  # The index file identifies a checkpoint.
-  return prefix  # Just the data file.
-
-
-@tf_export("train.latest_checkpoint")
-def latest_checkpoint(checkpoint_dir, latest_filename=None):
-  """Finds the filename of latest saved checkpoint file.
-
-  Args:
-    checkpoint_dir: Directory where the variables were saved.
-    latest_filename: Optional name for the protocol buffer file that
-      contains the list of most recent checkpoint filenames.
-      See the corresponding argument to `Saver.save()`.
-
-  Returns:
-    The full path to the latest checkpoint or `None` if no checkpoint was found.
-  """
-  # Pick the latest checkpoint based on checkpoint state.
-  ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
-  if ckpt and ckpt.model_checkpoint_path:
-    # Look for either a V2 path or a V1 path, with priority for V2.
-    v2_path = _prefix_to_checkpoint_path(ckpt.model_checkpoint_path,
-                                         saver_pb2.SaverDef.V2)
-    v1_path = _prefix_to_checkpoint_path(ckpt.model_checkpoint_path,
-                                         saver_pb2.SaverDef.V1)
-    if file_io.get_matching_files(v2_path) or file_io.get_matching_files(
-        v1_path):
-      return ckpt.model_checkpoint_path
-    else:
-      logging.error("Couldn't match files for checkpoint %s",
-                    ckpt.model_checkpoint_path)
-  return None
 
 
 @tf_export("train.import_meta_graph")
@@ -1913,6 +1662,14 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   execution is enabled.
   @end_compatibility
   """  # pylint: disable=g-doc-exception
+  return _import_meta_graph_with_return_elements(
+      meta_graph_or_file, clear_devices, import_scope, **kwargs)[0]
+
+
+def _import_meta_graph_with_return_elements(
+    meta_graph_or_file, clear_devices=False, import_scope=None,
+    return_elements=None, **kwargs):
+  """Import MetaGraph, and return both a saver and returned elements."""
   if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
@@ -1922,12 +1679,22 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   else:
     meta_graph_def = meta_graph_or_file
 
-  imported_vars = meta_graph.import_scoped_meta_graph(
-      meta_graph_def,
-      clear_devices=clear_devices,
-      import_scope=import_scope,
-      **kwargs)
+  imported_vars, imported_return_elements = (
+      meta_graph.import_scoped_meta_graph_with_return_elements(
+          meta_graph_def,
+          clear_devices=clear_devices,
+          import_scope=import_scope,
+          return_elements=return_elements,
+          **kwargs))
 
+  saver = _create_saver_from_imported_meta_graph(
+      meta_graph_def, import_scope, imported_vars)
+  return saver, imported_return_elements
+
+
+def _create_saver_from_imported_meta_graph(
+    meta_graph_def, import_scope, imported_vars):
+  """Return a saver for restoring variable values to an imported MetaGraph."""
   if meta_graph_def.HasField("saver_def"):
     # Infer the scope that is prepended by `import_scoped_meta_graph`.
     scope = import_scope
@@ -2026,117 +1793,12 @@ def export_meta_graph(filename=None,
   return meta_graph_def
 
 
-@tf_export("train.checkpoint_exists")
-def checkpoint_exists(checkpoint_prefix):
-  """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
-
-  This is the recommended way to check if a checkpoint exists, since it takes
-  into account the naming difference between V1 and V2 formats.
-
-  Args:
-    checkpoint_prefix: the prefix of a V1 or V2 checkpoint, with V2 taking
-      priority.  Typically the result of `Saver.save()` or that of
-      `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
-      V1/V2.
-  Returns:
-    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
-  """
-  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
-                                        saver_pb2.SaverDef.V2)
-  if file_io.get_matching_files(pathname):
-    return True
-  elif file_io.get_matching_files(checkpoint_prefix):
-    return True
-  else:
-    return False
-
-
-@tf_export("train.get_checkpoint_mtimes")
-def get_checkpoint_mtimes(checkpoint_prefixes):
-  """Returns the mtimes (modification timestamps) of the checkpoints.
-
-  Globs for the checkpoints pointed to by `checkpoint_prefixes`.  If the files
-  exist, collect their mtime.  Both V2 and V1 checkpoints are considered, in
-  that priority.
-
-  This is the recommended way to get the mtimes, since it takes into account
-  the naming difference between V1 and V2 formats.
-
-  Args:
-    checkpoint_prefixes: a list of checkpoint paths, typically the results of
-      `Saver.save()` or those of `tf.train.latest_checkpoint()`, regardless of
-      sharded/non-sharded or V1/V2.
-  Returns:
-    A list of mtimes (in microseconds) of the found checkpoints.
-  """
-  mtimes = []
-
-  def match_maybe_append(pathname):
-    fnames = file_io.get_matching_files(pathname)
-    if fnames:
-      mtimes.append(file_io.stat(fnames[0]).mtime_nsec / 1e9)
-      return True
-    return False
-
-  for checkpoint_prefix in checkpoint_prefixes:
-    # Tries V2's metadata file first.
-    pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
-                                          saver_pb2.SaverDef.V2)
-    if match_maybe_append(pathname):
-      continue
-    # Otherwise, tries V1, where the prefix is the complete pathname.
-    match_maybe_append(checkpoint_prefix)
-
-  return mtimes
-
-
-@tf_export("train.remove_checkpoint")
-def remove_checkpoint(checkpoint_prefix,
-                      checkpoint_format_version=saver_pb2.SaverDef.V2,
-                      meta_graph_suffix="meta"):
-  """Removes a checkpoint given by `checkpoint_prefix`.
-
-  Args:
-    checkpoint_prefix: The prefix of a V1 or V2 checkpoint. Typically the result
-      of `Saver.save()` or that of `tf.train.latest_checkpoint()`, regardless of
-      sharded/non-sharded or V1/V2.
-    checkpoint_format_version: `SaverDef.CheckpointFormatVersion`, defaults to
-      `SaverDef.V2`.
-    meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
-  """
-  _delete_file_if_exists(
-      _meta_graph_filename(checkpoint_prefix, meta_graph_suffix))
-  if checkpoint_format_version == saver_pb2.SaverDef.V2:
-    # V2 has a metadata file and some data files.
-    _delete_file_if_exists(checkpoint_prefix + ".index")
-    _delete_file_if_exists(checkpoint_prefix + ".data-?????-of-?????")
-  else:
-    # V1, Legacy.  Exact match on the data file.
-    _delete_file_if_exists(checkpoint_prefix)
-
-
-def _delete_file_if_exists(filespec):
-  """Deletes files matching `filespec`."""
-  for pathname in file_io.get_matching_files(filespec):
-    file_io.delete_file(pathname)
-
-
-def _meta_graph_filename(checkpoint_filename, meta_graph_suffix="meta"):
-  """Returns the meta graph filename.
-
-  Args:
-    checkpoint_filename: Name of the checkpoint file.
-    meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
-
-  Returns:
-    MetaGraph file name.
-  """
-  # If the checkpoint_filename is sharded, the checkpoint_filename could
-  # be of format model.ckpt-step#-?????-of-shard#. For example,
-  # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
-  basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
-  meta_graph_filename = ".".join([basename, meta_graph_suffix])
-  return meta_graph_filename
+def _wrap_restore_error_with_msg(err, extra_verbiage):
+  err_msg = ("Restoring from checkpoint failed. This is most likely "
+             "due to {} from the checkpoint. Please ensure that you "
+             "have not altered the graph expected based on the checkpoint. "
+             "Original error:\n\n{}").format(extra_verbiage, err.message)
+  return err.__class__(err.node_def, err.op, err_msg)
 
 
 ops.register_proto_function(
@@ -2144,3 +1806,92 @@ ops.register_proto_function(
     proto_type=saver_pb2.SaverDef,
     to_proto=Saver.to_proto,
     from_proto=Saver.from_proto)
+
+
+def object_graph_key_mapping(checkpoint_path):
+  """Return name to key mappings from the checkpoint.
+
+  Args:
+    checkpoint_path: string, path to object-based checkpoint
+
+  Returns:
+    Dictionary mapping tensor names to checkpoint keys.
+  """
+  reader = pywrap_tensorflow.NewCheckpointReader(checkpoint_path)
+  object_graph_string = reader.get_tensor(
+      checkpointable.OBJECT_GRAPH_PROTO_KEY)
+  object_graph_proto = (
+      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+  object_graph_proto.ParseFromString(object_graph_string)
+  names_to_keys = {}
+  for node in object_graph_proto.nodes:
+    for attribute in node.attributes:
+      names_to_keys[attribute.full_name] = attribute.checkpoint_key
+  return names_to_keys
+
+
+def saver_from_object_based_checkpoint(
+    checkpoint_path, var_list=None, builder=None, names_to_keys=None,
+    cached_saver=None):
+  """Return a `Saver` which reads from an object-based checkpoint.
+
+  This function validates that all variables in the variables list are remapped
+  in the object-based checkpoint (or `names_to_keys` dict if provided). A
+  saver will be created with the list of remapped variables.
+
+  The `cached_saver` argument allows the user to pass in a previously created
+  saver, so multiple `saver.restore()` calls don't pollute the graph when graph
+  building. This assumes that keys are consistent, meaning that the
+    1) `checkpoint_path` checkpoint, and
+    2) checkpoint used to create the `cached_saver`
+  are the same type of object-based checkpoint. If this argument is set, this
+  function will simply validate that all variables have been remapped by the
+  checkpoint at `checkpoint_path`.
+
+  Note that in general, `tf.train.Checkpoint` should be used to restore/save an
+  object-based checkpoint.
+
+  Args:
+    checkpoint_path: string, path to object-based checkpoint
+    var_list: list of `Variables` that appear in the checkpoint. If `None`,
+      `var_list` will be set to all saveable objects.
+    builder: a `BaseSaverBuilder` instance. If `None`, a new `BulkSaverBuilder`
+      will be created.
+    names_to_keys: dict mapping string tensor names to checkpooint keys. If
+      `None`, this dict will be generated from the checkpoint file.
+    cached_saver: Cached `Saver` object with remapped variables.
+
+  Returns:
+    `Saver` with remapped variables for reading from an object-based checkpoint.
+
+  Raises:
+    ValueError if the checkpoint provided is not an object-based checkpoint.
+    NotFoundError: If one of the variables in `var_list` can not be found in the
+      checkpoint. This could mean the checkpoint or `names_to_keys` mapping is
+      missing the variable.
+  """
+  if names_to_keys is None:
+    try:
+      names_to_keys = object_graph_key_mapping(checkpoint_path)
+    except errors.NotFoundError:
+      raise ValueError("Checkpoint in %s not an object-based checkpoint."
+                       % checkpoint_path)
+  if var_list is None:
+    var_list = variables._all_saveable_objects()  # pylint: disable=protected-access
+  if builder is None:
+    builder = BulkSaverBuilder()
+
+  saveables = builder._ValidateAndSliceInputs(var_list)  # pylint: disable=protected-access
+  for saveable in saveables:
+    for spec in saveable.specs:
+      if spec.name not in names_to_keys:
+        raise errors.NotFoundError(
+            None, None,
+            message=("Attempting to load an object-based checkpoint using "
+                     "variable names, but could not find %s in the "
+                     "checkpoint.") % spec.name)
+      spec.name = names_to_keys[spec.name]
+
+  if cached_saver is None:
+    return Saver(saveables)
+  return cached_saver

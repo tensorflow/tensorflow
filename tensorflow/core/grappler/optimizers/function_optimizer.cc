@@ -629,9 +629,12 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       }
     }
 
-    // Add the node name as a prefix to avoid collisions after inlining.
-    func_body_node.set_name(
-        strings::StrCat(func_node.name(), "/", func_body_node.name()));
+    // Add the function node name as a prefix 1) to node name to avoid
+    // collisions; 2) to frame name to avoid multiple LoopCond nodes in one
+    // frame after inlining.
+    const string prefix = strings::StrCat(func_node.name(), "/");
+    TF_RETURN_IF_ERROR(
+        AddPrefixAndSuffixToNode(prefix, "" /* suffix */, &func_body_node));
 
     // Make sure the node is placed.
     func_body_node.set_device(func_node.device());

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
 
 from tensorflow.contrib.cloud.python.ops import gen_gcs_config_ops
 from tensorflow.python.framework import dtypes
@@ -120,13 +121,18 @@ class ConfigureGcsHook(training.SessionRunHook):
   def begin(self):
     if self._credentials:
       self._credentials_placeholder = array_ops.placeholder(dtypes.string)
-      self._credentials_ops = gen_gcs_config_ops.gcs_configure_credentials(
+      self._credentials_op = gen_gcs_config_ops.gcs_configure_credentials(
           self._credentials_placeholder)
+    else:
+      self._credentials_op = None
+
     if self._block_cache:
       self._block_cache_op = gen_gcs_config_ops.gcs_configure_block_cache(
           max_cache_size=self._block_cache.max_bytes,
           block_size=self._block_cache.block_size,
           max_staleness=self._block_cache.max_staleness)
+    else:
+      self._block_cache_op = None
 
   def after_create_session(self, session, coord):
     del coord
@@ -183,6 +189,8 @@ def configure_colab_session(session):
     session: A `tf.Session` session.
   """
   # Read from the application default credentials (adc).
-  with open('/content/datalab/adc.json') as f:
+  adc_filename = os.environ.get(
+      'GOOGLE_APPLICATION_CREDENTIALS', '/content/adc.json')
+  with open(adc_filename) as f:
     data = json.load(f)
   configure_gcs(session, credentials=data)
