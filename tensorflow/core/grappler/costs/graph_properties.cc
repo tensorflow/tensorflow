@@ -804,8 +804,9 @@ class SymbolicShapeRefiner {
         CHECK_NOTNULL(function_library_.Find(function_node->op()));
 
     GrapplerFunctionItem grappler_function_item;
-    TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
-        *function_def, function_library_, &grappler_function_item));
+    TF_RETURN_IF_ERROR(
+        MakeGrapplerFunctionItem(*function_def, function_library_,
+                                 graph_def_version_, &grappler_function_item));
 
     if (grappler_function_item.inputs().size() > function_node->input_size()) {
       return errors::FailedPrecondition(
