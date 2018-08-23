@@ -932,7 +932,7 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
   Array4D<float> expected_array({{{{2514, 2685}}}});
-  Array4D<float> expected_array_bf16({{{{2512, 2672}}}});
+  Array4D<float> expected_array_bf16({{{{2512, 2688}}}});
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(
       use_bfloat16_ ? expected_array_bf16 : expected_array);
@@ -1009,7 +1009,7 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensions) {
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
   Array4D<float> expected_array({{{{2514, 2685}}}});
-  Array4D<float> expected_array_bf16({{{{2512, 2672}}}});
+  Array4D<float> expected_array_bf16({{{{2512, 2688}}}});
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(
       use_bfloat16_ ? expected_array_bf16 : expected_array);
