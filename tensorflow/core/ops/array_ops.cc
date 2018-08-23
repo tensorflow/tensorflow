@@ -2583,6 +2583,9 @@ REGISTER_OP("ExtractVolumePatches")
       }
 
       /*
+      // TODO(hsgkim): Enable rates.
+      // See extract_volume_patches_op.cc for why rates are disabled now.
+
       std::vector<int32> rates;
       TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
       if (rates.size() != 5) {
