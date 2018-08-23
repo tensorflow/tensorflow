@@ -154,14 +154,20 @@ class FunctionDefToGraphDefTest(test.TestCase):
     self.assertDictEqual(
         tensor_name_map, {
             "x": "x:0",
+            "^x": "^x",
             "y": "y:0",
+            "^y": "^y",
             "z": "z:0",
+            "^z": "^z",
             "foo_1:d:0": "foo_1:0",
             "foo_1:e:0": "foo_1:1",
+            "^foo_1": "^foo_1",
             "list_output:a:0": "list_output:0",
             "list_output:a:1": "list_output:1",
+            "^list_output": "^list_output",
             "foo_2:d:0": "foo_2:0",
             "foo_2:e:0": "foo_2:1",
+            "^foo_2": "^foo_2",
         })
 
   def testShapes(self):
@@ -210,6 +216,26 @@ class FunctionDefToGraphDefTest(test.TestCase):
                 x_ph: 5.0,
                 y_ph: 10.0
             }), 30.0)
+
+
+  def testControlDependencies(self):
+
+    def fn(inp):
+      x = constant_op.constant(2.0, name="x")
+      # TODO(b/79881896): Test external control dependency once that's
+      # supported.
+      with ops.control_dependencies([x, inp]):
+        constant_op.constant(3.0, name="y")
+      return 4.0
+
+    fdef = function._DefinedFunction(
+        fn, ["inp"], [dtypes.float32]).definition
+    func_graph = function_def_to_graph.function_def_to_graph(fdef)
+
+    op = func_graph.get_operation_by_name("y")
+    self.assertEqual(len(op.control_inputs), 2)
+    self.assertEqual(op.control_inputs[0].name, "x")
+    self.assertEqual(op.control_inputs[1].name, "inp")
 
 
 if __name__ == "__main__":

@@ -144,6 +144,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
 
   for arg_def in fdef.signature.input_arg:
     nested_to_flat_tensor_name[arg_def.name] = "{}:0".format(arg_def.name)
+    control_name = "^" + arg_def.name
+    nested_to_flat_tensor_name[control_name] = control_name
 
   for node_def in fdef.node_def:
     op_def = ops.get_default_graph()._get_op_def(node_def.op)  # pylint: disable=protected-access
@@ -172,6 +174,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
         flat_name = "{}:{}".format(node_def.name, flattened_index)
         nested_to_flat_tensor_name[nested_name] = flat_name
         flattened_index += 1
+      control_name = "^" + node_def.name
+      nested_to_flat_tensor_name[control_name] = control_name
 
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:
