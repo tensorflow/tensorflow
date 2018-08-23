@@ -355,6 +355,15 @@ class ResourceVariable(variables.RefVariable):
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
 
+    if isinstance(initial_value, ops.Tensor) and hasattr(
+        initial_value, "graph") and initial_value.graph.building_function:
+      raise ValueError("Tensor-typed variable initializers must either be "
+                       "wrapped in an init_scope or callable "
+                       "(e.g., `tf.Variable(lambda : "
+                       "tf.truncated_normal([10, 40]))`) when building "
+                       "functions. Please file a feature request if this "
+                       "restriction inconveniences you.")
+
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if not isinstance(collections, (list, tuple, set)):
