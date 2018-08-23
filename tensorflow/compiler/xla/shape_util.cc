@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
@@ -53,7 +54,7 @@ using ::absl::StrCat;
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
 
 string ShapeIndexView::ToString() const {
-  return StrCat("{", tensorflow::str_util::Join(indices_, ","), "}");
+  return StrCat("{", absl::StrJoin(indices_, ","), "}");
 }
 
 bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
@@ -511,7 +512,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
     return text;
   }
   return StrCat(LowercasePrimitiveTypeName(shape.element_type()), "[",
-                tensorflow::str_util::Join(shape.dimensions(), ","), "]");
+                absl::StrJoin(shape.dimensions(), ","), "]");
 }
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
@@ -547,7 +548,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
                                     : "(unknown)",
                                 ": ", HumanString(shape)));
   }
-  return StrCat("(", tensorflow::str_util::Join(parameters, ", "), ") -> ",
+  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
                 HumanString(program_shape.result()));
 }
 
@@ -1175,8 +1176,7 @@ Status ForEachMutableSubshapeHelper(
     CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
         << "shape=" << HumanStringWithLayout(shape)
         << ", new_shape=" << HumanStringWithLayout(new_shape)
-        << ", permutation={" << tensorflow::str_util::Join(permutation, ",")
-        << "}";
+        << ", permutation={" << absl::StrJoin(permutation, ",") << "}";
   }
   return new_shape;
 }

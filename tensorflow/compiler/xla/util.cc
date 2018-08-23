@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -152,10 +153,9 @@ string Reindent(absl::string_view original,
                 const absl::string_view indentation) {
   std::vector<string> pieces =
       absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
-  return tensorflow::str_util::Join(
-      pieces, "\n", [indentation](string* out, string s) {
-        absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
-      });
+  return absl::StrJoin(pieces, "\n", [indentation](string* out, string s) {
+    absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
+  });
 }
 
 bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank) {

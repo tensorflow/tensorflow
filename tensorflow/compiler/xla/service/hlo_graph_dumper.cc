@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -53,10 +54,10 @@ using ::absl::nullopt;
 using ::absl::optional;
 using ::absl::StrAppend;
 using ::absl::StrCat;
+using ::absl::StrJoin;
 using ::tensorflow::Env;
 using ::tensorflow::WriteStringToFile;
 using ::tensorflow::io::JoinPath;
-using ::tensorflow::str_util::Join;
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -559,10 +560,10 @@ stylesheet="
     }
   }
 
-  return Printf(fmt, graph_label, Join(edge_css_rules, "\n"));
+  return Printf(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
 }
 
-string HloDotDumper::Footer() { return StrCat(Join(edges_, "\n"), "\n}"); }
+string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
 
 bool HloDotDumper::ShouldShowFusionSubcomputation(const HloInstruction* instr) {
   CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
@@ -896,7 +897,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       }
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
@@ -1112,7 +1113,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                            instr->metadata().source_line()));
   }
 
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(
@@ -1176,7 +1177,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
                  100 * hlo_cycles_executed / total_cycles_executed));
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 // Gets the total number of array elements in the given shape.  For tuples, this
@@ -1269,7 +1270,7 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
                              HtmlLikeStringSanitize(*computation_type)));
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 const HloInstruction* HloDotDumper::GetNodeForEdge(

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,9 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::absl::StrCat;
-using ::tensorflow::str_util::Join;
 
 bool HloBuffer::operator==(const HloBuffer& other) const {
   bool equal = id() == other.id();
@@ -59,10 +57,11 @@ std::vector<HloPosition> HloBuffer::ComputePositions() const {
 }
 
 string HloBuffer::ToString() const {
-  return StrCat("HloBuffer ", id_, ", values: ",
-                Join(values_, ", ", [](string* result, const HloValue* value) {
-                  result->append(value->ToShortString());
-                }));
+  return absl::StrCat(
+      "HloBuffer ", id_, ", values: ",
+      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
+        result->append(value->ToShortString());
+      }));
 }
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
@@ -52,11 +53,10 @@ string DebugString(CondStateMap::CondId cond_state) {
   if (cond_state == nullptr || cond_state->empty()) return "[]";
   return strings::StrCat(
       "[",
-      tensorflow::str_util::Join(
-          *cond_state, ", ",
-          [](string* output, const CondStateMap::CondNode& node) {
-            strings::StrAppend(output, node.ToString());
-          }),
+      absl::StrJoin(*cond_state, ", ",
+                    [](string* output, const CondStateMap::CondNode& node) {
+                      strings::StrAppend(output, node.ToString());
+                    }),
       "]");
 }
 
@@ -169,10 +169,10 @@ using CondArgNodes = std::vector<CondArgNode>;
 string DebugString(const CondArgNodes& nodes) {
   return strings::StrCat(
       "[",
-      tensorflow::str_util::Join(nodes, ", ",
-                                 [](string* output, const CondArgNode& node) {
-                                   strings::StrAppend(output, node.ToString());
-                                 }),
+      absl::StrJoin(nodes, ", ",
+                    [](string* output, const CondArgNode& node) {
+                      strings::StrAppend(output, node.ToString());
+                    }),
       "]");
 }
 

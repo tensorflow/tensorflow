@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -34,8 +35,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-
-using ::tensorflow::str_util::Join;
 
 class SliceTest : public ClientLibraryTestBase {};
 
@@ -450,13 +449,11 @@ struct R4Spec {
 
 string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
-  return absl::StrCat(                             //
-      "input_", Join(spec.input_dims, "x"),        //
-      "__layout_", Join(spec.input_layout, ""),    //
-      "__starts_", Join(spec.slice_starts, "x"),   //
-      "__limits_", Join(spec.slice_limits, "x"),   //
-      "__strides_", Join(spec.slice_strides, "x")  //
-  );
+  return absl::StrCat("input_", absl::StrJoin(spec.input_dims, "x"),
+                      "__layout_", absl::StrJoin(spec.input_layout, ""),
+                      "__starts_", absl::StrJoin(spec.slice_starts, "x"),
+                      "__limits_", absl::StrJoin(spec.slice_limits, "x"),
+                      "__strides_", absl::StrJoin(spec.slice_strides, "x"));
 }
 
 class SliceR4Test : public ClientLibraryTestBase,

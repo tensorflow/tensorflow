@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -33,8 +34,8 @@ using UnknownArray = Analysis::UnknownArray;
 using ConstantArray = Analysis::ConstantArray;
 using ReshapedArray = Analysis::ReshapedArray;
 using ScalarIndexedArray = Analysis::ScalarIndexedArray;
+using absl::StrJoin;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::str_util::Join;
 }  // namespace
 
 string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
@@ -71,7 +72,7 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
           "(", name, " ", ToString(indexed_array->source(), print_constants),
           " ", ToString(indexed_array->indices(), print_constants), " ",
           indexed_array->source_dim(), "->[",
-          Join(indexed_array->output_dims(), ","), "])");
+          StrJoin(indexed_array->output_dims(), ","), "])");
     }
   }
 }
@@ -377,8 +378,8 @@ std::vector<ReshapePassthroughDimPair> ComputeReshapePassthroughDimPairs(
     CHECK_NE(candidate_operand_dim, 0)
         << "result_dim = " << result_dim
         << ", result_subarray_size = " << result_subarray_size
-        << ", result_shape = [" << Join(result_shape, ",") << "]"
-        << ", operand_shape = [" << Join(operand_shape, ",") << "]";
+        << ", result_shape = [" << StrJoin(result_shape, ",") << "]"
+        << ", operand_shape = [" << StrJoin(operand_shape, ",") << "]";
 
     if (candidate_operand_dim != -1 &&
         result_shape[result_dim] == operand_shape[candidate_operand_dim - 1]) {
@@ -397,9 +398,10 @@ std::vector<ReshapePassthroughDimPair> ComputeReshapePassthroughDimPairs(
                         return absl::StrCat(value.result_dim, "->",
                                             value.operand_dim);
                       });
-    VLOG(3) << "For a reshape from [" << Join(operand_shape, ",") << "] to ["
-            << Join(result_shape, ",") << "] passthrough indices are ["
-            << Join(result_strings, ",") << "] (legend: `result`->`operand`)";
+    VLOG(3) << "For a reshape from [" << StrJoin(operand_shape, ",") << "] to ["
+            << StrJoin(result_shape, ",") << "] passthrough indices are ["
+            << StrJoin(result_strings, ",")
+            << "] (legend: `result`->`operand`)";
   }
 
   DCHECK(absl::c_is_sorted(
@@ -441,7 +443,7 @@ int64 FindSourcePositionForPassthroughResultDim(ArraySlice<int64> operand_shape,
                                                 ArraySlice<int64> result_shape,
                                                 int64 source_passthrough_dim) {
   VLOG(3) << "FindSourcePositionForPassthroughResultDim(["
-          << Join(operand_shape, ",") << "], [" << Join(result_shape, ",")
+          << StrJoin(operand_shape, ",") << "], [" << StrJoin(result_shape, ",")
           << "], " << source_passthrough_dim << ")";
 
   int64 indexed_source_subarray_size =
@@ -753,9 +755,9 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
   if (source_dim_for_new_scalar_indexed_node == -1) {
     VLOG(3) << "Could not compute the source dim for the new scalar indexed "
                "node: scalar_indexed_source_shape = ["
-            << Join(scalar_indexed_source_shape.dimensions(), ",")
+            << StrJoin(scalar_indexed_source_shape.dimensions(), ",")
             << "] and new_scalar_indexed_source_shape = ["
-            << Join(new_scalar_indexed_source_shape, ",") << "]";
+            << StrJoin(new_scalar_indexed_source_shape, ",") << "]";
     return nullptr;
   }
 

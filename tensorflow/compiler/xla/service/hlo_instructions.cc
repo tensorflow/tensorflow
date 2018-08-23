@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -35,7 +36,7 @@ namespace {
 using ::absl::CEscape;
 using ::absl::StrAppend;
 using ::absl::StrCat;
-using ::tensorflow::str_util::Join;
+using ::absl::StrJoin;
 
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {
@@ -163,7 +164,7 @@ HloInstructionProto HloFftInstruction::ToProto() const {
 std::vector<string> HloFftInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("fft_type=", FftType_Name(fft_type())),
-          StrCat("fft_length={", Join(fft_length(), ","), "}")};
+          StrCat("fft_length={", StrJoin(fft_length(), ","), "}")};
 }
 
 bool HloFftInstruction::IdenticalSlowPath(
@@ -323,10 +324,10 @@ std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
   std::vector<string> replica_group_str;
   for (const ReplicaGroup& group : replica_groups()) {
     replica_group_str.push_back(
-        StrCat("{", Join(group.replica_ids(), ","), "}"));
+        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
   }
   result.push_back(
-      StrCat("replica_groups={", Join(replica_group_str, ","), "}"));
+      StrCat("replica_groups={", StrJoin(replica_group_str, ","), "}"));
   return result;
 }
 
@@ -433,7 +434,7 @@ HloInstructionProto HloReverseInstruction::ToProto() const {
 
 std::vector<string> HloReverseInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloReverseInstruction::IdenticalSlowPath(
@@ -472,7 +473,7 @@ HloInstructionProto HloConcatenateInstruction::ToProto() const {
 
 std::vector<string> HloConcatenateInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloConcatenateInstruction::IdenticalSlowPath(
@@ -515,7 +516,7 @@ HloInstructionProto HloReduceInstruction::ToProto() const {
 
 std::vector<string> HloReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloReduceInstruction::IdenticalSlowPath(
@@ -558,7 +559,7 @@ HloInstructionProto HloSortInstruction::ToProto() const {
 
 std::vector<string> HloSortInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloSortInstruction::IdenticalSlowPath(
@@ -591,7 +592,7 @@ HloTransposeInstruction::HloTransposeInstruction(
                    Permute(dimensions, shape.dimensions()).begin()))
       << "shape: " << ShapeUtil::HumanString(shape)
       << ", operand->shape(): " << ShapeUtil::HumanString(shape)
-      << ", dimensions: {" << Join(dimensions, ", ") << "}";
+      << ", dimensions: {" << StrJoin(dimensions, ", ") << "}";
   AppendOperand(operand);
 }
 
@@ -612,7 +613,7 @@ HloInstructionProto HloTransposeInstruction::ToProto() const {
 
 std::vector<string> HloTransposeInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloTransposeInstruction::IdenticalSlowPath(
@@ -651,7 +652,7 @@ HloInstructionProto HloBroadcastInstruction::ToProto() const {
 
 std::vector<string> HloBroadcastInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloBroadcastInstruction::IdenticalSlowPath(
@@ -712,7 +713,7 @@ bool HloMapInstruction::IsElementwiseImpl(
 
 std::vector<string> HloMapInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloMapInstruction::IdenticalSlowPath(
@@ -770,7 +771,7 @@ std::vector<string> HloSliceInstruction::ExtraAttributesToStringImpl(
     bounds.push_back(
         StrCat("[", slice_starts_[i], ":", slice_limits_[i], stride_str, "]"));
   }
-  return {StrCat("slice={", Join(bounds, ", "), "}")};
+  return {StrCat("slice={", StrJoin(bounds, ", "), "}")};
 }
 
 bool HloSliceInstruction::IdenticalSlowPath(
@@ -1907,8 +1908,8 @@ HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
 
 std::vector<string> HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {
-      StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}")};
+  return {StrCat("dynamic_slice_sizes={", StrJoin(dynamic_slice_sizes(), ","),
+                 "}")};
 }
 
 bool HloDynamicSliceInstruction::IdenticalSlowPath(
@@ -1944,17 +1945,17 @@ string HloGatherInstruction::GatherDimensionNumbersToString() const {
   CHECK(gather_dimension_numbers_ != nullptr);
   string offset_dims =
       StrCat("offset_dims={",
-             Join(gather_dimension_numbers_->offset_dims(), ","), "}");
-  string collapsed_slice_dims =
-      StrCat("collapsed_slice_dims={",
-             Join(gather_dimension_numbers_->collapsed_slice_dims(), ","), "}");
+             StrJoin(gather_dimension_numbers_->offset_dims(), ","), "}");
+  string collapsed_slice_dims = StrCat(
+      "collapsed_slice_dims={",
+      StrJoin(gather_dimension_numbers_->collapsed_slice_dims(), ","), "}");
   string start_index_map =
       StrCat("start_index_map={",
-             Join(gather_dimension_numbers_->start_index_map(), ","), "}");
+             StrJoin(gather_dimension_numbers_->start_index_map(), ","), "}");
   string index_vector_dim = StrCat(
       "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
 
-  return Join<std::initializer_list<string>>(
+  return StrJoin<std::initializer_list<string>>(
       {offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim},
       ", ");
 }
@@ -1991,7 +1992,7 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
 std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {GatherDimensionNumbersToString(),
-          StrCat("slice_sizes={", Join(gather_slice_sizes(), ","), "}")};
+          StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
 }
 
 bool HloGatherInstruction::IdenticalSlowPath(
@@ -2030,20 +2031,20 @@ HloScatterInstruction::HloScatterInstruction(
 }
 
 string HloScatterInstruction::ScatterDimensionNumbersToString() const {
-  string update_window_dims =
-      StrCat("update_window_dims={",
-             Join(scatter_dimension_numbers().update_window_dims(), ","), "}");
+  string update_window_dims = StrCat(
+      "update_window_dims={",
+      StrJoin(scatter_dimension_numbers().update_window_dims(), ","), "}");
   string inserted_window_dims = StrCat(
       "inserted_window_dims={",
-      Join(scatter_dimension_numbers().inserted_window_dims(), ","), "}");
+      StrJoin(scatter_dimension_numbers().inserted_window_dims(), ","), "}");
   string scatter_dims_to_operand_dims = StrCat(
       "scatter_dims_to_operand_dims={",
-      Join(scatter_dimension_numbers().scatter_dims_to_operand_dims(), ","),
+      StrJoin(scatter_dimension_numbers().scatter_dims_to_operand_dims(), ","),
       "}");
   string index_vector_dim = StrCat(
       "index_vector_dim=", scatter_dimension_numbers().index_vector_dim());
 
-  return Join<std::initializer_list<string>>(
+  return StrJoin<std::initializer_list<string>>(
       {update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims,
        index_vector_dim},
       ", ");

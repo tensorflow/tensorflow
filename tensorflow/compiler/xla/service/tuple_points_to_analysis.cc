@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,7 +37,7 @@ namespace xla {
 
 string BufferAlias::ToString() const {
   return absl::StrCat("BufferAlias(", instruction_->name(), "[",
-                      tensorflow::str_util::Join(index_, ","), "])");
+                      absl::StrJoin(index_, ","), "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -495,8 +496,7 @@ StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
   if (buffers.size() != 1 || buffers[0]->instruction() != instruction) {
     return FailedPrecondition(
         "instruction %s does not define buffer at index {%s}",
-        instruction->name().c_str(),
-        tensorflow::str_util::Join(index, ",").c_str());
+        instruction->name().c_str(), absl::StrJoin(index, ",").c_str());
   }
   return buffers[0];
 }
@@ -590,18 +590,16 @@ void TuplePointsToAnalysis::InstructionToString(
   absl::StrAppend(output, prefix, "  instruction ",
                   instruction->ToShortString(), ":\n");
   const PointsToSet& points_to_set = GetPointsToSet(instruction);
-  points_to_set.ForEachElement(
-      [&prefix, &output](const ShapeIndex& index,
-                         const PointsToSet::BufferList& points_to) {
-        absl::StrAppend(output, prefix, "    {",
-                        tensorflow::str_util::Join(index, ","), "}: ",
-                        tensorflow::str_util::Join(
-                            points_to, ", ",
-                            [](string* out, const LogicalBuffer* source) {
-                              out->append(source->ToString());
-                            }),
-                        "\n");
-      });
+  points_to_set.ForEachElement([&prefix, &output](
+                                   const ShapeIndex& index,
+                                   const PointsToSet::BufferList& points_to) {
+    absl::StrAppend(output, prefix, "    {", absl::StrJoin(index, ","), "}: ",
+                    absl::StrJoin(points_to, ", ",
+                                  [](string* out, const LogicalBuffer* source) {
+                                    out->append(source->ToString());
+                                  }),
+                    "\n");
+  });
 }
 
 bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(

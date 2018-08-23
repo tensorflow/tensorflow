@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -94,7 +95,7 @@ PlatformUtil::GetSupportedPlatforms() {
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = tensorflow::str_util::Join(
+  string platforms_string = absl::StrJoin(
       platforms, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
@@ -118,7 +119,7 @@ PlatformUtil::GetSupportedPlatforms() {
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = tensorflow::str_util::Join(
+  string platforms_string = absl::StrJoin(
       platforms, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
@@ -157,7 +158,7 @@ PlatformUtil::GetSupportedPlatforms() {
   if (matched.size() == 1) {
     return matched[0];
   }
-  string matched_string = tensorflow::str_util::Join(
+  string matched_string = absl::StrJoin(
       matched, ", ",
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(

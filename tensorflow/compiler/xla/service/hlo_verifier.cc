@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <set>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -688,10 +689,10 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
 
 string ComputationsToString(
     tensorflow::gtl::ArraySlice<HloComputation*> computations) {
-  return tensorflow::str_util::Join(
-      computations, ",", [](string* s, const HloComputation* computation) {
-        s->append(computation->name());
-      });
+  return absl::StrJoin(computations, ",",
+                       [](string* s, const HloComputation* computation) {
+                         s->append(computation->name());
+                       });
 }
 
 // Verifies various invariants about the structure of the HLO:

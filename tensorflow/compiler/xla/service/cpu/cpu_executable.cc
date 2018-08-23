@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -182,7 +183,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     VLOG(3) << "    params = nullptr";
     VLOG(3) << tensorflow::strings::Printf(
         "    temps = [%s]",
-        tensorflow::str_util::Join(buffer_pointers, ", ", ptr_printer).c_str());
+        absl::StrJoin(buffer_pointers, ", ", ptr_printer).c_str());
     VLOG(3) << tensorflow::strings::Printf("    profile_counters = %p",
                                            profile_counters);
   }

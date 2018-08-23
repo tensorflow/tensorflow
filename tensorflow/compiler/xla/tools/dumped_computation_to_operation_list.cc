@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -44,7 +45,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
   explicit OperationDumper(const string& path) : path_(path) {}
 
   Status DefaultAction(HloInstruction* hlo) override {
-    string params = tensorflow::str_util::Join(
+    string params = absl::StrJoin(
         hlo->operands(), ", ", [](string* out, const HloInstruction* operand) {
           absl::StrAppend(out, ShapeUtil::HumanString(operand->shape()));
         });

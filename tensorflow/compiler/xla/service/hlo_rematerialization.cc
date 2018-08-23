@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -207,11 +208,10 @@ class InstructionList {
       Item* to_insert, tensorflow::gtl::ArraySlice<Item*> before_instructions) {
     VLOG(3) << "InsertBeforeInstructions: " << to_insert->instruction->name()
             << " before {"
-            << tensorflow::str_util::Join(before_instructions, ", ",
-                                          [](string* out, Item* item) {
-                                            absl::StrAppend(
-                                                out, item->instruction->name());
-                                          })
+            << absl::StrJoin(before_instructions, ", ",
+                             [](string* out, Item* item) {
+                               absl::StrAppend(out, item->instruction->name());
+                             })
             << "}";
 
     // Find the minimal position number of any instruction in
@@ -778,7 +778,7 @@ bool MemoryUsageTracker::Check() const {
     CHECK(elements_are_unique(defined_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique defined buffers: "
-        << tensorflow::str_util::Join(
+        << absl::StrJoin(
                defined_buffers, ", ", [this](string* out, BufferId buffer_id) {
                  absl::StrAppend(out, buffers_.at(buffer_id).ToString());
                });
@@ -800,7 +800,7 @@ bool MemoryUsageTracker::Check() const {
     CHECK(elements_are_unique(used_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique used buffers: "
-        << tensorflow::str_util::Join(
+        << absl::StrJoin(
                used_buffers, ", ", [this](string* out, BufferId buffer_id) {
                  absl::StrAppend(out, buffers_.at(buffer_id).ToString());
                });

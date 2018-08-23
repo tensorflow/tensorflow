@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -905,7 +906,7 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
                       instruction->name().c_str(),
-                      tensorflow::str_util::Join(index, ",").c_str(),
+                      absl::StrJoin(index, ",").c_str(),
                       buffer->ToString().c_str(),
                       ShapeUtil::HumanStringWithLayout(instruction_subshape)
                           .c_str(),
@@ -1396,8 +1397,8 @@ StatusOr<Layout> InferArrayLayout(
       return FailedPrecondition(
           "Array at index {%s} in instruction %s aliases buffers %s "
           "and %s which have different layouts",
-          tensorflow::str_util::Join(index, ",").c_str(),
-          instruction->name().c_str(), source_buffers[0]->ToString().c_str(),
+          absl::StrJoin(index, ",").c_str(), instruction->name().c_str(),
+          source_buffers[0]->ToString().c_str(),
           source_buffer->ToString().c_str());
     }
   }
