@@ -27,11 +27,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class ReduceWindowOp : public XlaOpKernel {
+class XlaSelectAndScatterOp : public XlaOpKernel {
  public:
-  explicit ReduceWindowOp(OpKernelConstruction* context)
+  explicit XlaSelectAndScatterOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("computation", &computation_));
+    OP_REQUIRES_OK(context, context->GetAttr("select", &select_computation_));
+    OP_REQUIRES_OK(context, context->GetAttr("scatter", &scatter_computation_));
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -57,32 +58,54 @@ class ReduceWindowOp : public XlaOpKernel {
                     "rank (",
                     window_strides.size(), " vs. ", rank, ")"));
 
-    // Build the reducer function.
-    XlaCompiler::Argument reducer_arg;
-    reducer_arg.kind = XlaCompiler::Argument::kParameter;
-    reducer_arg.type = dtype;
-    reducer_arg.shape = TensorShape();
-
     XlaCompiler::CompileOptions compile_options;
     compile_options.use_tuple_arg = false;
     compile_options.resolve_compile_time_constants = false;
     compile_options.is_entry_computation = false;
     compile_options.always_return_tuple = false;
-    XlaCompiler::CompilationResult reducer;
+
+    // Build the select function.
+    XlaCompiler::Argument select_arg;
+    select_arg.kind = XlaCompiler::Argument::kParameter;
+    select_arg.type = dtype;
+    select_arg.shape = TensorShape();
+
+    XlaCompiler::CompilationResult select;
     OP_REQUIRES_OK(context, context->compiler()->CompileFunction(
-                                compile_options, *computation_,
-                                {reducer_arg, reducer_arg}, &reducer));
+                                compile_options, *select_computation_,
+                                {select_arg, select_arg}, &select));
+
+    xla::Shape select_output_shape = xla::ShapeUtil::MakeShape(xla::PRED, {});
+    OP_REQUIRES(
+        context,
+        xla::ShapeUtil::Compatible(select.xla_output_shape,
+                                   select_output_shape),
+        errors::InvalidArgument(
+            "Invalid output shape of XlaSelectAndScatter select. Expected ",
+            xla::ShapeUtil::HumanString(select_output_shape), " got ",
+            xla::ShapeUtil::HumanString(select.xla_output_shape)));
+
+    // Build the scatter function.
+    XlaCompiler::Argument scatter_arg;
+    scatter_arg.kind = XlaCompiler::Argument::kParameter;
+    scatter_arg.type = dtype;
+    scatter_arg.shape = TensorShape();
+
+    XlaCompiler::CompilationResult scatter;
+    OP_REQUIRES_OK(context, context->compiler()->CompileFunction(
+                                compile_options, *scatter_computation_,
+                                {scatter_arg, scatter_arg}, &scatter));
 
     xla::Shape scalar_shape;
     OP_REQUIRES_OK(context,
                    TensorShapeToXLAShape(dtype, TensorShape(), &scalar_shape));
     OP_REQUIRES(
         context,
-        xla::ShapeUtil::Compatible(reducer.xla_output_shape, scalar_shape),
+        xla::ShapeUtil::Compatible(scatter.xla_output_shape, scalar_shape),
         errors::InvalidArgument(
-            "Invalid output shape of ReduceWindow reducer. Expected ",
+            "Invalid output shape of scatter. Expected ",
             xla::ShapeUtil::HumanString(scalar_shape), " got ",
-            xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
+            xla::ShapeUtil::HumanString(scatter.xla_output_shape)));
 
     const TensorShape padding_shape = context->InputShape("padding");
     OP_REQUIRES(context,
@@ -100,23 +123,25 @@ class ReduceWindowOp : public XlaOpKernel {
                     padding_literal.Get<int64>({i, 1})};
     }
 
-    xla::XlaOp output = xla::ReduceWindowWithGeneralPadding(
-        context->Input(0), context->Input(1), *reducer.computation,
-        window_dimensions, window_strides, padding);
+    xla::XlaOp output = xla::SelectAndScatterWithGeneralPadding(
+        context->Input("operand"), *select.computation, window_dimensions,
+        window_strides, padding, context->Input("source"),
+        context->Input("init_value"), *scatter.computation);
     context->SetOutput(0, output);
   }
 
  private:
-  const NameAttrList* computation_;
+  const NameAttrList* select_computation_;
+  const NameAttrList* scatter_computation_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReduceWindowOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaSelectAndScatterOp);
 };
 
-REGISTER_XLA_OP(Name("XlaReduceWindow")
+REGISTER_XLA_OP(Name("XlaSelectAndScatter")
                     .CompileTimeConstInput("window_dimensions")
                     .CompileTimeConstInput("window_strides")
                     .CompileTimeConstInput("padding"),
-                ReduceWindowOp);
+                XlaSelectAndScatterOp);
 
 }  // namespace
 }  // namespace tensorflow
