@@ -1037,6 +1037,8 @@ class HloInstruction {
     CHECK(has_sharding());
     return *sharding_;
   }
+  std::shared_ptr<const HloSharding> sharding_ptr() const { return sharding_; }
+
   // Returns the sharding applied to this operator, or default_ if none exists.
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
     return sharding_ ? *sharding_ : default_;
@@ -1051,7 +1053,10 @@ class HloInstruction {
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
-    sharding_ = absl::make_unique<HloSharding>(sharding);
+    sharding_ = std::make_shared<const HloSharding>(sharding);
+  }
+  void set_sharding(std::shared_ptr<const HloSharding> sharding) {
+    sharding_ = std::move(sharding);
   }
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
@@ -1652,7 +1657,10 @@ class HloInstruction {
   bool copy_elision_allowed_ = true;
 
   // The sharding, if one exists.
-  std::unique_ptr<HloSharding> sharding_;
+  // Uses std::shared_ptr to allow reuse of the same sharding object between
+  // HloInstructions and other components as HloSharding can be very large for
+  // many element tuples.
+  std::shared_ptr<const HloSharding> sharding_;
 
   // Fields used by the kDomain instruction.
   std::unique_ptr<DomainMetadata> operand_side_metadata_;

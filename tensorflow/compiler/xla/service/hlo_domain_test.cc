@@ -105,9 +105,9 @@ class OpNameMetadata : public DomainMetadata {
 };
 
 // Creator function for OpNameMetadata domains.
-std::unique_ptr<HloInstruction> OpNameDomainCreator(HloInstruction* instruction,
-                                                    HloInstruction* root,
-                                                    HloInstruction* operand) {
+HloInstruction* OpNameDomainCreator(HloInstruction* instruction,
+                                    HloInstruction* root,
+                                    HloInstruction* operand) {
   if (instruction->metadata().op_name() == root->metadata().op_name()) {
     return nullptr;
   }
@@ -115,9 +115,9 @@ std::unique_ptr<HloInstruction> OpNameDomainCreator(HloInstruction* instruction,
       absl::make_unique<OpNameMetadata>(root->metadata().op_name());
   std::unique_ptr<DomainMetadata> user_side_metadata =
       absl::make_unique<OpNameMetadata>(instruction->metadata().op_name());
-  return HloInstruction::CreateDomain(operand->shape(), operand,
-                                      std::move(operand_side_metadata),
-                                      std::move(user_side_metadata));
+  return operand->parent()->AddInstruction(HloInstruction::CreateDomain(
+      operand->shape(), operand, std::move(operand_side_metadata),
+      std::move(user_side_metadata)));
 }
 
 Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
@@ -144,7 +144,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -186,7 +186,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(!isolator_changed);
 }
@@ -213,7 +213,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -250,7 +250,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_FALSE(isolator_changed);
 }
@@ -304,7 +304,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator sharding_isolator(CreateShardingDomain);
+  HloDomainIsolator sharding_isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool sharding_isolator_changed,
                           sharding_isolator.Run(module));
   EXPECT_TRUE(sharding_isolator_changed);
@@ -358,7 +358,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -447,7 +447,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
@@ -506,7 +506,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
 
-  HloDomainIsolator isolator(CreateShardingDomain);
+  HloDomainIsolator isolator(ShardingDomainCreator{});
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
