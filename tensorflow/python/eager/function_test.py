@@ -358,6 +358,47 @@ class FunctionTest(test.TestCase):
 
     self.assertEqual(3.0, float(test_assign_add()))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorInitializationInFunctionRaisesError(self):
+    error_msg = ('Tensor-typed variable initializers must either be '
+                 'wrapped in an init_scope or callable.*')
+
+    @function.defun
+    def tensor_init():
+      with self.assertRaisesRegexp(ValueError, error_msg):
+        resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
+
+    tensor_init()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCallableTensorInitializationInFunction(self):
+
+    @function.defun
+    def tensor_init():
+      v = resource_variable_ops.ResourceVariable(
+          lambda: constant_op.constant(2.0))
+      return v.read_value()
+
+    value = tensor_init()
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(self.evaluate(value), 2.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInitScopeTensorInitializationInFunction(self):
+
+    @function.defun
+    def tensor_init():
+      with ops.init_scope():
+        const = constant_op.constant(2.0)
+      v = resource_variable_ops.ResourceVariable(const)
+      return v.read_value()
+
+    value = tensor_init()
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(self.evaluate(value), 2.0)
+
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
 
