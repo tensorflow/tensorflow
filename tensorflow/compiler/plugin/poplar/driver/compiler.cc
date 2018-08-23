@@ -206,19 +206,21 @@ class EntryVisitor : public FullVisitor {
       TF_ASSIGN_OR_RETURN(out, AddOutputTensor(graph_, resources_, seq,
                                                tensor_map, inst, i, out));
 
-      if (module_shapes.size() > i) {
-        if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
-          // Host tensor needs to be host layout
-          out = ConvertFromDeviceLayout(module_shapes[i], out);
-          non_standard_parameter_layout.insert(inst);
+      if (!UseSyntheticData()) {
+        if (module_shapes.size() > i) {
+          if (!LayoutUtil::IsMonotonicWithDim0Major(
+                  module_shapes[i].layout())) {
+            // Host tensor needs to be host layout
+            out = ConvertFromDeviceLayout(module_shapes[i], out);
+            non_standard_parameter_layout.insert(inst);
+          }
         }
+        auto fifo = graph_.addHostToDeviceFIFO(
+            GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
+            out.numElements());
+
+        seq.add(poplar::program::Copy(fifo, out));
       }
-
-      auto fifo = graph_.addHostToDeviceFIFO(
-          GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
-          out.numElements());
-
-      seq.add(poplar::program::Copy(fifo, out));
     }
     return Status::OK();
   }
@@ -245,7 +247,7 @@ class EntryVisitor : public FullVisitor {
         }
       }
 
-      if (!output_streamed[o]) {
+      if (!output_streamed[o] && !UseSyntheticData()) {
         poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
 
         auto fifo = graph_.addDeviceToHostFIFO(
@@ -284,6 +286,9 @@ class EntryVisitor : public FullVisitor {
   Status Postprocess(HloInstruction* inst) {
     // After processing each instruction, check if its output can be streamed
     // off the device
+    if (UseSyntheticData()) {
+      return Status::OK();
+    }
     if (OkToStream(inst->shape())) {
       const auto* root = inst->parent()->root_instruction();
       auto num_streaming = FlattenedXlaShape(root->shape()).size() -

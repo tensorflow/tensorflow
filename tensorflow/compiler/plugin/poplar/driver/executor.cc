@@ -18,12 +18,13 @@ limitations under the License.
 
 #include "include/json/json.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_hash.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -595,6 +596,10 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
 }
 
 Status PoplarExecutor::MoveDeviceToHost() {
+  if (UseSyntheticData()) {
+    return Status::OK();
+  }
+
   Json::Value root;
   root["tensors"] = Json::Value(Json::arrayValue);
   uint64 total_size = 0;
@@ -602,7 +607,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
   for (const auto& tc : allocations_) {
     // Set up streams
     if (tc->on_device == true && !tc->output_handle.empty()) {
-      void *buf(static_cast<void *>(tc->data));
+      void* buf(static_cast<void*>(tc->data));
       current_engine_->connectStream(tc->output_handle, buf);
 
       Json::Value tensor;
@@ -705,7 +710,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       ArgsHandleMap arg_map;
-      CreateArgsHandleMap(arg_map, args, executable);
+      if (!UseSyntheticData()) {
+        CreateArgsHandleMap(arg_map, args, executable);
+      }
 
       // Put data on the device if:
       // a) the engine has changed
@@ -713,8 +720,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       // c) it is on the device, but in the wrong place
       bool do_host_to_device = false;
       for (const auto& arg : arg_map) {
-        auto it = std::find(allocations_.begin(), allocations_.end(),
-                            arg.second.tc);
+        auto it =
+            std::find(allocations_.begin(), allocations_.end(), arg.second.tc);
         if (it == allocations_.end()) {
           return tensorflow::errors::InvalidArgument(
               "Argument isn't allocated on device: ", (void*)arg.second.tc);
@@ -735,10 +742,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       // d)   output buffer isn't currently in the right place for the new input
       bool do_device_to_host = false;
       for (const auto& tc : allocations_) {
-        if (tc->on_device == true &&
-            !tc->output_handle.empty()) {
-          if (engine_changed ||
-              arg_map.count(tc->input_handle) == 0 ||
+        if (tc->on_device == true && !tc->output_handle.empty()) {
+          if (engine_changed || arg_map.count(tc->input_handle) == 0 ||
               tc != arg_map.at(tc->input_handle).tc) {
             do_device_to_host = true;
           }
@@ -779,7 +784,6 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
             std::vector<std::pair<std::string, int64>> stream_list;
             void* buf(static_cast<void*>(tc->data));
             if (!arg.second.streamed) {
-
               if (arg.second.fn != nullptr) {
                 tc->converted_data = arg.second.fn(buf, tc->size, 0);
                 buf = tc->converted_data.data();
@@ -829,8 +833,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       try {
         // Input streams
         for (auto arg : arg_map) {
-          TensorControl *tc = arg.second.tc;
-          void *buf(static_cast<void *>(tc->data));
+          TensorControl* tc = arg.second.tc;
+          void* buf(static_cast<void*>(tc->data));
           if (arg.second.streamed) {
             current_engine_->connectStream(arg.first, buf);
           }
