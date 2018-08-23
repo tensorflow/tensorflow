@@ -971,3 +971,49 @@ class SqlDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return self._output_types
+
+
+class LMDBDataset(dataset_ops.Dataset):
+  """A LMDB Dataset that reads the lmdb file."""
+
+  def __init__(self, filenames):
+    """Create a `LMDBDataset`.
+
+    `LMDBDataset` allows a user to read data from a mdb file as
+    (key value) pairs sequentially.
+    For example:
+    ```python
+    dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    # Prints the (key, value) pairs inside a lmdb file.
+    while True:
+      try:
+        print(sess.run(next_element))
+      except tf.errors.OutOfRangeError:
+        break
+    ```
+    Args:
+      filenames: A `tf.string` tensor containing one or more filenames.
+    """
+    super(LMDBDataset, self).__init__()
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+
+  def _as_variant_tensor(self):
+    return contrib_gen_dataset_ops.lmdb_dataset(
+        self._filenames,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return ops.Tensor, ops.Tensor
+
+  @property
+  def output_shapes(self):
+    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
+
+  @property
+  def output_types(self):
+    return dtypes.string, dtypes.string

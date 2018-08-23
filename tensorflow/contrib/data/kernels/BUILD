@@ -77,6 +77,17 @@ cc_library(
 )
 
 cc_library(
+    name = "lmdb_dataset_op",
+    srcs = ["lmdb_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@lmdb",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
     name = "threadpool_dataset_op",
     srcs = ["threadpool_dataset_op.cc"],
     deps = [
@@ -117,6 +128,7 @@ cc_library(
         ":directed_interleave_dataset_op",
         ":ignore_errors_dataset_op",
         ":indexed_dataset",
+        ":lmdb_dataset_op",
         ":prefetching_kernels",
         ":threadpool_dataset_op",
         ":unique_dataset_op",
