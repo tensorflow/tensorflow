@@ -196,6 +196,9 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                 }
                 output(sample) = z * stddev + mean;
                 sample++;
+                if (sample >= limit_sample) {
+                  break;
+                }
                 numIterations = 0;
               } else {
                 numIterations++;
