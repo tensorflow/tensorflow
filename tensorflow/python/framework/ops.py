@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import os
 import re
 import sys
 import threading
@@ -67,7 +66,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
-_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "1") != "0"
+_USE_C_SHAPES = True
 
 
 def tensor_id(tensor):
@@ -2859,19 +2858,11 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if self._use_c_api_hack():
-      self._scoped_c_graph = c_api_util.ScopedTFGraph()
-      # The C API requires all ops to have shape functions. Disable this
-      # requirement (many custom ops do not have shape functions, and we don't
-      # want to break these existing cases).
-      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
-    else:
-      self._scoped_c_graph = None
-
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    """Temporary hack; can be overridden to force C API usage."""
-    return _USE_C_API
+    self._scoped_c_graph = c_api_util.ScopedTFGraph()
+    # The C API requires all ops to have shape functions. Disable this
+    # requirement (many custom ops do not have shape functions, and we don't
+    # want to break these existing cases).
+    c_api.SetRequireShapeInferenceFns(self._c_graph, False)
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
