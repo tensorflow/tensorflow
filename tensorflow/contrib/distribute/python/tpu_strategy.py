@@ -59,7 +59,7 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
 class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   """Experimental TPU distribution strategy implementation."""
 
-  def __init__(self, tpu_cluster_resolver, steps_per_run):
+  def __init__(self, tpu_cluster_resolver, steps_per_run, num_cores=None):
     """Initializes the TPUStrategy object.
 
     Args:
@@ -70,6 +70,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
           estimator or keras.
+      num_cores: Number of cores to use on the TPU. If None specified, then
+          auto-detect the cores and topology of the TPU system.
     """
     # TODO(isaprykin): Generalize the defaults.  They are currently tailored for
     # the unit test.
@@ -77,6 +79,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+    self._num_cores_override = num_cores
 
     # TODO(priyag): This should not be hardcoded here.
     self._host = '/device:CPU:0'
@@ -258,4 +261,4 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
   @property
   def num_towers(self):
-    return self._tpu_metadata.num_of_cores_per_host
+    return self._num_cores_override or self._tpu_metadata.num_of_cores_per_host
